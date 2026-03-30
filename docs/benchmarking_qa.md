@@ -97,8 +97,16 @@ Answer:
   Real examples used in this repository environment:
   # Option A: run ns directly (may write under NeMo-Skills checkout depending on config)
   ns prepare_data ruler2 --skip_data_dir_check \
-    --setup adarsh_8192 \
+    --setup data_8192 \
     --max_seq_length 8192 \
+    --tokenizer_type openai \
+    --tokenizer_path cl100k_base \
+    --tasks mk_niah_basic mv_niah_basic qa_basic \
+    --dataset_size 100
+
+  ns prepare_data ruler2 --skip_data_dir_check \
+    --setup data_32768 \
+    --max_seq_length 32768 \
     --tokenizer_type openai \
     --tokenizer_path cl100k_base \
     --tasks mk_niah_basic mv_niah_basic qa_basic \
@@ -106,8 +114,16 @@ Answer:
 
   # Option B: direct prepare module (reliable fallback used in this repo)
   PATH="/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/.venv/bin:$PATH" .venv/bin/python -m nemo_skills.dataset.ruler2.prepare \
-    --setup adarsh_8192 \
+    --setup data_8192 \
     --max_seq_length 8192 \
+    --tokenizer_type openai \
+    --tokenizer_path cl100k_base \
+    --tasks mk_niah_basic mv_niah_basic qa_basic \
+    --dataset_size 100
+
+  PATH="/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/.venv/bin:$PATH" .venv/bin/python -m nemo_skills.dataset.ruler2.prepare \
+    --setup data_32768 \
+    --max_seq_length 32768 \
     --tokenizer_type openai \
     --tokenizer_path cl100k_base \
     --tasks mk_niah_basic mv_niah_basic qa_basic \
@@ -115,19 +131,11 @@ Answer:
 
   # Sync prepared data into workspace path used by run_benchmark.py
   mkdir -p benchmark_data/ruler2
-  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/adarsh_8192 benchmark_data/ruler2/
-  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/adarsh_32768 benchmark_data/ruler2/
+  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/data_8192 benchmark_data/ruler2/
+  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/data_32768 benchmark_data/ruler2/
 
   # Optional verification
   for f in benchmark_data/ruler2/adarsh_8192/*/test.jsonl benchmark_data/ruler2/adarsh_32768/*/test.jsonl; do printf "%s\t" "$f"; wc -l < "$f"; done
-
-  PATH="/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/.venv/bin:$PATH" .venv/bin/python -m nemo_skills.dataset.ruler2.prepare \
-    --setup adarsh_32768 \
-    --max_seq_length 32768 \
-    --tokenizer_type openai \
-    --tokenizer_path cl100k_base \
-    --tasks mk_niah_basic mv_niah_basic qa_basic \
-    --dataset_size 100
 
 - 3b) Official milestone run (when official prepared data is ready):
   python run_benchmark.py \
