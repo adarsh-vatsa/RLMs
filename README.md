@@ -62,7 +62,29 @@ python run_benchmark.py \
   --output-dir benchmark_artifacts
 ```
 
-### Optional: Inline Official Prep + Eval Commands
+### Data Preparation (NeMo-Skills)
+
+Prepare official RULER2 data first (example with `dataset_size=100`):
+
+```bash
+ns prepare_data ruler2 --skip_data_dir_check \
+  --setup adarsh_8192 \
+  --max_seq_length 8192 \
+  --tokenizer_type hf \
+  --tokenizer_path TOKENIZER_PATH \
+  --tasks mk_niah_basic mv_niah_basic qa_basic \
+  --dataset_size 100
+
+ns prepare_data ruler2 --skip_data_dir_check \
+  --setup adarsh_32768 \
+  --max_seq_length 32768 \
+  --tokenizer_type hf \
+  --tokenizer_path TOKENIZER_PATH \
+  --tasks mk_niah_basic mv_niah_basic qa_basic \
+  --dataset_size 100
+```
+
+### Optional: Inline Official Eval Command in Runner
 
 Supported placeholders:
 
@@ -79,10 +101,12 @@ python run_benchmark.py \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
   --mode cache \
-  --official-prep-command "python -m nemo_skills.inference.generate_data --tasks {tasks_csv} --lengths {lengths_csv} --output {prepared_data}" \
-  --official-eval-command "python -m nemo_skills.evaluation.evaluate --predictions {predictions} --output-dir {results_dir}" \
+  --official-eval-command "ns eval --output_dir {results_dir} --benchmarks ruler2 --server_type openai" \
   --output-dir benchmark_artifacts
 ```
+
+Note: in this environment, NeMo-Skills is invoked through the `ns` CLI.
+The old `python -m nemo_skills.evaluation.evaluate` module path is not available in the installed version.
 
 ### Official Artifacts
 

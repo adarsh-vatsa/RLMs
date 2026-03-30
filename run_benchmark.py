@@ -45,6 +45,55 @@ def _parse_csv_values(raw: str) -> List[str]:
     return [part for part in values if part]
 
 
+def _infer_task_from_source_file(source_file: str) -> str:
+    if not source_file:
+        return ""
+    path = Path(source_file)
+    parent = path.parent.name.strip()
+    if parent:
+        return parent
+    return ""
+
+
+def _infer_length_from_source_file(source_file: str) -> str:
+    if not source_file:
+        return ""
+    setup_name = Path(source_file).parent.parent.name.strip()
+    if not setup_name:
+        return ""
+    match = re.search(r"_(\d+)$", setup_name)
+    if match:
+        return match.group(1)
+    return ""
+
+
+def _split_prompt_like_record(prompt: str) -> tuple[str, str]:
+    text = (prompt or "").strip()
+    if not text:
+        return "", ""
+
+    # QA-style RULER2 records use "Text:" followed by a short query block.
+    if "\nText:" in text:
+        parts = text.rsplit("\nText:", 1)
+        if len(parts) == 2:
+            context = parts[0].strip()
+            query = ("Text:" + parts[1]).strip()
+            if context and query:
+                return context, query
+
+    # NIAH-style records usually append the question as the last line.
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) >= 2:
+        last = lines[-1].strip()
+        if last.endswith("?") or last.lower().startswith(("what ", "which ", "who ", "where ", "when ", "how ")):
+            context = "\n".join(lines[:-1]).strip()
+            if context:
+                return context, last
+
+    # Fallback: use full prompt as context and a generic retrieval question.
+    return text, "Answer the question from the provided context."
+
+
 def _format_command(template: str, placeholders: Dict[str, str]) -> str:
     command = template
     for key, value in placeholders.items():
@@ -148,6 +197,20 @@ def _normalize_official_sample(
         or _coerce_text(item.get("query_id"))
         or f"sample_{idx:06d}"
     )
+
+    if not question or not context:
+        prompt_text = question or context
+        if prompt_text:
+            context, question = _split_prompt_like_record(prompt_text)
+
+    source_file = _coerce_text(item.get("__source_file"))
+
+    if not task:
+        task = _infer_task_from_source_file(source_file)
+
+    inferred_length = _infer_length_from_source_file(source_file)
+    if inferred_length:
+        length = inferred_length
 
     if not question or not context:
         return None

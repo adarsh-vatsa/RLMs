@@ -77,9 +77,69 @@ Answer:
     --mode cache \
     --output-dir benchmark_artifacts
 
-- 3) Official milestone run (when official prepared data is ready):
+- 3a) Prepare official RULER2 data with placeholders (`dataset_size=100`). You can skip this step if you already have the dataset:
+  ns prepare_data ruler2 --skip_data_dir_check \
+    --setup adarsh_8192 \
+    --max_seq_length 8192 \
+    --tokenizer_type hf \
+    --tokenizer_path TOKENIZER_PATH \
+    --tasks mk_niah_basic mv_niah_basic qa_basic \
+    --dataset_size 100
+
+  ns prepare_data ruler2 --skip_data_dir_check \
+    --setup adarsh_32768 \
+    --max_seq_length 32768 \
+    --tokenizer_type hf \
+    --tokenizer_path TOKENIZER_PATH \
+    --tasks mk_niah_basic mv_niah_basic qa_basic \
+    --dataset_size 100
+
+  Real examples used in this repository environment:
+  # Option A: run ns directly (may write under NeMo-Skills checkout depending on config)
+  ns prepare_data ruler2 --skip_data_dir_check \
+    --setup adarsh_8192 \
+    --max_seq_length 8192 \
+    --tokenizer_type openai \
+    --tokenizer_path cl100k_base \
+    --tasks mk_niah_basic mv_niah_basic qa_basic \
+    --dataset_size 100
+
+  # Option B: direct prepare module (reliable fallback used in this repo)
+  PATH="/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/.venv/bin:$PATH" .venv/bin/python -m nemo_skills.dataset.ruler2.prepare \
+    --setup adarsh_8192 \
+    --max_seq_length 8192 \
+    --tokenizer_type openai \
+    --tokenizer_path cl100k_base \
+    --tasks mk_niah_basic mv_niah_basic qa_basic \
+    --dataset_size 100
+
+  # Sync prepared data into workspace path used by run_benchmark.py
+  mkdir -p benchmark_data/ruler2
+  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/adarsh_8192 benchmark_data/ruler2/
+  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/adarsh_32768 benchmark_data/ruler2/
+
+  # Optional verification
+  for f in benchmark_data/ruler2/adarsh_8192/*/test.jsonl benchmark_data/ruler2/adarsh_32768/*/test.jsonl; do printf "%s\t" "$f"; wc -l < "$f"; done
+
+  PATH="/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/.venv/bin:$PATH" .venv/bin/python -m nemo_skills.dataset.ruler2.prepare \
+    --setup adarsh_32768 \
+    --max_seq_length 32768 \
+    --tokenizer_type openai \
+    --tokenizer_path cl100k_base \
+    --tasks mk_niah_basic mv_niah_basic qa_basic \
+    --dataset_size 100
+
+- 3b) Official milestone run (when official prepared data is ready):
   python run_benchmark.py \
     --official-prepared-data /path/to/ruler2_prepared_data \
+    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+    --official-lengths 8192,32768 \
+    --mode cache \
+    --output-dir benchmark_artifacts
+
+  Real example used in this repository environment:
+  python run_benchmark.py \
+    --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
     --mode cache \
@@ -91,18 +151,30 @@ Answer:
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
     --mode cache \
-    --official-eval-command "python -m nemo_skills.evaluation.evaluate --predictions {predictions} --output-dir {results_dir}" \
+    --official-eval-command "ns eval --output_dir {results_dir} --benchmarks ruler2 --server_type openai" \
     --output-dir benchmark_artifacts
 
-- 5) Optional: include official prep command in same invocation:
+  Real example used in this repository environment:
   python run_benchmark.py \
-    --official-prepared-data /path/to/ruler2_prepared_data \
+    --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
     --mode cache \
-    --official-prep-command "python -m nemo_skills.inference.generate_data --tasks {tasks_csv} --lengths {lengths_csv} --output {prepared_data}" \
-    --official-eval-command "python -m nemo_skills.evaluation.evaluate --predictions {predictions} --output-dir {results_dir}" \
+    --official-eval-command "ns eval --output_dir {results_dir} --benchmarks ruler2 --server_type openai" \
     --output-dir benchmark_artifacts
+
+- 5) Recommended for this NeMo-Skills version: run prep and scoring as two steps.
+  - Step A: start with the placeholder `ns prepare_data` command format, but in this environment use the direct `python -m nemo_skills.dataset.ruler2.prepare` examples above if `ns prepare_data` fails.
+  - Step A.1: run the sync commands above if generated files are not visible under `benchmark_data/ruler2`.
+  - Step B: run `run_benchmark.py` with `--official-prepared-data` and `--official-eval-command`.
+
+Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
+`python -m nemo_skills.evaluation.evaluate` / `python -m nemo_skills.inference.generate_data`
+module paths are not available in the installed version.
+
+Dataset size note:
+- `dataset_size` is a NeMo-Skills RULER2 preparation parameter, not a `run_benchmark.py` parameter.
+- It controls how many samples are generated per task during preparation.
 
 Artifacts are written under benchmark_artifacts/official_ruler_v2/<run_id>/ with predictions.jsonl, bridge_rows.jsonl, and manifest.json.
 
@@ -218,7 +290,7 @@ Practical implication:
 - If `--official-eval-command` is provided, that run is the strict official correctness/scoring path.
 
 ## Q12
-Question: When we pass the CLI parameter, what code does it execute? How does evaluation actually happen?
+Question: When we pass `--official-eval-command`, what exactly gets executed, and where does the real evaluation logic run?
 
 Answer:
 - This repository does not contain evaluator implementation code.
@@ -238,15 +310,15 @@ So this is the right question, and the key point is:
 - external evaluator command = source of official scoring logic
 
 ## Q13
-Question: What is the `nemo_skills` part?
+Question: What is `nemo_skills`?
 
 Answer:
 - `nemo_skills` refers to the NeMo-Skills Python package (external to this repository).
 - It provides benchmark tooling, including command-line modules for data preparation and evaluation.
 - In our commands, examples like:
-  - `python -m nemo_skills.inference.generate_data ...`
-  - `python -m nemo_skills.evaluation.evaluate ...`
-  mean: run NeMo-Skills module entry points through Python.
+  - `ns prepare_data ...`
+  - `ns eval ...`
+  mean: run NeMo-Skills CLI entry points.
 
 Why we use it here:
 - We want official-compatible benchmark processing and scoring.
@@ -279,3 +351,56 @@ Important scope note:
 Typical usage:
 - Use `cache` as default for normal architecture benchmarking.
 - Use `baseline` when you want an ablation-style comparison against cache-enabled behavior.
+
+## Q15
+Question: Which tokenizer does RULER use?
+
+Answer:
+- RULER itself does not force one universal tokenizer.
+- In this NeMo-Skills RULER2 flow, tokenizer is provided explicitly at data preparation time:
+  - `--tokenizer_type hf`
+  - `--tokenizer_path <model_tokenizer>`
+- So the effective tokenizer is the one you pass in `--tokenizer_path`.
+
+Best practice:
+- Use the tokenizer that matches the model family you are benchmarking, so token-length construction (8192/32768) stays consistent with evaluation intent.
+
+## Q16
+Question: I am using Anthropic models. Should I choose the tokenizer accordingly?
+
+Answer:
+- Yes. For RULER2 data prep, tokenizer choice directly controls how 8192/32768 lengths are constructed, so it should be chosen with your serving model in mind.
+- In this NeMo-Skills version, supported tokenizer types are `hf`, `openai`, and `gemini` (no native `anthropic` tokenizer option).
+
+Recommended default for Anthropic in this setup:
+- Use `--tokenizer_type openai --tokenizer_path cl100k_base` as a practical approximation.
+- Then run a small calibration check on a sample of prompts by comparing token counts from your Anthropic endpoint against prepared prompt lengths.
+
+Why this recommendation:
+- There is no built-in Anthropic tokenizer backend in this RULER2 prep implementation.
+- `openai/cl100k_base` is typically the most practical fallback in tools that rely on tiktoken encodings.
+
+Important caveat:
+- Lengths will be approximate, not guaranteed exact to Anthropic internal tokenization.
+- For strictest reporting, document the tokenizer approximation in your benchmark methodology.
+
+Practical prep example for Anthropic runs:
+- `ns prepare_data ruler2 --skip_data_dir_check --setup adarsh_8192 --max_seq_length 8192 --tokenizer_type openai --tokenizer_path cl100k_base --tasks mk_niah_basic mv_niah_basic qa_basic --dataset_size 100`
+- `ns prepare_data ruler2 --skip_data_dir_check --setup adarsh_32768 --max_seq_length 32768 --tokenizer_type openai --tokenizer_path cl100k_base --tasks mk_niah_basic mv_niah_basic qa_basic --dataset_size 100`
+
+## Q17
+Question: In the official benchmark, is the dataset created synthetically or is there another dataset that they use? Are we using the same method?
+
+Answer:
+- It is a mix, not purely one type.
+- For our current scope:
+  - `mk_niah_basic` and `mv_niah_basic` are synthetic long-context constructions.
+  - `qa_basic` is derived from another dataset source (HotpotQA) and then transformed into RULER format.
+
+Are we using the same method?
+- Yes, method-wise we use the same NeMo-Skills RULER2 preparation logic.
+- In this environment, we executed the underlying RULER2 prepare module directly (instead of relying only on `ns prepare_data`) due to local wrapper/runtime issues, but the data-generation logic is the same.
+
+Important caveat:
+- For Anthropic runs, we use `--tokenizer_type openai --tokenizer_path cl100k_base` as a practical approximation.
+- This can slightly shift exact token-length alignment versus Anthropic internal tokenization.
