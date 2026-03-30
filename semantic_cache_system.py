@@ -52,9 +52,14 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 # Environment Setup
 # ---------------------------------------------------------------------------
-dotenv_path = '/Users/zeitgeist/research/RLMs/.env'
-load_dotenv(dotenv_path)
-client = Anthropic()
+
+#dotenv_path = '/Users/zeitgeist/research/RLMs/.env'
+#load_dotenv(dotenv_path)
+load_dotenv()  # loads .env from current/project directory
+API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not API_KEY:
+    raise RuntimeError("ANTHROPIC_API_KEY not found. Check your .env and working directory.")
+client = Anthropic(api_key=API_KEY)
 
 # ---------------------------------------------------------------------------
 # Model Config
@@ -287,6 +292,7 @@ class ExecutionMetrics:
         }
         self.exact_hits = 0
         self.semantic_hits = 0
+        self.knowledge_hits = 0
         self.cache_misses = 0
         self.parallel_chunk_evaluations = 0   # How many times we used parallel chunking
         self.ephemeral_retrievals = 0         # Large results served but not appended
@@ -315,7 +321,7 @@ class ExecutionMetrics:
         duration = (self.end_time or time.time()) - (self.start_time or time.time())
         total_cost = sum(m["cost"] for m in self.stats.values())
         total_calls = sum(m["calls"] for m in self.stats.values())
-        total_cache_events = self.exact_hits + self.semantic_hits
+        total_cache_events = self.exact_hits + self.semantic_hits + self.knowledge_hits
         total_queries = total_cache_events + self.cache_misses
 
         print(f"\n{'='*65}")
@@ -329,6 +335,7 @@ class ExecutionMetrics:
         print(f"  CACHE PERFORMANCE")
         print(f"    Exact Hits           : {self.exact_hits}")
         print(f"    Semantic Hits (Sniper): {self.semantic_hits}")
+        print(f"    Knowledge Hits       : {self.knowledge_hits}")
         print(f"    Cache Misses         : {self.cache_misses}")
         if total_queries > 0:
             hit_rate = (total_cache_events / total_queries) * 100
@@ -857,6 +864,12 @@ class SemanticCacheController:
         if chunk_hash not in self.cache:
             self.cache[chunk_hash] = []
 
+        # Ensure indices exist for fresh runs that have not called load().
+        if self._cache_index is None:
+            self._cache_index = FAISSIndex()
+        if self.knowledge_index is None:
+            self.knowledge_index = FAISSIndex()
+
         # Compute grounding at write-time so it's cached with the entry
         grounding_info = self._grounding_check(result, context)
 
@@ -881,14 +894,12 @@ class SemanticCacheController:
             fact["source_chunk_hash"] = chunk_hash
             fact_idx = len(self.knowledge)
             self.knowledge.append(fact)
-            if self.knowledge_index is not None:
-                fact_text = f"{fact['subject']} {fact['relation']} {fact['object']}"
-                emb = self.embedder.encode_single(fact_text)
-                self.knowledge_index.add(emb.reshape(1, -1), [{"fact_idx": fact_idx}])
+            fact_text = f"{fact['subject']} {fact['relation']} {fact['object']}"
+            emb = self.embedder.encode_single(fact_text)
+            self.knowledge_index.add(emb.reshape(1, -1), [{"fact_idx": fact_idx}])
 
         # Add to cache FAISS index for semantic lookup
-        if self._cache_index is not None:
-            self._cache_index.add(embedding.reshape(1, -1), [{"cache_idx": cache_idx, "chunk_hash": chunk_hash}])
+        self._cache_index.add(embedding.reshape(1, -1), [{"cache_idx": cache_idx, "chunk_hash": chunk_hash}])
 
         # Auto-persist
         if self._persist_path:
@@ -1128,7 +1139,7 @@ class SemanticCacheController:
                     for (s, m), t in zip(faiss_results, candidate_texts)]
 
     def search(self, query: str, top_k: int = 20, rerank_top: int = 5,
-               synthesize: bool = True) -> dict:
+               synthesize: bool = True, cache_read: bool = True) -> dict:
         """
         Full search pipeline: Cache check → Retrieve → Rerank → Synthesize → Cache store.
         This is the main entry point for domain-specific clients.
@@ -1137,12 +1148,12 @@ class SemanticCacheController:
 
         # ── Stage 0: Cache check (Dragnet + Sniper) ──
         # For retrieval-based search, we use a global cache (not hash-bucketed)
-        if self._cache_index and self._cache_index.total > 0:
-            query_emb = self.embedder.encode_query(query)
+        if cache_read and self.cache:
             # Exact match scan
             for chunk_hash, entries in self.cache.items():
                 for entry in entries:
                     if entry["query"].lower().strip() == query.lower().strip():
+                        self.metrics.exact_hits += 1
                         print(f"  [CACHE] ✓ Exact Match — free retrieval")
                         return {
                             "query": query, "answer": entry["result"],
@@ -1150,9 +1161,13 @@ class SemanticCacheController:
                             "grounding": entry.get("grounding_info", {}),
                         }
 
-            # Semantic cache lookup via FAISS + Sniper
-            cache_results = self._cache_index.search(query_emb, top_k=3)
-            strong = [(score, meta) for score, meta in cache_results if score > 0.85]
+            query_emb = None
+            strong = []
+            if self._cache_index and self._cache_index.total > 0:
+                query_emb = self.embedder.encode_query(query)
+                # Semantic cache lookup via FAISS + Sniper
+                cache_results = self._cache_index.search(query_emb, top_k=3)
+                strong = [(score, meta) for score, meta in cache_results if score > 0.85]
             if strong:
                 candidate_queries = []
                 candidate_entries = []
@@ -1175,6 +1190,7 @@ class SemanticCacheController:
                     if sniper and sniper.get("hit"):
                         idx = sniper["id"]
                         cached = candidate_entries[idx]
+                        self.metrics.semantic_hits += 1
                         print(f"  [SNIPER] ✓ Semantic Hit! '{query}' ≡ '{cached['query']}'")
                         return {
                             "query": query, "answer": cached["result"],
@@ -1184,6 +1200,8 @@ class SemanticCacheController:
 
             # Knowledge fact lookup
             if self.knowledge and self.knowledge_index and self.knowledge_index.total > 0:
+                if query_emb is None:
+                    query_emb = self.embedder.encode_query(query)
                 fact_results = self.knowledge_index.search(query_emb, top_k=5)
                 strong_facts = [(s, m) for s, m in fact_results if s > 0.75]
                 if strong_facts:
@@ -1203,6 +1221,7 @@ class SemanticCacheController:
                                     flat_idx += 1
 
                     if relevant_facts and source_entry:
+                        self.metrics.knowledge_hits += 1
                         print(f"  [KNOWLEDGE] ✓ Fact Hit! {len(relevant_facts)} facts found")
                         for f in relevant_facts:
                             print(f"    → {f['subject']} | {f['relation']} | {f['object']}")
@@ -1214,6 +1233,7 @@ class SemanticCacheController:
                         }
 
         # ── Stage 1: Retrieve relevant documents ──
+        self.metrics.cache_misses += 1
         results = self.retrieve(query, top_k=top_k, rerank_top=rerank_top)
         if not results:
             return {"query": query, "answer": "No relevant documents found.", "from_cache": False}

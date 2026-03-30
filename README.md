@@ -45,6 +45,60 @@ echo "ANTHROPIC_API_KEY=sk-..." > .env
 python semantic_cache_system.py
 ```
 
+## Official Benchmarking
+
+Use `run_benchmark.py` only for the official RULER v2 benchmark path.
+The script expects prepared official samples, generates architecture predictions,
+and can execute the official evaluator command without metric overrides.
+
+### Official Run Command
+
+```bash
+python run_benchmark.py \
+  --official-prepared-data /path/to/ruler2_prepared_data \
+  --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+  --official-lengths 8192,32768 \
+  --mode cache \
+  --output-dir benchmark_artifacts
+```
+
+### Optional: Inline Official Prep + Eval Commands
+
+Supported placeholders:
+
+- `{tasks_csv}`
+- `{lengths_csv}`
+- `{prepared_data}`
+- `{results_dir}`
+- `{predictions}`
+- `{bridge_rows}`
+
+```bash
+python run_benchmark.py \
+  --official-prepared-data /path/to/ruler2_prepared_data \
+  --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+  --official-lengths 8192,32768 \
+  --mode cache \
+  --official-prep-command "python -m nemo_skills.inference.generate_data --tasks {tasks_csv} --lengths {lengths_csv} --output {prepared_data}" \
+  --official-eval-command "python -m nemo_skills.evaluation.evaluate --predictions {predictions} --output-dir {results_dir}" \
+  --output-dir benchmark_artifacts
+```
+
+### Official Artifacts
+
+Each run writes a timestamped directory under `benchmark_artifacts/official_ruler_v2/`:
+
+- `predictions.jsonl`
+- `bridge_rows.jsonl`
+- `manifest.json`
+
+The manifest includes implemented task progress against the 13-task baseline.
+
+### Implemented Scope vs 13-Task Baseline
+
+- Implemented: 3/13 (`mk_niah_basic`, `mv_niah_basic`, `qa_basic`)
+- Pending: 10/13
+
 ### Epstein Court Document Search (Domain Client Example)
 
 ```bash

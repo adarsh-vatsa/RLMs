@@ -1,6 +1,6 @@
 # Two-Stage Semantic Cache — System Architecture
 
-> **File**: [`semantic_cache_system.py`](file:///Users/zeitgeist/research/RLMs/semantic_cache_system.py) (1941 lines)
+> **File**: [`semantic_cache_system.py`](semantic_cache_system.py) (1941 lines)
 > **Dependencies**: `transformers`, `torch`, `faiss-cpu`, `anthropic`, `python-dotenv`, `numpy`
 > **Local Models**: `Qwen3-Embedding-0.6B` (596M params, 1024-dim embeddings), `Qwen3-Reranker-0.6B` (yes/no cross-encoder)
 > **API Models**: `claude-sonnet-4-5` (execution/synthesis), `claude-haiku-4-5` (evaluation/sniper/consensus/knowledge extraction)
@@ -12,10 +12,10 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                     AGENT LAYER (Framework-Agnostic)              │
+│                     AGENT LAYER (Framework-Agnostic)             │
 │  AutonomousAgent.cached_query(query, context)                    │
-│  └─ Replaces direct LLM API calls for any framework             │
-└────────┬────────────────────────────────────────────────┬────────┘
+│  └─ Replaces direct LLM API calls for any framework              │
+└────────┬─────────────────────────────────────────────────┬───────┘
          │ CACHE HIT                            CACHE MISS │
          ▼                                                 ▼
 ┌────────────────────────────┐        ┌────────────────────────────┐
@@ -25,7 +25,7 @@
 │  │ 2. Exact Match       │  │        │  │ Simple → Haiku       │  │
 │  │ 3. Vector Dragnet    │  │        │  │ Complex → Sonnet     │  │
 │  │    (Qwen3 + FAISS)   │  │        │  └──────────────────────┘  │
-│  │ 4. LLM Sniper       │  │        └────────────┬───────────────┘
+│  │ 4. LLM Sniper        │  │        └────────────┬───────────────┘
 │  │ 5. Knowledge Lookup  │  │                     │
 │  │ 6. Collapse Guard    │  │                     ▼
 │  │ 7. Provenance Check  │  │        ┌────────────────────────────┐
@@ -40,20 +40,20 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                   SEARCH PIPELINE (search())                      │
-│                                                                    │
-│   Query ──┬──→ Cache Check (exact / semantic / knowledge fact)     │
-│           │     ├─ HIT  → Serve cached answer (with provenance)   │
-│           │     └─ MISS ↓                                         │
-│           └──→ FAISS Dragnet (top-20, ~130ms on CPU)              │
-│                    ↓                                               │
-│              Qwen3-Reranker (relevance gate, top-5)               │
-│                    ↓                                               │
-│              Sonnet Synthesis (grounded answer)                    │
-│                    ↓                                               │
-│              Grounding Check → Consensus Verify → Cache Store     │
-│                    ↓                                               │
-│              Knowledge Extraction → Fact FAISS Index              │
+│                   SEARCH PIPELINE (search())                     │
+│                                                                  │
+│   Query ──┬──→ Cache Check (exact / semantic / knowledge fact)   │
+│           │     ├─ HIT  → Serve cached answer (with provenance)  │
+│           │     └─ MISS ↓                                        │
+│           └──→ FAISS Dragnet (top-20, ~130ms on CPU)             │
+│                    ↓                                             │
+│              Qwen3-Reranker (relevance gate, top-5)              │
+│                    ↓                                             │
+│              Sonnet Synthesis (grounded answer)                  │
+│                    ↓                                             │
+│              Grounding Check → Consensus Verify → Cache Store    │
+│                    ↓                                             │
+│              Knowledge Extraction → Fact FAISS Index             │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
