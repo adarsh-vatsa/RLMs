@@ -2,6 +2,48 @@
 
 This file tracks newcomer-style benchmarking questions and answers.
 
+## Q0
+Setup after cloning:
+
+Recommended setup after clone:
+- 1) Create and activate a virtual environment:
+  python3 -m venv .venv
+  source .venv/bin/activate
+
+- 2) Install this repository package dependencies:
+  python -m pip install --upgrade pip
+  python -m pip install -e .
+
+- 3) Install benchmark runtime dependencies used in this workflow:
+  python -m pip install "nemo-skills>=0.7.0"
+
+- 4) Verify tool availability:
+  python -m pip show nemo-skills
+  ns --help
+  python -m nemo_skills.dataset.ruler2.prepare --help
+  python run_benchmark.py --help
+  python score_ruler2_predictions.py --help
+
+- 5) If required by your model backend, set runtime environment variables before running benchmarks (example):
+  export OPENAI_API_KEY="..."
+
+Optional: uv-based setup (use this instead of steps 1-3 above, not in addition):
+- Create and activate environment:
+  uv venv .venv
+  source .venv/bin/activate
+- Install dependencies:
+  uv pip install -e .
+  uv pip install "nemo-skills>=0.7.0"
+- Verify tools:
+  uv run ns --help
+  uv run python -m nemo_skills.dataset.ruler2.prepare --help
+  uv run python run_benchmark.py --help
+  uv run python score_ruler2_predictions.py --help
+
+If `ns` is not found but the package is installed:
+- Continue using module entry points directly, for example:
+  python -m nemo_skills.dataset.ruler2.prepare --help
+
 ## Q1
 Question: Which benchmark is used and what kind of tasks are executed to test this project?
 
@@ -17,7 +59,7 @@ Answer:
 - Purpose of this scope: establish strict official-score comparability first, then expand to the full benchmark matrix.
 
 ## Q2
-Question: So you have 3 different tasks. Can you elaborate on them? What are they trying to test?
+Question: Can you elaborate on the tasks? What are they trying to test?
 
 Answer:
 - mk_niah_basic:
@@ -77,7 +119,8 @@ Answer:
     --mode cache \
     --output-dir benchmark_artifacts
 
-- 3a) Prepare official RULER2 data with placeholders (`dataset_size=100`). You can skip this step if you already have the dataset:
+- 3) Prepare official RULER2 data with placeholders (`dataset_size=100`). You can skip this step if you already have the dataset:
+  Code template:
   ns prepare_data ruler2 --skip_data_dir_check \
     --setup adarsh_8192 \
     --max_seq_length 8192 \
@@ -135,9 +178,10 @@ Answer:
   rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/data_32768 benchmark_data/ruler2/
 
   # Optional verification
-  for f in benchmark_data/ruler2/adarsh_8192/*/test.jsonl benchmark_data/ruler2/adarsh_32768/*/test.jsonl; do printf "%s\t" "$f"; wc -l < "$f"; done
+  for f in benchmark_data/ruler2/data_8192/*/test.jsonl benchmark_data/ruler2/data_32768/*/test.jsonl; do printf "%s\t" "$f"; wc -l < "$f"; done
 
-- 3b) Official milestone run (when official prepared data is ready):
+- 4) Official milestone run (when official prepared data is ready):
+  Code template:
   python run_benchmark.py \
     --official-prepared-data /path/to/ruler2_prepared_data \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
@@ -153,28 +197,14 @@ Answer:
     --mode cache \
     --output-dir benchmark_artifacts
 
-- 4) Official scoring run with evaluator command (strict scoring path):
-  python run_benchmark.py \
-    --official-prepared-data /path/to/ruler2_prepared_data \
-    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
-    --official-lengths 8192,32768 \
-    --mode cache \
-    --official-eval-command "ns eval --output_dir {results_dir} --benchmarks ruler2 --server_type openai" \
-    --output-dir benchmark_artifacts
+- 5) Reliable scoring for this repository from existing predictions:
+  # After command 4 finishes, score the generated predictions directly
+  ./.venv/bin/python score_ruler2_predictions.py \
+    --run-dir benchmark_artifacts/official_ruler_v2/<run_id>
 
   Real example used in this repository environment:
-  python run_benchmark.py \
-    --official-prepared-data benchmark_data/ruler2 \
-    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
-    --official-lengths 8192,32768 \
-    --mode cache \
-    --official-eval-command "ns eval --output_dir {results_dir} --benchmarks ruler2 --server_type openai" \
-    --output-dir benchmark_artifacts
-
-- 5) Recommended for this NeMo-Skills version: run prep and scoring as two steps.
-  - Step A: start with the placeholder `ns prepare_data` command format, but in this environment use the direct `python -m nemo_skills.dataset.ruler2.prepare` examples above if `ns prepare_data` fails.
-  - Step A.1: run the sync commands above if generated files are not visible under `benchmark_data/ruler2`.
-  - Step B: run `run_benchmark.py` with `--official-prepared-data` and `--official-eval-command`.
+  ./.venv/bin/python score_ruler2_predictions.py \
+    --run-dir benchmark_artifacts/official_ruler_v2/20260331T162513Z
 
 Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
 `python -m nemo_skills.evaluation.evaluate` / `python -m nemo_skills.inference.generate_data`
@@ -184,30 +214,30 @@ Dataset size note:
 - `dataset_size` is a NeMo-Skills RULER2 preparation parameter, not a `run_benchmark.py` parameter.
 - It controls how many samples are generated per task during preparation.
 
-Artifacts are written under benchmark_artifacts/official_ruler_v2/<run_id>/ with predictions.jsonl, bridge_rows.jsonl, and manifest.json.
+Artifacts are written under benchmark_artifacts/official_ruler_v2/<run_id>/ with predictions.jsonl, bridge_rows.jsonl, manifest.json (when run completes), and official_ruler2_eval_report.json (when scoring script is run).
 
 Quick rule:
-- Use command 3 when checking that the pipeline can generate outputs.
-- Use command 4 when you need official scores to report.
-- If the pipeline is already stable and you want final results, command 4 alone is usually enough.
+- Use command 4 when checking that the pipeline can generate outputs.
+- Use command 5 when you want to score existing predictions reliably in this repository.
+- Command 4 alone is generation-only and not sufficient for benchmark reporting.
 
 ## Q6
-Question: What is the difference between the third and fourth command you mentioned?
+Question: What is the difference between the fourth and fifth command you mentioned?
 
 Answer:
-- Command 3:
+- Command 4:
   - Runs the official benchmark bridge only.
   - Produces prediction and telemetry artifacts.
-  - Does not execute the official evaluator.
+  - Does not execute scoring.
   - Result: useful for generation validation, but not final official scores.
 
-- Command 4:
-  - Runs the same bridge generation step.
-  - Also executes the official evaluator command via --official-eval-command.
-  - Result: strict official scoring path, suitable for authoritative benchmark reporting.
+- Command 5:
+  - Scores an existing run's predictions with the repository scoring wrapper (`score_ruler2_predictions.py`).
+  - Uses NeMo RULER2 evaluator logic directly on `predictions.jsonl`.
+  - Result: reliable scoring report in this environment without re-running generation.
 
 ## Q7
-Question: What is the bridge generation step? Also, what's the difference between command 2 and 3 you mentioned?
+Question: What is the bridge generation step? Also, what's the difference between command 2 and 4 you mentioned?
 
 Answer:
 - Bridge generation step means:
@@ -217,17 +247,17 @@ Answer:
   - Write run telemetry to `bridge_rows.jsonl`.
   - Save run metadata to `manifest.json`.
 
-- Difference between command 2 and command 3:
+- Difference between command 2 and command 4:
   - Command 2 is a local smoke run using fixture data in this repo (`benchmark_fixtures/suites/ruler_adapter_pilot.json`).
     - Goal: sanity-check wiring and execution.
     - Not suitable for official score reporting.
-  - Command 3 is the same bridge flow but with official prepared RULER v2 data path.
+  - Command 4 is the same bridge flow but with official prepared RULER v2 data path.
     - Goal: generate real benchmark predictions for the official task/length matrix.
     - This is the required pre-step before official scoring.
 
 In short:
 - Command 2 = pipeline test on local mock-like data.
-- Command 3 = real benchmark generation on official prepared data.
+- Command 4 = real benchmark generation on official prepared data.
 
 ## Q8
 Question: How much would it cost to run the benchmark?
@@ -289,13 +319,13 @@ Answer:
 Question: How are evaluating "correct" answers?
 
 Answer:
-- In the current official-only workflow, correctness is evaluated by the official evaluator command passed with `--official-eval-command`.
-- The runner itself generates predictions (`predictions.jsonl`) and telemetry (`bridge_rows.jsonl`) but does not apply custom correctness scoring.
-- This is intentional so reported metrics come from the official benchmark evaluator, not project-specific scoring logic.
+- In the current official-only workflow, baseline correctness logic comes from the RULER2 evaluator implementation (NeMo-Skills), not from custom project heuristics.
+- `run_benchmark.py` itself generates predictions (`predictions.jsonl`) and telemetry (`bridge_rows.jsonl`) and does not score by default.
+- Scoring in this repository is done with `score_ruler2_predictions.py`, which applies NeMo RULER2 evaluator logic to existing predictions.
 
 Practical implication:
-- If `--official-eval-command` is omitted, you get generation artifacts only.
-- If `--official-eval-command` is provided, that run is the strict official correctness/scoring path.
+- If scoring is omitted, you get generation artifacts only.
+- Run `score_ruler2_predictions.py` against the run folder to produce `official_ruler2_eval_report.json`.
 
 ## Q12
 Question: When we pass `--official-eval-command`, what exactly gets executed, and where does the real evaluation logic run?
@@ -412,3 +442,4 @@ Are we using the same method?
 Important caveat:
 - For Anthropic runs, we use `--tokenizer_type openai --tokenizer_path cl100k_base` as a practical approximation.
 - This can slightly shift exact token-length alignment versus Anthropic internal tokenization.
+

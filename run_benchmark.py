@@ -493,6 +493,7 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    start = time.time()
     parser = argparse.ArgumentParser(
         description="Official RULER v2 benchmark bridge for semantic cache architecture"
     )
@@ -565,7 +566,10 @@ def main() -> None:
     )
     args = parser.parse_args()
     run_official_benchmark(args)
-
+    end = time.time()
+    elapsed = end - start
+    print(f"\nTotal elapsed time: {elapsed:.2f} seconds")
+    
 
 if __name__ == "__main__":
     main()
