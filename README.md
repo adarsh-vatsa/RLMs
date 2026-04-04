@@ -62,6 +62,42 @@ python run_benchmark.py \
   --output-dir benchmark_artifacts
 ```
 
+### Cache Reuse Across Runs
+
+In `--mode cache`, official benchmark runs now reuse persistent cache state by default.
+The cache namespace is derived from dataset content signature + selected tasks +
+selected lengths + corpus id, so timestamped dataset folder names do not break
+warm-cache behavior when selected sample content is unchanged.
+
+- Default state root:
+  - `benchmark_artifacts/official_ruler_v2/cache_state/<namespace>/`
+- Reset only when explicitly requested:
+
+```bash
+python run_benchmark.py \
+  --official-prepared-data /path/to/ruler2_prepared_data \
+  --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+  --official-lengths 8192,32768 \
+  --mode cache \
+  --official-cache-reset \
+  --output-dir benchmark_artifacts
+```
+
+- Optional custom state root:
+
+```bash
+python run_benchmark.py \
+  --official-prepared-data /path/to/ruler2_prepared_data \
+  --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+  --official-lengths 8192,32768 \
+  --mode cache \
+  --official-cache-state-root /path/to/cache_state_root \
+  --output-dir benchmark_artifacts
+```
+
+Warm-run signals are available in stdout and in each run's `manifest.json`
+under the `cache_reuse` section.
+
 ### Data Preparation (NeMo-Skills)
 
 Prepare official RULER2 data first (example with `dataset_size=100`):

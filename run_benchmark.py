@@ -8,9 +8,11 @@ official evaluator command.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -260,6 +262,53 @@ def _filter_official_samples(
     return filtered
 
 
+def _build_dataset_content_signature(samples: List[dict]) -> str:
+    """Build a stable content signature independent of parent folder naming."""
+    hasher = hashlib.sha256()
+    ordered = sorted(
+        samples,
+        key=lambda row: (
+            _coerce_text(row.get("task")),
+            _coerce_text(row.get("length")),
+            _coerce_text(row.get("id")),
+        ),
+    )
+    for sample in ordered:
+        payload = {
+            "id": _coerce_text(sample.get("id")),
+            "task": _coerce_text(sample.get("task")),
+            "length": _coerce_text(sample.get("length")),
+            "question": _coerce_text(sample.get("question")),
+            "context": _coerce_text(sample.get("context")),
+            "expected_answer": _coerce_text(sample.get("expected_answer")),
+        }
+        hasher.update(
+            json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        )
+        hasher.update(b"\n")
+    return hasher.hexdigest()[:16]
+
+
+def _sanitize_path_segment(raw: str, max_len: int = 180) -> str:
+    value = re.sub(r"[^a-zA-Z0-9._-]+", "_", _coerce_text(raw)).strip("._-")
+    if not value:
+        value = "default"
+    return value[:max_len]
+
+
+def _resolve_cache_namespace(
+    corpus_id: str,
+    selected_tasks: List[str],
+    selected_lengths: List[str],
+    selected_samples: List[dict],
+) -> tuple[str, str]:
+    dataset_sig = _build_dataset_content_signature(selected_samples)
+    task_sig = "-".join(sorted({task.lower() for task in selected_tasks}))
+    length_sig = "-".join(sorted({length for length in selected_lengths}))
+    base = f"{corpus_id}__{task_sig}__{length_sig}__{dataset_sig}"
+    return _sanitize_path_segment(base), dataset_sig
+
+
 def _snapshot_metrics(metrics: scs.ExecutionMetrics) -> dict:
     total_calls = 0
     total_input_tokens = 0
@@ -361,6 +410,47 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
     print(f"[OFFICIAL] Lengths: {selected_lengths}")
     print(f"[OFFICIAL] Output dir: {out_dir}")
 
+    cache_state_enabled = args.mode == "cache"
+    cache_namespace = ""
+    dataset_signature = ""
+    cache_state_root: Optional[Path] = None
+    cache_state_path: Optional[Path] = None
+    cache_state_existed_before_reset = False
+    cache_state_existed_before_run = False
+    cache_entries_before_run = 0
+    cache_entries_after_run = 0
+    cache_load_attempts = 0
+    cache_load_successes = 0
+    cache_hits = 0
+
+    if cache_state_enabled:
+        cache_namespace, dataset_signature = _resolve_cache_namespace(
+            corpus_id=args.corpus_id,
+            selected_tasks=selected_tasks,
+            selected_lengths=selected_lengths,
+            selected_samples=selected,
+        )
+        if args.official_cache_state_root:
+            cache_state_root = Path(args.official_cache_state_root)
+        else:
+            cache_state_root = Path(args.output_dir) / "official_ruler_v2" / "cache_state"
+        cache_state_path = cache_state_root / cache_namespace
+
+        cache_state_existed_before_reset = cache_state_path.exists()
+        if args.official_cache_reset and cache_state_existed_before_reset:
+            shutil.rmtree(cache_state_path)
+            print(f"[OFFICIAL] Cache reset requested. Removed state at: {cache_state_path}")
+
+        cache_state_root.mkdir(parents=True, exist_ok=True)
+        cache_state_existed_before_run = cache_state_path.exists()
+        print(f"[OFFICIAL] Cache state root: {cache_state_root}")
+        print(f"[OFFICIAL] Cache namespace : {cache_namespace}")
+        print(f"[OFFICIAL] Dataset signature: {dataset_signature}")
+        if cache_state_existed_before_run:
+            print("[OFFICIAL] Cache state: warm start (existing state found)")
+        else:
+            print("[OFFICIAL] Cache state: cold start (no prior state)")
+
     shared_embedder = scs.EmbeddingEngine()
     shared_reranker = scs.Reranker()
 
@@ -374,12 +464,24 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
         doc_path = sample_docs_dir / "context.txt"
         doc_path.write_text(sample["context"].rstrip() + "\n", encoding="utf-8")
 
+        controller_corpus_id = (
+            cache_namespace if cache_state_enabled else f"{args.corpus_id}_{idx}"
+        )
         controller = _build_controller_with_components(
-            corpus_id=f"{args.corpus_id}_{idx}",
+            corpus_id=controller_corpus_id,
             corpus_domain=args.domain,
             embedder=shared_embedder,
             reranker=shared_reranker,
         )
+
+        if cache_state_enabled and cache_state_path is not None:
+            cache_load_attempts += 1
+            if cache_state_path.exists() and controller.load(cache_state_path):
+                cache_load_successes += 1
+            loaded_entries = controller.get_total_entries()
+            if idx == 1:
+                cache_entries_before_run = loaded_entries
+
         controller.ingest(sample_docs_dir)
 
         before = _snapshot_metrics(controller.metrics)
@@ -423,6 +525,13 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
                 "cache_type": _coerce_text(output.get("cache_type")),
             }
         )
+
+        if output.get("from_cache"):
+            cache_hits += 1
+
+        if cache_state_enabled and cache_state_path is not None:
+            controller.save(cache_state_path)
+            cache_entries_after_run = controller.get_total_entries()
 
     with open(predictions_path, "w", encoding="utf-8") as f:
         for row in prediction_rows:
@@ -475,6 +584,28 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
             else "evaluator skipped (no --official-eval-command provided)"
         ),
     }
+    if cache_state_enabled:
+        manifest["cache_reuse"] = {
+            "enabled": True,
+            "cache_namespace": cache_namespace,
+            "dataset_signature": dataset_signature,
+            "cache_state_root": str(cache_state_root) if cache_state_root else "",
+            "cache_state_path": str(cache_state_path) if cache_state_path else "",
+            "cache_state_existed_before_reset": cache_state_existed_before_reset,
+            "cache_state_existed_before_run": cache_state_existed_before_run,
+            "cache_reset_requested": bool(args.official_cache_reset),
+            "cache_load_attempts": cache_load_attempts,
+            "cache_load_successes": cache_load_successes,
+            "cache_entries_before_run": cache_entries_before_run,
+            "cache_entries_after_run": cache_entries_after_run,
+            "cache_hits": cache_hits,
+            "cache_hit_rate": round(cache_hits / len(bridge_rows), 6) if bridge_rows else 0.0,
+        }
+    else:
+        manifest["cache_reuse"] = {
+            "enabled": False,
+            "reason": "mode is baseline",
+        }
     if args.manifest_note:
         manifest["note"] = args.manifest_note
 
@@ -485,6 +616,14 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
     print(f"[OFFICIAL] Predictions : {predictions_path}")
     print(f"[OFFICIAL] Bridge rows : {bridge_rows_path}")
     print(f"[OFFICIAL] Manifest    : {manifest_path}")
+    if cache_state_enabled:
+        print(
+            "[OFFICIAL] Cache reuse summary: "
+            f"loads={cache_load_successes}/{cache_load_attempts}, "
+            f"hits={cache_hits}/{len(bridge_rows)}, "
+            f"entries_before={cache_entries_before_run}, "
+            f"entries_after={cache_entries_after_run}"
+        )
     if not evaluator_command:
         print(
             "[OFFICIAL] Evaluator command not provided. "
@@ -549,6 +688,23 @@ def main() -> None:
         help="Architecture execution mode during prediction generation",
     )
     parser.add_argument("--corpus-id", type=str, default="official_ruler")
+    parser.add_argument(
+        "--official-cache-state-root",
+        type=str,
+        default="",
+        help=(
+            "Root directory for persistent cache state in cache mode. "
+            "If omitted, defaults to <output-dir>/official_ruler_v2/cache_state"
+        ),
+    )
+    parser.add_argument(
+        "--official-cache-reset",
+        action="store_true",
+        help=(
+            "Reset only the resolved persistent cache namespace before run. "
+            "No automatic cache deletion happens unless this flag is set."
+        ),
+    )
     parser.add_argument("--domain", type=str, default="general")
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--rerank-top", type=int, default=5)

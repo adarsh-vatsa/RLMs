@@ -197,6 +197,27 @@ Answer:
     --mode cache \
     --output-dir benchmark_artifacts
 
+  Warm rerun behavior (same command, same selected dataset content):
+  - Re-run the same command above to reuse persistent cache state by default.
+
+  Cold-start behavior (explicit reset only):
+  python run_benchmark.py \
+    --official-prepared-data benchmark_data/ruler2 \
+    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+    --official-lengths 8192,32768 \
+    --mode cache \
+    --official-cache-reset \
+    --output-dir benchmark_artifacts
+
+  Optional custom cache-state root:
+  python run_benchmark.py \
+    --official-prepared-data benchmark_data/ruler2 \
+    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+    --official-lengths 8192,32768 \
+    --mode cache \
+    --official-cache-state-root benchmark_artifacts/official_ruler_v2/cache_state \
+    --output-dir benchmark_artifacts
+
 - 5) Reliable scoring for this repository from existing predictions:
   # After command 4 finishes, score the generated predictions directly
   ./.venv/bin/python score_ruler2_predictions.py \
@@ -217,7 +238,7 @@ Dataset size note:
 Artifacts are written under benchmark_artifacts/official_ruler_v2/<run_id>/ with predictions.jsonl, bridge_rows.jsonl, manifest.json (when run completes), and official_ruler2_eval_report.json (when scoring script is run).
 
 Quick rule:
-- Use command 4 when checking that the pipeline can generate outputs.
+- Use command 4 for both cold and warm generation runs. Warm reuse happens automatically in `--mode cache` unless reset is requested.
 - Use command 5 when you want to score existing predictions reliably in this repository.
 - Command 4 alone is generation-only and not sufficient for benchmark reporting.
 
@@ -442,4 +463,47 @@ Are we using the same method?
 Important caveat:
 - For Anthropic runs, we use `--tokenizer_type openai --tokenizer_path cl100k_base` as a practical approximation.
 - This can slightly shift exact token-length alignment versus Anthropic internal tokenization.
+
+## Q18
+Question: If I rerun the same official dataset, will cache be reused automatically now?
+
+Answer:
+- Yes, when `--mode cache` is used, official runner now reuses persistent cache state by default.
+- Cache reuse key is derived from dataset content signature + selected tasks + selected lengths + corpus id.
+- This means timestamped dataset folder names are fine as long as the underlying selected sample content is unchanged.
+- Run output artifacts still remain timestamped per run under `benchmark_artifacts/official_ruler_v2/<run_id>/`.
+- Reusable cache state is stored separately under:
+  - default: `benchmark_artifacts/official_ruler_v2/cache_state/<namespace>/`
+
+Quick usage:
+- Cold/warm runs with default cache reuse behavior:
+  python run_benchmark.py \
+    --official-prepared-data benchmark_data/ruler2 \
+    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+    --official-lengths 8192,32768 \
+    --mode cache \
+    --output-dir benchmark_artifacts
+
+- Optional custom cache root:
+  python run_benchmark.py \
+    --official-prepared-data benchmark_data/ruler2 \
+    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+    --official-lengths 8192,32768 \
+    --mode cache \
+    --official-cache-state-root benchmark_artifacts/official_ruler_v2/cache_state \
+    --output-dir benchmark_artifacts
+
+- Force a fresh cache only when needed:
+  python run_benchmark.py \
+    --official-prepared-data benchmark_data/ruler2 \
+    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+    --official-lengths 8192,32768 \
+    --mode cache \
+    --official-cache-reset \
+    --output-dir benchmark_artifacts
+
+How to verify warm cache:
+- Check runner summary in stdout (`hits=...`, `entries_before=...`, `entries_after=...`).
+- Check `manifest.json` in run folder for `cache_reuse` block.
+- Check `bridge_rows.jsonl` for rows where `from_cache` is `true`.
 
