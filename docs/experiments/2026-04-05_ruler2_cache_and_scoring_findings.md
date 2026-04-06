@@ -1,13 +1,13 @@
 # RULER2 Run Findings (2026-04-05)
 
 ## Execution Summary
-- `20260331T162513Z`: Early official bridge/scoring artifacts test. Added `--official-cache-reset` modifier as every run was using cold start.
+- `20260331T162513Z`: Early official bridge/scoring artifacts test. Added `--official-cache-reset` modifier as every run was using cold start. (580 seconds)
 - `20260405T194658Z`: First deep-dive run; 5/6 cache hits with repeated answer pattern. First-token pooling was used for query/document embeddings which caused queries with shared instruction prefixes to collapse under identical vectors (defined in `encode()` method of `EmbeddingEngine` class, `semantic_cache_system.py`). This made fact/query similarity appear perfect and amplified false knowledge hits (increased false-positives in cache hits).
-- `20260406T001339Z`: Cold-start baseline after reset; mixed cache usage (4/6 hits). Accuracy: 0.88
-- `20260406T002621Z`: Warm run with same dataset; 6/6 hits and different overall score vs cold start.Accuracy: 0.95
+- `20260406T001339Z`: Cold-start baseline after reset; mixed cache usage (4/6 hits). Accuracy: 0.88 (327 seconds)
+- `20260406T002621Z`: Warm run with same dataset; 6/6 hits and different overall score vs cold start.Accuracy: 0.95 (211 seconds)
 - `20260406T134708Z`: Bug fix: Multi-value task was not calculating accuracy using the whole set of expected answers leading to wrong results.
-- `20260406T140046Z`: Clean run after bug fix (cache reset)
-- `TODO`: NIAH might not be a suitable task for this system: 1) Only try with the QA task 2) Look into other tasks
+- `20260406T140046Z`: Clean run after bug fix (cache reset, 328 seconds)
+- `20260406T142949Z`: Execution with cache (207 seconds)
 
 ## Scope
 - Goal: understand odd scoring values and repeated answers with high cache-hit rate.
