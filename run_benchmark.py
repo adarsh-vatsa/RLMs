@@ -42,6 +42,26 @@ def _coerce_text(value) -> str:
     return ""
 
 
+def _coerce_expected_answer(value):
+    """Preserve list-valued expected answers for multi-value RULER tasks."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        coerced = []
+        for item in value:
+            text = _coerce_text(item)
+            if text:
+                coerced.append(text)
+        return coerced if coerced else ""
+    return _coerce_text(value)
+
+
+def _has_expected_answer(value) -> bool:
+    if isinstance(value, list):
+        return len(value) > 0
+    return bool(_coerce_text(value))
+
+
 def _parse_csv_values(raw: str) -> List[str]:
     values = [part.strip() for part in (raw or "").split(",")]
     return [part for part in values if part]
@@ -186,13 +206,12 @@ def _normalize_official_sample(
         _coerce_text(item.get("length") or item.get("context_length") or item.get("seq_len"))
         or fallback_length
     )
-    expected = (
-        _coerce_text(item.get("answer"))
-        or _coerce_text(item.get("expected_answer"))
-        or _coerce_text(item.get("expected"))
-        or _coerce_text(item.get("target"))
-        or _coerce_text(item.get("output"))
-    )
+    expected = ""
+    for key in ("answer", "expected_answer", "expected", "target", "output"):
+        candidate = _coerce_expected_answer(item.get(key))
+        if _has_expected_answer(candidate):
+            expected = candidate
+            break
     sample_id = (
         _coerce_text(item.get("id"))
         or _coerce_text(item.get("sample_id"))
@@ -280,7 +299,7 @@ def _build_dataset_content_signature(samples: List[dict]) -> str:
             "length": _coerce_text(sample.get("length")),
             "question": _coerce_text(sample.get("question")),
             "context": _coerce_text(sample.get("context")),
-            "expected_answer": _coerce_text(sample.get("expected_answer")),
+            "expected_answer": _coerce_expected_answer(sample.get("expected_answer")),
         }
         hasher.update(
             json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")

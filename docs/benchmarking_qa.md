@@ -234,7 +234,7 @@ Answer:
 
   Real example used in this repository environment (IMPORTANT: Don't forget to update folder name):
   ./.venv/bin/python score_ruler2_predictions.py \
-    --run-dir benchmark_artifacts/official_ruler_v2/20260406T002621Z
+    --run-dir benchmark_artifacts/official_ruler_v2/20260406T140046Z
 
 Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
 `python -m nemo_skills.evaluation.evaluate` / `python -m nemo_skills.inference.generate_data`
