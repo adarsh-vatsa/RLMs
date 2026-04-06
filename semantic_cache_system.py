@@ -97,7 +97,7 @@ class EmbeddingEngine:
         print(f"  [EMBED] ✓ Loaded on {self.device} ({param_count // 1_000_000}M params)")
 
     def encode(self, texts: list, instruction: str = "") -> np.ndarray:
-        """Encode texts with optional instruction prefix. Uses CLS token pooling."""
+        """Encode texts with optional instruction prefix using masked mean pooling."""
         if instruction:
             texts = [f"Instruct: {instruction}\nQuery: {t}" for t in texts]
         batch_size = 16
@@ -108,8 +108,14 @@ class EmbeddingEngine:
                                      max_length=8192, return_tensors="pt").to(self.device)
             with self.torch.no_grad():
                 outputs = self.model(**inputs)
-                # CLS token pooling (matches existing FAISS indices)
-                embs = outputs.last_hidden_state[:, 0, :]
+                # Use attention-masked mean pooling. First-token pooling can collapse
+                # embeddings for decoder-only models when a shared instruction prefix
+                # is used, causing unrelated queries to look identical.
+                hidden = outputs.last_hidden_state
+                mask = inputs["attention_mask"].unsqueeze(-1).to(hidden.dtype)
+                summed = (hidden * mask).sum(dim=1)
+                counts = mask.sum(dim=1).clamp_min(1e-9)
+                embs = summed / counts
                 embs = embs / embs.norm(dim=1, keepdim=True)
             all_embs.append(embs.cpu().numpy())
             if len(texts) > batch_size and (i + batch_size) % 100 == 0:
