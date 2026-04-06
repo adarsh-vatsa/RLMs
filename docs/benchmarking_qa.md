@@ -15,7 +15,7 @@ Recommended setup after clone:
   python -m pip install -e .
 
 - 3) Install benchmark runtime dependencies used in this workflow:
-  python -m pip install "nemo-skills>=0.7.0"
+  python -m pip install "git+https://github.com/NVIDIA/NeMo-Skills.git"
 
 - 4) Verify tool availability:
   python -m pip show nemo-skills
@@ -33,7 +33,7 @@ Optional: uv-based setup (use this instead of steps 1-3 above, not in addition):
   source .venv/bin/activate
 - Install dependencies:
   uv pip install -e .
-  uv pip install "nemo-skills>=0.7.0"
+  uv pip install "git+https://github.com/NVIDIA/NeMo-Skills.git"
 - Verify tools:
   uv run ns --help
   uv run python -m nemo_skills.dataset.ruler2.prepare --help
@@ -138,7 +138,7 @@ Answer:
     --dataset_size 100
 
   Real examples used in this repository environment:
-  # Option A: run ns directly (may write under NeMo-Skills checkout depending on config)
+  # Option A: run ns directly (writes under the installed nemo_skills package data tree)
   ns prepare_data ruler2 --skip_data_dir_check \
     --setup data_8192 \
     --max_seq_length 8192 \
@@ -172,13 +172,22 @@ Answer:
     --tasks mk_niah_basic mv_niah_basic qa_basic \
     --dataset_size 100
 
+  # Resolve where nemo_skills wrote prepared data
+  TMP_RULER2_ROOT="$(.venv/bin/python -c 'import pathlib,nemo_skills; print(pathlib.Path(nemo_skills.__file__).resolve().parent / "dataset" / "ruler2")')"
+
   # Sync prepared data into workspace path used by run_benchmark.py
   mkdir -p benchmark_data/ruler2
-  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/data_8192 benchmark_data/ruler2/
-  rsync -a /private/tmp/NeMo-Skills/nemo_skills/dataset/ruler2/data_32768 benchmark_data/ruler2/
+  rsync -a "$TMP_RULER2_ROOT/data_8192" benchmark_data/ruler2/
+  rsync -a "$TMP_RULER2_ROOT/data_32768" benchmark_data/ruler2/
 
   # Optional verification
   for f in benchmark_data/ruler2/data_8192/*/test.jsonl benchmark_data/ruler2/data_32768/*/test.jsonl; do printf "%s\t" "$f"; wc -l < "$f"; done
+
+  # Optional cleanup: remove prepared data under the resolved package data root after successful copy + verification
+  rm -rf "$TMP_RULER2_ROOT/data_8192" "$TMP_RULER2_ROOT/data_32768"
+
+  # Optional: confirm cleanup
+  ls -la "$TMP_RULER2_ROOT"
 
 - 4) Official milestone run (when official prepared data is ready):
   Code template:
@@ -225,7 +234,7 @@ Answer:
 
   Real example used in this repository environment:
   ./.venv/bin/python score_ruler2_predictions.py \
-    --run-dir benchmark_artifacts/official_ruler_v2/20260331T162513Z
+    --run-dir benchmark_artifacts/official_ruler_v2/20260405T194658Z
 
 Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
 `python -m nemo_skills.evaluation.evaluate` / `python -m nemo_skills.inference.generate_data`

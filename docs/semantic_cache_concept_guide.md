@@ -45,6 +45,28 @@ Because Haiku is an actual language model, it instantly spots the difference bet
 * If Haiku says **Yes**, we return the cached answer. (Cost: $0.0001)
 * If Haiku says **No**, we spawn the expensive main agent. (Cost: $0.50)
 
+### Cache Hit Types (Implementation Reality)
+
+In this repository, not all cache hits mean the same thing. We currently have 3 hit routes:
+
+* **Exact Hit (`cache_type = exact`)**
+   * Trigger: normalized query text exactly matches a stored query.
+   * Meaning: strongest form of reuse (same question).
+
+* **Semantic Hit (`cache_type = semantic`)**
+   * Trigger: query embedding is close to cached query embedding, then LLM sniper confirms logical equivalence.
+   * Meaning: paraphrase-level reuse with logical guardrail.
+
+* **Knowledge Hit (`cache_type = knowledge`)**
+   * Trigger: query embedding matches extracted fact embeddings from prior cached answers.
+   * Meaning: fact-level reuse; can be broader than query-level equivalence.
+
+Important measurement note:
+
+* Current benchmark hit-rate treats any `from_cache = true` as a hit.
+* That aggregates exact + semantic + knowledge hits into one number.
+* So a high hit-rate does **not** automatically imply high correctness.
+
 ---
 
 ## The "Aha!" Mathematical Scaling Moments

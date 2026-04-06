@@ -100,6 +100,24 @@ under the `cache_reuse` section.
 
 ### Data Preparation (NeMo-Skills)
 
+Install benchmark tooling in your active virtual environment first:
+
+```bash
+# pip workflow
+python -m pip install "git+https://github.com/NVIDIA/NeMo-Skills.git"
+
+# or uv workflow
+uv pip install "git+https://github.com/NVIDIA/NeMo-Skills.git"
+
+# verify
+ns --help
+python -m nemo_skills.dataset.ruler2.prepare --help
+```
+
+If `nemo_skills` was previously installed from a temporary editable path
+(for example `/tmp/NeMo-Skills`), reinstall with one of the commands above
+to avoid breakage when tmp directories are cleaned.
+
 Prepare official RULER2 data first (example with `dataset_size=100`):
 
 ```bash
