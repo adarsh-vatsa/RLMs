@@ -23,18 +23,20 @@
 │  ┌──────────────────────┐  │        │  ┌──────────────────────┐  │
 │  │ 1. Hash Bucket       │  │        │  │ Keyword heuristic    │  │
 │  │ 2. Exact Match       │  │        │  │ Simple → Haiku       │  │
-│  │ 3. Vector Dragnet    │  │        │  │ Complex → Sonnet     │  │
-│  │    (Qwen3 + FAISS)   │  │        │  └──────────────────────┘  │
-│  │ 4. LLM Sniper        │  │        └────────────┬───────────────┘
-│  │ 5. Knowledge Lookup  │  │                     │
-│  │ 6. Collapse Guard    │  │                     ▼
-│  │ 7. Provenance Check  │  │        ┌────────────────────────────┐
-│  └──────────────────────┘  │        │     Anthropic API          │
-└────────────────────────────┘        │  store() → cache + embed   │
-                                      │  + knowledge extraction    │
+│  │ 3a. Semantic branch  │  │        │  │ Complex → Sonnet     │  │
+│  │     Dragnet → Sniper │  │        │  └──────────────────────┘  │
+│  │ 3b. Knowledge branch │  │        └────────────┬───────────────┘
+│  │     Fact FAISS +     │  │                     │
+│  │     score+margin gate│  │                     ▼
+│  │ 4. Collapse Guard    │  │        ┌────────────────────────────┐
+│  │ 5. Provenance Check  │  │        │     Anthropic API          │
+│  └──────────────────────┘  │        │  store() → cache + embed   │
+└────────────────────────────┘        │  + knowledge extraction    │
                                       │  + consensus verify        │
                                       └────────────────────────────┘
 ```
+
+Note: LLM Sniper runs on the semantic branch. The knowledge branch currently uses similarity thresholds only at read time.
 
 ### Retrieval Pipeline (for document search via domain clients)
 
@@ -42,7 +44,10 @@
 ┌──────────────────────────────────────────────────────────────────┐
 │                   SEARCH PIPELINE (search())                     │
 │                                                                  │
-│   Query ──┬──→ Cache Check (exact / semantic / knowledge fact)   │
+│   Query ──┬──→ Cache Check                                       │
+│           │     ├─ Exact match (string equality)                 │
+│           │     ├─ Semantic hit: cache FAISS → LLM Sniper        │
+│           │     ├─ Knowledge hit: fact FAISS → score+margin gate │
 │           │     ├─ HIT  → Serve cached answer (with provenance)  │
 │           │     └─ MISS ↓                                        │
 │           └──→ FAISS Dragnet (top-20, ~130ms on CPU)             │

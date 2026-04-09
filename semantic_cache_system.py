@@ -309,6 +309,9 @@ class ExecutionMetrics:
         self.inferred_results = 0             # Results not found in source (potential hallucination)
         self.consensus_agreed = 0             # Multi-model consensus: models agreed
         self.consensus_disputed = 0           # Multi-model consensus: models disagreed
+        self.knowledge_verifier_calls = 0     # Optional verifier calls in knowledge-hit cascade
+        self.knowledge_verifier_allowed = 0   # Verifier accepted knowledge candidate
+        self.knowledge_verifier_rejected = 0  # Verifier rejected knowledge candidate
         self.start_time = None
         self.end_time = None
 
@@ -352,6 +355,9 @@ class ExecutionMetrics:
         print(f"    Ephemeral Retrievals : {self.ephemeral_retrievals}")
         print(f"    Recursive Summarize  : {self.recursive_summarizations}")
         print(f"    Pre-Warmed Entries   : {self.pre_warm_entries}")
+        print(f"    Knowledge Verifier   : {self.knowledge_verifier_calls} calls")
+        if self.knowledge_verifier_calls > 0:
+            print(f"      Allowed / Rejected : {self.knowledge_verifier_allowed} / {self.knowledge_verifier_rejected}")
         print(f"{'─'*65}")
         total_provenance = self.grounded_results + self.partial_results + self.inferred_results
         print(f"  SOURCE PROVENANCE")
@@ -403,6 +409,14 @@ class SemanticCacheController:
     EVALUATOR_MODEL = "claude-haiku-4-5"
     TOP_K_CANDIDATES = 5           # Default number of vector search results
     PARALLEL_BATCH_SIZE = 5        # Max candidates per single Haiku evaluation call
+    KNOWLEDGE_MIN_SCORE = 0.78     # Minimum top-1 fact similarity to allow knowledge reuse
+    KNOWLEDGE_MIN_MARGIN = 0.03    # Minimum top1-top2 gap to reject ambiguous fact matches
+    KNOWLEDGE_VERIFIER_ENABLED = True
+    KNOWLEDGE_VERIFIER_ALWAYS = False
+    KNOWLEDGE_VERIFIER_SCORE_TRIGGER = 0.82
+    KNOWLEDGE_VERIFIER_MARGIN_TRIGGER = 0.06
+    KNOWLEDGE_VERIFIER_MIN_LEXICAL_SUPPORT = 0.20
+    KNOWLEDGE_VERIFIER_MAX_FACTS = 5
     EPHEMERAL_TOKEN_THRESHOLD = 2000  # If cached result exceeds this, flag as ephemeral
     MAX_CONTEXT_TOKENS = 4000      # If cached result exceeds this, recursively chunk it
 
@@ -533,6 +547,121 @@ class SemanticCacheController:
             print(f"      [SNIPER ERROR] {e}. Defaulting to miss.")
 
         return {"hit": False, "id": None}
+
+    def _knowledge_tokenize(self, text: str) -> set:
+        """Tokenize text for lightweight lexical support checks in knowledge cascade."""
+        stopwords = {
+            "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "how",
+            "in", "is", "it", "its", "of", "on", "or", "that", "the", "this", "to",
+            "was", "what", "when", "where", "which", "who", "why", "with", "mentioned",
+            "provided", "text", "number", "special", "magic"
+        }
+        tokens = re.findall(r"[a-z0-9][a-z0-9_-]{2,}", text.lower())
+        return {t for t in tokens if t not in stopwords}
+
+    def _knowledge_lexical_support(self, query: str, relevant_facts: List[Dict], source_entry: Dict) -> float:
+        """Estimate lexical support between query and retrieved facts/answer to trigger verifier on weak alignment."""
+        query_tokens = self._knowledge_tokenize(query)
+        if not query_tokens:
+            return 1.0
+
+        fact_text = " ".join(
+            f"{f.get('subject', '')} {f.get('relation', '')} {f.get('object', '')}"
+            for f in relevant_facts[:self.KNOWLEDGE_VERIFIER_MAX_FACTS]
+        )
+        answer_text = source_entry.get("result", "") if source_entry else ""
+        candidate_tokens = self._knowledge_tokenize(fact_text + " " + answer_text)
+        if not candidate_tokens:
+            return 0.0
+
+        overlap = len(query_tokens & candidate_tokens)
+        return overlap / max(1, len(query_tokens))
+
+    def _should_run_knowledge_verifier(
+        self,
+        query: str,
+        top_score: float,
+        margin: float,
+        relevant_facts: List[Dict],
+        source_entry: Dict,
+    ) -> Tuple[bool, List[str], float]:
+        """Decide if knowledge Sniper verification is required for this candidate."""
+        if not self.KNOWLEDGE_VERIFIER_ENABLED:
+            return False, [], 1.0
+
+        reasons = []
+        lexical_support = self._knowledge_lexical_support(query, relevant_facts, source_entry)
+
+        if self.KNOWLEDGE_VERIFIER_ALWAYS:
+            reasons.append("always_on")
+        if top_score < self.KNOWLEDGE_VERIFIER_SCORE_TRIGGER:
+            reasons.append("near_score_threshold")
+        if margin < self.KNOWLEDGE_VERIFIER_MARGIN_TRIGGER:
+            reasons.append("low_margin")
+        if len(relevant_facts) > 1:
+            reasons.append("multi_fact_candidate")
+        if lexical_support < self.KNOWLEDGE_VERIFIER_MIN_LEXICAL_SUPPORT:
+            reasons.append("weak_lexical_support")
+
+        return len(reasons) > 0, reasons, lexical_support
+
+    def _knowledge_sniper_evaluate(self, new_query: str, relevant_facts: List[Dict], source_entry: Dict) -> Dict:
+        """LLM verifier for knowledge-hit candidates in ambiguous cases."""
+        facts_for_prompt = []
+        for i, fact in enumerate(relevant_facts[:self.KNOWLEDGE_VERIFIER_MAX_FACTS], start=1):
+            facts_for_prompt.append(
+                f"{i}. {fact.get('subject', '')} | {fact.get('relation', '')} | {fact.get('object', '')}"
+            )
+
+        source_query = source_entry.get("query", "") if source_entry else ""
+        source_answer = source_entry.get("result", "") if source_entry else ""
+        if len(source_answer) > 1200:
+            source_answer = source_answer[:1200] + "..."
+
+        prompt = (
+            "You are validating a knowledge-cache reuse candidate.\n"
+            "Decide whether the cached answer is appropriate for the NEW QUERY.\n"
+            "Be strict about entity identity, scope, negation, and temporal qualifiers.\n\n"
+            f"NEW QUERY: {new_query}\n\n"
+            f"CACHED SOURCE QUERY: {source_query}\n\n"
+            "RETRIEVED FACTS:\n"
+            + "\n".join(facts_for_prompt)
+            + "\n\n"
+            f"CACHED ANSWER (truncated): {source_answer}\n\n"
+            "Return ONLY valid JSON with keys: allow (bool), reason (string), confidence (0..1)."
+        )
+
+        try:
+            response = client.messages.create(
+                model=self.EVALUATOR_MODEL,
+                max_tokens=120,
+                temperature=0,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            self.metrics.record_call(
+                self.EVALUATOR_MODEL,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+            )
+
+            raw = response.content[0].text
+            json_match = re.search(r'\{.*\}', raw.replace('\n', ''))
+            if json_match:
+                parsed = json.loads(json_match.group(0))
+                allow = bool(parsed.get("allow", False))
+                reason = str(parsed.get("reason", "unspecified"))
+                confidence = parsed.get("confidence", 0.0)
+                try:
+                    confidence = float(confidence)
+                except Exception:
+                    confidence = 0.0
+                confidence = max(0.0, min(1.0, confidence))
+                return {"allow": allow, "reason": reason, "confidence": confidence}
+        except Exception as e:
+            print(f"  [KNOWLEDGE-SNIPER ERROR] {e}")
+
+        # Fail-safe: reject candidate and continue full retrieval path.
+        return {"allow": False, "reason": "verifier_error_or_parse_failure", "confidence": 0.0}
 
     # ------------------------------------------------------------------
     # PARALLEL TOP-K CHUNKING
@@ -1208,16 +1337,44 @@ class SemanticCacheController:
             if self.knowledge and self.knowledge_index and self.knowledge_index.total > 0:
                 if query_emb is None:
                     query_emb = self.embedder.encode_query(query)
+
                 fact_results = self.knowledge_index.search(query_emb, top_k=5)
-                strong_facts = [(s, m) for s, m in fact_results if s > 0.75]
+                strong_facts = [(s, m) for s, m in fact_results if s >= self.KNOWLEDGE_MIN_SCORE]
+
+                top_score = 0.0
+                second_score = None
+                margin = 0.0
+                relevant_facts = []
+                source_entry = None
+                verifier_called = False
+                verifier_allow = None
+                verifier_reason = None
+                verifier_confidence = None
+                trigger_reasons = []
+                lexical_support = None
+
                 if strong_facts:
-                    relevant_facts = []
-                    source_entry = None
+                    top_score = float(strong_facts[0][0])
+                    second_score = float(strong_facts[1][0]) if len(strong_facts) > 1 else None
+                    margin = (top_score - second_score) if second_score is not None else top_score
+
+                    # When verifier is off, preserve strict low-margin rejection behavior.
+                    if (
+                        not self.KNOWLEDGE_VERIFIER_ENABLED
+                        and second_score is not None
+                        and margin < self.KNOWLEDGE_MIN_MARGIN
+                    ):
+                        print(
+                            f"  [KNOWLEDGE] ✗ Skip: ambiguous hit "
+                            f"(top1={top_score:.3f}, top2={second_score:.3f}, margin={margin:.3f})"
+                        )
+                        strong_facts = []
+
+                if strong_facts:
                     for score, meta in strong_facts:
                         fact = self.knowledge[meta["fact_idx"]]
                         relevant_facts.append(fact)
                         if source_entry is None:
-                            # Find the source entry
                             flat_idx = 0
                             target = fact.get("source_cache_idx", -1)
                             for h, entries in self.cache.items():
@@ -1226,17 +1383,63 @@ class SemanticCacheController:
                                         source_entry = entry
                                     flat_idx += 1
 
-                    if relevant_facts and source_entry:
-                        self.metrics.knowledge_hits += 1
-                        print(f"  [KNOWLEDGE] ✓ Fact Hit! {len(relevant_facts)} facts found")
-                        for f in relevant_facts:
-                            print(f"    → {f['subject']} | {f['relation']} | {f['object']}")
-                        return {
-                            "query": query, "answer": source_entry["result"],
-                            "from_cache": True, "cache_type": "knowledge",
-                            "relevant_facts": relevant_facts,
-                            "grounding": source_entry.get("grounding_info", {}),
-                        }
+                if strong_facts and relevant_facts and source_entry:
+                    should_verify, trigger_reasons, lexical_support = self._should_run_knowledge_verifier(
+                        query=query,
+                        top_score=top_score,
+                        margin=margin,
+                        relevant_facts=relevant_facts,
+                        source_entry=source_entry,
+                    )
+
+                    if should_verify:
+                        verifier_called = True
+                        self.metrics.knowledge_verifier_calls += 1
+                        print(
+                            "  [KNOWLEDGE-SNIPER] Escalating verifier "
+                            f"(reasons={trigger_reasons}, lexical_support={lexical_support:.3f})"
+                        )
+                        verifier_decision = self._knowledge_sniper_evaluate(query, relevant_facts, source_entry)
+                        verifier_allow = bool(verifier_decision.get("allow", False))
+                        verifier_reason = str(verifier_decision.get("reason", "unspecified"))
+                        verifier_confidence = float(verifier_decision.get("confidence", 0.0))
+
+                        if verifier_allow:
+                            self.metrics.knowledge_verifier_allowed += 1
+                            print(
+                                f"  [KNOWLEDGE-SNIPER] ✓ Allow "
+                                f"(confidence={verifier_confidence:.2f}, reason={verifier_reason})"
+                            )
+                        else:
+                            self.metrics.knowledge_verifier_rejected += 1
+                            print(
+                                f"  [KNOWLEDGE-SNIPER] ✗ Reject "
+                                f"(confidence={verifier_confidence:.2f}, reason={verifier_reason})"
+                            )
+                            strong_facts = []
+
+                if strong_facts and relevant_facts and source_entry:
+                    self.metrics.knowledge_hits += 1
+                    print(
+                        f"  [KNOWLEDGE] ✓ Fact Hit! {len(relevant_facts)} facts found "
+                        f"(top1={top_score:.3f}, margin={margin:.3f})"
+                    )
+                    for f in relevant_facts:
+                        print(f"    → {f['subject']} | {f['relation']} | {f['object']}")
+                    return {
+                        "query": query, "answer": source_entry["result"],
+                        "from_cache": True, "cache_type": "knowledge",
+                        "relevant_facts": relevant_facts,
+                        "knowledge_top_score": top_score,
+                        "knowledge_margin": margin,
+                        "knowledge_verifier_called": verifier_called,
+                        "knowledge_verifier_allow": verifier_allow,
+                        "knowledge_verifier_reason": verifier_reason,
+                        "knowledge_verifier_confidence": verifier_confidence,
+                        "knowledge_verifier_trigger_reasons": trigger_reasons,
+                        "knowledge_lexical_support": lexical_support,
+                        "grounding": source_entry.get("grounding_info", {}),
+                    }
 
         # ── Stage 1: Retrieve relevant documents ──
         self.metrics.cache_misses += 1
