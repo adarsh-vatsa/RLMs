@@ -17,7 +17,7 @@ The scorer used here computes `accuracy` as the mean of per-row `is_correct`, an
 
 ## Exact Path Used in This Repo
 
-1. `score_ruler2_predictions.py` loads `predictions.jsonl`.
+1. `ruler_v2/score_ruler2_predictions.py` loads `predictions.jsonl`.
 2. It calls `nemo_skills.evaluation.evaluator.ruler.eval_ruler2(...)`.
 3. It computes bucket accuracy as:
 
@@ -63,11 +63,11 @@ No local fork of the evaluator logic is implemented in this repository for this 
 You can reproduce the report with:
 
 ```bash
-./.venv/bin/python score_ruler2_predictions.py \
+./.venv/bin/python ruler_v2/score_ruler2_predictions.py \
   --run-dir benchmark_artifacts/official_ruler_v2/20260405T194658Z
 ```
 
 And inspect source logic used at runtime in:
 
-- `score_ruler2_predictions.py`
+- `ruler_v2/score_ruler2_predictions.py`
 - `.venv/lib/python3.13/site-packages/nemo_skills/evaluation/evaluator/ruler.py`

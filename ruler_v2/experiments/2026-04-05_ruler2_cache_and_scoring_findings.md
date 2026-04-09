@@ -19,7 +19,7 @@
 - Bridge rows showed those 5 hits were all cache_type="knowledge".
 
 ## Why Fractional Scores Happened
-- Scoring uses NeMo evaluator via score_ruler2_predictions.py.
+- Scoring uses NeMo evaluator via ruler_v2/score_ruler2_predictions.py.
 - In this run shape, expected_answer is passed as a plain string.
 - NeMo RULER2 "all" matching path can iterate over that string in a way that yields partial/continuous values.
 - For sample_000005 (expected "9653250072"), score became 0.6 because partial character overlap in generated text contributed to the score.

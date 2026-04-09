@@ -21,8 +21,8 @@ Recommended setup after clone:
   python -m pip show nemo-skills
   ns --help
   python -m nemo_skills.dataset.ruler2.prepare --help
-  python run_benchmark.py --help
-  python score_ruler2_predictions.py --help
+  python ruler_v2/run_benchmark.py --help
+  python ruler_v2/score_ruler2_predictions.py --help
 
 - 5) If required by your model backend, set runtime environment variables before running benchmarks (example):
   export OPENAI_API_KEY="..."
@@ -37,8 +37,8 @@ Optional: uv-based setup (use this instead of steps 1-3 above, not in addition):
 - Verify tools:
   uv run ns --help
   uv run python -m nemo_skills.dataset.ruler2.prepare --help
-  uv run python run_benchmark.py --help
-  uv run python score_ruler2_predictions.py --help
+  uv run python ruler_v2/run_benchmark.py --help
+  uv run python ruler_v2/score_ruler2_predictions.py --help
 
 If `ns` is not found but the package is installed:
 - Continue using module entry points directly, for example:
@@ -108,10 +108,10 @@ Question: How can I run the script? Could you summarize the commands for me?
 Answer:
 - 1) Activate environment and inspect CLI:
   source .venv/bin/activate
-  python run_benchmark.py --help
+  python ruler_v2/run_benchmark.py --help
 
 - 2) Local smoke run (pipeline sanity check only, not official scoring):
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_fixtures/suites/ruler_adapter_pilot.json \
     --official-tasks niah,tracing \
     --official-lengths 8192 \
@@ -175,7 +175,7 @@ Answer:
   # Resolve where nemo_skills wrote prepared data
   TMP_RULER2_ROOT="$(.venv/bin/python -c 'import pathlib,nemo_skills; print(pathlib.Path(nemo_skills.__file__).resolve().parent / "dataset" / "ruler2")')"
 
-  # Sync prepared data into workspace path used by run_benchmark.py
+  # Sync prepared data into workspace path used by ruler_v2/run_benchmark.py
   mkdir -p benchmark_data/ruler2
   rsync -a "$TMP_RULER2_ROOT/data_8192" benchmark_data/ruler2/
   rsync -a "$TMP_RULER2_ROOT/data_32768" benchmark_data/ruler2/
@@ -191,7 +191,7 @@ Answer:
 
 - 4) Official milestone run (when official prepared data is ready):
   Code template:
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data /path/to/ruler2_prepared_data \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
@@ -199,7 +199,7 @@ Answer:
     --output-dir benchmark_artifacts
 
   Real example used in this repository environment:
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
@@ -210,7 +210,7 @@ Answer:
   - Re-run the same command above to reuse persistent cache state by default.
 
   Cold-start behavior (explicit reset only):
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
@@ -219,7 +219,7 @@ Answer:
     --output-dir benchmark_artifacts
 
   Optional custom cache-state root:
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
@@ -229,11 +229,11 @@ Answer:
 
 - 5) Reliable scoring for this repository from existing predictions:
   # After command 4 finishes, score the generated predictions directly
-  ./.venv/bin/python score_ruler2_predictions.py \
+  ./.venv/bin/python ruler_v2/score_ruler2_predictions.py \
     --run-dir benchmark_artifacts/official_ruler_v2/<run_id>
 
   Real example used in this repository environment (IMPORTANT: Don't forget to update folder name):
-  ./.venv/bin/python score_ruler2_predictions.py \
+  ./.venv/bin/python ruler_v2/score_ruler2_predictions.py \
     --run-dir benchmark_artifacts/official_ruler_v2/20260409T191308Z
 
 Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
@@ -241,7 +241,7 @@ Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. T
 module paths are not available in the installed version.
 
 Dataset size note:
-- `dataset_size` is a NeMo-Skills RULER2 preparation parameter, not a `run_benchmark.py` parameter.
+- `dataset_size` is a NeMo-Skills RULER2 preparation parameter, not a `ruler_v2/run_benchmark.py` parameter.
 - It controls how many samples are generated per task during preparation.
 
 Artifacts are written under benchmark_artifacts/official_ruler_v2/<run_id>/ with predictions.jsonl, bridge_rows.jsonl, manifest.json (when run completes), and official_ruler2_eval_report.json (when scoring script is run).
@@ -262,7 +262,7 @@ Answer:
   - Result: useful for generation validation, but not final official scores.
 
 - Command 5:
-  - Scores an existing run's predictions with the repository scoring wrapper (`score_ruler2_predictions.py`).
+  - Scores an existing run's predictions with the repository scoring wrapper (`ruler_v2/score_ruler2_predictions.py`).
   - Uses NeMo RULER2 evaluator logic directly on `predictions.jsonl`.
   - Result: reliable scoring report in this environment without re-running generation.
 
@@ -350,12 +350,12 @@ Question: How are evaluating "correct" answers?
 
 Answer:
 - In the current official-only workflow, baseline correctness logic comes from the RULER2 evaluator implementation (NeMo-Skills), not from custom project heuristics.
-- `run_benchmark.py` itself generates predictions (`predictions.jsonl`) and telemetry (`bridge_rows.jsonl`) and does not score by default.
-- Scoring in this repository is done with `score_ruler2_predictions.py`, which applies NeMo RULER2 evaluator logic to existing predictions.
+- `ruler_v2/run_benchmark.py` itself generates predictions (`predictions.jsonl`) and telemetry (`bridge_rows.jsonl`) and does not score by default.
+- Scoring in this repository is done with `ruler_v2/score_ruler2_predictions.py`, which applies NeMo RULER2 evaluator logic to existing predictions.
 
 Practical implication:
 - If scoring is omitted, you get generation artifacts only.
-- Run `score_ruler2_predictions.py` against the run folder to produce `official_ruler2_eval_report.json`.
+- Run `ruler_v2/score_ruler2_predictions.py` against the run folder to produce `official_ruler2_eval_report.json`.
 
 ## Q12
 Question: When we pass `--official-eval-command`, what exactly gets executed, and where does the real evaluation logic run?
@@ -486,7 +486,7 @@ Answer:
 
 Quick usage:
 - Cold/warm runs with default cache reuse behavior:
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
@@ -494,7 +494,7 @@ Quick usage:
     --output-dir benchmark_artifacts
 
 - Optional custom cache root:
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \
@@ -503,7 +503,7 @@ Quick usage:
     --output-dir benchmark_artifacts
 
 - Force a fresh cache only when needed:
-  python run_benchmark.py \
+  python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_data/ruler2 \
     --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
     --official-lengths 8192,32768 \

@@ -24,23 +24,23 @@ It records completed work, current state, and next steps so progress is reviewab
 8. Fixed fresh-run cache indexing by lazy-initializing cache and knowledge indices.
 9. Added starter fixtures in benchmark_fixtures for smoke tests.
 10. Refactored runner to benchmark-only flow (removed query/interactive paths).
-11. Renamed runner from run_with_docs.py to run_benchmark.py.
-12. Updated README command references to use run_benchmark.py.
+11. Renamed runner from run_with_docs.py to run_benchmark.py (now located at `ruler_v2/run_benchmark.py`).
+12. Updated README command references to use `ruler_v2/run_benchmark.py`.
 13. Polished benchmark CLI semantics (required query suite, explicit pass choices).
 14. Replaced ambiguous state flags with explicit --reuse-state-path.
 15. Added expected-answer scoring gate with configurable mode/threshold and optional fail-on-gate.
-16. Added function-level docstrings and benchmark-flow comments in run_benchmark.py.
+16. Added function-level docstrings and benchmark-flow comments in `ruler_v2/run_benchmark.py`.
 17. Added RULER adapter lane with auto/on/off parsing and context-to-doc materialization.
 18. Added a starter RULER-style pilot fixture and README usage example.
 19. Added embedding-based semantic scoring modes (`semantic`, `hybrid-semantic`).
-20. Added official RULER v2 bridge flow in `run_benchmark.py` with:
+20. Added official RULER v2 bridge flow in `ruler_v2/run_benchmark.py` with:
    - official prepared-data ingestion (`--official-prepared-data`)
    - optional official prep command execution (`--official-prep-command`)
    - per-sample architecture prediction generation for official records
    - optional official evaluator command execution (`--official-eval-command`)
    - official run artifacts: `predictions.jsonl`, `bridge_rows.jsonl`, `manifest.json`
 21. Added baseline progress accounting in official manifests against 13-task baseline.
-22. Removed local adapter/scoring benchmark pathways and kept `run_benchmark.py` official-only.
+22. Removed local adapter/scoring benchmark pathways and kept `ruler_v2/run_benchmark.py` official-only.
 
 ### In Progress
 
@@ -76,19 +76,24 @@ It records completed work, current state, and next steps so progress is reviewab
 - Initialized living implementation log.
 - Recorded benchmark integration status and pending refactor tasks.
 - Converted benchmark runner to benchmark-only script.
-- Renamed runner to run_benchmark.py and updated README usage examples.
+- Renamed runner to `ruler_v2/run_benchmark.py` and updated README usage examples.
 - Removed legacy run_with_docs.py path (no compatibility wrapper).
 - Tightened benchmark CLI constraints for safer benchmark execution.
 - Replaced --state and --reuse-state with explicit --reuse-state-path.
 - Added scoring gate controls: --score-mode, --score-threshold, --fail-on-score-gate.
-- Added concise function docstrings and parameter explanations in run_benchmark.py.
+- Added concise function docstrings and parameter explanations in `ruler_v2/run_benchmark.py`.
 - Added RULER adapter controls: --ruler-adapter off/auto/on.
 - Added RULER adapter pilot fixture and docs.
 - Added semantic scoring modes: --score-mode semantic and hybrid-semantic.
 
 ### 2026-03-29
 
-- Added official RULER v2 bridge execution mode to run_benchmark.py.
+- Added official RULER v2 bridge execution mode to `ruler_v2/run_benchmark.py`.
+
+### 2026-04-09
+
+- Moved benchmark docs under `ruler_v2/docs/`.
+- Standardized benchmark command references to use `ruler_v2/run_benchmark.py` and `ruler_v2/score_ruler2_predictions.py`.
 - Added official flow CLI flags for tasks/lengths, prepared data, prep command, and evaluator command.
 - Added per-run manifest progress accounting against 13-task baseline.
 - Validated official bridge smoke run on local fixture shape and generated official-flow artifacts.

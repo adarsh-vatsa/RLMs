@@ -111,7 +111,7 @@ ns prepare_data ruler2 --skip_data_dir_check \
 
 ### B) First benchmark run (cold if namespace does not exist)
 
-python run_benchmark.py \
+python ruler_v2/run_benchmark.py \
   --official-prepared-data benchmark_data/ruler2 \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
@@ -120,7 +120,7 @@ python run_benchmark.py \
 
 ### C) Second run with same selected content (warm)
 
-python run_benchmark.py \
+python ruler_v2/run_benchmark.py \
   --official-prepared-data benchmark_data/ruler2 \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
@@ -129,7 +129,7 @@ python run_benchmark.py \
 
 ### D) Force cold run for this namespace
 
-python run_benchmark.py \
+python ruler_v2/run_benchmark.py \
   --official-prepared-data benchmark_data/ruler2 \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \

@@ -1,6 +1,6 @@
 """Score existing run_benchmark predictions with NeMo RULER2 evaluator logic.
 
-This script evaluates an existing predictions.jsonl produced by run_benchmark.py
+This script evaluates an existing predictions.jsonl produced by ruler_v2/run_benchmark.py
 without re-running model generation.
 """
 

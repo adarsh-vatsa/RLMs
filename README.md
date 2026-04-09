@@ -47,14 +47,14 @@ python semantic_cache_system.py
 
 ## Official Benchmarking
 
-Use `run_benchmark.py` only for the official RULER v2 benchmark path.
+Use `ruler_v2/run_benchmark.py` only for the official RULER v2 benchmark path.
 The script expects prepared official samples, generates architecture predictions,
 and can execute the official evaluator command without metric overrides.
 
 ### Official Run Command
 
 ```bash
-python run_benchmark.py \
+python ruler_v2/run_benchmark.py \
   --official-prepared-data /path/to/ruler2_prepared_data \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
@@ -74,7 +74,7 @@ warm-cache behavior when selected sample content is unchanged.
 - Reset only when explicitly requested:
 
 ```bash
-python run_benchmark.py \
+python ruler_v2/run_benchmark.py \
   --official-prepared-data /path/to/ruler2_prepared_data \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
@@ -86,7 +86,7 @@ python run_benchmark.py \
 - Optional custom state root:
 
 ```bash
-python run_benchmark.py \
+python ruler_v2/run_benchmark.py \
   --official-prepared-data /path/to/ruler2_prepared_data \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
@@ -150,7 +150,7 @@ Supported placeholders:
 - `{bridge_rows}`
 
 ```bash
-python run_benchmark.py \
+python ruler_v2/run_benchmark.py \
   --official-prepared-data /path/to/ruler2_prepared_data \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
