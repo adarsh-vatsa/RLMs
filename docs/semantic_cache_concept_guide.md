@@ -45,6 +45,28 @@ Because Haiku is an actual language model, it instantly spots the difference bet
 * If Haiku says **Yes**, we return the cached answer. (Cost: $0.0001)
 * If Haiku says **No**, we spawn the expensive main agent. (Cost: $0.50)
 
+### Cache Hit Types (Implementation Reality)
+
+In this repository, not all cache hits mean the same thing. We currently have 3 hit routes:
+
+* **Exact Hit (`cache_type = exact`)**
+   * Trigger: normalized query text exactly matches a stored query.
+   * Meaning: strongest form of reuse (same question).
+
+* **Semantic Hit (`cache_type = semantic`)**
+   * Trigger: query embedding is close to cached query embedding, then LLM sniper confirms logical equivalence.
+   * Meaning: paraphrase-level reuse with logical guardrail.
+
+* **Knowledge Hit (`cache_type = knowledge`)**
+   * Trigger: query embedding matches extracted fact embeddings from prior cached answers.
+   * Meaning: fact-level reuse; can be broader than query-level equivalence.
+
+Important measurement note:
+
+* Current benchmark hit-rate treats any `from_cache = true` as a hit.
+* That aggregates exact + semantic + knowledge hits into one number.
+* So a high hit-rate does **not** automatically imply high correctness.
+
 ---
 
 ## The "Aha!" Mathematical Scaling Moments
@@ -137,7 +159,7 @@ We now have a complete, airtight narrative for a highly novel academic paper tha
 
   A:That is the ultimate concluding thought for this architecture. I just added that exact bullet point to the
 
-  ![img](vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/extensions/theme-symbols/src/icons/files/markdown.svg)
+  
 
   semantic_cache_concept_guide.md file under the Finance section.
 
@@ -194,7 +216,7 @@ We now have a complete, airtight narrative for a highly novel academic paper tha
 
   1. The theoretical math (the $O(1)$ Top-K chunking proof).
   2. The architectural diagram (Dragnet + Sniper).
-  3. A small, localized Proof-of-Concept Python script (exactly like the ![img](vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/extensions/theme-symbols/src/icons/files/python.svg)
+  3. A small, localized Proof-of-Concept Python script (exactly like the 
 
      llm_cache_simulation.py we built) demonstrating that Haiku successfully intercepts logical inversions that pure vector math misses.
 
@@ -273,7 +295,7 @@ We now have a complete, airtight narrative for a highly novel academic paper tha
 
   I have just added a section called **"The Inside-the-Loop Advantage"** to your
 
-  ![img](vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/extensions/theme-symbols/src/icons/files/markdown.svg)
+  
 
   semantic_cache_concept_guide.md to permanently document this specific edge case.
 
@@ -285,7 +307,7 @@ We now have a complete, airtight narrative for a highly novel academic paper tha
 
   1. **The Root LLM Output:** The Root LLM writes a Python `for` loop in its REPL.
   2. **The Blackout:** At this exact moment, the Root LLM  *goes to sleep* . It has stopped thinking. It is waiting for Python to finish running the code it just wrote.
-  3. **The Execution:** Python blindly executes ![img](vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/extensions/theme-symbols/src/icons/files/python.svg)
+  3. **The Execution:** Python blindly executes 
 
      rlm_query(chunk) 5,000 times in a row. It takes 10 minutes.
   4. **The Wake-Up:** The Root LLM wakes back up and is shown the terminal output or the `results` array.
@@ -300,7 +322,7 @@ We now have a complete, airtight narrative for a highly novel academic paper tha
 
   Because the Semantic Cache is built directly into the Python
 
-  ![img](vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/extensions/theme-symbols/src/icons/files/python.svg)
+  
 
   rlm_query function, it acts as an intelligent proxy *beneath* the sleeping Root LLM.
 

@@ -24,7 +24,7 @@ NeurIPS has several workshops (e.g.,  *Foundation Model Systems* ,  *Agentic AI*
 
 1. The theoretical math (the $O(1)$ Top-K chunking proof).
 2. The architectural diagram (Dragnet + Sniper).
-3. A small, localized Proof-of-Concept Python script (exactly like the ![](vscode-file://vscode-app/Applications/Antigravity.app/Contents/Resources/app/extensions/theme-symbols/src/icons/files/python.svg)
+3. A small, localized Proof-of-Concept Python script (exactly like the 
 
    llm_cache_simulation.py we built) demonstrating that Haiku successfully intercepts logical inversions that pure vector math misses.
 

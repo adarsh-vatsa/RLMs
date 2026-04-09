@@ -1,6 +1,6 @@
 # Two-Stage Semantic Cache — System Architecture
 
-> **File**: [`semantic_cache_system.py`](file:///Users/zeitgeist/research/RLMs/semantic_cache_system.py) (1941 lines)
+> **File**: [`semantic_cache_system.py`](semantic_cache_system.py) (1941 lines)
 > **Dependencies**: `transformers`, `torch`, `faiss-cpu`, `anthropic`, `python-dotenv`, `numpy`
 > **Local Models**: `Qwen3-Embedding-0.6B` (596M params, 1024-dim embeddings), `Qwen3-Reranker-0.6B` (yes/no cross-encoder)
 > **API Models**: `claude-sonnet-4-5` (execution/synthesis), `claude-haiku-4-5` (evaluation/sniper/consensus/knowledge extraction)
@@ -12,10 +12,10 @@
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                     AGENT LAYER (Framework-Agnostic)              │
+│                     AGENT LAYER (Framework-Agnostic)             │
 │  AutonomousAgent.cached_query(query, context)                    │
-│  └─ Replaces direct LLM API calls for any framework             │
-└────────┬────────────────────────────────────────────────┬────────┘
+│  └─ Replaces direct LLM API calls for any framework              │
+└────────┬─────────────────────────────────────────────────┬───────┘
          │ CACHE HIT                            CACHE MISS │
          ▼                                                 ▼
 ┌────────────────────────────┐        ┌────────────────────────────┐
@@ -23,37 +23,42 @@
 │  ┌──────────────────────┐  │        │  ┌──────────────────────┐  │
 │  │ 1. Hash Bucket       │  │        │  │ Keyword heuristic    │  │
 │  │ 2. Exact Match       │  │        │  │ Simple → Haiku       │  │
-│  │ 3. Vector Dragnet    │  │        │  │ Complex → Sonnet     │  │
-│  │    (Qwen3 + FAISS)   │  │        │  └──────────────────────┘  │
-│  │ 4. LLM Sniper       │  │        └────────────┬───────────────┘
-│  │ 5. Knowledge Lookup  │  │                     │
-│  │ 6. Collapse Guard    │  │                     ▼
-│  │ 7. Provenance Check  │  │        ┌────────────────────────────┐
-│  └──────────────────────┘  │        │     Anthropic API          │
-└────────────────────────────┘        │  store() → cache + embed   │
-                                      │  + knowledge extraction    │
+│  │ 3a. Semantic branch  │  │        │  │ Complex → Sonnet     │  │
+│  │     Dragnet → Sniper │  │        │  └──────────────────────┘  │
+│  │ 3b. Knowledge branch │  │        └────────────┬───────────────┘
+│  │     Fact FAISS +     │  │                     │
+│  │     score+margin gate│  │                     ▼
+│  │ 4. Collapse Guard    │  │        ┌────────────────────────────┐
+│  │ 5. Provenance Check  │  │        │     Anthropic API          │
+│  └──────────────────────┘  │        │  store() → cache + embed   │
+└────────────────────────────┘        │  + knowledge extraction    │
                                       │  + consensus verify        │
                                       └────────────────────────────┘
 ```
+
+Note: LLM Sniper runs on the semantic branch. The knowledge branch currently uses similarity thresholds only at read time.
 
 ### Retrieval Pipeline (for document search via domain clients)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                   SEARCH PIPELINE (search())                      │
-│                                                                    │
-│   Query ──┬──→ Cache Check (exact / semantic / knowledge fact)     │
-│           │     ├─ HIT  → Serve cached answer (with provenance)   │
-│           │     └─ MISS ↓                                         │
-│           └──→ FAISS Dragnet (top-20, ~130ms on CPU)              │
-│                    ↓                                               │
-│              Qwen3-Reranker (relevance gate, top-5)               │
-│                    ↓                                               │
-│              Sonnet Synthesis (grounded answer)                    │
-│                    ↓                                               │
-│              Grounding Check → Consensus Verify → Cache Store     │
-│                    ↓                                               │
-│              Knowledge Extraction → Fact FAISS Index              │
+│                   SEARCH PIPELINE (search())                     │
+│                                                                  │
+│   Query ──┬──→ Cache Check                                       │
+│           │     ├─ Exact match (string equality)                 │
+│           │     ├─ Semantic hit: cache FAISS → LLM Sniper        │
+│           │     ├─ Knowledge hit: fact FAISS → score+margin gate │
+│           │     ├─ HIT  → Serve cached answer (with provenance)  │
+│           │     └─ MISS ↓                                        │
+│           └──→ FAISS Dragnet (top-20, ~130ms on CPU)             │
+│                    ↓                                             │
+│              Qwen3-Reranker (relevance gate, top-5)              │
+│                    ↓                                             │
+│              Sonnet Synthesis (grounded answer)                  │
+│                    ↓                                             │
+│              Grounding Check → Consensus Verify → Cache Store    │
+│                    ↓                                             │
+│              Knowledge Extraction → Fact FAISS Index             │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
