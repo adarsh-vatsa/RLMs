@@ -70,6 +70,13 @@ EMBEDDING_DIM = 1024
 EXECUTOR_MODEL = "claude-sonnet-4-20250514"
 EVALUATOR_MODEL = "claude-haiku-4-20250414"
 
+# Anthropic pricing config (USD per 1K tokens, early 2026 estimates).
+# Centralized here so all cost math uses a single visible source of truth.
+MODEL_FAMILY_PRICING_USD_PER_1K = {
+    "sonnet": {"input": 0.003, "output": 0.015},
+    "haiku": {"input": 0.00025, "output": 0.00125},
+}
+
 
 # ============================================================================
 # 0a. EMBEDDING ENGINE — Qwen3-Embedding-0.6B (596M params, 1024-dim)
@@ -317,14 +324,27 @@ class ExecutionMetrics:
 
     def record_call(self, model: str, input_tokens: int, output_tokens: int):
         """Record a real API call with actual token counts and compute cost."""
+        if model not in self.stats:
+            self.stats[model] = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost": 0.0}
+
         self.stats[model]["calls"] += 1
         self.stats[model]["input_tokens"] += input_tokens
         self.stats[model]["output_tokens"] += output_tokens
-        # Anthropic pricing (as of early 2026)
-        if "sonnet" in model:
-            self.stats[model]["cost"] += (input_tokens * 0.003 / 1000) + (output_tokens * 0.015 / 1000)
-        elif "haiku" in model:
-            self.stats[model]["cost"] += (input_tokens * 0.00025 / 1000) + (output_tokens * 0.00125 / 1000)
+
+        model_lower = model.lower()
+        family = None
+        if "sonnet" in model_lower:
+            family = "sonnet"
+        elif "haiku" in model_lower:
+            family = "haiku"
+
+        if family:
+            rates = MODEL_FAMILY_PRICING_USD_PER_1K[family]
+            self.stats[model]["cost"] += (
+                input_tokens * rates["input"] / 1000
+            ) + (
+                output_tokens * rates["output"] / 1000
+            )
 
     def print_summary(self):
         duration = (self.end_time or time.time()) - (self.start_time or time.time())
@@ -413,12 +433,12 @@ class SemanticCacheController:
     KNOWLEDGE_MIN_MARGIN = 0.03    # Minimum top1-top2 gap to reject ambiguous fact matches
     KNOWLEDGE_VERIFIER_ENABLED = True
     KNOWLEDGE_VERIFIER_ALWAYS = False
-    KNOWLEDGE_VERIFIER_SCORE_TRIGGER = 0.82
-    KNOWLEDGE_VERIFIER_MARGIN_TRIGGER = 0.06
-    KNOWLEDGE_VERIFIER_MIN_LEXICAL_SUPPORT = 0.20
-    KNOWLEDGE_VERIFIER_MAX_FACTS = 5
-    EPHEMERAL_TOKEN_THRESHOLD = 2000  # If cached result exceeds this, flag as ephemeral
-    MAX_CONTEXT_TOKENS = 4000      # If cached result exceeds this, recursively chunk it
+    KNOWLEDGE_VERIFIER_SCORE_TRIGGER = 0.82     # Escalate to verifier when the top fact is not confidently above the baseline.
+    KNOWLEDGE_VERIFIER_MARGIN_TRIGGER = 0.06    # Escalate when top-1 and top-2 are too close (ambiguous neighborhood).
+    KNOWLEDGE_VERIFIER_MIN_LEXICAL_SUPPORT = 0.20   # Escalate when lexical overlap between query and candidate evidence is weak.
+    KNOWLEDGE_VERIFIER_MAX_FACTS = 5    # Cap facts included in lexical checks/verifier prompts to control cost and noise.
+    EPHEMERAL_TOKEN_THRESHOLD = 2000    # If cached result exceeds this, flag as ephemeral
+    MAX_CONTEXT_TOKENS = 4000           # If cached result exceeds this, recursively chunk it
 
     def __init__(self, metrics: ExecutionMetrics, embedder: EmbeddingEngine = None,
                  reranker: Reranker = None, corpus_id: str = None,

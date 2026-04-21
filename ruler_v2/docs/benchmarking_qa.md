@@ -145,7 +145,7 @@ Answer:
     --tokenizer_type openai \
     --tokenizer_path cl100k_base \
     --tasks mk_niah_basic mv_niah_basic qa_basic \
-    --dataset_size 100
+    --dataset_size 6
 
   ns prepare_data ruler2 --skip_data_dir_check \
     --setup data_32768 \
@@ -153,7 +153,7 @@ Answer:
     --tokenizer_type openai \
     --tokenizer_path cl100k_base \
     --tasks mk_niah_basic mv_niah_basic qa_basic \
-    --dataset_size 100
+    --dataset_size 6
 
   # Option B: direct prepare module (reliable fallback used in this repo)
   PATH="/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/.venv/bin:$PATH" .venv/bin/python -m nemo_skills.dataset.ruler2.prepare \
@@ -234,7 +234,7 @@ Answer:
 
   Real example used in this repository environment (IMPORTANT: Don't forget to update folder name):
   ./.venv/bin/python ruler_v2/score_ruler2_predictions.py \
-    --run-dir benchmark_artifacts/official_ruler_v2/20260409T191308Z
+    --run-dir benchmark_artifacts/official_ruler_v2/20260413T145426Z
 
 Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
 `python -m nemo_skills.evaluation.evaluate` / `python -m nemo_skills.inference.generate_data`
@@ -307,6 +307,7 @@ Important caveats:
 - These numbers come from short local fixture samples and can be lower than real official long-context runs.
 - 32768-length official tasks can increase token usage and cost significantly.
 - Evaluator command itself is usually cheap relative to generation; most cost comes from prediction generation calls.
+- Cost assumptions for `delta_cost_usd` are centralized in `semantic_cache_system.py` under `MODEL_FAMILY_PRICING_USD_PER_1K` (Anthropic-style reference rates).
 
 Best practice:
 - Run a small official subset first (for example, cap samples per task), read cost from bridge_rows.jsonl, then extrapolate before full-matrix execution.

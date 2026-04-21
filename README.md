@@ -51,6 +51,16 @@ Use `ruler_v2/run_benchmark.py` only for the official RULER v2 benchmark path.
 The script expects prepared official samples, generates architecture predictions,
 and can execute the official evaluator command without metric overrides.
 
+### Cost Accounting Assumptions
+
+Benchmark `delta_cost_usd` values are estimated from token usage using the
+centralized pricing map in `semantic_cache_system.py`:
+
+- `MODEL_FAMILY_PRICING_USD_PER_1K["sonnet"]`: input `$0.003` / 1K, output `$0.015` / 1K
+- `MODEL_FAMILY_PRICING_USD_PER_1K["haiku"]`: input `$0.00025` / 1K, output `$0.00125` / 1K
+
+These are explicit Anthropic-style reference rates (not live billing API values).
+
 ### Official Run Command
 
 ```bash
@@ -176,6 +186,60 @@ The manifest includes implemented task progress against the 13-task baseline.
 
 - Implemented: 3/13 (`mk_niah_basic`, `mv_niah_basic`, `qa_basic`)
 - Pending: 10/13
+
+## NoLiMa Benchmarking (High-Parity)
+
+Use `nolima/run_benchmark.py` for the NoLiMa benchmark path. This flow keeps
+NoLiMa placement semantics (needle-set expansion and depth sweeps) while
+evaluating this repository's semantic cache system as the system under test.
+
+### Folder Layout
+
+- NoLiMa inputs:
+  - `benchmark_data/nolima/needlesets/`
+  - `benchmark_data/nolima/haystack/rand_shuffle/`
+- NoLiMa artifacts:
+  - `benchmark_artifacts/official_nolima/<run_id>/`
+  - `benchmark_artifacts/official_nolima/cache_state/<namespace>/`
+
+### Smoke Run (Synthetic Fixture)
+
+```bash
+uv run python nolima/run_benchmark.py \
+  --needle-set-path benchmark_fixtures/nolima/needlesets/needle_set.json \
+  --haystack-dir benchmark_fixtures/nolima/haystack/rand_shuffle \
+  --lengths 1K,4K \
+  --depth-intervals 5 \
+  --mode cache \
+  --output-dir benchmark_artifacts
+```
+
+### Full NoLiMa-Style Run
+
+```bash
+uv run python nolima/run_benchmark.py \
+  --needle-set-path benchmark_data/nolima/needlesets/needle_set.json \
+  --haystack-dir benchmark_data/nolima/haystack/rand_shuffle \
+  --lengths 250,500,1K,2K,4K,8K,16K,32K \
+  --depth-intervals 26 \
+  --mode cache \
+  --output-dir benchmark_artifacts
+```
+
+### Score an Existing NoLiMa Run
+
+```bash
+uv run python nolima/score_nolima_predictions.py \
+  --run-dir benchmark_artifacts/official_nolima/<run_id> \
+  --metric contains
+```
+
+NoLiMa artifacts include:
+
+- `predictions.jsonl`
+- `bridge_rows.jsonl`
+- `manifest.json`
+- `official_nolima_eval_report.json` (after scoring)
 
 ### Epstein Court Document Search (Domain Client Example)
 

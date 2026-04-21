@@ -45,6 +45,12 @@ Updates in `SemanticCacheController`:
 
 ## Concrete Examples
 
+Verifier escalation thresholds used in these examples:
+- `KNOWLEDGE_VERIFIER_SCORE_TRIGGER = 0.82`
+- `KNOWLEDGE_VERIFIER_MARGIN_TRIGGER = 0.06`
+- `KNOWLEDGE_VERIFIER_MIN_LEXICAL_SUPPORT = 0.20`
+- `KNOWLEDGE_VERIFIER_MAX_FACTS = 5`
+
 Example 1: warm run answer drift on the same dataset
 - Run A (cold/reset): `benchmark_artifacts/official_ruler_v2/20260406T001339Z`
 - Run B (warm/no reset): `benchmark_artifacts/official_ruler_v2/20260406T002621Z`
@@ -66,11 +72,16 @@ Example 2: why a confidence gate is needed
 Example 3: expected skip log patterns after this patch
 - Low-confidence case:
   - `[KNOWLEDGE] ✗ Skip: top score 0.742 below threshold 0.78`
+- Accepted case:
+   - `[KNOWLEDGE] ✓ Fact Hit! ... (top1=0.861, margin=0.067)`
 - Ambiguous/risky case now escalates:
   - `[KNOWLEDGE-SNIPER] Escalating verifier (reasons=[...], lexical_support=...)`
+  - Typical triggers include:
+    - `near_score_threshold` when `top1 < 0.82`
+    - `low_margin` when `margin < 0.06`
+    - `weak_lexical_support` when lexical support `< 0.20`
+    - prompt uses up to `5` facts (`KNOWLEDGE_VERIFIER_MAX_FACTS`)
   - If rejected: `[KNOWLEDGE-SNIPER] ✗ Reject ...` and fallback to retrieval/synthesis.
-- Accepted case:
-  - `[KNOWLEDGE] ✓ Fact Hit! ... (top1=0.861, margin=0.067)`
 
 Example 4: what remains benchmark-agnostic
 - No task labels are used in gating decisions.
@@ -106,9 +117,14 @@ Observed behavior before this patch:
 - In warm state, knowledge-hit routing could select a cached source entry that did not satisfy the current query objective.
 
 How thresholds help in this case:
-- If the selected fact neighborhood is weak (`top1 < 0.78`), reuse is blocked.
-- If the neighborhood is ambiguous/risky, verifier is invoked and can block reuse semantically.
-- Result: the system falls back to fresh retrieval/synthesis instead of reusing the wrong cached answer.
+LLM Sniper off:
+  - If the selected fact neighborhood is weak (`top1 < 0.78`), reuse is blocked.
+  - `KNOWLEDGE_MIN_MARGIN = 0.03`: when verifier (LLM sniper) is disabled, this acts as a direct ambiguity reject (`top1 - top2 < 0.03`), so reuse is blocked without an LLM verifier call.
+LLM Sniper on:
+  - If the neighborhood is ambiguous/risky, verifier is invoked and can block reuse semantically.
+    - `KNOWLEDGE_VERIFIER_SCORE_TRIGGER = 0.82`: even if a candidate passes the hard gate (`top1 >= 0.78`), it is still treated as risky and escalated when `top1 < 0.82`.
+    - `KNOWLEDGE_VERIFIER_MARGIN_TRIGGER = 0.06`: near-tie neighborhoods (`top1 - top2 < 0.06`) are escalated because ranking confidence is low.
+  - Result: the system falls back to fresh retrieval/synthesis instead of reusing the wrong cached answer.
 
 Important nuance:
 - If a wrong cached candidate passes raw similarity gates, verifier still has a chance to reject it on semantic mismatch.
