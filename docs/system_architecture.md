@@ -28,11 +28,11 @@
 │  │ 3b. Knowledge branch │  │        └────────────┬───────────────┘
 │  │     Fact FAISS +     │  │                     │
 │  │     score+margin gate│  │                     ▼
-│  │ 4. Collapse Guard    │  │        ┌────────────────────────────┐
-│  │ 5. Provenance Check  │  │        │     Anthropic API          │
-│  └──────────────────────┘  │        │  store() → cache + embed   │
-└────────────────────────────┘        │  + knowledge extraction    │
-                                      │  + consensus verify        │
+│  │ 4. Data Scope Gate   │  │        ┌────────────────────────────┐
+│  │ 5. Collapse Guard    │  │        │     Anthropic API          │
+│  │ 6. Provenance Check  │  │        │  store() → cache + embed   │
+│  └──────────────────────┘  │        │  + knowledge extraction    │
+└────────────────────────────┘        │  + consensus verify        │
                                       └────────────────────────────┘
 ```
 
@@ -45,9 +45,9 @@ Note: LLM Sniper runs on the semantic branch. The knowledge branch currently use
 │                   SEARCH PIPELINE (search())                     │
 │                                                                  │
 │   Query ──┬──→ Cache Check                                       │
-│           │     ├─ Exact match (string equality)                 │
-│           │     ├─ Semantic hit: cache FAISS → LLM Sniper        │
-│           │     ├─ Knowledge hit: fact FAISS → score+margin gate │
+│           │     ├─ Exact match + data-scope gate                 │
+│           │     ├─ Semantic hit: scoped cache FAISS → LLM Sniper │
+│           │     ├─ Knowledge hit: scoped fact FAISS + gate        │
 │           │     ├─ HIT  → Serve cached answer (with provenance)  │
 │           │     └─ MISS ↓                                        │
 │           └──→ FAISS Dragnet (top-20, ~130ms on CPU)             │
@@ -153,6 +153,16 @@ encode_documents(["The defendant was charged with..."])
 - Zero API cost, instant return
 
 > **Scenario**: An RLM writes a Python `for` loop that calls `rlm_query("Classify this entry as ERROR or INFO", chunk)` on 500 log entries. 200 of the entries are identical (duplicated logs). The exact-match layer catches all 200 repeats with zero API cost — no embeddings, no Haiku calls.
+
+#### 2b.1 Data Scope Gate (`data_scope_hash`)
+Retrieval-based `search()` uses a global cache namespace so benchmark runs and domain clients can reuse work across repeated executions. That global namespace must still distinguish which document set produced an answer.
+
+- `ingest()` computes `data_scope_hash` from sorted `.txt` filenames, normalized file contents, chunk size, and overlap.
+- `store()` writes `data_scope_hash` onto cache entries and extracted facts.
+- `search()` only allows exact, semantic, and knowledge cache hits when the entry's scope matches the active ingested document set.
+- Legacy persisted entries without a scope are skipped for scoped `search()` hits because they cannot prove data identity.
+
+> **Scenario**: Two RULER `qa_basic` samples ask the same question text about Scott Derrickson, but each sample has a different context and a different correct document index. A query-only exact match would return the first answer for the second sample. The data-scope gate treats the second sample as a miss unless its cached answer was produced from the same active document set.
 
 #### 2c. Vector Dragnet (`_vector_dragnet`)
 **Line 444** · Qwen3-Embedding-0.6B + FAISS for local similarity search.
@@ -286,6 +296,8 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 
 **Cost**: ~$0.0002 per write (one Haiku call for extraction).
 
+**Current reliability boundary**: Knowledge hits are scoped to the active document set, but extracted triples still need stronger source-span support before they should be treated as standalone production-grade facts. A safer next step is to store each fact with source document ID, chunk hash, source span, extraction confidence, and verifier status.
+
 ---
 
 ### Retrieval Layer (New)
@@ -308,6 +320,8 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.5)
 5. Return top-5 reranked results with scores and metadata
 
+`ingest()` defaults to rebuilding the active document index for the provided directory. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
+
 > **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.5 threshold ensures completely irrelevant documents (e.g., about bail conditions when asking about charges) are filtered, even if FAISS gave them a high vector similarity score.
 
 #### 2n. Full Search Pipeline (`search`)
@@ -316,10 +330,10 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 ```
 search("What charges did Maxwell face?")
   │
-  ├─► Cache Check (check()) → if HIT → return cached answer
-  │     ├─ Exact match (free)
-  │     ├─ Semantic match via Sniper ($0.0001)
-  │     └─ Knowledge fact lookup (free, FAISS)
+  ├─► Scoped Cache Check → if HIT → return cached answer
+  │     ├─ Exact match + data_scope_hash gate (free)
+  │     ├─ Semantic match via Sniper + data_scope_hash gate ($0.0001)
+  │     └─ Knowledge fact lookup + data_scope_hash gate (free, FAISS)
   │
   ├─► Cache MISS:
   │     ├─ retrieve() → FAISS + Reranker (top-5)
@@ -404,6 +418,8 @@ The `corpus_id` is purely infrastructural — it **NEVER enters any LLM prompt**
 - Keyword heuristic: `classify`, `extract`, `find`, `count`, `list` → Haiku ($0.25/MTok)
 - Everything else → Sonnet ($3/MTok)
 - **Future**: Could be a trained complexity classifier
+
+Current routing is intentionally simple. Production and benchmark work should treat it as a baseline and add telemetry for route decisions, confidence, expected cost, and fallback behavior before claiming routing gains.
 
 > **Scenario**: An RLM loop fires 10,000 queries. 8,000 are simple extraction tasks ("Extract the date from this filing") and 2,000 are complex synthesis ("Summarize the legal risk exposure"). Without routing, all 10,000 go to Sonnet at $3/MTok. With routing, 8,000 go to Haiku at $0.25/MTok and 2,000 go to Sonnet. Cost drops by ~70% with no quality loss on the simple tasks.
 

@@ -1,8 +1,3 @@
----
-description: Project context and coding guidelines for `adarsh-rlms`, a Python research and benchmarking repository for a two-stage semantic cache system for autonomous LLM workflows.
-applyTo: '*'
----
-
 # Agent Project Index
 
 Use this file as a compact index. Read the linked source files only when the task needs implementation detail.

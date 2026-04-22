@@ -1,85 +1,74 @@
-# Implementation Audit: Discussed Ideas vs. Code
+# Implementation Audit: Current Status
 
-Every idea discussed across [my_notes.txt](my_notes.txt), [paper_scope.md](paper_scope.md), [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md), [llm_semantic_cache_architecture.md](llm_semantic_cache_architecture.md), and KI artifacts — cross-referenced against the three implementations.
-
----
-
-## Core Architecture (Two-Stage "Dragnet & Sniper")
-
-| # | Idea | Status | Where | Notes |
-|---|------|--------|-------|-------|
-| 1 | **Hash Bucketing** — partition cache by MD5 of data chunk | ✅ | [semantic_cache_system.py#L181](semantic_cache_system.py#L181) | `_get_chunk_hash()` using MD5 |
-| 2 | **Vector Dragnet** — local SentenceTransformer + cosine similarity for Top-K | ✅ | [semantic_cache_system.py#L196](semantic_cache_system.py#L196) | `all-MiniLM-L6-v2`, numpy brute-force |
-| 3 | **LLM Sniper** — Haiku evaluates semantic equivalence | ✅ | [semantic_cache_system.py#L223](semantic_cache_system.py#L223) | Structured JSON prompt, `claude-haiku-4-5` |
-| 4 | **Exact-Match Fast Path** — free O(N) string scan before vector search | ✅ | [semantic_cache_system.py#L442](semantic_cache_system.py#L442) | Case-insensitive `.lower()` comparison |
-| 5 | **Heterogeneous Model Routing** — dispatch simple→Haiku, complex→Sonnet | ✅ | [semantic_cache_system.py#L564](semantic_cache_system.py#L564) | Keyword-based heuristic (`classify`, `extract` → Haiku) |
-| 6 | **Execution Metrics / Cost Tracking** — per-model call counts, tokens, dollars | ✅ | [semantic_cache_system.py#L63](semantic_cache_system.py#L63) | Full breakdown in `print_summary()` |
+This audit summarizes the implementation state of the semantic cache system as of 2026-04-22. Use `docs/system_architecture.md` for detailed architecture and `semantic_cache_system.py` as the implementation source of truth.
 
 ---
 
-## Scaling & Infinite Context
+## Implemented Core Architecture
 
-| # | Idea | Status | Where | Notes |
-|---|------|--------|-------|-------|
-| 7 | **Parallel Top-K Chunking** — chunk large candidate sets into parallel Haiku batches to prevent evaluator context rot | ✅ | [semantic_cache_system.py#L290](semantic_cache_system.py#L290) | `ThreadPoolExecutor`, first-hit-wins with `cancel_futures` |
-| 8 | **Context Collapse Guard — Ephemeral Retrieval** — serve large cached results but flag "don't persist in context" | ✅ | [semantic_cache_system.py#L360](semantic_cache_system.py#L360) | Triggers at >2,000 estimated tokens |
-| 9 | **Context Collapse Guard — Recursive Parallel Summarization** — chunk oversized results and summarize via parallel sub-agents | ✅ | [semantic_cache_system.py#L371](semantic_cache_system.py#L371) | Truly recursive (re-checks output size, recurses up to depth 5), parallel at every level, tighter prompts at deeper levels |
-| 10 | **O(1) Scaling Proof** — cost per retrieval remains constant regardless of cache size | ✅ | Demonstrated | Haiku evaluator sees fixed Top-K (5) candidates per prompt, never the full DB |
-
----
-
-## Cache Economics & Cold-Start
-
-| # | Idea | Status | Where | Notes |
-|---|------|--------|-------|-------|
-| 11 | **Programmatic Cache Pre-Warming** — automated Day-1 sweep to saturate cache before human use | ✅ | [semantic_cache_system.py#L490](semantic_cache_system.py#L490) | `CachePreWarmer` class, demonstrated in Pass 4 with finance queries |
-| 12 | **Cache-Hit Manufacturing Machine** — RLMs force redundancy that saturates cache instantly | ✅ (conceptual) | [my_notes.txt](my_notes.txt), [api_rlm_simulation.py](api_rlm_simulation.py) | Proven in `api_rlm_simulation.py` (96% cost reduction) where identical chunks hit exact-match cache. The new `semantic_cache_system.py` demo doesn't simulate a full RLM loop — it tests correctness, not saturation. |
-| 13 | **Deterministic Financial Stability** — cache locks in correct numerical extractions, preventing hallucination | ✅ (conceptual) | [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md) | Discussed extensively. Demonstrated implicitly (ARR/EBITDA queries in Pass 1/4 get cached and return deterministic values). Not tested as an explicit anti-hallucination experiment. |
-
----
-
-## Demonstration Scenarios
-
-| # | Scenario | Status | Notes |
-|---|----------|--------|-------|
-| 14 | **Cold Start** — all cache misses, population | ✅ Pass 1 | 3 queries, 3 misses |
-| 15 | **Paraphrased Queries** — Sniper detects semantic equivalence | ✅ Pass 2 | 3/3 correct hits |
-| 16 | **Logical Inversion** — Sniper rejects INCLUDE ≠ EXCLUDE | ✅ Pass 3 | 3/3 correct misses, including the critical inversion test |
-| 17 | **Pre-Warming + Post-Warm Hits** | ✅ Pass 4 | Pre-warmed 10 entries, 1/3 post-warm paraphrases hit |
-| 18 | **Ephemeral Retrieval** (medium result) | ✅ Pass 5A | ~2650 tokens → `ephemeral: True` |
-| 19 | **Recursive Parallel Summarization** (huge result) | ✅ Pass 5B | ~5144 tokens → 6 parallel Haiku chunks → 1186 token summary |
+| # | Capability | Status | Notes |
+|---|------------|--------|-------|
+| 1 | Hash bucketing for direct `cached_query()` calls | Implemented | Partitions cache entries by source-context hash to prevent cross-document reuse. |
+| 2 | Data-scoped retrieval cache hits | Implemented | `search()` entries use `data_scope_hash` so exact, semantic, and knowledge hits must match the active ingested document set. |
+| 3 | Exact-match fast path | Implemented | Free string match before semantic evaluation; scoped for retrieval search. |
+| 4 | Vector Dragnet | Implemented | Qwen3 embeddings with FAISS-backed similarity search. |
+| 5 | LLM Sniper | Implemented | Evaluator model checks semantic equivalence for candidate cache hits. |
+| 6 | Parallel Sniper chunking | Implemented | Batches large candidate sets to limit evaluator prompt size. |
+| 7 | Qwen3 reranker retrieval gate | Implemented | Cross-encoder relevance gate between FAISS retrieval and synthesis. |
+| 8 | Context Collapse Guard | Implemented | Ephemeral tagging and recursive summarization for oversized cached results. |
+| 9 | Knowledge extraction and fact index | Implemented | Extracts `(subject, relation, object)` triples and indexes them for scoped reuse. |
+| 10 | Provenance and grounding | Implemented, limited | Regex-based grounding for quantitative facts; needs richer source-span support. |
+| 11 | Multi-model consensus on write | Implemented, limited | Independent evaluator answer compares extracted quantitative facts. |
+| 12 | Persistent cache state | Implemented | Saves cache entries, knowledge triples, FAISS indices, and corpus config. |
+| 13 | Corpus namespace isolation | Implemented | Load refuses mismatched corpus IDs to prevent cross-corpus contamination. |
+| 14 | Cache pre-warming | Implemented | Sweeps template queries over corpus chunks to seed cache entries. |
+| 15 | Heterogeneous routing | Implemented, baseline | Keyword heuristic dispatches simple tasks to evaluator-class models and complex tasks to executor-class models. |
 
 ---
 
-## Ideas NOT Yet Implemented
+## Benchmarking Status
 
-| # | Idea | Source | Why Not | Difficulty |
-|---|------|--------|---------|------------|
-| 20 | **Standalone API Gateway Proxy** — deploy cache as a transparent HTTP proxy in front of any LLM API | [my_notes.txt](my_notes.txt) (line 11) | Current implementation is a Python library, not a deployable service. Would need FastAPI/Flask wrapper + persistent storage. | Medium |
-| 21 | **ANN Indexing for Vector Search** — replace brute-force numpy with FAISS/ScaNN for O(log N) at scale | [my_notes.txt](my_notes.txt) (line 50), [paper_scope.md](paper_scope.md) | Current implementation uses brute-force cosine similarity (fine for PoC but won't scale to millions of entries). | Easy |
-| 22 | **Persistent Cache Storage** — survive process restarts, cross-session reuse | [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md) | Cache is in-memory `dict`. No serialization to disk/DB. A restarted process loses everything. | Easy |
-| 23 | **Budget-Aware Routing** — router adapts model tier based on remaining query budget | [optimization_layers.md](file:///Users/zeitgeist/.gemini/antigravity/knowledge/recursive_language_models/artifacts/architecture/optimization_layers.md) (line 32) | Current router is a simple keyword heuristic. No budget tracking or dynamic escalation/demotion. | Medium |
-| 24 | **Real-World Benchmark Datasets** — LegalBench, Financial 10-K, ablation studies | [paper_scope.md](paper_scope.md) (lines 13-15) | Explicitly noted as the delta between workshop paper and main-track NeurIPS. Not yet attempted. | Hard |
-| 25 | **Ablation Studies** — Haiku Sniper vs. pure cosine threshold, cost/latency tradeoff curves | [paper_scope.md](paper_scope.md) (line 15) | No automated ablation framework. Would need to run the same queries with Sniper enabled/disabled and compare. | Medium |
-| 26 | **Visual Caching** — hash image bytes instead of text for multi-modal agents | [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md) (line 66) | Discussed as a future idea. Not implemented. Would need image embedding model (CLIP) instead of SentenceTransformer. | Hard |
-| 27 | **Cross-Session / Org-Level Cache** — shared cache across users and sessions | [my_notes.txt](my_notes.txt) (line 1) | Requires persistent storage + access control + privacy considerations. Pure future work. | Hard |
-| 28 | **Financial Crossover Analysis** — exact point where parallel Haiku cost exceeds single Sonnet call | [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md) (line 68) | Not computed. Would need a parameterized cost model with varying K values. | Easy |
-| 29 | **LangGraph/AutoGen Integration** — deploy cache as middleware for other agentic frameworks | [my_notes.txt](my_notes.txt) (line 11), [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md) (line 67) | Architecture is framework-agnostic in theory. Code is self-contained, not packaged as a pip-installable library with framework adapters. | Medium |
+| Area | Status | Notes |
+|------|--------|-------|
+| RULER v2 runner | Implemented | `ruler_v2/run_benchmark.py` generates predictions and telemetry artifacts. |
+| RULER v2 scoring wrapper | Implemented | `ruler_v2/score_ruler2_predictions.py` scores existing predictions in this repo environment. |
+| Persistent benchmark cache reuse | Implemented | Cache namespace uses dataset content signature, selected tasks, selected lengths, and corpus ID. |
+| Focused data-scope regression | Implemented | `test/test_data_scope_cache.py` covers exact, knowledge, persistence, and legacy-skip behavior. |
+| Latest focused QA run | Passing | `benchmark_artifacts/official_ruler_v2/20260422T001840Z` scored 3/3 on `qa_basic`. |
+| Full milestone coverage | In progress | Latest focused run selected only `qa_basic`; broader `mk_niah_basic` and `mv_niah_basic` validation still needs to be re-run. |
+| Full RULER v2 13-task baseline | Not complete | Current project milestone remains a subset before expanding to the full matrix. |
+| NoLiMa benchmark path | Implemented | Runner and scorer exist under `nolima/`; broader result reporting remains future work. |
+
+---
+
+## Known Reliability Boundaries
+
+| Area | Current Boundary | Recommended Improvement |
+|------|------------------|-------------------------|
+| Knowledge cache | Facts are scoped but do not yet carry verified source spans. | Store source document ID, chunk hash, char span, extraction confidence, and verifier status per fact. |
+| Grounding | Numeric regex checks catch amounts, percentages, and large numbers. | Add source-span grounding for document IDs, entity names, dates, titles, and quoted text. |
+| Consensus | Quantitative comparison is useful but narrow. | Compare structured answer claims and require source support for nonnumeric benchmark answers. |
+| Router | Keyword heuristic is a baseline. | Add task-aware and budget-aware routing with telemetry and ablations. |
+| Retrieval diagnostics | Bridge rows report cost/cache type but not retrieval internals. | Record FAISS top IDs, reranked top IDs, expected ID presence, final cited IDs, and cache rejection reasons. |
+| Persistence | JSON/FAISS files are sufficient for research runs. | Add schema versions, atomic writes, file locks, and cache validation/repair tooling. |
+
+---
+
+## Not Yet Implemented / Future Work
+
+| # | Capability | Why It Matters | Difficulty |
+|---|------------|----------------|------------|
+| 1 | API gateway/proxy wrapper | Lets external agents use the cache without importing the Python library directly. | Medium |
+| 2 | Budget-aware routing | Makes model selection responsive to budget, task risk, and cache confidence. | Medium |
+| 3 | Source-span fact store | Turns extracted knowledge into auditable standalone facts. | Medium |
+| 4 | Rich grounding verifier | Extends hallucination protection beyond numeric claims. | Medium |
+| 5 | Ablation framework | Quantifies value of exact, semantic, knowledge, reranker, grounding, consensus, and routing layers. | Medium |
+| 6 | Production storage backend | Supports concurrent writers, large caches, and operational introspection. | Hard |
+| 7 | Framework adapters | Packages cache middleware for LangGraph, AutoGen, or other agent runtimes. | Medium |
+| 8 | Multi-modal caching | Extends cache identity and embeddings beyond text. | Hard |
 
 ---
 
 ## Summary
 
-| Category | Implemented | Not Implemented |
-|----------|:-----------:|:---------------:|
-| Core Architecture | 6/6 | 0 |
-| Scaling & Infinite Context | 4/4 | 0 |
-| Cache Economics | 3/3 | 0 |
-| Demo Scenarios | 6/6 | 0 |
-| Infrastructure / Production | 0/5 | 5 |
-| Research Benchmarks | 0/3 | 3 |
-| Future Extensions | 0/2 | 2 |
-| **Total** | **19/29** | **10** |
-
-> [!TIP]
-> All **core theoretical ideas** (19/19) are implemented. The remaining 10 are infrastructure (persistent storage, API gateway), research methodology (benchmarks, ablation), and speculative extensions (visual caching, cross-org). These are production/paper concerns, not architectural gaps.
+The core semantic cache architecture is implemented: scoped cache reuse, FAISS retrieval, reranking, Sniper verification, persistence, provenance hooks, knowledge extraction, and benchmark orchestration are all present. The highest-value next work is not adding another cache layer; it is making the existing layers more measurable and auditable through richer provenance, stronger knowledge verification, better routing telemetry, and broader benchmark coverage.

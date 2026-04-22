@@ -234,7 +234,7 @@ Answer:
 
   Real example used in this repository environment (IMPORTANT: Don't forget to update folder name):
   ./.venv/bin/python ruler_v2/score_ruler2_predictions.py \
-    --run-dir benchmark_artifacts/official_ruler_v2/20260413T145426Z
+    --run-dir benchmark_artifacts/official_ruler_v2/20260422T001840Z
 
 Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
 `python -m nemo_skills.evaluation.evaluate` / `python -m nemo_skills.inference.generate_data`
@@ -517,3 +517,53 @@ How to verify warm cache:
 - Check `manifest.json` in run folder for `cache_reuse` block.
 - Check `bridge_rows.jsonl` for rows where `from_cache` is `true`.
 
+## Q19
+Question: Why did an exact cache hit return the wrong answer for a RULER `qa_basic` sample, and what changed?
+
+Answer:
+- The failure mode was not that exact string matching was broken.
+- The problem was that retrieval `search()` was using a shared cache namespace and treated identical question text as reusable even when the active document context had changed.
+- In `qa_basic`, two samples can ask the same question text but contain different document sets and different correct document IDs.
+- A query-only exact match can therefore be stale or cross-context, even though the query strings are identical.
+
+Fix:
+- Retrieval search now uses `data_scope_hash` as a document-set identity.
+- `ingest()` computes the scope from sorted `.txt` filenames, normalized file contents, chunk size, and overlap.
+- `store()` writes the active scope onto cache entries and extracted facts.
+- `search()` only allows exact, semantic, and knowledge cache hits when the cached entry's scope matches the active ingested document set.
+- Legacy persisted entries without `data_scope_hash` are skipped for scoped `search()` hits because they cannot prove data identity.
+
+Practical implication:
+- Warm-cache reuse still works for repeated runs over unchanged selected data.
+- Same-question/different-context samples now miss and regenerate instead of reusing an unsafe answer.
+
+Focused validation:
+- `benchmark_artifacts/official_ruler_v2/20260422T001840Z`
+- `official_ruler2_eval_report.json` reports:
+  - scored samples: 3
+  - overall accuracy: 1.0
+  - `qa_basic|32768`: 2/2
+  - `qa_basic|8192`: 1/1
+- `bridge_rows.jsonl` shows one scoped exact cache hit and two misses in that focused run.
+
+## Q20
+Question: What are the next design issues to discuss after the data-scoped cache fix?
+
+Answer:
+- Knowledge cache reliability:
+  - Current facts are scoped, but they still need source document IDs, chunk hashes, char spans, extraction confidence, and verifier status before they should be treated as production-grade standalone facts.
+  - Related-query hits should avoid replaying an entire old answer unless the verifier confirms that the old answer directly satisfies the new query.
+
+- Provenance and grounding:
+  - Current grounding is strongest for quantitative strings caught by regex.
+  - RULER-style answers often depend on document IDs, entity names, titles, and exact text matches, so grounding should expand to source spans and nonnumeric claims.
+  - Benchmark telemetry should record whether the expected answer was present in FAISS top-k, reranker top-k, final source docs, and final prediction.
+
+- Router improvements:
+  - The current router is a keyword heuristic and should be treated as a baseline.
+  - Next versions should be task-aware, budget-aware, and confidence-aware.
+  - Bridge telemetry should record route decision, selected model, estimated cost, actual cost, and whether fallback/escalation occurred.
+
+Benchmarking recommendation:
+- Add ablation modes for exact-only, semantic disabled, knowledge disabled, reranker disabled, consensus disabled, and router variants.
+- Report accuracy, cache hit rate, latency, and cost together; cost reductions are only meaningful when accuracy is preserved.

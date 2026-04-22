@@ -452,6 +452,7 @@ class SemanticCacheController:
         self.knowledge_index = None            # FAISS index for fact lookup
         self._cache_index = None               # FAISS index for cached query lookup
         self._persist_path = None              # Path for persistence
+        self.data_scope_hash = None            # Active ingested document-set identity for search()
 
         # ── Corpus-level namespace isolation ──
         # Each corpus (Epstein docs, finance filings, medical records) gets its
@@ -476,6 +477,39 @@ class SemanticCacheController:
     def _get_chunk_hash(self, context: str) -> str:
         """Compute a deterministic hash of the data chunk being analyzed."""
         return hashlib.md5(context.strip().encode()).hexdigest()
+
+    def _get_data_scope_hash(self, docs_dir: Path, txt_files: List[Path], chunk_size: int, overlap: int) -> str:
+        """Compute a deterministic identity for the active search document set."""
+        hasher = hashlib.sha256()
+        hasher.update(f"chunk_size={chunk_size}\noverlap={overlap}\n".encode("utf-8"))
+        for file_path in txt_files:
+            text = file_path.read_text(encoding="utf-8", errors="ignore")
+            normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
+            try:
+                rel_name = file_path.relative_to(docs_dir).as_posix()
+            except ValueError:
+                rel_name = file_path.name
+            hasher.update(rel_name.encode("utf-8"))
+            hasher.update(b"\0")
+            hasher.update(normalized.encode("utf-8"))
+            hasher.update(b"\0")
+        return hasher.hexdigest()
+
+    def _entry_matches_active_scope(self, entry: Dict) -> bool:
+        """Return whether a cache entry can be reused for the active search scope."""
+        if not self.data_scope_hash:
+            return True
+        return entry.get("data_scope_hash") == self.data_scope_hash
+
+    def _find_cache_entry_by_flat_idx(self, target_idx: int) -> Optional[Dict]:
+        """Resolve a persisted flat cache index back to its cache entry."""
+        flat_idx = 0
+        for entries in self.cache.values():
+            for entry in entries:
+                if flat_idx == target_idx:
+                    return entry
+                flat_idx += 1
+        return None
 
     # ------------------------------------------------------------------
     # STAGE 1: THE VECTOR DRAGNET
@@ -1016,6 +1050,7 @@ class SemanticCacheController:
               sources: List[dict] = None):
         """Store a query-result pair with source provenance and knowledge extraction."""
         chunk_hash = self._get_chunk_hash(context)
+        data_scope_hash = self.data_scope_hash or chunk_hash
         if chunk_hash not in self.cache:
             self.cache[chunk_hash] = []
 
@@ -1037,6 +1072,7 @@ class SemanticCacheController:
             "source_context": context,
             "model_used": model_used,
             "grounding_info": grounding_info,
+            "data_scope_hash": data_scope_hash,
         }
         self.cache[chunk_hash].append(entry)
 
@@ -1047,6 +1083,7 @@ class SemanticCacheController:
         for fact in facts:
             fact["source_cache_idx"] = cache_idx
             fact["source_chunk_hash"] = chunk_hash
+            fact["data_scope_hash"] = data_scope_hash
             fact_idx = len(self.knowledge)
             self.knowledge.append(fact)
             fact_text = f"{fact['subject']} {fact['relation']} {fact['object']}"
@@ -1054,7 +1091,10 @@ class SemanticCacheController:
             self.knowledge_index.add(emb.reshape(1, -1), [{"fact_idx": fact_idx}])
 
         # Add to cache FAISS index for semantic lookup
-        self._cache_index.add(embedding.reshape(1, -1), [{"cache_idx": cache_idx, "chunk_hash": chunk_hash}])
+        self._cache_index.add(
+            embedding.reshape(1, -1),
+            [{"cache_idx": cache_idx, "chunk_hash": chunk_hash, "data_scope_hash": data_scope_hash}]
+        )
 
         # Auto-persist
         if self._persist_path:
@@ -1199,20 +1239,24 @@ class SemanticCacheController:
     # ------------------------------------------------------------------
     # RETRIEVAL — FAISS document search + Reranker with relevance gate
     # ------------------------------------------------------------------
-    def ingest(self, docs_dir: Path, chunk_size: int = 3000, overlap: int = 200):
+    def ingest(self, docs_dir: Path, chunk_size: int = 3000, overlap: int = 200, *, reset_index: bool = True):
         """Ingest text documents: chunk → embed → build FAISS doc index."""
         docs_dir = Path(docs_dir)
-        if self.doc_index is None:
+        if reset_index or self.doc_index is None:
             self.doc_index = FAISSIndex()
+            self._doc_chunks = []
 
         txt_files = sorted(docs_dir.glob("*.txt"))
         if not txt_files:
             print(f"  No .txt files found in {docs_dir}")
+            self.data_scope_hash = None
             return 0
+        self.data_scope_hash = self._get_data_scope_hash(docs_dir, txt_files, chunk_size, overlap)
 
         print(f"  [INGEST] Found {len(txt_files)} documents")
         all_chunks = []
         all_meta = []
+        chunk_offset = len(self._doc_chunks) if hasattr(self, '_doc_chunks') else 0
 
         for f in txt_files:
             text = f.read_text(encoding="utf-8", errors="ignore").strip()
@@ -1225,11 +1269,17 @@ class SemanticCacheController:
                     continue
                 meta = {
                     "filename": f.name,
-                    "chunk_index": len(all_chunks),
+                    "chunk_index": chunk_offset + len(all_chunks),
                     "char_start": i,
+                    "data_scope_hash": self.data_scope_hash,
                 }
                 all_chunks.append(chunk)
                 all_meta.append(meta)
+
+        if not all_chunks:
+            print("  [INGEST] No chunks large enough to index")
+            self.data_scope_hash = None
+            return 0
 
         print(f"  [INGEST] Chunked into {len(all_chunks)} pieces, embedding...")
         embeddings = self.embedder.encode_documents(all_chunks)
@@ -1237,7 +1287,10 @@ class SemanticCacheController:
         print(f"  [INGEST] ✓ Indexed {len(all_chunks)} chunks")
 
         # Store chunks for retrieval
-        self._doc_chunks = all_chunks
+        if reset_index:
+            self._doc_chunks = all_chunks
+        else:
+            self._doc_chunks.extend(all_chunks)
         return len(all_chunks)
 
     def retrieve(self, query: str, top_k: int = 20, rerank_top: int = 5) -> List[dict]:
@@ -1307,7 +1360,10 @@ class SemanticCacheController:
             # Exact match scan
             for chunk_hash, entries in self.cache.items():
                 for entry in entries:
-                    if entry["query"].lower().strip() == query.lower().strip():
+                    if (
+                        entry["query"].lower().strip() == query.lower().strip()
+                        and self._entry_matches_active_scope(entry)
+                    ):
                         self.metrics.exact_hits += 1
                         print(f"  [CACHE] ✓ Exact Match — free retrieval")
                         return {
@@ -1321,26 +1377,22 @@ class SemanticCacheController:
             if self._cache_index and self._cache_index.total > 0:
                 query_emb = self.embedder.encode_query(query)
                 # Semantic cache lookup via FAISS + Sniper
-                cache_results = self._cache_index.search(query_emb, top_k=3)
+                cache_top_k = min(max(3, self.TOP_K_CANDIDATES * 10), self._cache_index.total)
+                cache_results = self._cache_index.search(query_emb, top_k=cache_top_k)
                 strong = [(score, meta) for score, meta in cache_results if score > 0.85]
             if strong:
-                candidate_queries = []
                 candidate_entries = []
+                candidate_scores = []
                 for score, meta in strong:
-                    ch = meta["chunk_hash"]
                     ci = meta["cache_idx"]
-                    # Find entry in cache
-                    flat_idx = 0
-                    for h, entries in self.cache.items():
-                        for entry in entries:
-                            if flat_idx == ci:
-                                candidate_queries.append(entry["query"])
-                                candidate_entries.append(entry)
-                            flat_idx += 1
+                    entry = self._find_cache_entry_by_flat_idx(ci)
+                    if entry and self._entry_matches_active_scope(entry):
+                        candidate_entries.append(entry)
+                        candidate_scores.append(score)
 
-                if candidate_queries:
+                if candidate_entries:
                     sniper = self._llm_sniper_evaluate(query, [
-                        (e, i, s) for i, (e, s) in enumerate(zip(candidate_entries, [sc for sc, _ in strong]))
+                        (entry, i, score) for i, (entry, score) in enumerate(zip(candidate_entries, candidate_scores))
                     ])
                     if sniper and sniper.get("hit"):
                         idx = sniper["id"]
@@ -1358,8 +1410,15 @@ class SemanticCacheController:
                 if query_emb is None:
                     query_emb = self.embedder.encode_query(query)
 
-                fact_results = self.knowledge_index.search(query_emb, top_k=5)
-                strong_facts = [(s, m) for s, m in fact_results if s >= self.KNOWLEDGE_MIN_SCORE]
+                fact_top_k = min(max(5, self.KNOWLEDGE_VERIFIER_MAX_FACTS * 5), self.knowledge_index.total)
+                fact_results = self.knowledge_index.search(query_emb, top_k=fact_top_k)
+                scoped_fact_hits = []
+                for score, meta in fact_results:
+                    fact = self.knowledge[meta["fact_idx"]]
+                    source_entry_for_fact = self._find_cache_entry_by_flat_idx(fact.get("source_cache_idx", -1))
+                    if source_entry_for_fact and self._entry_matches_active_scope(source_entry_for_fact):
+                        scoped_fact_hits.append((score, meta, fact, source_entry_for_fact))
+                strong_facts = [hit for hit in scoped_fact_hits if hit[0] >= self.KNOWLEDGE_MIN_SCORE]
 
                 top_score = 0.0
                 second_score = None
@@ -1391,17 +1450,10 @@ class SemanticCacheController:
                         strong_facts = []
 
                 if strong_facts:
-                    for score, meta in strong_facts:
-                        fact = self.knowledge[meta["fact_idx"]]
+                    for score, meta, fact, entry in strong_facts:
                         relevant_facts.append(fact)
                         if source_entry is None:
-                            flat_idx = 0
-                            target = fact.get("source_cache_idx", -1)
-                            for h, entries in self.cache.items():
-                                for entry in entries:
-                                    if flat_idx == target:
-                                        source_entry = entry
-                                    flat_idx += 1
+                            source_entry = entry
 
                 if strong_facts and relevant_facts and source_entry:
                     should_verify, trigger_reasons, lexical_support = self._should_run_knowledge_verifier(
@@ -1517,6 +1569,7 @@ class SemanticCacheController:
             "knowledge_facts": len(self.knowledge),
             "embedding_model": EMBEDDING_MODEL,
             "embedding_dim": EMBEDDING_DIM,
+            "data_scope_hash": self.data_scope_hash,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
         # Preserve created_at from existing config
@@ -1572,6 +1625,7 @@ class SemanticCacheController:
             if stored_id:
                 self.corpus_id = stored_id
                 self.corpus_domain = self.corpus_config.get("corpus_domain", self.corpus_domain)
+            self.data_scope_hash = self.corpus_config.get("data_scope_hash")
             print(f"  [CORPUS] '{self.corpus_id}' — domain: {self.corpus_domain}, "
                   f"created: {self.corpus_config.get('created_at', 'unknown')}")
 
@@ -1617,7 +1671,11 @@ class SemanticCacheController:
                     for entry in entries:
                         self._cache_index.add(
                             entry["embedding"].reshape(1, -1),
-                            [{"cache_idx": flat_idx, "chunk_hash": chunk_hash}]
+                            [{
+                                "cache_idx": flat_idx,
+                                "chunk_hash": chunk_hash,
+                                "data_scope_hash": entry.get("data_scope_hash"),
+                            }]
                         )
                         flat_idx += 1
             else:
@@ -1638,7 +1696,10 @@ class SemanticCacheController:
                 for i, fact in enumerate(self.knowledge):
                     fact_text = f"{fact['subject']} {fact['relation']} {fact['object']}"
                     emb = self.embedder.encode_single(fact_text)
-                    self.knowledge_index.add(emb.reshape(1, -1), [{"fact_idx": i}])
+                    self.knowledge_index.add(
+                        emb.reshape(1, -1),
+                        [{"fact_idx": i, "data_scope_hash": fact.get("data_scope_hash")}]
+                    )
 
         # Initialize indices if they don't exist yet
         if self._cache_index is None:
@@ -1669,6 +1730,7 @@ class SemanticCacheController:
             "knowledge_facts": 0,
             "embedding_model": EMBEDDING_MODEL,
             "embedding_dim": EMBEDDING_DIM,
+            "data_scope_hash": self.data_scope_hash,
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
