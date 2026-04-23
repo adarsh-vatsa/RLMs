@@ -61,7 +61,7 @@
 - This confirms a cross-task cache-routing issue in knowledge-hit policy, even after fixing embedding collapse. NOTE: This might not be an issue depending how we want to use it.
 
 ## Future TODO Items
-- [DONE] Add guardrails for knowledge hits (for example, validate candidate answer/query compatibility before reuse). Competed on: 2026-04-05
+- [DONE] Add guardrails for knowledge hits (for example, validate candidate answer/query compatibility before reuse). Completed on: 2026-04-05
 - [TODO] Report hit types separately in run summaries and dashboards: exact, semantic, knowledge.
 - [TODO] Add strict/binary scoring mode for numeric-answer tasks (alongside NeMo-compatible score mode).
 - [TODO] Add a reproducible evaluation mode that freezes initial cache state (or disables writes) for deterministic A/B comparisons.
