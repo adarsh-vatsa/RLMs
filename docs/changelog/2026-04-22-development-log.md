@@ -34,6 +34,40 @@ Validation:
   - `python -m unittest discover -s test -p 'test_*.py'`
   - `python -m py_compile semantic_cache_system.py test/test_data_scope_cache.py`
 
+### Hashing Flow Clarification
+
+The system already had hashing before `data_scope_hash`. The new field does not replace the old hash; it covers a different level of cache identity.
+
+`source_chunk_hash`:
+- Identity of the exact source context/chunk that produced an answer.
+- Used by direct `cached_query(query, context)` calls.
+- Flow:
+  - compute `source_chunk_hash = hash(context)`
+  - look only inside `cache[source_chunk_hash]`
+  - same query over another document gets another hash bucket
+  - miss, call model, and store under the new source chunk hash
+
+`data_scope_hash`:
+- Identity of the active ingested document set for retrieval `search(query)`.
+- Computed by `ingest()` from sorted filenames, normalized file contents, chunk size, and overlap.
+- Used as an eligibility gate for global retrieval cache hits.
+- Flow:
+  - `ingest(docs_dir)` computes active `data_scope_hash`
+  - `search(query)` scans cache candidates
+  - exact/semantic/knowledge hits are allowed only when `entry.data_scope_hash == current data_scope_hash`
+  - same query over a different ingested document set misses and regenerates
+
+Example:
+- Sample 1 asks the Scott Derrickson question over a context where the correct document is `1544120`.
+- The system stores the answer with `data_scope_hash = A` and `source_chunk_hash = hash(retrieved_source_text)`.
+- Sample 2 asks the same question text over a context where the correct document is `9214801`.
+- `ingest()` computes `data_scope_hash = B`.
+- The old answer has matching query text but `A != B`, so `search()` rejects the cache hit and regenerates from the new active document set.
+
+Short rule:
+- `source_chunk_hash` answers: which exact source context produced this cached answer?
+- `data_scope_hash` answers: which active document set was being searched when this answer was produced?
+
 ## Benchmark Notes
 
 - The focused run confirmed the same-question/different-context failure mode is addressed for the small `qa_basic` scenario.
@@ -161,3 +195,48 @@ Practical next implementation:
   - always evaluator model for simple extraction
   - task-aware deterministic router
   - optional LLM router only for ambiguous cases
+
+## Recursive Language Model Framing
+
+This project should be framed as memory and memoization infrastructure for Recursive Language Models.
+
+An RLM decomposes a hard task into many smaller language-model calls. That recursive pattern creates repeated subquestions, repeated document chunks, repeated extraction templates, and repeated intermediate summaries. This semantic cache is useful because it turns those repeated recursive subcalls into deterministic, scoped lookups.
+
+Recommended positioning:
+
+> Recursive Language Models decompose reasoning into repeated language-model subcalls; this system makes those recursive subcalls reusable, grounded, and economically viable through data-scoped semantic caching.
+
+How the system fits:
+- `AutonomousAgent.cached_query(query, context)` can replace raw LLM calls inside an RLM loop.
+- Exact and semantic cache hits reduce redundant recursive subcalls.
+- `data_scope_hash` and `source_chunk_hash` prevent identical query templates from crossing document or document-set boundaries.
+- Knowledge extraction lets one recursive branch reuse verified facts discovered by another branch.
+- Context Collapse Guard prevents parent recursive nodes from receiving oversized child outputs.
+- Provenance, grounding, and consensus make recursive intermediate results auditable instead of ephemeral.
+
+Minimal integration shape:
+
+```python
+def rlm_call(query: str, context: str) -> dict:
+    return agent.cached_query(query, context)
+
+def map_over_chunks(task: str, chunks: list[str]) -> list[dict]:
+    return [rlm_call(task, chunk) for chunk in chunks]
+
+def reduce_results(question: str, child_results: list[dict]) -> dict:
+    context = "\n\n".join(item["result"] for item in child_results)
+    return rlm_call(question, context)
+```
+
+Why this is useful:
+- It attacks recursive cost explosion by memoizing repeated subcalls.
+- It attacks recursive context explosion by summarizing or marking large cached results as ephemeral.
+- It attacks recursive nondeterminism by reusing verified answers for equivalent scoped subproblems.
+- It creates an audit trail from root answers back to cached leaf computations.
+
+RLM-specific future work:
+- Add a formal `RecursiveExecutor` or `RLMRuntime` wrapper around `cached_query()`.
+- Track recursion metadata such as `parent_call_id`, `depth`, `branch_id`, `task_template`, and `source_chunk_hash`.
+- Cache leaf extraction calls and reduction/synthesis calls separately.
+- Add DAG reuse so two branches asking the same scoped subproblem run once and share the result.
+- Add recursion-aware telemetry showing cache hits, misses, cost, and grounding by depth.
