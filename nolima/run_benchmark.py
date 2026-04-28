@@ -8,6 +8,7 @@ writes benchmark artifacts under benchmark_artifacts/official_nolima.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -75,19 +76,39 @@ def _parse_lengths(raw: str) -> List[int]:
 
 
 def _snapshot_metrics(metrics: scs.ExecutionMetrics) -> Dict[str, float]:
-    total_calls = 0
-    total_input_tokens = 0
-    total_output_tokens = 0
-    total_cost = 0.0
-    for data in metrics.stats.values():
-        total_calls += data["calls"]
-        total_input_tokens += data["input_tokens"]
-        total_output_tokens += data["output_tokens"]
-        total_cost += data["cost"]
+    return metrics.get_totals()
+
+
+def _csv_cell(value):
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    if value is None:
+        return ""
+    return value
+
+
+def _write_csv_rows(path: Path, rows: List[dict]) -> None:
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    fieldnames = list(rows[0].keys())
+    with path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: _csv_cell(row.get(key)) for key in fieldnames})
+
+
+def _aggregate_bridge_row_totals(rows: List[dict]) -> Dict[str, float]:
+    total_calls = sum(int(row.get("delta_calls", 0) or 0) for row in rows)
+    total_input_tokens = sum(int(row.get("delta_input_tokens", 0) or 0) for row in rows)
+    total_output_tokens = sum(int(row.get("delta_output_tokens", 0) or 0) for row in rows)
+    total_cost = sum(float(row.get("delta_cost_usd", 0.0) or 0.0) for row in rows)
     return {
         "calls": total_calls,
         "input_tokens": total_input_tokens,
         "output_tokens": total_output_tokens,
+        "total_tokens": total_input_tokens + total_output_tokens,
         "cost": total_cost,
     }
 
@@ -124,7 +145,8 @@ def run_official_nolima_benchmark(args: argparse.Namespace) -> None:
     if args.depth_intervals <= 0:
         raise ValueError("--depth-intervals must be > 0")
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    started_at = datetime.now(timezone.utc)
+    run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
     out_dir = Path(args.output_dir) / "official_nolima" / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -170,6 +192,7 @@ def run_official_nolima_benchmark(args: argparse.Namespace) -> None:
 
     predictions_path = out_dir / "predictions.jsonl"
     bridge_rows_path = out_dir / "bridge_rows.jsonl"
+    bridge_rows_csv_path = out_dir / "bridge_rows.csv"
     manifest_path = out_dir / "manifest.json"
 
     print(f"\n[NoLiMa] Run id: {run_id}")
@@ -197,6 +220,7 @@ def run_official_nolima_benchmark(args: argparse.Namespace) -> None:
     cache_hits = 0
     cache_entries_before_run = 0
     cache_entries_after_run = 0
+    bridge_rows: List[dict] = []
 
     with predictions_path.open("w", encoding="utf-8") as predictions_file, bridge_rows_path.open(
         "w", encoding="utf-8"
@@ -291,6 +315,7 @@ def run_official_nolima_benchmark(args: argparse.Namespace) -> None:
                 "cache_type": _coerce_text(output.get("cache_type")),
                 "placement_metadata": sample.get("placement_metadata", {}),
             }
+            bridge_rows.append(bridge_row)
             bridge_file.write(json.dumps(bridge_row, ensure_ascii=False) + "\n")
 
             if output.get("from_cache"):
@@ -306,9 +331,16 @@ def run_official_nolima_benchmark(args: argparse.Namespace) -> None:
     if total_samples == 0:
         raise ValueError("No samples selected; verify needle-set, haystack, and filters")
 
+    _write_csv_rows(bridge_rows_csv_path, bridge_rows)
+    totals = _aggregate_bridge_row_totals(bridge_rows)
+    finished_at = datetime.now(timezone.utc)
+    elapsed_seconds = round((finished_at - started_at).total_seconds(), 3)
     manifest = {
         "run_id": run_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": finished_at.isoformat(),
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "elapsed_seconds": elapsed_seconds,
         "official_target": "nolima",
         "mode": args.mode,
         "domain": args.domain,
@@ -330,7 +362,13 @@ def run_official_nolima_benchmark(args: argparse.Namespace) -> None:
         "artifacts": {
             "predictions": str(predictions_path),
             "bridge_rows": str(bridge_rows_path),
+            "bridge_rows_csv": str(bridge_rows_csv_path),
         },
+        "total_api_calls": totals["calls"],
+        "total_input_tokens": totals["input_tokens"],
+        "total_output_tokens": totals["output_tokens"],
+        "total_tokens": totals["total_tokens"],
+        "total_estimated_cost_usd": round(totals["cost"], 8),
         "nolima_parity": {
             "metric_default": "contains",
             "depth_interval_count": args.depth_intervals,
@@ -370,6 +408,7 @@ def run_official_nolima_benchmark(args: argparse.Namespace) -> None:
     print("\n[NoLiMa] Completed.")
     print(f"[NoLiMa] Predictions : {predictions_path}")
     print(f"[NoLiMa] Bridge rows : {bridge_rows_path}")
+    print(f"[NoLiMa] Bridge CSV  : {bridge_rows_csv_path}")
     print(f"[NoLiMa] Manifest    : {manifest_path}")
     if cache_state_enabled:
         print(

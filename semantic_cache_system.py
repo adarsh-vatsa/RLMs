@@ -68,13 +68,13 @@ EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 RERANKER_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 EMBEDDING_DIM = 1024
 EXECUTOR_MODEL = "claude-sonnet-4-20250514"
-EVALUATOR_MODEL = "claude-haiku-4-20250414"
+EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
 
 # Anthropic pricing config (USD per 1K tokens, early 2026 estimates).
 # Centralized here so all cost math uses a single visible source of truth.
 MODEL_FAMILY_PRICING_USD_PER_1K = {
     "sonnet": {"input": 0.003, "output": 0.015},
-    "haiku": {"input": 0.00025, "output": 0.00125},
+    "haiku": {"input": 0.001, "output": 0.005},
 }
 
 
@@ -346,10 +346,30 @@ class ExecutionMetrics:
                 output_tokens * rates["output"] / 1000
             )
 
+    def get_totals(self) -> Dict[str, float]:
+        """Return aggregate API usage totals across all tracked models."""
+        total_calls = 0
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cost = 0.0
+        for data in self.stats.values():
+            total_calls += data["calls"]
+            total_input_tokens += data["input_tokens"]
+            total_output_tokens += data["output_tokens"]
+            total_cost += data["cost"]
+        return {
+            "calls": total_calls,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens,
+            "cost": total_cost,
+        }
+
     def print_summary(self):
         duration = (self.end_time or time.time()) - (self.start_time or time.time())
-        total_cost = sum(m["cost"] for m in self.stats.values())
-        total_calls = sum(m["calls"] for m in self.stats.values())
+        totals = self.get_totals()
+        total_cost = totals["cost"]
+        total_calls = totals["calls"]
         total_cache_events = self.exact_hits + self.semantic_hits + self.knowledge_hits
         total_queries = total_cache_events + self.cache_misses
 

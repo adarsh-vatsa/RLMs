@@ -1,0 +1,411 @@
+{
+  "suite_name": "cache_mode_suite_v1",
+  "corpora": [
+    {
+      "corpus_id": "finance_q1",
+      "docs": [
+        {
+          "filename": "report.txt",
+          "text": "ACME Corp Q1 2023 operating report. Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M. EBITDA was $3.1M. Gross margin was 71%. Customer churn was 4.2%. Cost of goods sold (COGS) was $2.8M. Net revenue retention was 118%. Free cash flow was not disclosed in the report."
+        }
+      ]
+    },
+    {
+      "corpus_id": "doctor_strange_facts",
+      "docs": [
+        {
+          "filename": "film_notes.txt",
+          "text": "Doctor Strange is a 2016 Marvel film. It was directed by Scott Derrickson and written by Jon Spaihts, Scott Derrickson, and C. Robert Cargill. Benedict Cumberbatch starred as Stephen Strange. Michael Giacchino composed the score. The film was released in November 2016."
+        }
+      ]
+    },
+    {
+      "corpus_id": "ops_incident_policy",
+      "docs": [
+        {
+          "filename": "policy.txt",
+          "text": "Incident review policy for the payments API. Include production timeout errors generated during the deployment window. Exclude sandbox timeout warnings from the review packet. Include authentication failures from production. Exclude health-check noise and routine success logs."
+        }
+      ]
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "finance_exact_arr",
+      "title": "Exact reuse for ARR query",
+      "scenario": "exact_positive",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "What was ACME's ARR in Q1 2023?"
+      ],
+      "eval_query": "What was ACME's ARR in Q1 2023?",
+      "expected_answers": [
+        "$12.4M",
+        "12.4M"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "exact",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "finance_semantic_arr",
+      "title": "Paraphrase reuse for ARR query",
+      "scenario": "semantic_positive",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "What was ACME's ARR in Q1 2023?"
+      ],
+      "eval_query": "How much annual recurring revenue did ACME report for Q1 2023?",
+      "expected_answers": [
+        "$12.4M",
+        "12.4M"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "semantic",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "finance_semantic_mrr",
+      "title": "MRR semantic paraphrase",
+      "scenario": "semantic_positive",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "What was ACME's MRR in Q1 2023?"
+      ],
+      "eval_query": "Report the monthly recurring revenue figure for ACME in Q1 2023.",
+      "expected_answers": [
+        "$1.03M",
+        "1.03M"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "semantic",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "finance_semantic_ebitda",
+      "title": "EBITDA semantic paraphrase",
+      "scenario": "semantic_positive",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "What is the EBITDA?"
+      ],
+      "eval_query": "What was the EBITDA figure?",
+      "expected_answers": [
+        "$3.1M",
+        "3.1M"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "semantic",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "finance_knowledge_churn",
+      "title": "Knowledge reuse for churn after summary seed",
+      "scenario": "knowledge_positive",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "Summarize ACME's key Q1 2023 metrics, including ARR, EBITDA, gross margin, customer churn, and COGS."
+      ],
+      "eval_query": "What was customer churn in Q1 2023?",
+      "expected_answers": [
+        "4.2%"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "knowledge",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "finance_knowledge_margin",
+      "title": "Knowledge reuse for gross margin after summary seed",
+      "scenario": "knowledge_positive",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "Summarize ACME's key Q1 2023 metrics, including ARR, EBITDA, gross margin, customer churn, and COGS."
+      ],
+      "eval_query": "What gross margin did ACME report?",
+      "expected_answers": [
+        "71%"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "knowledge",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "finance_knowledge_cogs",
+      "title": "Knowledge reuse for COGS after summary seed",
+      "scenario": "knowledge_positive",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "Summarize ACME's key Q1 2023 metrics, including ARR, EBITDA, gross margin, customer churn, and COGS."
+      ],
+      "eval_query": "What was ACME's cost of goods sold?",
+      "expected_answers": [
+        "$2.8M",
+        "2.8M"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "knowledge",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "finance_negative_other_metric",
+      "title": "Different metric should not reuse ARR cache entry",
+      "scenario": "semantic_negative",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "What was ACME's ARR in Q1 2023?"
+      ],
+      "eval_query": "What was ACME's EBITDA in Q1 2023?",
+      "expected_answers": [
+        "$3.1M",
+        "3.1M"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "miss",
+      "expected_from_cache": false
+    },
+    {
+      "case_id": "finance_negative_omitted_fact",
+      "title": "Omitted summary fact should not knowledge-hit",
+      "scenario": "knowledge_negative",
+      "corpus_id": "finance_q1",
+      "seed_queries": [
+        "Summarize ACME's key Q1 2023 metrics, including ARR, EBITDA, gross margin, customer churn, and COGS."
+      ],
+      "eval_query": "What was ACME's net revenue retention?",
+      "expected_answers": [
+        "118%"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "miss",
+      "expected_from_cache": false
+    },
+    {
+      "case_id": "doctor_exact_director",
+      "title": "Exact reuse for Doctor Strange director",
+      "scenario": "exact_positive",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "Who directed Doctor Strange?"
+      ],
+      "eval_query": "Who directed Doctor Strange?",
+      "expected_answers": [
+        "Scott Derrickson"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "exact",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "doctor_semantic_director",
+      "title": "Director paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "Who directed Doctor Strange?"
+      ],
+      "eval_query": "Who was the director of Doctor Strange?",
+      "expected_answers": [
+        "Scott Derrickson"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "semantic",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "doctor_semantic_release",
+      "title": "Release-year paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "When was Doctor Strange released?"
+      ],
+      "eval_query": "What year did Doctor Strange come out?",
+      "expected_answers": [
+        "2016"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "semantic",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "doctor_knowledge_director",
+      "title": "Knowledge reuse for director after broad summary",
+      "scenario": "knowledge_positive",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "Summarize the key production facts about Doctor Strange, including the director, writers, lead actor, and release year."
+      ],
+      "eval_query": "Who directed Doctor Strange?",
+      "expected_answers": [
+        "Scott Derrickson"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "knowledge",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "doctor_knowledge_writer",
+      "title": "Knowledge reuse for writers after broad summary",
+      "scenario": "knowledge_positive",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "Summarize the key production facts about Doctor Strange, including the director, writers, lead actor, and release year."
+      ],
+      "eval_query": "Who wrote Doctor Strange?",
+      "expected_answers": [
+        "Jon Spaihts",
+        "C. Robert Cargill"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "knowledge",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "doctor_knowledge_star",
+      "title": "Knowledge reuse for lead actor after broad summary",
+      "scenario": "knowledge_positive",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "Summarize the key production facts about Doctor Strange, including the director, writers, lead actor, and release year."
+      ],
+      "eval_query": "Who starred as Stephen Strange?",
+      "expected_answers": [
+        "Benedict Cumberbatch"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "knowledge",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "doctor_negative_writer_vs_director",
+      "title": "Writer query should not reuse director answer",
+      "scenario": "semantic_negative",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "Who directed Doctor Strange?"
+      ],
+      "eval_query": "Who wrote Doctor Strange?",
+      "expected_answers": [
+        "Jon Spaihts",
+        "C. Robert Cargill"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "miss",
+      "expected_from_cache": false
+    },
+    {
+      "case_id": "doctor_negative_composer_omitted",
+      "title": "Composer query should miss when summary omitted it",
+      "scenario": "knowledge_negative",
+      "corpus_id": "doctor_strange_facts",
+      "seed_queries": [
+        "Summarize the key production facts about Doctor Strange, including the director, writers, lead actor, and release year."
+      ],
+      "eval_query": "Who composed the score for Doctor Strange?",
+      "expected_answers": [
+        "Michael Giacchino"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "miss",
+      "expected_from_cache": false
+    },
+    {
+      "case_id": "ops_exact_include_timeout",
+      "title": "Exact reuse for include-timeout query",
+      "scenario": "exact_positive",
+      "corpus_id": "ops_incident_policy",
+      "seed_queries": [
+        "Which timeout errors should be included in the incident review?"
+      ],
+      "eval_query": "Which timeout errors should be included in the incident review?",
+      "expected_answers": [
+        "production timeout errors"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "exact",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "ops_semantic_include_timeout",
+      "title": "Include-timeout paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "corpus_id": "ops_incident_policy",
+      "seed_queries": [
+        "Which timeout errors should be included in the incident review?"
+      ],
+      "eval_query": "List the timeout errors we should keep in the incident review packet.",
+      "expected_answers": [
+        "production timeout errors"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "semantic",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "ops_semantic_auth_include",
+      "title": "Authentication-failure paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "corpus_id": "ops_incident_policy",
+      "seed_queries": [
+        "Which authentication failures should be included?"
+      ],
+      "eval_query": "List the production authentication failures we should keep.",
+      "expected_answers": [
+        "authentication failures from production"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "semantic",
+      "expected_from_cache": true
+    },
+    {
+      "case_id": "ops_negative_timeout_inversion",
+      "title": "Exclude-timeout inversion should miss",
+      "scenario": "semantic_negative",
+      "corpus_id": "ops_incident_policy",
+      "seed_queries": [
+        "Which timeout errors should be included in the incident review?"
+      ],
+      "eval_query": "Which timeout warnings should be excluded from the incident review?",
+      "expected_answers": [
+        "sandbox timeout warnings"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "miss",
+      "expected_from_cache": false
+    },
+    {
+      "case_id": "ops_negative_auth_inversion",
+      "title": "Exclude-auth inversion should miss",
+      "scenario": "semantic_negative",
+      "corpus_id": "ops_incident_policy",
+      "seed_queries": [
+        "Which authentication failures should be included?"
+      ],
+      "eval_query": "Which authentication failures should be excluded?",
+      "expected_answers": [
+        "health-check noise",
+        "routine success logs"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "miss",
+      "expected_from_cache": false
+    },
+    {
+      "case_id": "ops_negative_timeout_vs_auth",
+      "title": "Different log category should miss",
+      "scenario": "semantic_negative",
+      "corpus_id": "ops_incident_policy",
+      "seed_queries": [
+        "Which timeout errors should be included in the incident review?"
+      ],
+      "eval_query": "Which authentication failures should be included?",
+      "expected_answers": [
+        "authentication failures from production"
+      ],
+      "expected_answer_mode": "contains",
+      "expected_cache_type": "miss",
+      "expected_from_cache": false
+    }
+  ]
+}

@@ -60,6 +60,7 @@ centralized pricing map in `semantic_cache_system.py`:
 - `MODEL_FAMILY_PRICING_USD_PER_1K["haiku"]`: input `$0.00025` / 1K, output `$0.00125` / 1K
 
 These are explicit Anthropic-style reference rates (not live billing API values).
+Run-level totals in each benchmark `manifest.json` use the same estimated token pricing.
 
 ### Official Run Command
 
@@ -178,9 +179,11 @@ Each run writes a timestamped directory under `benchmark_artifacts/official_rule
 
 - `predictions.jsonl`
 - `bridge_rows.jsonl`
+- `bridge_rows.csv`
 - `manifest.json`
 
-The manifest includes implemented task progress against the 13-task baseline.
+The manifest includes implemented task progress against the 13-task baseline,
+plus run timing and aggregate estimated token/cost totals.
 
 ### Implemented Scope vs 13-Task Baseline
 
@@ -238,8 +241,54 @@ NoLiMa artifacts include:
 
 - `predictions.jsonl`
 - `bridge_rows.jsonl`
+- `bridge_rows.csv`
 - `manifest.json`
 - `official_nolima_eval_report.json` (after scoring)
+
+## Cache-Mode Benchmarking
+
+Use `cache_bench/run_benchmark.py` when you want to evaluate cache-route
+behavior directly instead of official benchmark accuracy.
+
+This suite measures whether a follow-up query behaves as an:
+
+- `exact` hit
+- `semantic` hit
+- `knowledge` hit
+- `miss`
+
+Run the labeled synthetic suite:
+
+```bash
+python cache_bench/run_benchmark.py \
+  --suite-path benchmark_fixtures/cache_bench/cache_mode_suite_v1.json \
+  --mode cache \
+  --output-dir benchmark_artifacts
+```
+
+Supported cache-mode experiments:
+
+- No cache:
+  - `python cache_bench/run_benchmark.py --suite-path benchmark_fixtures/cache_bench/cache_mode_suite_v1.json --mode baseline --output-dir benchmark_artifacts`
+- Cold start:
+  - `python cache_bench/run_benchmark.py --suite-path benchmark_fixtures/cache_bench/cache_mode_suite_v1.json --mode cache --cache-reset --output-dir benchmark_artifacts`
+- Warm start:
+  - `python cache_bench/run_benchmark.py --suite-path benchmark_fixtures/cache_bench/cache_mode_suite_v1.json --mode cache --output-dir benchmark_artifacts`
+
+Artifacts are written under `benchmark_artifacts/cache_mode_suite/<run_id>/`:
+
+- `predictions.jsonl`
+- `bridge_rows.jsonl`
+- `bridge_rows.csv`
+- `manifest.json`
+- `official_cache_mode_eval_report.json`
+
+Persistent cache state for cache-enabled runs is written under:
+
+- `benchmark_artifacts/cache_mode_suite/cache_state/<namespace>/`
+
+See [cache_mode_benchmark.md](/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/cache_bench/docs/cache_mode_benchmark.md) for fixture
+shape, metrics, and usage notes.
 
 ### Epstein Court Document Search (Domain Client Example)
 

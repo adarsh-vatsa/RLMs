@@ -8,6 +8,7 @@ official evaluator command.
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -336,19 +337,39 @@ def _resolve_cache_namespace(
 
 
 def _snapshot_metrics(metrics: scs.ExecutionMetrics) -> dict:
-    total_calls = 0
-    total_input_tokens = 0
-    total_output_tokens = 0
-    total_cost = 0.0
-    for data in metrics.stats.values():
-        total_calls += data["calls"]
-        total_input_tokens += data["input_tokens"]
-        total_output_tokens += data["output_tokens"]
-        total_cost += data["cost"]
+    return metrics.get_totals()
+
+
+def _csv_cell(value):
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    if value is None:
+        return ""
+    return value
+
+
+def _write_csv_rows(path: Path, rows: List[dict]) -> None:
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    fieldnames = list(rows[0].keys())
+    with path.open("w", encoding="utf-8", newline="") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: _csv_cell(row.get(key)) for key in fieldnames})
+
+
+def _aggregate_bridge_row_totals(rows: List[dict]) -> Dict[str, float]:
+    total_calls = sum(int(row.get("delta_calls", 0) or 0) for row in rows)
+    total_input_tokens = sum(int(row.get("delta_input_tokens", 0) or 0) for row in rows)
+    total_output_tokens = sum(int(row.get("delta_output_tokens", 0) or 0) for row in rows)
+    total_cost = sum(float(row.get("delta_cost_usd", 0.0) or 0.0) for row in rows)
     return {
         "calls": total_calls,
         "input_tokens": total_input_tokens,
         "output_tokens": total_output_tokens,
+        "total_tokens": total_input_tokens + total_output_tokens,
         "cost": total_cost,
     }
 
@@ -384,7 +405,8 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
     if not selected_lengths:
         raise ValueError("--official-lengths must include at least one length")
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    started_at = datetime.now(timezone.utc)
+    run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
     out_dir = Path(args.output_dir) / "official_ruler_v2" / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -428,6 +450,7 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
 
     predictions_path = out_dir / "predictions.jsonl"
     bridge_rows_path = out_dir / "bridge_rows.jsonl"
+    bridge_rows_csv_path = out_dir / "bridge_rows.csv"
     manifest_path = out_dir / "manifest.json"
 
     print(f"\n[OFFICIAL] Run id: {run_id}")
@@ -566,6 +589,7 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
     with open(bridge_rows_path, "w", encoding="utf-8") as f:
         for row in bridge_rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    _write_csv_rows(bridge_rows_csv_path, bridge_rows)
 
     evaluator_command = ""
     if args.official_eval_command:
@@ -579,11 +603,17 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
         evaluator_command = _format_command(args.official_eval_command, placeholders)
         _run_command(evaluator_command, cwd=Path.cwd())
 
+    totals = _aggregate_bridge_row_totals(bridge_rows)
+    finished_at = datetime.now(timezone.utc)
+    elapsed_seconds = round((finished_at - started_at).total_seconds(), 3)
     implemented_tasks = sorted({row["task"] for row in bridge_rows})
     baseline_total = 13
     manifest = {
         "run_id": run_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": finished_at.isoformat(),
+        "started_at": started_at.isoformat(),
+        "finished_at": finished_at.isoformat(),
+        "elapsed_seconds": elapsed_seconds,
         "official_target": "ruler_v2",
         "tasks_requested": selected_tasks,
         "lengths_requested": selected_lengths,
@@ -597,7 +627,13 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
         "artifacts": {
             "predictions": str(predictions_path),
             "bridge_rows": str(bridge_rows_path),
+            "bridge_rows_csv": str(bridge_rows_csv_path),
         },
+        "total_api_calls": totals["calls"],
+        "total_input_tokens": totals["input_tokens"],
+        "total_output_tokens": totals["output_tokens"],
+        "total_tokens": totals["total_tokens"],
+        "total_estimated_cost_usd": round(totals["cost"], 8),
         "baseline13_progress": {
             "baseline_total_tasks": baseline_total,
             "implemented_task_count": len(implemented_tasks),
@@ -641,6 +677,7 @@ def run_official_benchmark(args: argparse.Namespace) -> None:
     print("\n[OFFICIAL] Completed.")
     print(f"[OFFICIAL] Predictions : {predictions_path}")
     print(f"[OFFICIAL] Bridge rows : {bridge_rows_path}")
+    print(f"[OFFICIAL] Bridge CSV  : {bridge_rows_csv_path}")
     print(f"[OFFICIAL] Manifest    : {manifest_path}")
     if cache_state_enabled:
         print(

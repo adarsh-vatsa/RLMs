@@ -145,7 +145,7 @@ Answer:
     --tokenizer_type openai \
     --tokenizer_path cl100k_base \
     --tasks mk_niah_basic mv_niah_basic qa_basic \
-    --dataset_size 6
+    --dataset_size 17
 
   ns prepare_data ruler2 --skip_data_dir_check \
     --setup data_32768 \
@@ -153,7 +153,7 @@ Answer:
     --tokenizer_type openai \
     --tokenizer_path cl100k_base \
     --tasks mk_niah_basic mv_niah_basic qa_basic \
-    --dataset_size 6
+    --dataset_size 17
 
   # Option B: direct prepare module (reliable fallback used in this repo)
   PATH="/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/.venv/bin:$PATH" .venv/bin/python -m nemo_skills.dataset.ruler2.prepare \
@@ -218,6 +218,14 @@ Answer:
     --official-cache-reset \
     --output-dir benchmark_artifacts
 
+  Baseline execution (no cache usage):
+  python ruler_v2/run_benchmark.py \
+    --official-prepared-data benchmark_data/ruler2 \
+    --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+    --official-lengths 8192,32768 \
+    --mode baseline \
+    --output-dir benchmark_artifacts
+
   Optional custom cache-state root:
   python ruler_v2/run_benchmark.py \
     --official-prepared-data benchmark_data/ruler2 \
@@ -234,7 +242,7 @@ Answer:
 
   Real example used in this repository environment (IMPORTANT: Don't forget to update folder name):
   ./.venv/bin/python ruler_v2/score_ruler2_predictions.py \
-    --run-dir benchmark_artifacts/official_ruler_v2/20260422T001840Z
+    --run-dir benchmark_artifacts/official_ruler_v2/20260427T151403Z
 
 Note: in this environment, the `ns` CLI is the working NeMo-Skills entrypoint. The older
 `python -m nemo_skills.evaluation.evaluate` / `python -m nemo_skills.inference.generate_data`
