@@ -57,7 +57,7 @@ Benchmark `delta_cost_usd` values are estimated from token usage using the
 centralized pricing map in `semantic_cache_system.py`:
 
 - `MODEL_FAMILY_PRICING_USD_PER_1K["sonnet"]`: input `$0.003` / 1K, output `$0.015` / 1K
-- `MODEL_FAMILY_PRICING_USD_PER_1K["haiku"]`: input `$0.00025` / 1K, output `$0.00125` / 1K
+- `MODEL_FAMILY_PRICING_USD_PER_1K["haiku"]`: input `$0.001` / 1K, output `$0.005` / 1K
 
 These are explicit Anthropic-style reference rates (not live billing API values).
 Run-level totals in each benchmark `manifest.json` use the same estimated token pricing.
@@ -70,6 +70,21 @@ python ruler_v2/run_benchmark.py \
   --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
   --official-lengths 8192,32768 \
   --mode cache \
+  --output-dir benchmark_artifacts
+```
+
+### RLM Baseline Command
+
+Use `ruler_v2/run_rlm_benchmark.py` for the uncached RLM baseline. It writes the
+same core artifacts under `benchmark_artifacts/official_ruler_v2_rlm/<run_id>/`
+and intentionally does not load cache, FAISS, or reranker components.
+
+```bash
+python ruler_v2/run_rlm_benchmark.py \
+  --official-prepared-data benchmark_data/ruler2 \
+  --official-tasks mk_niah_basic,mv_niah_basic,qa_basic \
+  --official-lengths 8192,32768 \
+  --official-max-samples-per-task 1 \
   --output-dir benchmark_artifacts
 ```
 
