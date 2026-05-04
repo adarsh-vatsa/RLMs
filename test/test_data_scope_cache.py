@@ -63,6 +63,16 @@ class FakeSearchIndex:
         self.loaded = True
 
 
+class FakeReranker:
+    def __init__(self, results):
+        self.results = results
+        self.calls = []
+
+    def rerank(self, query, documents, top_k=5):
+        self.calls.append({"query": query, "documents": documents, "top_k": top_k})
+        return self.results[:top_k]
+
+
 def make_controller():
     return scs.SemanticCacheController(
         metrics=scs.ExecutionMetrics(),
@@ -167,6 +177,53 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 result = legacy.search(query)
                 self.assertFalse(result["from_cache"])
                 self.assertEqual(result["answer"], "No relevant documents found.")
+
+    def test_retrieval_falls_back_to_faiss_when_reranker_returns_no_results(self):
+        controller = make_controller()
+        first_meta = {"filename": "contract.txt", "chunk_index": 0}
+        second_meta = {"filename": "contract.txt", "chunk_index": 1}
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, first_meta), (0.86, second_meta)]
+        )
+        controller._doc_chunks = [
+            "The contract is governed by New York law.",
+            "The agreement expires on December 31, 2028.",
+        ]
+        controller.reranker = FakeReranker([])
+
+        results = controller.retrieve("What law governs the contract?", top_k=20, rerank_top=5)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["text"], "The contract is governed by New York law.")
+        self.assertTrue(controller._last_retrieval_info["reranker_enabled"])
+        self.assertEqual(controller._last_retrieval_info["faiss_candidate_count"], 2)
+        self.assertEqual(controller._last_retrieval_info["reranker_returned_count"], 0)
+        self.assertTrue(controller._last_retrieval_info["reranker_fallback_used"])
+
+    def test_retrieval_prefers_reranker_results_when_available(self):
+        controller = make_controller()
+        first_meta = {"filename": "contract.txt", "chunk_index": 0}
+        second_meta = {"filename": "contract.txt", "chunk_index": 1}
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, first_meta), (0.86, second_meta)]
+        )
+        controller._doc_chunks = [
+            "The contract is governed by New York law.",
+            "The agreement expires on December 31, 2028.",
+        ]
+        controller.reranker = FakeReranker(
+            [(1, 0.77, "The agreement expires on December 31, 2028.")]
+        )
+
+        results = controller.retrieve("When does the agreement expire?", top_k=20, rerank_top=5)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["text"], "The agreement expires on December 31, 2028.")
+        self.assertEqual(results[0]["score"], 0.77)
+        self.assertTrue(controller._last_retrieval_info["reranker_enabled"])
+        self.assertEqual(controller._last_retrieval_info["faiss_candidate_count"], 2)
+        self.assertEqual(controller._last_retrieval_info["reranker_returned_count"], 1)
+        self.assertFalse(controller._last_retrieval_info["reranker_fallback_used"])
 
 
 if __name__ == "__main__":

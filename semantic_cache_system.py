@@ -69,6 +69,7 @@ RERANKER_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 EMBEDDING_DIM = 1024
 EXECUTOR_MODEL = "claude-sonnet-4-20250514"
 EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
+RERANKER_RELEVANCE_THRESHOLD = 0.5
 
 # Anthropic pricing config (USD per 1K tokens, early 2026 estimates).
 # Centralized here so all cost math uses a single visible source of truth.
@@ -264,7 +265,7 @@ class Reranker:
         return inputs
 
     def rerank(self, query: str, documents: List[str], top_k: int = 5,
-               relevance_threshold: float = 0.5) -> List[Tuple[int, float, str]]:
+               relevance_threshold: float = RERANKER_RELEVANCE_THRESHOLD) -> List[Tuple[int, float, str]]:
         """Re-score and filter by relevance threshold. Returns [(idx, score, text)]."""
         pairs = [self._format_pair(query, doc) for doc in documents]
         inputs = self._process_inputs(pairs)
@@ -1318,6 +1319,13 @@ class SemanticCacheController:
         Retrieve relevant document chunks: FAISS dragnet → Reranker (with relevance gate).
         Returns list of {text, score, metadata}.
         """
+        self._last_retrieval_info = {
+            "faiss_candidate_count": 0,
+            "candidate_text_count": 0,
+            "reranker_enabled": bool(self.reranker),
+            "reranker_returned_count": 0,
+            "reranker_fallback_used": False,
+        }
         if self.doc_index is None or self.doc_index.total == 0:
             print("  [RETRIEVE] No documents indexed. Run ingest() first.")
             return []
@@ -1327,6 +1335,7 @@ class SemanticCacheController:
         faiss_results = self.doc_index.search(query_emb, top_k=top_k)
         dt_faiss = (time.time() - t0) * 1000
         print(f"  [DRAGNET] Retrieved {len(faiss_results)} candidates in {dt_faiss:.0f}ms")
+        self._last_retrieval_info["faiss_candidate_count"] = len(faiss_results)
 
         if not faiss_results:
             return []
@@ -1334,17 +1343,26 @@ class SemanticCacheController:
         # Get text for reranking
         candidate_texts = []
         candidate_meta = []
+        candidate_scores = []
         for i, (score, meta) in enumerate(faiss_results):
             # Try metadata inline text first (old format), then _doc_chunks
             text = meta.get("text")
             if not text and hasattr(self, '_doc_chunks'):
                 # The FAISS result index maps to _doc_chunks position
-                faiss_idx = self.doc_index.metadata.index(meta) if meta in self.doc_index.metadata else i
+                index_metadata = getattr(self.doc_index, "metadata", [])
+                faiss_idx = index_metadata.index(meta) if meta in index_metadata else i
                 if faiss_idx < len(self._doc_chunks):
                     text = self._doc_chunks[faiss_idx]
             if text:
                 candidate_texts.append(text)
                 candidate_meta.append(meta)
+                candidate_scores.append(score)
+
+        raw_results = [
+            {"text": text, "score": float(score), "metadata": meta}
+            for text, score, meta in zip(candidate_texts, candidate_scores, candidate_meta)
+        ]
+        self._last_retrieval_info["candidate_text_count"] = len(raw_results)
 
         # Rerank with relevance gate
         if self.reranker and candidate_texts:
@@ -1352,6 +1370,7 @@ class SemanticCacheController:
             reranked = self.reranker.rerank(query, candidate_texts, top_k=rerank_top)
             dt_rerank = (time.time() - t1) * 1000
             print(f"  [RERANK] Narrowed to {len(reranked)} relevant results in {dt_rerank:.0f}ms")
+            self._last_retrieval_info["reranker_returned_count"] = len(reranked)
 
             results = []
             for orig_idx, score, text in reranked:
@@ -1360,11 +1379,18 @@ class SemanticCacheController:
                     "score": float(score),
                     "metadata": candidate_meta[orig_idx] if orig_idx < len(candidate_meta) else {},
                 })
-            return results
+            if results:
+                return results
+
+            # Fail-open for retrieval: preserve reranker as the preferred path,
+            # but do not let a strict relevance gate suppress all FAISS evidence.
+            self._last_retrieval_info["reranker_fallback_used"] = True
+            fallback = raw_results[:rerank_top]
+            print(f"  [RERANK] No chunks passed gate; falling back to {len(fallback)} FAISS results")
+            return fallback
         else:
             # No reranker: return raw FAISS results
-            return [{"text": t, "score": float(s), "metadata": m}
-                    for (s, m), t in zip(faiss_results, candidate_texts)]
+            return raw_results
 
     def search(self, query: str, top_k: int = 20, rerank_top: int = 5,
                synthesize: bool = True, cache_read: bool = True) -> dict:
@@ -1537,11 +1563,21 @@ class SemanticCacheController:
         self.metrics.cache_misses += 1
         results = self.retrieve(query, top_k=top_k, rerank_top=rerank_top)
         if not results:
-            return {"query": query, "answer": "No relevant documents found.", "from_cache": False}
+            return {
+                "query": query,
+                "answer": "No relevant documents found.",
+                "from_cache": False,
+                "retrieval": getattr(self, "_last_retrieval_info", {}),
+            }
 
         # ── Stage 2: Synthesize answer ──
         if not synthesize:
-            return {"query": query, "results": results, "from_cache": False}
+            return {
+                "query": query,
+                "results": results,
+                "from_cache": False,
+                "retrieval": getattr(self, "_last_retrieval_info", {}),
+            }
 
         source_text = "\n\n---\n\n".join(r["text"] for r in results[:3])
         t_synth = time.time()
@@ -1570,6 +1606,7 @@ class SemanticCacheController:
             "query": query, "answer": answer,
             "from_cache": False, "results": results,
             "consensus": consensus,
+            "retrieval": getattr(self, "_last_retrieval_info", {}),
         }
 
     # ------------------------------------------------------------------

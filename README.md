@@ -290,6 +290,50 @@ Persistent cache state for cache-enabled runs is written under:
 See [cache_mode_benchmark.md](/Users/engindenizdogu/Desktop/local_repos/adarsh-rlms/cache_bench/docs/cache_mode_benchmark.md) for fixture
 shape, metrics, and usage notes.
 
+## LegalBench/CUAD Cache-Route Benchmarking
+
+Use `legal_bench/` for the real legal-dataset cache-efficiency track. This is
+separate from the simple synthetic suite above.
+
+Build a route-labeled CUAD-QA suite from the official CUAD source zip:
+
+```bash
+python legal_bench/build_suite.py \
+  --from-cuad-source \
+  --output-path benchmark_data/legal_bench/legal_cache_suite_cuad_v1.json \
+  --max-records 25
+```
+
+Run a cold route-accuracy pass with per-case cache isolation:
+
+```bash
+python legal_bench/run_benchmark.py \
+  --suite-path benchmark_data/legal_bench/legal_cache_suite_cuad_v1.json \
+  --mode cache \
+  --cache-reset \
+  --output-dir benchmark_artifacts
+```
+
+Artifacts are written under `benchmark_artifacts/legal_cache_suite/<run_id>/`:
+
+- `predictions.jsonl`
+- `bridge_rows.jsonl`
+- `bridge_rows.csv`
+- `manifest.json`
+- `official_legal_cache_eval_report.json`
+
+Persistent legal cache state is written under:
+
+- `benchmark_artifacts/legal_cache_suite/cache_state/<namespace>/`
+
+The legal runner uses the Qwen reranker by default. If the reranker returns zero
+chunks after FAISS found candidates, retrieval falls back to bounded FAISS
+candidates and records the fallback in bridge rows and the manifest.
+
+The legal runner isolates cache state per case by default so unrelated contract
+questions do not contaminate route-label evaluation. See
+`legal_bench/docs/legal_cache_benchmark.md` for the full workflow.
+
 ### Epstein Court Document Search (Domain Client Example)
 
 ```bash

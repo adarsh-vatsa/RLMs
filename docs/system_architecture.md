@@ -319,10 +319,13 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 3. Extract text from FAISS metadata for each candidate
 4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.5)
 5. Return top-5 reranked results with scores and metadata
+6. If FAISS produced candidates but the reranker returns zero results, fall back to the top FAISS candidates and record retrieval telemetry
 
 `ingest()` defaults to rebuilding the active document index for the provided directory. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
 
 > **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.5 threshold ensures completely irrelevant documents (e.g., about bail conditions when asking about charges) are filtered, even if FAISS gave them a high vector similarity score.
+
+> **Why fallback exists**: The reranker remains the preferred path, but a strict relevance gate can reject all long legal chunks even when FAISS found usable evidence. The fallback prevents that zero-result hard failure while keeping synthesis bounded to the selected top chunks.
 
 #### 2n. Full Search Pipeline (`search`)
 **Line 1130** · The main entry point for domain-specific clients.
