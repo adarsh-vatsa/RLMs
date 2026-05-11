@@ -1,0 +1,145 @@
+{
+  "run_id": "20260428T153235Z",
+  "created_at": "2026-04-28T15:32:57.930216+00:00",
+  "started_at": "2026-04-28T15:32:35.051479+00:00",
+  "finished_at": "2026-04-28T15:32:57.930216+00:00",
+  "elapsed_seconds": 22.879,
+  "benchmark_target": "cache_mode_suite",
+  "suite_name": "cache_mode_suite_v1",
+  "suite_path": "benchmark_fixtures/cache_bench/cache_mode_suite_v1.json",
+  "suite_sha256": "3c09187839196e662084b435e90ee1d66b8fc0ac1bd01ad977ed4ae2dcaa0d36",
+  "cases_selected": 23,
+  "mode": "cache",
+  "executor_model": "claude-sonnet-4-5",
+  "top_k": 20,
+  "rerank_top": 5,
+  "artifacts": {
+    "predictions": "benchmark_artifacts/cache_mode_suite/20260428T153235Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/cache_mode_suite/20260428T153235Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/cache_mode_suite/20260428T153235Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/cache_mode_suite/20260428T153235Z/official_cache_mode_eval_report.json"
+  },
+  "total_api_calls": 12,
+  "total_input_tokens": 3402,
+  "total_output_tokens": 380,
+  "total_tokens": 3782,
+  "total_estimated_cost_usd": 0.005834,
+  "setup_api_calls": 1,
+  "setup_input_tokens": 395,
+  "setup_output_tokens": 14,
+  "setup_total_tokens": 409,
+  "setup_estimated_cost_usd": 0.000465,
+  "evaluation_api_calls": 11,
+  "evaluation_input_tokens": 3007,
+  "evaluation_output_tokens": 366,
+  "evaluation_total_tokens": 3373,
+  "evaluation_estimated_cost_usd": 0.005369,
+  "answer_accuracy": 1.0,
+  "cache_type_match_rate": 0.434783,
+  "overall_pass_rate": 0.434783,
+  "expected_route_counts": {
+    "semantic": 7,
+    "exact": 3,
+    "miss": 7,
+    "knowledge": 6
+  },
+  "actual_route_counts": {
+    "semantic": 6,
+    "exact": 16,
+    "miss": 1,
+    "knowledge": 0
+  },
+  "by_scenario": {
+    "exact_positive": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "knowledge_negative": {
+      "cases": 2,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.5,
+      "overall_pass_rate": 0.5
+    },
+    "knowledge_positive": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "semantic_negative": {
+      "cases": 5,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "semantic_positive": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.857143,
+      "overall_pass_rate": 0.857143
+    }
+  },
+  "by_expected_cache_type": {
+    "exact": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "knowledge": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.142857,
+      "overall_pass_rate": 0.142857
+    },
+    "semantic": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.857143,
+      "overall_pass_rate": 0.857143
+    }
+  },
+  "by_actual_cache_type": {
+    "exact": {
+      "cases": 16,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.1875,
+      "overall_pass_rate": 0.1875
+    },
+    "miss": {
+      "cases": 1,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "semantic": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    }
+  },
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "cache_mode_suite_v1__affaba0b84573a13",
+    "cache_state_root": "benchmark_artifacts/cache_mode_suite/cache_state",
+    "cache_state_path": "benchmark_artifacts/cache_mode_suite/cache_state/cache_mode_suite_v1__affaba0b84573a13",
+    "cache_state_existed_before_reset": true,
+    "cache_state_existed_before_run": true,
+    "cache_reset_requested": false,
+    "cache_load_attempts": 23,
+    "cache_load_successes": 23,
+    "cache_entries_before_run": 18,
+    "cache_entries_after_run": 19,
+    "cache_hits": 22,
+    "cache_hit_rate": 0.956522
+  }
+}

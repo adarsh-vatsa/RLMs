@@ -1,0 +1,250 @@
+{
+  "run_dir": "benchmark_artifacts/cache_mode_suite/20260428T152024Z",
+  "suite_name": "cache_mode_suite_v1",
+  "suite_path": "benchmark_fixtures/cache_bench/cache_mode_suite_v1.json",
+  "scored_cases": 23,
+  "answer_accuracy": 1.0,
+  "cache_type_match_rate": 0.521739,
+  "overall_pass_rate": 0.521739,
+  "expected_route_counts": {
+    "exact": 3,
+    "knowledge": 6,
+    "miss": 7,
+    "semantic": 7
+  },
+  "actual_route_counts": {
+    "exact": 6,
+    "knowledge": 2,
+    "miss": 10,
+    "semantic": 5
+  },
+  "by_scenario": {
+    "exact_positive": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "knowledge_negative": {
+      "cases": 2,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.5,
+      "overall_pass_rate": 0.5
+    },
+    "knowledge_positive": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "semantic_negative": {
+      "cases": 5,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.6,
+      "overall_pass_rate": 0.6
+    },
+    "semantic_positive": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.714286,
+      "overall_pass_rate": 0.714286
+    }
+  },
+  "by_expected_cache_type": {
+    "exact": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "knowledge": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.571429,
+      "overall_pass_rate": 0.571429
+    },
+    "semantic": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.714286,
+      "overall_pass_rate": 0.714286
+    }
+  },
+  "by_actual_cache_type": {
+    "exact": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.5,
+      "overall_pass_rate": 0.5
+    },
+    "knowledge": {
+      "cases": 2,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 10,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.4,
+      "overall_pass_rate": 0.4
+    },
+    "semantic": {
+      "cases": 5,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    }
+  },
+  "failing_cases": [
+    {
+      "case_id": "finance_semantic_ebitda",
+      "title": "EBITDA semantic paraphrase",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, the EBITDA figure was **$3.1M**.\n\nThis is stated in the ACME Corp Q1 2023 operating report."
+    },
+    {
+      "case_id": "finance_knowledge_churn",
+      "title": "Knowledge reuse for churn after summary seed",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **customer churn in Q1 2023 was 4.2%**.\n\nThis figure is explicitly stated in the ACME Corp Q1 2023 operating report."
+    },
+    {
+      "case_id": "finance_knowledge_margin",
+      "title": "Knowledge reuse for gross margin after summary seed",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "According to the ACME Corp Q1 2023 operating report, ACME reported a **gross margin of 71%**."
+    },
+    {
+      "case_id": "finance_knowledge_cogs",
+      "title": "Knowledge reuse for COGS after summary seed",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **ACME's cost of goods sold (COGS) was $2.8M** in Q1 2023.\n\nThis figure is explicitly stated in the ACME Corp Q1 2023 operating report."
+    },
+    {
+      "case_id": "doctor_knowledge_director",
+      "title": "Knowledge reuse for director after broad summary",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "exact",
+      "expected_from_cache": true,
+      "actual_from_cache": true,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": true,
+      "prediction": "Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.\n\nThe document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill."
+    },
+    {
+      "case_id": "doctor_knowledge_writer",
+      "title": "Knowledge reuse for writers after broad summary",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **Doctor Strange** (2016 film) was written by:\n\n1. **Jon Spaihts**\n2. **Scott Derrickson**\n3. **C. Robert Cargill**\n\nAll three individuals are credited as writers for the film."
+    },
+    {
+      "case_id": "doctor_knowledge_star",
+      "title": "Knowledge reuse for lead actor after broad summary",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "According to the provided document, **Benedict Cumberbatch** starred as Stephen Strange in the 2016 Marvel film \"Doctor Strange.\""
+    },
+    {
+      "case_id": "doctor_negative_writer_vs_director",
+      "title": "Writer query should not reuse director answer",
+      "scenario": "semantic_negative",
+      "expected_cache_type": "miss",
+      "actual_cache_type": "exact",
+      "expected_from_cache": false,
+      "actual_from_cache": true,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **Doctor Strange** (2016 film) was written by:\n\n1. **Jon Spaihts**\n2. **Scott Derrickson**\n3. **C. Robert Cargill**\n\nAll three individuals are credited as writers for the film."
+    },
+    {
+      "case_id": "doctor_negative_composer_omitted",
+      "title": "Composer query should miss when summary omitted it",
+      "scenario": "knowledge_negative",
+      "expected_cache_type": "miss",
+      "actual_cache_type": "knowledge",
+      "expected_from_cache": false,
+      "actual_from_cache": true,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, here are the key production facts about Doctor Strange:\n\n**Director:** Scott Derrickson\n\n**Writers:** Jon Spaihts, Scott Derrickson, and C. Robert Cargill\n\n**Lead Actor:** Benedict Cumberbatch (who starred as Stephen Strange)\n\n**Release Year:** 2016 (specifically released in November 2016)\n\n**Additional Information:** The document also notes that Michael Giacchino composed the score, and it is a Marvel film."
+    },
+    {
+      "case_id": "ops_semantic_auth_include",
+      "title": "Authentication-failure paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "knowledge",
+      "expected_from_cache": true,
+      "actual_from_cache": true,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": true,
+      "prediction": "Based on the document provided, **authentication failures from production** should be included in the incident review policy for the payments API.\n\nSpecifically, the policy states: \"Include authentication failures from production.\"\n\nAuthentication failures from other environments (such as sandbox) are not mentioned as inclusions, so only production authentication failures should be included in the review packet."
+    },
+    {
+      "case_id": "ops_negative_timeout_vs_auth",
+      "title": "Different log category should miss",
+      "scenario": "semantic_negative",
+      "expected_cache_type": "miss",
+      "actual_cache_type": "exact",
+      "expected_from_cache": false,
+      "actual_from_cache": true,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the document provided, **authentication failures from production** should be included in the incident review policy for the payments API.\n\nSpecifically, the policy states: \"Include authentication failures from production.\"\n\nAuthentication failures from other environments (such as sandbox) are not mentioned as inclusions, so only production authentication failures should be included in the review packet."
+    }
+  ]
+}

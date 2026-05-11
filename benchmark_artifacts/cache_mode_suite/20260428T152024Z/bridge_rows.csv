@@ -1,0 +1,107 @@
+case_id,title,scenario,corpus_id,mode,case_index,seed_query_count,query,expected_answers,expected_answer_mode,expected_cache_type,actual_cache_type,expected_from_cache,actual_from_cache,answer_correct,cache_type_match,from_cache_match,overall_pass,prediction,latency_ms,setup_calls,setup_input_tokens,setup_output_tokens,setup_cost_usd,delta_calls,delta_input_tokens,delta_output_tokens,delta_cost_usd,knowledge_top_score,knowledge_margin,knowledge_verifier_called,knowledge_verifier_allow,knowledge_verifier_reason,knowledge_verifier_confidence,knowledge_verifier_trigger_reasons,knowledge_lexical_support
+finance_exact_arr,Exact reuse for ARR query,exact_positive,finance_q1,cache,1,1,What was ACME's ARR in Q1 2023?,"[""$12.4M"", ""12.4M""]",contains,exact,exact,True,True,True,True,True,True,"Based on the provided document, **ACME's ARR in Q1 2023 was $12.4M**.
+
+This is explicitly stated in the ACME Corp Q1 2023 operating report: ""Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.""",0.038,3,474,189,0.002583,0,0,0,0.0,,,,,,,,
+finance_semantic_arr,Paraphrase reuse for ARR query,semantic_positive,finance_q1,cache,2,1,How much annual recurring revenue did ACME report for Q1 2023?,"[""$12.4M"", ""12.4M""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, **ACME's ARR in Q1 2023 was $12.4M**.
+
+This is explicitly stated in the ACME Corp Q1 2023 operating report: ""Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.""",800.485,0,0,0,0.0,1,215,14,0.000285,,,,,,,,
+finance_semantic_mrr,MRR semantic paraphrase,semantic_positive,finance_q1,cache,3,1,Report the monthly recurring revenue figure for ACME in Q1 2023.,"[""$1.03M"", ""1.03M""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, ACME's MRR in Q1 2023 was **$1.03M** (Monthly Recurring Revenue).
+
+This is stated directly in the ACME Corp Q1 2023 operating report: ""Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.""",703.974,5,993,376,0.004109,1,246,19,0.000341,,,,,,,,
+finance_semantic_ebitda,EBITDA semantic paraphrase,semantic_positive,finance_q1,cache,4,1,What was the EBITDA figure?,"[""$3.1M"", ""3.1M""]",contains,semantic,miss,True,False,True,False,False,False,"Based on the provided document, the EBITDA figure was **$3.1M**.
+
+This is stated in the ACME Corp Q1 2023 operating report.",8483.926,2,534,138,0.001224,5,958,312,0.00327,,,,,,,,
+finance_knowledge_churn,Knowledge reuse for churn after summary seed,knowledge_positive,finance_q1,cache,5,1,What was customer churn in Q1 2023?,"[""4.2%""]",contains,knowledge,miss,True,False,True,False,False,False,"Based on the provided document, **customer churn in Q1 2023 was 4.2%**.
+
+This figure is explicitly stated in the ACME Corp Q1 2023 operating report.",8116.43,5,1186,550,0.005714,5,1122,381,0.003845,,,,,,,,
+finance_knowledge_margin,Knowledge reuse for gross margin after summary seed,knowledge_positive,finance_q1,cache,6,1,What gross margin did ACME report?,"[""71%""]",contains,knowledge,miss,True,False,True,False,False,False,"According to the ACME Corp Q1 2023 operating report, ACME reported a **gross margin of 71%**.",6619.948,0,0,0,0.0,5,1114,224,0.002886,,,,,,,,
+finance_knowledge_cogs,Knowledge reuse for COGS after summary seed,knowledge_positive,finance_q1,cache,7,1,What was ACME's cost of goods sold?,"[""$2.8M"", ""2.8M""]",contains,knowledge,miss,True,False,True,False,False,False,"Based on the provided document, **ACME's cost of goods sold (COGS) was $2.8M** in Q1 2023.
+
+This figure is explicitly stated in the ACME Corp Q1 2023 operating report.",7589.517,0,0,0,0.0,5,1167,349,0.003828,,,,,,,,
+finance_negative_other_metric,Different metric should not reuse ARR cache entry,semantic_negative,finance_q1,cache,8,1,What was ACME's EBITDA in Q1 2023?,"[""$3.1M"", ""3.1M""]",contains,miss,miss,False,False,True,True,True,True,"Based on the provided document, **ACME's EBITDA in Q1 2023 was $3.1M**.
+
+This figure is explicitly stated in the ACME Corp Q1 2023 operating report.",9060.739,0,0,0,0.0,5,1094,405,0.003997,,,,,,,,
+finance_negative_omitted_fact,Omitted summary fact should not knowledge-hit,knowledge_negative,finance_q1,cache,9,1,What was ACME's net revenue retention?,"[""118%""]",contains,miss,miss,False,False,True,True,True,True,"Based on the provided document, **ACME's net revenue retention was 118%**.
+
+This information is explicitly stated in the ACME Corp Q1 2023 operating report.",8047.767,0,0,0,0.0,5,1204,351,0.003723,,,,,,,,
+doctor_exact_director,Exact reuse for Doctor Strange director,exact_positive,doctor_strange_facts,cache,10,1,Who directed Doctor Strange?,"[""Scott Derrickson""]",contains,exact,exact,True,True,True,True,True,True,"Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.
+
+The document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill.",0.012,3,368,153,0.001939,0,0,0,0.0,,,,,,,,
+doctor_semantic_director,Director paraphrase should semantic-hit,semantic_positive,doctor_strange_facts,cache,11,1,Who was the director of Doctor Strange?,"[""Scott Derrickson""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.
+
+The document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill.",594.136,0,0,0,0.0,1,196,14,0.000266,,,,,,,,
+doctor_semantic_release,Release-year paraphrase should semantic-hit,semantic_positive,doctor_strange_facts,cache,12,1,What year did Doctor Strange come out?,"[""2016""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, **Doctor Strange was released in November 2016**.
+
+The document specifically states: ""The film was released in November 2016.""",689.532,5,790,267,0.002763,1,217,14,0.000287,,,,,,,,
+doctor_knowledge_director,Knowledge reuse for director after broad summary,knowledge_positive,doctor_strange_facts,cache,13,1,Who directed Doctor Strange?,"[""Scott Derrickson""]",contains,knowledge,exact,True,True,True,False,True,False,"Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.
+
+The document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill.",0.008,5,961,457,0.0047,0,0,0,0.0,,,,,,,,
+doctor_knowledge_writer,Knowledge reuse for writers after broad summary,knowledge_positive,doctor_strange_facts,cache,14,1,Who wrote Doctor Strange?,"[""Jon Spaihts"", ""C. Robert Cargill""]",contains,knowledge,miss,True,False,True,False,False,False,"Based on the provided document, **Doctor Strange** (2016 film) was written by:
+
+1. **Jon Spaihts**
+2. **Scott Derrickson**
+3. **C. Robert Cargill**
+
+All three individuals are credited as writers for the film.",9433.213,0,0,0,0.0,5,937,419,0.003978,,,,,,,,
+doctor_knowledge_star,Knowledge reuse for lead actor after broad summary,knowledge_positive,doctor_strange_facts,cache,15,1,Who starred as Stephen Strange?,"[""Benedict Cumberbatch""]",contains,knowledge,miss,True,False,True,False,False,False,"According to the provided document, **Benedict Cumberbatch** starred as Stephen Strange in the 2016 Marvel film ""Doctor Strange.""",6679.256,0,0,0,0.0,5,931,265,0.002854,,,,,,,,
+doctor_negative_writer_vs_director,Writer query should not reuse director answer,semantic_negative,doctor_strange_facts,cache,16,1,Who wrote Doctor Strange?,"[""Jon Spaihts"", ""C. Robert Cargill""]",contains,miss,exact,False,True,True,False,False,False,"Based on the provided document, **Doctor Strange** (2016 film) was written by:
+
+1. **Jon Spaihts**
+2. **Scott Derrickson**
+3. **C. Robert Cargill**
+
+All three individuals are credited as writers for the film.",0.007,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+doctor_negative_composer_omitted,Composer query should miss when summary omitted it,knowledge_negative,doctor_strange_facts,cache,17,1,Who composed the score for Doctor Strange?,"[""Michael Giacchino""]",contains,miss,knowledge,False,True,True,False,False,False,"Based on the provided document, here are the key production facts about Doctor Strange:
+
+**Director:** Scott Derrickson
+
+**Writers:** Jon Spaihts, Scott Derrickson, and C. Robert Cargill
+
+**Lead Actor:** Benedict Cumberbatch (who starred as Stephen Strange)
+
+**Release Year:** 2016 (specifically released in November 2016)
+
+**Additional Information:** The document also notes that Michael Giacchino composed the score, and it is a Marvel film.",2367.758,0,0,0,0.0,2,605,134,0.001275,0.9493858218193054,0.0018434524536132812,True,True,"The cached answer directly addresses the new query. The new query asks 'Who composed the score for Doctor Strange?' and the cached answer explicitly states 'Michael Giacchino composed the score.' This fact is also confirmed in the retrieved facts (fact 4). The cached answer contains the specific information needed to answer the new query, even though it was generated from a broader source query about general production facts.",0.95,"[""low_margin"", ""multi_fact_candidate""]",1.0
+ops_exact_include_timeout,Exact reuse for include-timeout query,exact_positive,ops_incident_policy,cache,18,1,Which timeout errors should be included in the incident review?,"[""production timeout errors""]",contains,exact,exact,True,True,True,True,True,True,"Based on the provided document, the following timeout errors should be included in the incident review:
+
+**Include:**
+- **Production timeout errors generated during the deployment window**
+
+**Exclude:**
+- **Sandbox timeout warnings** - these should NOT be included in the review packet
+
+The policy specifically distinguishes between production timeout errors (which should be included) and sandbox timeout warnings (which should be excluded).",0.015,3,354,302,0.002944,0,0,0,0.0,,,,,,,,
+ops_semantic_include_timeout,Include-timeout paraphrase should semantic-hit,semantic_positive,ops_incident_policy,cache,19,1,List the timeout errors we should keep in the incident review packet.,"[""production timeout errors""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, the following timeout errors should be included in the incident review:
+
+**Include:**
+- **Production timeout errors generated during the deployment window**
+
+**Exclude:**
+- **Sandbox timeout warnings** - these should NOT be included in the review packet
+
+The policy specifically distinguishes between production timeout errors (which should be included) and sandbox timeout warnings (which should be excluded).",600.971,0,0,0,0.0,1,207,14,0.000277,,,,,,,,
+ops_semantic_auth_include,Authentication-failure paraphrase should semantic-hit,semantic_positive,ops_incident_policy,cache,20,1,List the production authentication failures we should keep.,"[""authentication failures from production""]",contains,semantic,knowledge,True,True,True,False,True,False,"Based on the document provided, **authentication failures from production** should be included in the incident review policy for the payments API.
+
+Specifically, the policy states: ""Include authentication failures from production.""
+
+Authentication failures from other environments (such as sandbox) are not mentioned as inclusions, so only production authentication failures should be included in the review packet.",2356.059,5,798,438,0.00394,2,477,122,0.001087,0.9778660535812378,0.0147782564163208,True,True,The cached answer directly addresses the new query. Both ask about production authentication failures to keep/include. The retrieved facts confirm production authentication failures should be included (fact 1: Review packet includes production authentication failures; fact 2: Authentication failures scoped to production only; fact 4: Sandbox failures are excluded). The cached answer's conclusion matches the new query's requirement.,0.95,"[""low_margin"", ""multi_fact_candidate""]",0.6666666666666666
+ops_negative_timeout_inversion,Exclude-timeout inversion should miss,semantic_negative,ops_incident_policy,cache,21,1,Which timeout warnings should be excluded from the incident review?,"[""sandbox timeout warnings""]",contains,miss,miss,False,False,True,True,True,True,"Based on the provided document, **sandbox timeout warnings** should be excluded from the incident review.
+
+The policy specifically states: ""Exclude sandbox timeout warnings from the review packet.""
+
+Note that production timeout errors should still be included (specifically those ""generated during the deployment window""), but sandbox timeout warnings are explicitly excluded.",8599.875,0,0,0,0.0,5,845,408,0.003775,,,,,,,,
+ops_negative_auth_inversion,Exclude-auth inversion should miss,semantic_negative,ops_incident_policy,cache,22,1,Which authentication failures should be excluded?,"[""health-check noise"", ""routine success logs""]",contains,miss,miss,False,False,True,True,True,True,"Based on the provided document, **no authentication failures should be excluded** from the incident review.
+
+The policy specifically states: ""**Include authentication failures from production**"" - meaning all production authentication failures should be included in the review packet.
+
+The exclusions mentioned in the policy are:
+- Sandbox timeout warnings
+- Health-check noise
+- Routine success logs
+
+Authentication failures are explicitly listed as items to include, not exclude.",10680.229,0,0,0,0.0,5,858,549,0.004745,,,,,,,,
+ops_negative_timeout_vs_auth,Different log category should miss,semantic_negative,ops_incident_policy,cache,23,1,Which authentication failures should be included?,"[""authentication failures from production""]",contains,miss,exact,False,True,True,False,False,False,"Based on the document provided, **authentication failures from production** should be included in the incident review policy for the payments API.
+
+Specifically, the policy states: ""Include authentication failures from production.""
+
+Authentication failures from other environments (such as sandbox) are not mentioned as inclusions, so only production authentication failures should be included in the review packet.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,

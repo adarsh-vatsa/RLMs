@@ -1,0 +1,42 @@
+{
+  "run_id": "20260504T150419Z",
+  "created_at": "2026-05-04T15:16:32.490994+00:00",
+  "started_at": "2026-05-04T15:04:19.014469+00:00",
+  "finished_at": "2026-05-04T15:16:32.490994+00:00",
+  "elapsed_seconds": 733.477,
+  "official_target": "ruler_v2_rlm",
+  "baseline_type": "rlm_uncached",
+  "tasks_requested": [
+    "mk_niah_basic",
+    "mv_niah_basic",
+    "qa_basic"
+  ],
+  "lengths_requested": [
+    "8192",
+    "32768"
+  ],
+  "samples_selected": 3,
+  "official_prepared_data": "benchmark_data/ruler2",
+  "official_eval_command": "",
+  "rlm_backend": "anthropic",
+  "rlm_model": "claude-haiku-4-5-20251001",
+  "rlm_environment": "local",
+  "rlm_max_iterations": 30,
+  "rlm_max_depth": 1,
+  "rlm_log_trajectories": false,
+  "artifacts": {
+    "predictions": "benchmark_artifacts/official_ruler_v2_rlm/20260504T150419Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/official_ruler_v2_rlm/20260504T150419Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/official_ruler_v2_rlm/20260504T150419Z/bridge_rows.csv"
+  },
+  "total_api_calls": 41,
+  "total_input_tokens": 690385,
+  "total_output_tokens": 12021,
+  "total_tokens": 702406,
+  "total_estimated_cost_usd": 0.75049,
+  "official_score_status": "evaluator skipped (no --official-eval-command provided)",
+  "cache_reuse": {
+    "enabled": false,
+    "reason": "RLM baseline is intentionally uncached"
+  }
+}

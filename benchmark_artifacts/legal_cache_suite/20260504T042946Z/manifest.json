@@ -1,0 +1,147 @@
+{
+  "run_id": "20260504T042946Z",
+  "created_at": "2026-05-04T04:40:45.481062+00:00",
+  "started_at": "2026-05-04T04:29:46.017998+00:00",
+  "finished_at": "2026-05-04T04:40:45.481062+00:00",
+  "elapsed_seconds": 659.463,
+  "benchmark_target": "legal_cache_suite",
+  "suite_name": "legal_cache_suite_cuad_v1",
+  "suite_path": "benchmark_data/legal_bench/legal_cache_suite_cuad_v1.json",
+  "suite_sha256": "37221217524c1abcce30faa668af8bc55e2a72517d4428fe9314fb55c68ccdcf",
+  "cases_selected": 60,
+  "mode": "cache",
+  "executor_model": "claude-sonnet-4-5",
+  "top_k": 20,
+  "rerank_top": 5,
+  "disable_reranker": false,
+  "retrieval": {
+    "reranker_enabled": true,
+    "reranker_enabled_rows": 0,
+    "reranker_fallback_count": 0,
+    "reranker_fallback_rate": 0.0
+  },
+  "artifacts": {
+    "predictions": "benchmark_artifacts/legal_cache_suite/20260504T042946Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/legal_cache_suite/20260504T042946Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/legal_cache_suite/20260504T042946Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/legal_cache_suite/20260504T042946Z/official_legal_cache_eval_report.json"
+  },
+  "case_cache_isolation": {
+    "enabled": true,
+    "reason": "prevents unrelated legal cases from contaminating route labels",
+    "namespaces_used": 60
+  },
+  "total_api_calls": 30,
+  "total_input_tokens": 7588,
+  "total_output_tokens": 420,
+  "total_tokens": 8008,
+  "total_estimated_cost_usd": 0.009688,
+  "setup_api_calls": 0,
+  "setup_input_tokens": 0,
+  "setup_output_tokens": 0,
+  "setup_total_tokens": 0,
+  "setup_estimated_cost_usd": 0.0,
+  "evaluation_api_calls": 30,
+  "evaluation_input_tokens": 7588,
+  "evaluation_output_tokens": 420,
+  "evaluation_total_tokens": 8008,
+  "evaluation_estimated_cost_usd": 0.009688,
+  "answer_accuracy": 0.666667,
+  "cache_type_match_rate": 0.5,
+  "overall_pass_rate": 0.35,
+  "expected_miss_rate": 0.25,
+  "actual_miss_rate": 0.0,
+  "unexpected_miss_rate": 0.0,
+  "positive_case_miss_rate": 0.0,
+  "expected_route_counts": {
+    "knowledge": 15,
+    "exact": 15,
+    "miss": 15,
+    "semantic": 15
+  },
+  "actual_route_counts": {
+    "knowledge": 0,
+    "exact": 30,
+    "miss": 0,
+    "semantic": 30
+  },
+  "by_scenario": {
+    "legal_exact_positive": {
+      "cases": 15,
+      "answer_accuracy": 0.733333,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 0.733333
+    },
+    "legal_knowledge_positive": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "legal_semantic_negative": {
+      "cases": 15,
+      "answer_accuracy": 0.6,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "legal_semantic_positive": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 0.666667
+    }
+  },
+  "by_expected_cache_type": {
+    "exact": {
+      "cases": 15,
+      "answer_accuracy": 0.733333,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 0.733333
+    },
+    "knowledge": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 15,
+      "answer_accuracy": 0.6,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "semantic": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 0.666667
+    }
+  },
+  "by_actual_cache_type": {
+    "exact": {
+      "cases": 30,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.5,
+      "overall_pass_rate": 0.366667
+    },
+    "semantic": {
+      "cases": 30,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.5,
+      "overall_pass_rate": 0.333333
+    }
+  },
+  "cache_reuse": {
+    "enabled": true,
+    "base_cache_namespace": "legal_cache_suite_cuad_v1__868d9d593725c52b",
+    "cache_state_root": "benchmark_artifacts/legal_cache_suite/cache_state",
+    "cache_state_existed_before_reset": true,
+    "cache_reset_requested": false,
+    "cache_load_attempts": 60,
+    "cache_load_successes": 60,
+    "cache_entries_before_run": 75,
+    "cache_entries_after_run": 75,
+    "cache_hits": 60,
+    "cache_hit_rate": 1.0
+  }
+}

@@ -1,0 +1,151 @@
+{
+  "run_id": "20260428T152024Z",
+  "created_at": "2026-04-28T15:23:20.657672+00:00",
+  "started_at": "2026-04-28T15:20:24.965977+00:00",
+  "finished_at": "2026-04-28T15:23:20.657672+00:00",
+  "elapsed_seconds": 175.692,
+  "benchmark_target": "cache_mode_suite",
+  "suite_name": "cache_mode_suite_v1",
+  "suite_path": "benchmark_fixtures/cache_bench/cache_mode_suite_v1.json",
+  "suite_sha256": "3c09187839196e662084b435e90ee1d66b8fc0ac1bd01ad977ed4ae2dcaa0d36",
+  "cases_selected": 23,
+  "mode": "cache",
+  "executor_model": "claude-sonnet-4-5",
+  "top_k": 20,
+  "rerank_top": 5,
+  "artifacts": {
+    "predictions": "benchmark_artifacts/cache_mode_suite/20260428T152024Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/cache_mode_suite/20260428T152024Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/cache_mode_suite/20260428T152024Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/cache_mode_suite/20260428T152024Z/official_cache_mode_eval_report.json"
+  },
+  "total_api_calls": 95,
+  "total_input_tokens": 18851,
+  "total_output_tokens": 6864,
+  "total_tokens": 25715,
+  "total_estimated_cost_usd": 0.070635,
+  "setup_api_calls": 36,
+  "setup_input_tokens": 6458,
+  "setup_output_tokens": 2870,
+  "setup_total_tokens": 9328,
+  "setup_estimated_cost_usd": 0.029916,
+  "evaluation_api_calls": 59,
+  "evaluation_input_tokens": 12393,
+  "evaluation_output_tokens": 3994,
+  "evaluation_total_tokens": 16387,
+  "evaluation_estimated_cost_usd": 0.040719,
+  "answer_accuracy": 1.0,
+  "cache_type_match_rate": 0.521739,
+  "overall_pass_rate": 0.521739,
+  "expected_route_counts": {
+    "exact": 3,
+    "knowledge": 6,
+    "miss": 7,
+    "semantic": 7
+  },
+  "actual_route_counts": {
+    "exact": 6,
+    "knowledge": 2,
+    "miss": 10,
+    "semantic": 5
+  },
+  "by_scenario": {
+    "exact_positive": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "knowledge_negative": {
+      "cases": 2,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.5,
+      "overall_pass_rate": 0.5
+    },
+    "knowledge_positive": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "semantic_negative": {
+      "cases": 5,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.6,
+      "overall_pass_rate": 0.6
+    },
+    "semantic_positive": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.714286,
+      "overall_pass_rate": 0.714286
+    }
+  },
+  "by_expected_cache_type": {
+    "exact": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "knowledge": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.571429,
+      "overall_pass_rate": 0.571429
+    },
+    "semantic": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.714286,
+      "overall_pass_rate": 0.714286
+    }
+  },
+  "by_actual_cache_type": {
+    "exact": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.5,
+      "overall_pass_rate": 0.5
+    },
+    "knowledge": {
+      "cases": 2,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 10,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.4,
+      "overall_pass_rate": 0.4
+    },
+    "semantic": {
+      "cases": 5,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    }
+  },
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "cache_mode_suite_v1__affaba0b84573a13",
+    "cache_state_root": "benchmark_artifacts/cache_mode_suite/cache_state",
+    "cache_state_path": "benchmark_artifacts/cache_mode_suite/cache_state/cache_mode_suite_v1__affaba0b84573a13",
+    "cache_state_existed_before_reset": false,
+    "cache_state_existed_before_run": false,
+    "cache_reset_requested": true,
+    "cache_load_attempts": 23,
+    "cache_load_successes": 22,
+    "cache_entries_before_run": 0,
+    "cache_entries_after_run": 18,
+    "cache_hits": 13,
+    "cache_hit_rate": 0.565217
+  }
+}

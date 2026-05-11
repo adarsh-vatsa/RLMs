@@ -54,6 +54,7 @@ The legal runner uses the reranker by default. If FAISS finds candidates but the
 |-----------|----------------------------|----------|---------------|-----------|
 | ContractNLI | Mean contract length is a little over 2,250 tokens | Legal reasoning sanity check | Clean three-way labels and deterministic accuracy | Contracts are not very long on average |
 | (Modified) LongBench-v2 | 8K to 2M words, majority under 128K words | General long-context reasoning | Standard benchmark, multiple-choice scoring, broader than RULER | Cache route cases must be constructed around the dataset |
+| MemoryAgentBench | Incremental multi-turn histories; exact per-sample token length should be profiled from the parquet splits | Agent memory, knowledge reuse, and conflict-resolution behavior | Directly evaluates memory agents across retrieval, learning, long-range understanding, and conflict resolution | Mixed task formats and scoring may be less clean than LongBench-v2 multiple-choice accuracy |
 | OOLONG | Public Oolong-synth subsets include 1K, 2K, 4K, 8K, 16K, 32K, 64K, and 128K tokens | Aggregation-heavy long-context tasks | Tests behavior beyond simple retrieval | May require map-reduce or aggregation logic beyond top-k retrieval |
 | LongMemEval / LME-MC10 | LongMemEval-S is about 115K tokens per history; LongMemEval-M uses 500 sessions and about 1.5M tokens | Long-term memory and multi-session reuse | Naturally aligned with persistent cache and knowledge reuse | Free-form scoring can require judge-style evaluation |
 | CorpusQA | Up to 10M tokens in the paper framing; 1M-token variant is reported in model evaluations | Corpus-level reasoning over very high context inputs | Directly targets repository-scale analysis where evidence is dispersed | Dataset/code availability and evaluation harness need verification before implementation |
@@ -81,9 +82,21 @@ LongBench-v2 is the strongest candidate for the next primary benchmark if the go
 
 For this project, LongBench-v2 would support three comparable modes: semantic cache system, uncached RLM baseline, and direct document-to-LLM baseline.
 
-Cache behavior is not built into the raw dataset, so route cases should be constructed explicitly: exact hits by duplicating selected question/context pairs and inserting them back into the run stream at random positions; semantic hits by using conservative deterministic rewrites or offline LLM-generated paraphrases saved into the suite; misses by pairing the same context with different questions or using similar questions from different contexts.
+Cache behavior is not built into the raw dataset, so route cases should be constructed explicitly: **exact hits by duplicating selected question/context pairs** and inserting them back into the run stream at random positions; **semantic hits by using conservative deterministic rewrites or offline LLM-generated paraphrases** saved into the suite; misses by pairing the same context with different questions or using similar questions from different contexts.
 
 Knowledge hits may be possible if the dataset contains repeated `context` fields with multiple questions. Before making knowledge hits a required metric, inspect the local dataset for repeated or near-repeated contexts. If repeated contexts exist, seed queries can populate reusable facts and later questions over the same context can test whether the knowledge layer helps. If repeated contexts are sparse, LongBench-v2 should be treated mainly as an exact/semantic/miss cache benchmark plus direct reasoning accuracy benchmark.
+
+### MemoryAgentBench
+
+- Deterministic labels: MIXED; some QA/classification-style tasks can likely be scored directly, while summarization or long-range understanding tasks may need task-specific scoring or a judge model.
+- Input context length: incremental multi-turn histories; the Hugging Face dataset is small (`<1K` rows, currently 146 rows), but exact token lengths should be profiled from the released parquet splits before implementation.
+- Downside: strong conceptual fit for cache/memory, but less clean as the next primary benchmark because task formats are broader and scoring may not be uniformly deterministic.
+
+MemoryAgentBench is directly relevant to the memory side of this project. It evaluates memory agents through incremental multi-turn interactions rather than a single static long document. The benchmark focuses on four competencies: accurate retrieval, test-time learning, long-range understanding, and conflict resolution.
+
+This is a closer match to the semantic cache's knowledge and persistence mechanisms than many static long-context QA datasets. Prior turns can populate cache entries and extracted facts, while later turns can test whether the system retrieves, updates, or rejects stale/conflicting memory correctly.
+
+The reason not to choose it as the immediate next benchmark is scoring and comparability. LongBench-v2 gives cleaner multiple-choice accuracy for the cache system, RLM baseline, and direct LLM baseline. MemoryAgentBench is better as a follow-up once we are specifically evaluating persistent memory behavior, especially false reuse, stale facts, and conflict resolution across an interaction stream.
 
 ### OOLONG
 
@@ -139,6 +152,7 @@ It is a good candidate after the main reasoning benchmark is in place, especiall
 
 - ContractNLI summary: https://aclanthology.org/2021.findings-emnlp.164/
 - LongBench-v2: https://longbench2.github.io/
+- MemoryAgentBench: https://huggingface.co/datasets/ai-hyz/MemoryAgentBench
 - OOLONG paper: https://openreview.net/forum?id=lrDr6dmXOX
 - OOLONG public dataset: https://huggingface.co/datasets/oolongbench/oolong-synth
 - CorpusQA paper: https://arxiv.org/abs/2601.14952

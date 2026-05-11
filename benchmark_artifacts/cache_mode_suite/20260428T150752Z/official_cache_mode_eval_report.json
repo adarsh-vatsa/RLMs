@@ -1,0 +1,297 @@
+{
+  "run_dir": "benchmark_artifacts/cache_mode_suite/20260428T150752Z",
+  "suite_name": "cache_mode_suite_v1",
+  "suite_path": "benchmark_fixtures/cache_bench/cache_mode_suite_v1.json",
+  "scored_cases": 23,
+  "answer_accuracy": 1.0,
+  "cache_type_match_rate": 0.304348,
+  "overall_pass_rate": 0.304348,
+  "expected_route_counts": {
+    "semantic": 7,
+    "exact": 3,
+    "knowledge": 6,
+    "miss": 7
+  },
+  "actual_route_counts": {
+    "semantic": 0,
+    "exact": 0,
+    "knowledge": 0,
+    "miss": 23
+  },
+  "by_scenario": {
+    "exact_positive": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "knowledge_negative": {
+      "cases": 2,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "knowledge_positive": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "semantic_negative": {
+      "cases": 5,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "semantic_positive": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    }
+  },
+  "by_expected_cache_type": {
+    "exact": {
+      "cases": 3,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "knowledge": {
+      "cases": 6,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 1.0
+    },
+    "semantic": {
+      "cases": 7,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    }
+  },
+  "by_actual_cache_type": {
+    "miss": {
+      "cases": 23,
+      "answer_accuracy": 1.0,
+      "route_match_rate": 0.304348,
+      "overall_pass_rate": 0.304348
+    }
+  },
+  "failing_cases": [
+    {
+      "case_id": "finance_exact_arr",
+      "title": "Exact reuse for ARR query",
+      "scenario": "exact_positive",
+      "expected_cache_type": "exact",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **ACME's ARR in Q1 2023 was $12.4M**.\n\nThis is explicitly stated in the ACME Corp Q1 2023 operating report: \"Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.\""
+    },
+    {
+      "case_id": "finance_semantic_arr",
+      "title": "Paraphrase reuse for ARR query",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, ACME Corp reported **annual recurring revenue (ARR) of $12.4M** for Q1 2023.\n\nThis figure is explicitly stated in the ACME Corp Q1 2023 operating report, which notes that their monthly recurring revenue (MRR) of $1.03M was \"equivalent to annual recurring revenue (ARR) of $12.4M.\""
+    },
+    {
+      "case_id": "finance_semantic_mrr",
+      "title": "MRR semantic paraphrase",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **ACME Corp's monthly recurring revenue (MRR) in Q1 2023 was $1.03M**.\n\nThe document specifically states: \"Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.\""
+    },
+    {
+      "case_id": "finance_semantic_ebitda",
+      "title": "EBITDA semantic paraphrase",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, the EBITDA figure was **$3.1M**.\n\nThis is stated in the ACME Corp Q1 2023 operating report."
+    },
+    {
+      "case_id": "finance_knowledge_churn",
+      "title": "Knowledge reuse for churn after summary seed",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **customer churn in Q1 2023 was 4.2%**.\n\nThis figure is explicitly stated in the ACME Corp Q1 2023 operating report."
+    },
+    {
+      "case_id": "finance_knowledge_margin",
+      "title": "Knowledge reuse for gross margin after summary seed",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "According to the ACME Corp Q1 2023 operating report, ACME reported a **gross margin of 71%**."
+    },
+    {
+      "case_id": "finance_knowledge_cogs",
+      "title": "Knowledge reuse for COGS after summary seed",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **ACME's cost of goods sold (COGS) was $2.8M** in Q1 2023.\n\nThis figure is explicitly stated in the ACME Corp Q1 2023 operating report."
+    },
+    {
+      "case_id": "doctor_exact_director",
+      "title": "Exact reuse for Doctor Strange director",
+      "scenario": "exact_positive",
+      "expected_cache_type": "exact",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.\n\nThe document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill."
+    },
+    {
+      "case_id": "doctor_semantic_director",
+      "title": "Director paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **Scott Derrickson** was the director of Doctor Strange (2016)."
+    },
+    {
+      "case_id": "doctor_semantic_release",
+      "title": "Release-year paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **Doctor Strange came out in 2016**. Specifically, the film was released in November 2016."
+    },
+    {
+      "case_id": "doctor_knowledge_director",
+      "title": "Knowledge reuse for director after broad summary",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.\n\nThe document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill."
+    },
+    {
+      "case_id": "doctor_knowledge_writer",
+      "title": "Knowledge reuse for writers after broad summary",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, **Doctor Strange** (2016 film) was written by:\n\n1. **Jon Spaihts**\n2. **Scott Derrickson**\n3. **C. Robert Cargill**\n\nAll three individuals are credited as writers for the film."
+    },
+    {
+      "case_id": "doctor_knowledge_star",
+      "title": "Knowledge reuse for lead actor after broad summary",
+      "scenario": "knowledge_positive",
+      "expected_cache_type": "knowledge",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "According to the provided document, **Benedict Cumberbatch** starred as Stephen Strange in the 2016 Marvel film \"Doctor Strange.\""
+    },
+    {
+      "case_id": "ops_exact_include_timeout",
+      "title": "Exact reuse for include-timeout query",
+      "scenario": "exact_positive",
+      "expected_cache_type": "exact",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, the following timeout errors should be included in the incident review:\n\n**Production timeout errors generated during the deployment window**\n\nThe document explicitly states to \"Include production timeout errors generated during the deployment window.\"\n\n**Excluded from review:**\n- Sandbox timeout warnings - these should be excluded from the review packet\n\nThe policy makes a clear distinction between production and sandbox environments, only requiring production timeout errors to be included, and specifically those that occurred during the deployment window timeframe."
+    },
+    {
+      "case_id": "ops_semantic_include_timeout",
+      "title": "Include-timeout paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, the timeout errors you should **keep** in the incident review packet are:\n\n**Production timeout errors generated during the deployment window**\n\nThe document explicitly states to \"Include production timeout errors generated during the deployment window.\"\n\nYou should **exclude** sandbox timeout warnings, as the document specifies to \"Exclude sandbox timeout warnings from the review packet.\""
+    },
+    {
+      "case_id": "ops_semantic_auth_include",
+      "title": "Authentication-failure paraphrase should semantic-hit",
+      "scenario": "semantic_positive",
+      "expected_cache_type": "semantic",
+      "actual_cache_type": "miss",
+      "expected_from_cache": true,
+      "actual_from_cache": false,
+      "answer_correct": true,
+      "cache_type_match": false,
+      "from_cache_match": false,
+      "prediction": "Based on the provided document, you should keep:\n\n**Authentication failures from production**\n\nThe incident review policy explicitly states to \"Include authentication failures from production\" in the review packet."
+    }
+  ]
+}

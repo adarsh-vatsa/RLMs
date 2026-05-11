@@ -1,0 +1,52 @@
+{
+  "run_id": "20260413T145426Z",
+  "created_at": "2026-04-13T15:43:09.710038+00:00",
+  "official_target": "ruler_v2",
+  "tasks_requested": [
+    "mk_niah_basic",
+    "mv_niah_basic",
+    "qa_basic"
+  ],
+  "lengths_requested": [
+    "8192",
+    "32768"
+  ],
+  "samples_selected": 36,
+  "mode": "cache",
+  "top_k": 20,
+  "rerank_top": 5,
+  "official_prepared_data": "benchmark_data/ruler2",
+  "official_prep_command": "",
+  "official_eval_command": "",
+  "artifacts": {
+    "predictions": "benchmark_artifacts/official_ruler_v2/20260413T145426Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/official_ruler_v2/20260413T145426Z/bridge_rows.jsonl"
+  },
+  "baseline13_progress": {
+    "baseline_total_tasks": 13,
+    "implemented_task_count": 3,
+    "pending_task_count": 10,
+    "implemented_tasks": [
+      "mk_niah_basic",
+      "mv_niah_basic",
+      "qa_basic"
+    ]
+  },
+  "official_score_status": "evaluator skipped (no --official-eval-command provided)",
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "official_ruler__mk_niah_basic-mv_niah_basic-qa_basic__32768-8192__dc9ec79c96be7f81",
+    "dataset_signature": "dc9ec79c96be7f81",
+    "cache_state_root": "benchmark_artifacts/official_ruler_v2/cache_state",
+    "cache_state_path": "benchmark_artifacts/official_ruler_v2/cache_state/official_ruler__mk_niah_basic-mv_niah_basic-qa_basic__32768-8192__dc9ec79c96be7f81",
+    "cache_state_existed_before_reset": false,
+    "cache_state_existed_before_run": false,
+    "cache_reset_requested": true,
+    "cache_load_attempts": 36,
+    "cache_load_successes": 35,
+    "cache_entries_before_run": 0,
+    "cache_entries_after_run": 30,
+    "cache_hits": 5,
+    "cache_hit_rate": 0.138889
+  }
+}

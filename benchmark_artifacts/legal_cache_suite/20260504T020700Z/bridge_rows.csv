@@ -1,0 +1,1495 @@
+case_id,title,scenario,corpus_id,mode,case_index,case_cache_namespace,case_cache_state_existed_before_run,seed_query_count,query,expected_answers,expected_answer_mode,expected_cache_type,actual_cache_type,expected_from_cache,actual_from_cache,answer_correct,cache_type_match,from_cache_match,overall_pass,prediction,latency_ms,setup_calls,setup_input_tokens,setup_output_tokens,setup_cost_usd,delta_calls,delta_input_tokens,delta_output_tokens,delta_cost_usd,knowledge_top_score,knowledge_margin,knowledge_verifier_called,knowledge_verifier_allow,knowledge_verifier_reason,knowledge_verifier_confidence,knowledge_verifier_trigger_reasons,knowledge_lexical_support,faiss_candidate_count,candidate_text_count,reranker_enabled,reranker_returned_count,reranker_fallback_used,legal_source_dataset,legal_source_record_id,legal_source_title,legal_seed_record_id,legal_clause_label,legal_answer_starts,legal_route_generation
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__exact,Parties: exact reuse,legal_exact_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,1,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Distributor""]",contains,exact,miss,True,False,True,False,False,False,"<parties>
+
+Based on the document provided, the following sections identify the **parties who signed the contract** and should be reviewed by a lawyer:
+
+## Primary Parties Identification:
+
+**At the end of the document (Page -14-):**
+
+The signature block clearly identifies the two parties:
+
+1. **Electric City Corp.**
+   - Signed by: Joseph Marino, President
+
+2. **Electric City of Illinois L.L.C.**
+   - Signed by: Jim Stump
+
+## Notice Provisions (Section 6.4):
+
+The notice section provides additional details about the parties:
+
+**Distributor:**
+- Electric City of Illinois L.L.C.
+- 8628 Oketo Avenue
+- Bridgeview, IL 60455
+- Attn: Jim Stumpe
+
+**Company:**
+- Electric City Corp.
+- 1280 Lanmeier Rd.
+- Elk Grove Village, IL 60007
+- Attn: Joseph Marino, President
+
+## Key Points for Legal Review:
+
+1. The contract refers to the parties as ""Company"" (Electric City Corp.) and ""Distributor"" (Electric City of Illinois L.L.C.) throughout the agreement
+2. Both parties have designated representatives for notices and communications
+3. The signature authority should be verified (Joseph Marino as President for Company, Jim Stump for Distributor)
+4. Note the slight spelling variation: ""Jim Stump"" in signature vs ""Jim Stumpe"" in notice section
+
+</parties>",50353.563,3,3788,819,0.014413,3,3821,852,0.014941,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,Parties,[244],exact
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__semantic,Parties: semantic paraphrase,legal_semantic_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,2,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__semantic,False,1,Which contract language should counsel review for the Parties issue?,"[""Distributor""]",contains,semantic,miss,True,False,True,False,False,False,"Based on the provided documents, counsel should review **Section 6.5 - Entire Agreement** for the Parties issue.
+
+This section states:
+
+""This Agreement, together with all exhibits attached hereto which are hereby incorporated by reference, supersedes any and all other agreements, either oral or written, between **the parties** hereto with respect to the subject matter hereof and contains of the covenants and agreements between **the parties** with respect to said matter.""
+
+Additionally, **Section 6.4 - Notices** identifies the specific parties to the agreement:
+
+- **Distributor**: Electric City of Illinois L.L.C., 8628 Oketo Avenue, Bridgeview, IL 60455, Attn: Jim Stumpe
+
+- **Company**: Electric City Corp., 1280 Lanmeier Rd., Elk Grove Village, IL 60007, Attn: Joseph Marino, President
+
+These sections clearly define who the contracting parties are and establish that this agreement governs the relationship between them, superseding any prior agreements.",45657.424,3,3824,936,0.015394,3,4498,647,0.014307,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,Parties,[244],semantic
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__knowledge,Parties: knowledge reuse,legal_knowledge_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,3,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Distributor""]",contains,knowledge,miss,True,False,True,False,False,False,"<parties>
+
+Based on the document provided, the following sections identify the **parties who signed the contract** and should be reviewed by a lawyer:
+
+## Parties to the Agreement:
+
+**1. Signature Block (Page 14):**
+```
+Electric City Corp.                       Electric City of Illinois L.L.C.
+
+By:   /s/Joseph Marino                    By:   Jim Stump
+      -------------------                       -------------------------------
+      President
+```
+
+The two parties who signed this contract are:
+- **Electric City Corp.** (signed by Joseph Marino, President)
+- **Electric City of Illinois L.L.C.** (signed by Jim Stump)
+
+**2. Notice Provisions (Page 12) - Section 6.4:**
+
+The parties are further identified with their contact information:
+
+- **Distributor:** Electric City of Illinois L.L.C., 8628 Oketo Avenue, Bridgeview, IL 60455, Attn: Jim Stumpe
+
+- **Company:** Electric City Corp., 1280 Lanmeier Rd., Elk Grove Village, IL 60007, Attn: Joseph Marino, President
+
+**3. References Throughout:**
+The document consistently refers to the parties as ""Company"" (Electric City Corp.) and ""Distributor"" (Electric City of Illinois L.L.C.) throughout the agreement, including in Sections 6.5, 6.8, 7.1, 7.2, and 7.3.
+
+</parties>
+
+A lawyer should verify that the signatories had proper authority to bind their respective entities and that all necessary corporate formalities were observed.",49564.782,3,3924,1037,0.016639,3,3852,955,0.015797,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,Parties,[244],knowledge
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__miss,Parties: different clause should miss,legal_semantic_negative,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,4,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Parties_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Distributor""]",contains,miss,miss,False,False,True,True,True,True,"<parties>
+
+Based on the document provided, the following sections identify the **parties who signed the contract** and should be reviewed by a lawyer:
+
+## Primary Parties Identification:
+
+**At the end of the document (Page -14-):**
+
+The signature block clearly identifies the two parties:
+
+1. **Electric City Corp.**
+   - Signed by: Joseph Marino, President
+
+2. **Electric City of Illinois L.L.C.**
+   - Signed by: Jim Stump
+
+## Notice Provisions (Section 6.4):
+
+The parties are further detailed in the notice section with their complete contact information:
+
+**Distributor:**
+- Electric City of Illinois L.L.C.
+- 8628 Oketo Avenue
+- Bridgeview, IL 60455
+- Attn: Jim Stumpe
+
+**Company:**
+- Electric City Corp.
+- 1280 Lanmeier Rd.
+- Elk Grove Village, IL 60007
+- Attn: Joseph Marino, President
+
+## References Throughout:
+
+The document consistently refers to the parties as:
+- ""**Company**"" (Electric City Corp.)
+- ""**Distributor**"" (Electric City of Illinois L.L.C.)
+
+These sections should be reviewed to confirm proper legal entity names, authority of signatories, and accurate contact information for legal notices.
+
+</parties>",50297.61,3,3790,896,0.014892,3,3788,873,0.014683,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,Parties,[244],miss
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__exact,Agreement Date: exact reuse,legal_exact_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,5,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""7th day of September, 1999.""]",contains,exact,miss,True,False,False,False,False,False,"Based on the provided documents, here are the parts related to **""Agreement Date""** that should be reviewed by a lawyer:
+
+## Agreement Date Reference:
+
+**At the end of the document (Page -14-):**
+> ""In witness whereof the parties have executed this Agreement **as of the date first abovementioned**.""
+
+## Key Issue for Legal Review:
+
+The contract references ""**the date first abovementioned**"" but **the actual date is not visible in the provided excerpts**. This is a critical omission that requires legal attention because:
+
+1. **Missing Date**: The specific agreement date that should appear at the beginning of the contract is not shown in these document excerpts
+2. **Legal Significance**: The agreement date is crucial for determining:
+   - When contractual obligations begin
+   - Calculation of the ""Term of this Agreement"" referenced throughout
+   - Deadlines for various provisions (e.g., the 30-day option period in Section 7.2)
+   - Statute of limitations periods
+
+## Lawyer's Action Items:
+
+A lawyer should:
+- **Locate and verify** the actual date stated at the beginning of the full contract
+- **Confirm** that the date is clearly written and unambiguous
+- **Ensure** the date aligns with when the parties actually intended the agreement to become effective
+- **Verify** that both parties signed on or after the stated agreement date
+
+**Note**: Section 6.7 states ""**Time is of the essence of this Agreement**,"" which makes the precise agreement date even more legally significant.",53186.034,3,3790,869,0.014757,3,3817,913,0.015274,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,Agreement Date,[263],exact
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__semantic,Agreement Date: semantic paraphrase,legal_semantic_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,6,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__semantic,False,1,Which contract language should counsel review for the Agreement Date issue?,"[""7th day of September, 1999.""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Section 6.5 - Entire Agreement** for the Agreement Date issue.
+
+Section 6.5 states: ""This Agreement, together with all exhibits attached hereto which are hereby incorporated by reference, supersedes any and all other agreements, either oral or written, between the parties hereto with respect to the subject matter hereof...""
+
+This provision is relevant because:
+
+1. It establishes which agreement controls and supersedes prior agreements
+2. It incorporates exhibits ""by reference,"" which may contain or clarify the Agreement Date
+3. It defines the scope of the entire agreement between the parties
+
+Additionally, counsel should review **Section 4.1 - Duration**, which references timing issues: ""this Agreement, subject to the commencement date established in Section 1.3, shall be effective immediately.""
+
+This indicates that Section 1.3 (not provided in these excerpts) likely contains the specific commencement date language that would be critical for resolving an Agreement Date issue.
+
+The combination of the Entire Agreement clause (6.5) and the Duration/commencement date reference (4.1) would be the key contract provisions to review for Agreement Date concerns.",49071.637,3,3815,896,0.015167,3,4526,741,0.015085,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,Agreement Date,[263],semantic
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__knowledge,Agreement Date: knowledge reuse,legal_knowledge_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,7,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""7th day of September, 1999.""]",contains,knowledge,miss,True,False,False,False,False,False,"Based on the provided documents, here are the parts related to **""Agreement Date""** that should be reviewed by a lawyer:
+
+## Agreement Date Reference:
+
+**At the end of the document (Page -14-):**
+> ""In witness whereof the parties have executed this Agreement **as of the date first abovementioned**.""
+
+## Key Issue for Legal Review:
+
+The contract references ""**the date first abovementioned**"" but **no specific date is actually visible** in the provided excerpts. The document appears to be missing the opening section that would typically contain:
+- The formal agreement date
+- The effective date of the contract
+- The commencement date
+
+## Why This Needs Legal Review:
+
+1. **Missing Critical Information**: The agreement execution clause refers to a date that is not present in the visible portions of the document
+2. **Legal Enforceability**: Without a clear agreement date, there could be ambiguity about when contractual obligations begin
+3. **Term Calculations**: The contract references ""the Term of this Agreement"" (Section 6.6) and time-sensitive provisions, which depend on knowing the agreement date
+4. **Force Majeure and Notice Periods**: Various provisions reference specific timeframes (e.g., ""thirty (30) days"" in Section 7.2) that would be calculated from the agreement date
+
+**Recommendation**: A lawyer should verify that the complete contract includes a clearly stated agreement date at the beginning of the document, typically in the preamble or introductory paragraph.",47667.658,3,3852,834,0.014904,3,3803,896,0.015035,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,Agreement Date,[263],knowledge
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__miss,Agreement Date: different clause should miss,legal_semantic_negative,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,8,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Agreement_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""7th day of September, 1999.""]",contains,miss,miss,False,False,False,True,True,False,"Based on the provided documents, here are the parts related to **""Agreement Date""** that should be reviewed by a lawyer:
+
+## Agreement Date Reference:
+
+**At the end of the document (Page -14-):**
+> ""In witness whereof the parties have executed this Agreement **as of the date first abovementioned**.""
+
+## Key Issue for Legal Review:
+
+The contract references ""**the date first abovementioned**"" but **the actual date is not visible in the provided excerpts**. This is a critical omission that requires legal attention because:
+
+1. **Missing Date**: The specific agreement date that should appear at the beginning of the contract is not shown in these document excerpts
+2. **Legal Significance**: The agreement date is crucial for determining:
+   - When contractual obligations begin
+   - Calculation of time periods referenced throughout the agreement
+   - Statute of limitations periods
+   - The ""Term of this Agreement"" referenced in Section 6.6
+
+## Lawyer's Action Items:
+
+A lawyer should:
+- **Verify the complete contract includes a clear, specific date** at the beginning (typically formatted as ""This Agreement made as of [Month] [Day], [Year]"")
+- **Ensure the date is properly filled in** and not left blank
+- **Confirm the date aligns** with when the parties actually intended the agreement to become effective
+- **Check that both parties' signatures are dated** and consistent with the agreement date
+
+Without seeing the complete first page of the contract, it's impossible to confirm whether the agreement date is properly documented.",42163.213,3,3788,798,0.014308,3,3813,913,0.01523,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Agreement Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,Agreement Date,[263],miss
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__exact,Effective Date: exact reuse,legal_exact_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,9,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""Unless  earlier   terminated   otherwise  provided                   therein,  this  Agreement,  subject to the  commencement  date                   established  in Section 1.3,  shall be effective  immediately.""]",contains,exact,miss,True,False,True,False,False,False,"Based on my review of the provided documents, here are the parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Effective Date Provision:
+
+**Section 4.1 - Duration:**
+> ""Unless earlier terminated otherwise provided therein, this Agreement, subject to the commencement date established in Section 1.3, shall be effective immediately.""
+
+## Legal Review Considerations:
+
+1. **Ambiguous Effective Date**: The contract states it ""shall be effective immediately"" but also references ""the commencement date established in Section 1.3"" - however, **Section 1.3 is not included in the provided documents**. This creates uncertainty about when the contract actually becomes effective.
+
+2. **Missing Critical Information**: A lawyer should locate and review Section 1.3 to determine:
+   - What the actual commencement date is
+   - Whether there's a conflict between ""effective immediately"" and the referenced commencement date
+   - How these two timing provisions interact
+
+3. **Reporting Timeline**: Section 4.1 also states ""Distributor shall submit written reports to the Company each quarter during the first year of the Term, commencing ninety (90) days after **execution of this Agreement**"" - this suggests the effective date may be tied to the execution date.
+
+**Recommendation**: A lawyer should clarify whether the effective date is: (a) the date of execution, (b) immediately upon signing, or (c) a different commencement date specified in the missing Section 1.3. This ambiguity could lead to disputes about when obligations begin.",40089.148,3,4662,908,0.017002,3,4662,874,0.016832,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Effective Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Effective Date_0,Effective Date,[31058],exact
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__semantic,Effective Date: semantic paraphrase,legal_semantic_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,10,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__semantic,False,1,Which contract language should counsel review for the Effective Date issue?,"[""Unless  earlier   terminated   otherwise  provided                   therein,  this  Agreement,  subject to the  commencement  date                   established  in Section 1.3,  shall be effective  immediately.""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Section 4.1 (Duration)** for the Effective Date issue.
+
+Specifically, Section 4.1 states:
+
+""Unless earlier terminated otherwise provided therein, this Agreement, **subject to the commencement date established in Section 1.3, shall be effective immediately.**""
+
+This provision references **Section 1.3** as establishing the commencement date, though Section 1.3 itself is not included in the provided document excerpts. 
+
+Therefore, counsel should review:
+1. **Section 4.1** - which addresses when the agreement becomes effective
+2. **Section 1.3** - which is referenced as establishing the actual commencement date
+
+The language indicates the agreement is ""effective immediately"" but is ""subject to the commencement date established in Section 1.3,"" creating potential ambiguity about the actual effective date that requires clarification.",33920.534,3,4662,950,0.017212,3,4470,554,0.013516,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Effective Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Effective Date_0,Effective Date,[31058],semantic
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__knowledge,Effective Date: knowledge reuse,legal_knowledge_positive,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,11,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""Unless  earlier   terminated   otherwise  provided                   therein,  this  Agreement,  subject to the  commencement  date                   established  in Section 1.3,  shall be effective  immediately.""]",contains,knowledge,miss,True,False,True,False,False,False,"Based on my review of the provided documents, here are the parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Effective Date Provision:
+
+**Section 4.1 - Duration:**
+> ""Unless earlier terminated otherwise provided therein, this Agreement, subject to the commencement date established in Section 1.3, shall be effective immediately.""
+
+## Legal Review Considerations:
+
+1. **Ambiguous Effective Date**: The contract states it ""shall be effective immediately"" but also references ""the commencement date established in Section 1.3"" - however, **Section 1.3 is not included in the provided documents**. This creates uncertainty about when the contract actually becomes effective.
+
+2. **Missing Critical Information**: A lawyer should locate and review Section 1.3 to determine:
+   - What the actual commencement date is
+   - Whether there's a conflict between ""effective immediately"" and the referenced commencement date
+   - How these two timing provisions interact
+
+3. **Reporting Timeline**: Section 4.1 also states ""Distributor shall submit written reports to the Company each quarter during the first year of the Term, commencing ninety (90) days after **execution of this Agreement**"" - this suggests the effective date may be tied to the execution date.
+
+**Recommendation**: A lawyer should clarify whether the effective date is: (a) the date of execution, (b) immediately upon signing, or (c) a different commencement date specified in the missing Section 1.3. This ambiguity could lead to disputes about when obligations begin.",41040.417,3,4704,975,0.017439,3,4662,946,0.017192,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Effective Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Effective Date_0,Effective Date,[31058],knowledge
+LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__miss,Effective Date: different clause should miss,legal_semantic_negative,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT,baseline,12,legal_cache_suite_cuad_v1_LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR_AGREEMENT__Effective_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""Unless  earlier   terminated   otherwise  provided                   therein,  this  Agreement,  subject to the  commencement  date                   established  in Section 1.3,  shall be effective  immediately.""]",contains,miss,miss,False,False,True,True,True,True,"Based on my review of the provided documents, here are the parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Effective Date Provision:
+
+**Section 4.1 - Duration:**
+> ""Unless earlier terminated otherwise provided therein, this Agreement, subject to the commencement date established in Section 1.3, shall be effective immediately.""
+
+## Legal Review Considerations:
+
+1. **Ambiguous Effective Date**: The contract states it ""shall be effective immediately"" but also references ""the commencement date established in Section 1.3"" - however, **Section 1.3 is not included in the provided documents**. This creates uncertainty about when the contract actually becomes effective.
+
+2. **Missing Critical Information**: A lawyer should locate and review Section 1.3 to determine:
+   - What the actual commencement date is
+   - Whether there's a conflict between ""effective immediately"" and the referenced commencement date
+   - How these two timing provisions interact
+
+3. **Reporting Timeline**: Section 4.1 also states ""Distributor shall submit written reports to the Company each quarter during the first year of the Term, commencing ninety (90) days after **execution of this Agreement**"" - this suggests the effective date may be tied to the execution date.
+
+**Recommendation**: A lawyer should clarify whether the effective date is: (a) the date of execution, (b) immediately upon signing, or (c) a different commencement date specified in the missing Section 1.3. This ambiguity could lead to disputes about when obligations begin.",40328.672,3,3857,1033,0.016242,3,4662,941,0.017167,,,,,,,,,20,20,True,0,True,cuad_qa,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Effective Date_0,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT,LIMEENERGYCO_09_09_1999-EX-10-DISTRIBUTOR AGREEMENT__Parties_0,Effective Date,[31058],miss
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__exact,Parties: exact reuse,legal_exact_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,13,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Google""]",contains,exact,miss,True,False,True,False,False,False,"# Parties to Review
+
+Based on the contract documents provided, here are the parts related to ""Parties"" (the two or more parties who signed the contract) that should be reviewed by a lawyer:
+
+## 1. **Signature Block**
+**Location:** End of document
+> ""Signed by the parties on the dates shown below.""
+
+**Review needed:** The actual signature page with party names, dates, and authorized signatories is referenced but not fully visible in the provided excerpts.
+
+## 2. **Party Identification**
+**Location:** Throughout the contract
+The contract refers to parties as:
+- **""Google""** (or ""Google Group Company"")
+- **""Distributor""**
+
+**Review needed:** The complete legal names, addresses, and jurisdictional information of both parties should be verified. The document references ""Distributor's address set out at the head of this Agreement"" (Clause 11.2), but this header information is not included in the provided excerpts.
+
+## 3. **Assignment Rights** 
+**Location:** Clause 11.3
+> ""[ * ] may [ * ] any of its rights or obligations under this Agreement without the prior written consent of [ * ].""
+
+**Review needed:** The redacted portions [*] obscure which party has assignment rights and which party's consent is required. This is critical for understanding each party's ability to transfer their rights/obligations.
+
+## 4. **Change of Control**
+**Location:** Clause 11.3
+> ""For the avoidance of doubt, a Change of Control shall be deemed an assignment hereunder unless [ * ] does not exercise its [ * ].""
+
+**Review needed:** The redacted portions obscure which party is affected by Change of Control provisions and what rights exist.
+
+## 5. **No Third-Party Beneficiaries**
+**Location:** Clause 11.9
+> ""nothing in this Agreement shall create or confer any rights or other benefits in favour of any person other than the parties to this Agreement.""
+
+**Review needed:** Confirms only the two signing parties have rights under the agreement.
+
+**Recommendation:** A lawyer should review the complete, unredacted signature page and header to verify the full legal names, addresses, and proper authorization of both contracting parties.",64224.122,3,5031,1072,0.019379,3,5087,1205,0.02066,,,,,,,,,20,20,True,0,True,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0",Parties,[644],exact
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__semantic,Parties: semantic paraphrase,legal_semantic_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,14,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__semantic,False,1,Which contract language should counsel review for the Parties issue?,"[""Google""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Section 11.3 (Assignment)** for the Parties issue.
+
+This section specifically addresses assignment of rights and obligations under the agreement, which is a key aspect of defining and controlling who the parties to the contract are and can be. The provision states:
+
+""**11.3 Assignment.** [ * ] may [ * ] any of its rights or obligations under this Agreement without the prior written consent of [ * ]. For the avoidance of doubt, a Change of Control shall be deemed an assignment hereunder unless [ * ] does not exercise its [ * ].""
+
+This clause is critical because it:
+1. Controls whether and how parties can transfer their contractual rights and obligations
+2. Requires prior written consent for assignment (with redacted details about which party needs consent)
+3. Specifically addresses Change of Control scenarios, treating them as assignments unless certain conditions are met
+
+Additionally, counsel may want to review **Section 11.8 (No Agency)**, which clarifies the relationship between the parties: ""Except as expressly stated otherwise, nothing in this Agreement shall create an agency, partnership or joint venture of any kind between the parties.""",54310.69,3,5033,1042,0.019251,3,4506,770,0.015136,,,,,,,,,20,20,True,0,True,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0",Parties,[644],semantic
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__knowledge,Parties: knowledge reuse,legal_knowledge_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,15,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Google""]",contains,knowledge,miss,True,False,True,False,False,False,"# Parties to Review
+
+Based on the contract documents provided, here are the parts related to the **Parties** who signed the contract:
+
+## 1. **Signature Block (Document 1)**
+> ""Signed by the parties on the dates shown below.""
+
+This indicates where the parties formally executed the agreement, though the actual party names and signatures are not visible in the excerpt.
+
+## 2. **Party Identification in Notices Clause (Document 1, Clause 11.2)**
+> ""All notices of termination or breach must be in English, in writing, addressed to the other party's Legal Department and sent to **Distributor's address set out at the head of this Agreement** or to [ * ] (as applicable)...""
+
+This references where the parties' identifying information appears (at the head/beginning of the agreement), though this section is redacted in the provided documents.
+
+## 3. **Party References Throughout**
+The contract consistently refers to two parties:
+- **""Google""** (also referenced as ""Google Group Company"")
+- **""Distributor""** (referenced in the address provision and throughout)
+
+## Key Legal Review Points:
+
+⚠️ **CRITICAL**: The actual **names, addresses, and signature details of the parties are redacted** (marked as [ * ]) in the provided documents. A lawyer should review:
+
+1. The complete, unredacted party identification at the beginning of the agreement
+2. The signature block with actual signatures and dates
+3. Any corporate entity details (full legal names, jurisdiction of incorporation)
+4. Authority of signatories to bind their respective organizations
+5. Whether the parties are the correct legal entities intended to be bound
+
+---",63063.809,3,4753,1023,0.018128,3,4960,879,0.017633,,,,,,,,,20,20,True,0,True,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0",Parties,[644],knowledge
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__miss,Parties: different clause should miss,legal_semantic_negative,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,16,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Parties_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Google""]",contains,miss,miss,False,False,True,True,True,True,"# Parties to Review
+
+Based on the contract documents provided, here are the parts related to **""Parties""** (the two or more parties who signed the contract) that should be reviewed by a lawyer:
+
+## 1. **Signature Block**
+**Location:** End of document
+> ""Signed by the parties on the dates shown below.""
+
+**Review needed:** The actual signature page with party names, authorized signatories, and dates is referenced but not fully visible in the excerpts provided.
+
+## 2. **Party Identification at Contract Header**
+**Location:** Referenced in Section 11.2 (Notices)
+> ""sent to Distributor's address set out at the head of this Agreement or to [ * ] (as applicable)""
+
+**Review needed:** The contract header (not shown in excerpts) should clearly identify both parties with their full legal names and addresses.
+
+## 3. **Assignment Rights** 
+**Location:** Section 11.3
+> ""[ * ] may [ * ] any of its rights or obligations under this Agreement without the prior written consent of [ * ]. For the avoidance of doubt, a Change of Control shall be deemed an assignment hereunder unless [ * ] does not exercise its [ * ].""
+
+**Review needed:** The redacted portions [* ] obscure which party has assignment rights and which party must consent. This is critical for understanding party obligations.
+
+## 4. **Party References Throughout**
+The contract refers to:
+- ""Google"" 
+- ""Distributor""
+- ""Google Group Company""
+
+**Review needed:** Ensure clear definitions of each party entity and any affiliated entities that may have rights or obligations under the agreement.
+
+**Note:** Multiple sections are heavily redacted with [* ], making complete party identification difficult without the full, unredacted contract.",59019.577,3,2013,829,0.01121,3,4985,975,0.018388,,,,,,,,,20,20,True,0,True,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0",Parties,[644],miss
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__exact,Effective Date: exact reuse,legal_exact_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,17,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""1 August 2011""]",contains,exact,miss,True,False,True,False,False,False,"Based on the provided document, here are the parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Effective Date Provision:
+
+**Location:** Opening paragraph of the Agreement
+
+**Text:** ""This Promotion and Distribution Agreement including all exhibits (collectively referred to as the ""Agreement""), **effective as of 1 August 2011 (the ""Effective Date"")**, is made by and between Whitesmoke Inc., with registered offices/principle place of business at 501 Silverside Road, Suite 105, Wilmington DE 19809, USA, (""Distributor""), and Google Inc whose principle place of business is at 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA (""Google"").""
+
+## Legal Review Considerations:
+
+1. **Specific Date:** The contract specifies August 1, 2011 as the Effective Date - a lawyer should verify this aligns with the parties' intentions and any related agreements.
+
+2. **""Effective as of"" Language:** This phrasing suggests the agreement may have been signed on a different date but is intended to be effective retroactively to August 1, 2011. A lawyer should review whether this creates any issues regarding obligations or liabilities that arose between August 1, 2011 and the actual signing date.
+
+3. **No Termination or Duration Clause Visible:** The provided excerpt doesn't show how long the agreement runs from this Effective Date, which a lawyer should locate and review in the complete contract.",57867.846,3,2031,827,0.011398,3,2012,808,0.011094,,,,,,,,,20,20,True,1,False,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0",Effective Date,[430],exact
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__semantic,Effective Date: semantic paraphrase,legal_semantic_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,18,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__semantic,False,1,Which contract language should counsel review for the Effective Date issue?,"[""1 August 2011""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, I cannot find any specific contract language that directly addresses an ""Effective Date issue."" 
+
+The documents provided contain various contractual provisions including:
+- Assignment provisions (Clause 11.3)
+- General provisions (Clause 11)
+- Termination effects (Clause 5.6 referenced)
+- Confidential Information (Clause 6)
+- Indemnification (Clause 10)
+- Notices (Clause 11.2)
+
+However, none of these excerpts contain language specifically defining or addressing the ""Effective Date"" of the agreement. The documents appear to be middle and end sections of a contract, but the beginning sections that would typically contain the effective date definition are not included in the provided materials.
+
+To properly review contract language for an Effective Date issue, counsel would need to examine:
+1. The opening recitals or preamble of the agreement
+2. A definitions section (if one exists)
+3. Any clause specifically titled ""Effective Date"" or ""Commencement Date""
+4. The signature block area, which sometimes references when the agreement becomes effective
+
+These sections are not present in the documents provided.",57203.628,3,2031,850,0.011513,3,4511,718,0.014913,,,,,,,,,20,20,True,0,True,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0",Effective Date,[430],semantic
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__knowledge,Effective Date: knowledge reuse,legal_knowledge_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,19,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""1 August 2011""]",contains,knowledge,miss,True,False,True,False,False,False,"Based on the provided document, here are the parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Effective Date Provision:
+
+**Location:** Opening paragraph of the Agreement
+
+**Text:** ""This Promotion and Distribution Agreement including all exhibits (collectively referred to as the ""Agreement""), **effective as of 1 August 2011 (the ""Effective Date"")**, is made by and between Whitesmoke Inc., with registered offices/principle place of business at 501 Silverside Road, Suite 105, Wilmington DE 19809, USA, (""Distributor""), and Google Inc whose principle place of business is at 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA (""Google"").""
+
+## Legal Review Considerations:
+
+1. **Specific Date:** The contract specifies August 1, 2011 as the Effective Date - a lawyer should verify this aligns with the parties' intentions and any related agreements.
+
+2. **""Effective as of"" Language:** This phrasing suggests the agreement may have been signed on a different date but is intended to be effective retroactively to August 1, 2011. A lawyer should review whether this creates any issues regarding obligations or liabilities that arose between August 1, 2011 and the actual signing date.
+
+3. **No Termination or Duration Clause Visible:** The provided excerpt doesn't show termination provisions or contract duration, which would typically reference the Effective Date. A lawyer should review the complete agreement for these terms.
+
+This is the only explicit reference to the Effective Date in the provided document excerpt.",61328.325,3,2040,798,0.010992,3,2034,831,0.011451,,,,,,,,,20,20,True,1,False,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0",Effective Date,[430],knowledge
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__miss,Effective Date: different clause should miss,legal_semantic_negative,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,20,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Effective_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""1 August 2011""]",contains,miss,miss,False,False,True,True,True,True,"Based on the provided document, here are the parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Effective Date Provision:
+
+**Location:** Opening paragraph of the Agreement
+
+**Text:** ""This Promotion and Distribution Agreement including all exhibits (collectively referred to as the ""Agreement""), **effective as of 1 August 2011 (the ""Effective Date"")**, is made by and between Whitesmoke Inc., with registered offices/principle place of business at 501 Silverside Road, Suite 105, Wilmington DE 19809, USA, (""Distributor""), and Google Inc whose principle place of business is at 1600 Amphitheatre Parkway, Mountain View, CA 94043, USA (""Google"").""
+
+## Legal Review Considerations:
+
+1. **Specific Date:** The contract specifies August 1, 2011 as the Effective Date - a lawyer should verify this aligns with the parties' intentions and any related agreements.
+
+2. **""Effective as of"" Language:** This phrasing suggests the agreement may have been executed on a different date but is intended to be effective retroactively to August 1, 2011. A lawyer should review whether this creates any issues regarding obligations or liabilities that arose between August 1, 2011 and the actual execution date.
+
+3. **No Termination or Duration Clause Visible:** The provided excerpt doesn't show how long the agreement runs from this Effective Date, which would be important for a complete legal review.
+
+**Note:** Only the opening paragraph contains information about the Effective Date in the provided document excerpt.",55569.707,3,4946,990,0.018034,3,2031,795,0.011238,,,,,,,,,20,20,True,1,False,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Effective Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0",Effective Date,[430],miss
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__exact,Expiration Date: exact reuse,legal_exact_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,21,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Expiration Date"" that should be reviewed by a lawyer. Details: On what date will the contract's initial term expire?","[""\""Term\"" means the earlier of: (a) the end of the two year period from the Effective Date to 31 July 2013; or (b) the last day of the calendar month  within which the Maximum Distribution Commitment is reached.""]",contains,exact,miss,True,False,False,False,False,False,"## Expiration Date - Legal Review Required
+
+Based on the provided contract document, the following section related to **Expiration Date** should be reviewed by a lawyer:
+
+### Key Contract Term Definition:
+
+**""Term"" means the earlier of:**
+- **(a) the end of the two year period from the Effective Date to 31 July 2013; or** 
+- **(b) the last day of the calendar month within which the Maximum Distribution Commitment is reached.**
+
+### Critical Details for Legal Review:
+
+1. **Initial Term Expiration Date: July 31, 2013**
+   - The contract explicitly states the initial term will expire on **31 July 2013**, representing a two-year period from the Effective Date.
+
+2. **Alternative Early Termination Trigger:**
+   - The contract may terminate earlier if the ""Maximum Distribution Commitment"" is reached before July 31, 2013
+   - The Maximum Distribution Commitment is defined as ""[* ]"" (redacted amount) with potential increases by Google under Clause 4.2
+
+3. **Ambiguity Requiring Legal Attention:**
+   - The dual termination conditions create uncertainty about the actual expiration date
+   - The redacted Maximum Distribution Commitment amount makes it impossible to assess the likelihood of early termination
+   - No automatic renewal provisions are mentioned in the provided excerpt
+
+### Recommendation:
+A lawyer should review whether the contract includes renewal options, notice requirements for non-renewal, and clarify the implications of reaching the Maximum Distribution Commitment before the stated expiration date.",56420.785,3,2193,859,0.011738,3,2194,987,0.012389,,,,,,,,,20,20,True,1,False,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Expiration Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Expiration Date_0",Expiration Date,[7056],exact
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__semantic,Expiration Date: semantic paraphrase,legal_semantic_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,22,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__semantic,False,1,Which contract language should counsel review for the Expiration Date issue?,"[""\""Term\"" means the earlier of: (a) the end of the two year period from the Effective Date to 31 July 2013; or (b) the last day of the calendar month  within which the Maximum Distribution Commitment is reached.""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Clause 5.6 (Effect of Termination)** for the Expiration Date issue.
+
+This is specifically referenced in the document that states:
+
+""**5.6 Effect of Termination.** Upon termination or expiration of this Agreement: (a) all rights and licenses granted under this Agreement shall immediately cease; (b) Distributor shall (and shall ensure that any Third Party Distributors shall) immediately stop reproducing the Products and offering or distributing Bundles; (c) Distributor shall return or destroy (and a duly appointed officer of Distributor shall certify to such destruction) all copies of the Products and any other Google Confidential Information in its possession; and (d) the fees payable to Distributor shall immediately cease accruing and Google shall within [ * ] following such **expiration or termination** pay to Distributor any undisputed amounts...""
+
+The document also notes that Clause 5.6 is one of the provisions that ""**shall survive the termination or expiration of this Agreement**,"" along with Clauses 6 (Confidential Information), 7 (Proprietary Rights), 9 (Limitation of Liability), 10 (Indemnification) and 11 (General).
+
+This clause specifically addresses what happens upon expiration of the agreement, making it the relevant contract language for the Expiration Date issue.",50530.963,3,2175,818,0.011335,3,4574,791,0.015953,,,,,,,,,20,20,True,0,True,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Expiration Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Expiration Date_0",Expiration Date,[7056],semantic
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__knowledge,Expiration Date: knowledge reuse,legal_knowledge_positive,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,23,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Expiration Date"" that should be reviewed by a lawyer. Details: On what date will the contract's initial term expire?","[""\""Term\"" means the earlier of: (a) the end of the two year period from the Effective Date to 31 July 2013; or (b) the last day of the calendar month  within which the Maximum Distribution Commitment is reached.""]",contains,knowledge,miss,True,False,False,False,False,False,"## Expiration Date - Legal Review Required
+
+Based on the provided contract document, the following section related to **Expiration Date** should be reviewed by a lawyer:
+
+### Key Contract Term Definition:
+
+**""Term"" means the earlier of:**
+- **(a) the end of the two year period from the Effective Date to 31 July 2013; or** 
+- **(b) the last day of the calendar month within which the Maximum Distribution Commitment is reached.**
+
+### Critical Details for Legal Review:
+
+1. **Initial Term Expiration Date: July 31, 2013**
+   - The contract explicitly states the initial term will expire on **31 July 2013**, representing a two-year period from the Effective Date.
+
+2. **Alternative Early Termination Trigger:**
+   - The contract may terminate earlier if the ""Maximum Distribution Commitment"" is reached before July 31, 2013
+   - The Maximum Distribution Commitment is defined as ""[* ]"" (redacted amount) with potential increases by Google under Clause 4.2
+
+3. **Ambiguity Requiring Legal Attention:**
+   - The dual termination conditions create uncertainty about the actual expiration date
+   - The redacted Maximum Distribution Commitment amount makes it impossible to assess the likelihood of early termination
+   - No automatic renewal provisions are mentioned in the provided excerpt
+
+### Recommendation:
+A lawyer should review whether the contract includes renewal options, notice requirements for non-renewal, and clarify the implications of reaching the Maximum Distribution Commitment before the stated expiration date.",58466.285,3,4798,1107,0.018971,3,2194,942,0.012164,,,,,,,,,20,20,True,1,False,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Expiration Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Expiration Date_0",Expiration Date,[7056],knowledge
+WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__miss,Expiration Date: different clause should miss,legal_semantic_negative,WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT,baseline,24,legal_cache_suite_cuad_v1_WHITESMOKE_INC_11_08_2011-EX-10.26-PROMOTION_AND_DISTRIBUTION_AGREEMENT__Expiration_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Expiration Date"" that should be reviewed by a lawyer. Details: On what date will the contract's initial term expire?","[""\""Term\"" means the earlier of: (a) the end of the two year period from the Effective Date to 31 July 2013; or (b) the last day of the calendar month  within which the Maximum Distribution Commitment is reached.""]",contains,miss,miss,False,False,False,True,True,False,"## Expiration Date - Legal Review Required
+
+Based on the provided contract document, the following section related to **Expiration Date** should be reviewed by a lawyer:
+
+### Key Contract Term Definition:
+
+**""Term"" means the earlier of:**
+- **(a) the end of the two year period from the Effective Date to 31 July 2013; or** 
+- **(b) the last day of the calendar month within which the Maximum Distribution Commitment is reached.**
+
+### Critical Details for Legal Review:
+
+1. **Initial Term Expiration Date: July 31, 2013**
+   - The contract explicitly states the initial term will expire on **31 July 2013**, representing a two-year period from the Effective Date.
+
+2. **Alternative Early Termination Trigger:**
+   - The contract may terminate earlier if the ""Maximum Distribution Commitment"" is reached before July 31, 2013
+   - The Maximum Distribution Commitment is defined as ""[* ]"" (redacted amount) with potential increases by Google under Clause 4.2
+
+3. **Ambiguity Requiring Legal Attention:**
+   - The dual termination conditions create uncertainty about the actual expiration date
+   - The redacted Maximum Distribution Commitment amount makes it impossible to assess the likelihood of early termination
+   - No automatic renewal provisions are mentioned in the provided excerpt
+
+### Recommendation:
+A lawyer should review whether the contract includes renewal options, notice requirements for non-renewal, and clarify the implications of reaching the Maximum Distribution Commitment before the stated expiration date.",57480.335,3,5023,970,0.018781,3,2194,928,0.012094,,,,,,,,,20,20,True,1,False,cuad_qa,"WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Expiration Date_0","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT","WHITESMOKE,INC_11_08_2011-EX-10.26-PROMOTION AND DISTRIBUTION AGREEMENT__Parties_0",Expiration Date,[7056],miss
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__exact,Parties: exact reuse,legal_exact_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,25,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""ADAMS GOLF""]",contains,exact,miss,True,False,True,False,False,False,"# Parties Review - Legal Analysis
+
+Based on the provided contract documents, here are the key sections related to **Parties** that should be reviewed by a lawyer:
+
+## 1. **Signature Block and Execution (Page 12-13)**
+
+**Critical Details:**
+- **CONSULTANT:** Tom Watson (signed January 13, 2005)
+  - Address: C/O Assured Management Company, 1901 W. 47th Place, Suite 200, Westwood, Kansas 66205
+  
+- **ADAMS GOLF, LTD.:** Represented by Oliver G. ""Chip"" Brewer III, CEO (signed January 13, 2005)
+  - Address: 2801 East Plano Parkway, Plano, Texas 75074
+
+## 2. **Execution and Delivery Requirements (Section 28)**
+
+**Quote:** *""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF unless and until it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and delivery has been made of a fully signed original to both parties.""*
+
+**Legal Concern:** Confirms that both parties must sign and receive fully executed originals for the contract to be binding.
+
+## 3. **Relationship Between Parties (Section 30)**
+
+**Quote:** *""Both parties agree that this Agreement does not constitute and shall not be construed as a constituting of a partnership or joint venture between ADAMS GOLF and CONSULTANT. Neither party shall have any right to obligate or bind the other party in any manner whatsoever...""*
+
+**Legal Concern:** Clarifies the independent contractor relationship and limits each party's authority.
+
+## 4. **Assignment Restrictions (Section 31)**
+
+**Quote:** *""Neither ADAMS GOLF nor CONSULTANT shall have the right to grant sublicenses hereunder or to assign, alienate or otherwise transfer any of its rights or obligations hereunder.""*
+
+**Legal Concern:** Prevents either party from transferring their rights/obligations without consent.",28924.992,3,4384,1145,0.018549,3,4412,1235,0.019307,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,Parties,[332],exact
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__semantic,Parties: semantic paraphrase,legal_semantic_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,26,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__semantic,False,1,Which contract language should counsel review for the Parties issue?,"[""ADAMS GOLF""]",contains,semantic,miss,True,False,True,False,False,False,"Based on the provided documents, counsel should review **Section 30 - RELATIONSHIP** for the Parties issue.
+
+This section specifically addresses the relationship between the parties and states:
+
+""Both parties agree that this Agreement does not constitute and shall not be construed as a constituting of a partnership or joint venture between ADAMS GOLF and CONSULTANT. Neither party shall have any right to obligate or bind the other party in any manner whatsoever, and nothing herein contained shall give or is intended to give any rights of any kind to any third person.""
+
+This provision clarifies:
+1. The nature of the relationship between the parties (not a partnership or joint venture)
+2. The limitations on each party's authority to bind the other
+3. That no third-party rights are created
+
+Additionally, **Section 28 - EXECUTION AND DELIVERY REQUIRED** is relevant as it identifies who the parties are and confirms that the agreement creates obligations only when ""signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and delivery has been made of a fully signed original to both parties.""",23367.822,3,4336,1021,0.017401,3,4122,710,0.013924,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,Parties,[332],semantic
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__knowledge,Parties: knowledge reuse,legal_knowledge_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,27,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""ADAMS GOLF""]",contains,knowledge,miss,True,False,True,False,False,False,"# Parties Review - Legal Analysis
+
+Based on the provided contract documents, here are the key sections related to **Parties** that should be reviewed by a lawyer:
+
+## 1. **Signature Block and Execution (Page 12-13)**
+
+The contract identifies the two parties as:
+
+- **CONSULTANT**: Tom Watson (signed January 13, 2005)
+  - Address: C/O Assured Management Company, 1901 W. 47th Place, Suite 200, Westwood, Kansas 66205
+
+- **ADAMS GOLF, LTD.**: Represented by Oliver G. ""Chip"" Brewer III, CEO (signed January 13, 2005)
+  - Address: 2801 East Plano Parkway, Plano, Texas 75074
+
+## 2. **Execution and Delivery Requirements (Section 28)**
+
+**Critical provision**: *""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF unless and until it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and delivery has been made of a fully signed original to both parties.""*
+
+**Lawyer should verify**: Whether proper authorization and delivery occurred.
+
+## 3. **Relationship Between Parties (Section 30)**
+
+*""Both parties agree that this Agreement does not constitute and shall not be construed as a constituting of a partnership or joint venture between ADAMS GOLF and CONSULTANT. Neither party shall have any right to obligate or bind the other party in any manner whatsoever...""*
+
+**Lawyer should review**: The independent contractor vs. employee relationship implications.
+
+## 4. **Assignment Restrictions (Section 31)**
+
+*""Neither ADAMS GOLF nor CONSULTANT shall have the right to grant sublicenses hereunder or to assign, alienate or otherwise transfer any of its rights or obligations hereunder.""*
+
+**Lawyer should assess**: Whether this restriction is appropriate for both parties' business needs.",28433.326,3,4393,1065,0.017888,3,4392,1133,0.018577,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,Parties,[332],knowledge
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__miss,Parties: different clause should miss,legal_semantic_negative,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,28,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Parties_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""ADAMS GOLF""]",contains,miss,miss,False,False,True,True,True,True,"# Parties Review - Legal Analysis
+
+Based on my review of the provided contract documents, here are the key sections related to **""Parties""** that should be reviewed by a lawyer:
+
+## 1. **Signature Block and Party Identification** (Page 13)
+
+The contract identifies the two parties as:
+- **CONSULTANT**: Tom Watson (signed January 13, 2005)
+- **ADAMS GOLF, LTD.**: Represented by Oliver G. ""Chip"" Brewer III, CEO (signed January 13, 2005)
+
+**Legal Review Needed**: Verify that the signatories have proper authority to bind their respective parties.
+
+## 2. **Execution and Delivery Requirements** (Section 28)
+
+> ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF unless and until it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and delivery has been made of a fully signed original to both parties.""
+
+**Legal Review Needed**: Confirm that both parties received fully executed originals and that all signature requirements were met.
+
+## 3. **Party Relationship** (Section 30)
+
+> ""Both parties agree that this Agreement does not constitute and shall not be construed as a constituting of a partnership or joint venture between ADAMS GOLF and CONSULTANT.""
+
+**Legal Review Needed**: Ensure the independent contractor relationship is properly established and tax/liability implications are understood.
+
+## 4. **Notice Addresses** (Section 34)
+
+The contract specifies official addresses for both parties for service of notices.
+
+**Legal Review Needed**: Verify current addresses are accurate and notice provisions comply with legal requirements.",28582.328,3,4318,836,0.01635,3,4326,1061,0.017491,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,Parties,[332],miss
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__exact,Agreement Date: exact reuse,legal_exact_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,29,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""January 13, 2005""]",contains,exact,miss,True,False,True,False,False,False,"# Agreement Date Analysis
+
+Based on my review of the provided contract documents, here are the parts related to the **Agreement Date** that should be reviewed by a lawyer:
+
+## Key Finding:
+
+**Execution Date (Page 3 - Signature Block):**
+```
+IN WITNESS WHEREOF, the parties hereto have caused this Agreement to be executed 
+as of the date first set forth above.
+
+APPROVED FOR CONSULTANT
+By: /s/ Tom Watson     Date: January 13, 2005
+
+APPROVED FOR ADAMS GOLF, LTD.
+By: /s/ Oliver G. ""Chip"") Brewer III     Date: January 13, 2005
+```
+
+**Legal Review Points:**
+
+1. **""Date First Set Forth Above"" Reference**: The signature block references ""the date first set forth above,"" but the actual initial date is not visible in the provided excerpts. A lawyer should verify that the referenced date appears at the beginning of the contract and matches the execution dates.
+
+2. **Execution and Delivery Requirement (Section 28)**: 
+   > ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever...unless and until it has been signed by CONSULTANT...and by duly authorized representatives of ADAMS GOLF and **delivery has been made of a fully signed original to both parties**.""
+   
+   This provision means the agreement date may differ from the signature dates if delivery occurred later.
+
+3. **Both parties signed on the same date** (January 13, 2005), which is generally favorable, but confirmation of the delivery date and the ""date first set forth above"" should be verified by legal counsel.",28237.803,3,4332,990,0.017274,3,4294,872,0.016266,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,Agreement Date,[228],exact
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__semantic,Agreement Date: semantic paraphrase,legal_semantic_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,30,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__semantic,False,1,Which contract language should counsel review for the Agreement Date issue?,"[""January 13, 2005""]",contains,semantic,miss,True,False,True,False,False,False,"Based on the provided documents, counsel should review **Section 28: ""EXECUTION AND DELIVERY REQUIRED""** for the Agreement Date issue.
+
+This section specifically addresses when the agreement becomes effective and states:
+
+> ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF unless and until it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and delivery has been made of a fully signed original to both parties.""
+
+This provision is critical because it establishes that:
+1. The agreement is not binding until signed by both parties
+2. Delivery of the fully signed original to both parties is required
+3. No obligations exist until these conditions are met
+
+The signature page shows both parties signed on **January 13, 2005**, and the document references ""the date first set forth above"" in the execution clause, which would refer back to the agreement date stated at the beginning of the contract.
+
+If there is a discrepancy between the stated agreement date and the actual execution/delivery dates, Section 28 would be the key provision to interpret which date controls for determining when contractual obligations commenced.",25144.77,3,4294,857,0.016191,3,4148,690,0.01411,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,Agreement Date,[228],semantic
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__knowledge,Agreement Date: knowledge reuse,legal_knowledge_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,31,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""January 13, 2005""]",contains,knowledge,miss,True,False,True,False,False,False,"## Agreement Date - Legal Review Required
+
+Based on the provided contract documents, the following sections relate to the **Agreement Date** and should be reviewed by a lawyer:
+
+### **Primary Agreement Date Reference:**
+
+**Page 3 - Signature Block:**
+> ""IN WITNESS WHEREOF, the parties hereto have caused this Agreement to be executed **as of the date first set forth above**.""
+> 
+> - **CONSULTANT signature:** Tom Watson - **Date: January 13, 2005**
+> - **ADAMS GOLF signature:** Oliver G. ""Chip"" Brewer III - **Date: January 13, 2005**
+
+### **Key Legal Considerations:**
+
+1. **Execution Date vs. Effective Date**: The contract references ""the date first set forth above,"" but the actual initial date is not visible in the provided excerpts. A lawyer should verify:
+   - Whether there is a separate effective date stated at the beginning of the contract
+   - If the execution date (January 13, 2005) is the same as the effective date
+   - Any retroactive or future effective date provisions
+
+2. **Section 28 - Execution and Delivery Required**: 
+   > ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever... **unless and until it has been signed** by CONSULTANT... and by duly authorized representatives of ADAMS GOLF **and delivery has been made** of a fully signed original to both parties.""
+
+   This clause indicates that the agreement date may differ from the signature date if delivery occurred later.
+
+**Legal Review Recommendation**: A lawyer should confirm the complete agreement date provisions at the contract's beginning and ensure consistency between execution, delivery, and effective dates.",28968.108,3,4314,912,0.016326,3,4303,951,0.01676,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,Agreement Date,[228],knowledge
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__miss,Agreement Date: different clause should miss,legal_semantic_negative,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,32,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Agreement_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""January 13, 2005""]",contains,miss,miss,False,False,True,True,True,True,"## Agreement Date - Legal Review Required
+
+Based on the provided contract documents, the following sections relate to the **Agreement Date** and should be reviewed by a lawyer:
+
+### **Primary Agreement Date Reference:**
+
+**Page 3 - Signature Block:**
+> ""IN WITNESS WHEREOF, the parties hereto have caused this Agreement to be executed **as of the date first set forth above**.""
+> 
+> - **CONSULTANT signature:** Tom Watson - Date: **January 13, 2005**
+> - **ADAMS GOLF signature:** Oliver G. ""Chip"" Brewer III - Date: **January 13, 2005**
+
+### **Key Legal Considerations:**
+
+1. **Execution Requirement (Section 28):**
+   > ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF **unless and until it has been signed** by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and **delivery has been made of a fully signed original to both parties**.""
+
+   **Legal Issue:** The contract's effective date depends on both execution AND delivery. A lawyer should verify when delivery occurred, as this may differ from the signature dates.
+
+2. **Reference to ""date first set forth above"":**
+   The signature block references a date ""first set forth above,"" but this date is not explicitly shown in the provided excerpts. A lawyer should confirm what date appears at the beginning of the contract to ensure consistency.
+
+### **Recommendation:**
+A lawyer should verify that the agreement date, execution dates, and delivery dates are all properly documented and aligned to establish the contract's effective date and term commencement.",27929.32,3,4443,1183,0.019358,3,4304,872,0.016376,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Agreement Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,Agreement Date,[228],miss
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__exact,Effective Date: exact reuse,legal_exact_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,33,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""The Term of this Agreement shall be for a period of [* ****] years and [*****] months commencing the 1st day of September 2004 and terminating the [*****] day of [*****].""]",contains,exact,miss,True,False,False,False,False,False,"Based on my review of the provided documents, I found the following parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Sections for Legal Review:
+
+### 1. **Execution Date and Effective Date (Page 3)**
+The signature block states:
+- **""IN WITNESS WHEREOF, the parties hereto have caused this Agreement to be executed as of the date first set forth above.""**
+- Both parties signed on **January 13, 2005**
+
+**Legal Issue:** The phrase ""as of the date first set forth above"" references an earlier date in the contract that is not visible in the provided excerpts. A lawyer should verify what that ""first set forth"" date is and whether it differs from the actual execution date (January 13, 2005), as this could create ambiguity about when contractual obligations begin.
+
+### 2. **Execution and Delivery Requirement (Section 28)**
+**""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF unless and until it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and delivery has been made of a fully signed original to both parties.""**
+
+**Legal Issue:** This provision makes the effective date contingent on both (1) execution by authorized representatives AND (2) delivery of fully signed originals to both parties. A lawyer should confirm:
+- When delivery actually occurred
+- Whether the effective date is the signing date (January 13, 2005) or the delivery date
+- Whether there's any gap between signing and delivery that could affect obligations
+
+These provisions should be carefully reviewed to establish the precise effective date of the contract and when obligations commenced.",28007.107,3,4319,916,0.016707,3,4320,906,0.016668,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Effective Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Effective Date_0,Effective Date,[834],exact
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__semantic,Effective Date: semantic paraphrase,legal_semantic_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,34,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__semantic,False,1,Which contract language should counsel review for the Effective Date issue?,"[""The Term of this Agreement shall be for a period of [* ****] years and [*****] months commencing the 1st day of September 2004 and terminating the [*****] day of [*****].""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Section 28: ""EXECUTION AND DELIVERY REQUIRED""** for the Effective Date issue.
+
+This section specifically states:
+
+> ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF unless and until it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and delivery has been made of a fully signed original to both parties.""
+
+This provision is critical because it establishes that the contract's effective date depends on:
+1. Proper execution by both parties (signatures by authorized representatives)
+2. Delivery of fully signed originals to both parties
+
+The signature page shows the agreement was signed by both Tom Watson and Oliver G. ""Chip"" Brewer III on **January 13, 2005**, which appears to be the execution date. However, Section 28 indicates that mere signing is insufficient—delivery of fully signed originals to both parties is also required for the agreement to become effective.
+
+Therefore, counsel should carefully review this provision to determine whether the effective date is the signing date (January 13, 2005) or a later date when delivery was completed, as this could impact the interpretation of performance obligations, payment schedules, and termination rights under the agreement.",26108.797,3,4308,919,0.016601,3,4180,783,0.014909,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Effective Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Effective Date_0,Effective Date,[834],semantic
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__knowledge,Effective Date: knowledge reuse,legal_knowledge_positive,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,35,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""The Term of this Agreement shall be for a period of [* ****] years and [*****] months commencing the 1st day of September 2004 and terminating the [*****] day of [*****].""]",contains,knowledge,miss,True,False,False,False,False,False,"Based on my review of the provided documents, I found the following parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Sections for Legal Review:
+
+### 1. **Execution Date and Effective Date (Page 12-13)**
+The signature block shows:
+- **Date signed: January 13, 2005** by both Tom Watson and Oliver G. ""Chip"" Brewer III
+
+However, the contract references ""**the date first set forth above**"" in the execution clause, but the actual ""date first set forth above"" is not visible in the provided excerpts.
+
+### 2. **Execution and Delivery Requirement (Section 28)**
+This critical provision states:
+> ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF **unless and until** it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and **delivery has been made of a fully signed original to both parties**.""
+
+**Legal Issue:** The effective date depends on:
+- Proper execution by authorized representatives
+- **Delivery of fully signed originals to both parties**
+
+This means the contract may not be effective on the signature date (January 13, 2005) if delivery occurred later.
+
+### 3. **Missing Information**
+The beginning of the contract (which would typically contain the effective date language) is not included in these excerpts.
+
+**Recommendation:** A lawyer should verify the actual effective date stated at the beginning of the contract and confirm when delivery of signed originals occurred to both parties.",27883.122,3,4348,913,0.016651,3,4295,904,0.016383,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Effective Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Effective Date_0,Effective Date,[834],knowledge
+ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__miss,Effective Date: different clause should miss,legal_semantic_negative,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT,baseline,36,legal_cache_suite_cuad_v1_ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT_AGREEMENT__Effective_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""The Term of this Agreement shall be for a period of [* ****] years and [*****] months commencing the 1st day of September 2004 and terminating the [*****] day of [*****].""]",contains,miss,miss,False,False,False,True,True,False,"Based on my review of the provided documents, I found the following parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## Key Sections for Legal Review:
+
+### 1. **Execution Date and Effective Date (Page 12-13)**
+The signature block shows:
+- **Date signed: January 13, 2005** by both Tom Watson and Oliver G. ""Chip"" Brewer III
+
+However, the contract references ""**the date first set forth above**"" in the execution clause, but the actual ""date first set forth above"" is not visible in the provided excerpts.
+
+### 2. **Execution and Delivery Requirement (Section 28)**
+This critical provision states:
+> ""This instrument shall not be considered to be an agreement or contract nor shall it create any obligation whatsoever on the part of CONSULTANT or ADAMS GOLF **unless and until** it has been signed by CONSULTANT, or a duly authorized representative, and by duly authorized representatives of ADAMS GOLF and **delivery has been made of a fully signed original to both parties**.""
+
+**Legal Issue:** The effective date depends on:
+- Proper execution by authorized representatives
+- **Delivery of fully signed originals to both parties**
+
+This means the contract may not be effective on the signature date (January 13, 2005) if delivery occurred later.
+
+### 3. **Missing Information**
+The beginning of the contract (which would typically contain the effective date language) is not included in these excerpts.
+
+**Recommendation:** A lawyer should verify the actual effective date stated at the beginning of the contract and confirm when delivery of signed originals occurred to both parties.",28180.56,3,4412,1126,0.018762,3,4295,873,0.016228,,,,,,,,,9,9,True,0,True,cuad_qa,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Effective Date_0,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT,ADAMSGOLFINC_03_21_2005-EX-10.17-ENDORSEMENT AGREEMENT__Parties_0,Effective Date,[834],miss
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__exact,Parties: exact reuse,legal_exact_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,37,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Kiromic, Inc""]",contains,exact,miss,True,False,True,False,False,False,"# Parties Review - Contract Analysis
+
+Based on my review of the provided documents, here are the sections related to **Parties** that should be reviewed by a lawyer:
+
+## **Document 1 (Employment Agreement)**
+
+**Signature Block (Page 5):**
+```
+""IN WITNESS WHEREOF, the parties hereto have executed this Agreement""
+```
+- **Issue**: The signature page is referenced but not fully shown in the excerpt
+- **Legal Review Needed**: Verify the complete identification of both parties (employee name and company legal entity name), proper signature authority, and dates of execution
+
+**Section 12 - Interpretation, Amendment and Enforcement:**
+```
+""This letter agreement and the Company's standard Proprietary Information and Inventions Agreement supersede and replace any prior agreements, representations or understandings (whether written, oral, implied or otherwise) between you and the Company""
+```
+- **Parties Identified**: ""you"" (employee) and ""the Company"" (Kiromic, Inc.)
+- **Legal Review Needed**: Confirm the legal entity name of the Company and verify the employee's full legal name appears elsewhere in the contract
+
+## **Document 2 (Consulting Agreement)**
+
+**Signature Block (Page 6):**
+```
+KIROMIC, INC: CONSULTANT:
+By: /s/ Scott Dahlbeck /s/ Gianluca Rotino
+Name: Scott Dahlbeck Gianluca Rotino
+Title: President
+```
+- **Parties Clearly Identified**: 
+  - **Company**: Kiromic, Inc. (signed by Scott Dahlbeck, President)
+  - **Consultant**: Gianluca Rotino (individual)
+- **Legal Review Needed**: Verify Scott Dahlbeck's authority to bind Kiromic, Inc. and confirm Gianluca Rotino's capacity to enter the agreement
+
+**Section 9 - General:**
+```
+""This Agreement (together with the Exhibits hereto) is the sole agreement and understanding between Company and Consultant""
+```
+- Confirms the two parties to this agreement
+
+## **Recommendation**
+
+A lawyer should verify:
+1. Complete legal names and proper identification of all parties
+2. Signatory authority (especially for corporate",27227.965,3,3859,984,0.016397,3,3951,1269,0.018804,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0",Parties,[205],exact
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__semantic,Parties: semantic paraphrase,legal_semantic_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,38,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__semantic,False,1,Which contract language should counsel review for the Parties issue?,"[""Kiromic, Inc""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Section 14 (Severability)** for the Parties issue.
+
+Specifically, Section 14 states:
+
+""If any provision of this Agreement is held illegal or unenforceable in a judicial proceeding, such provision shall be severed and shall be inoperative, and **the remainder of this Agreement shall remain operative and binding on the Parties**.""
+
+This language explicitly references ""the Parties"" and addresses how the agreement remains binding on them even if certain provisions are severed. Additionally, Section 13 (Arbitration Agreement) also contains similar language: ""the remainder of this Agreement shall remain operative and binding on **the Parties**.""
+
+Both sections use the capitalized term ""Parties"" to refer to the contracting parties, making these the relevant contract provisions for counsel to review regarding any Parties-related issues.",19838.342,3,3910,1104,0.017558,3,3580,675,0.012215,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0",Parties,[205],semantic
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__knowledge,Parties: knowledge reuse,legal_knowledge_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,39,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Kiromic, Inc""]",contains,knowledge,miss,True,False,True,False,False,False,"# Parties Review - Contract Analysis
+
+Based on my review of the provided documents, here are the sections related to **Parties** that should be reviewed by a lawyer:
+
+## **Document 1 (Employment Agreement)**
+
+**Signature Block (Page 5):**
+```
+""IN WITNESS WHEREOF, the parties hereto have executed this Agreement""
+```
+- **Issue**: The signature page is referenced but not fully shown in the excerpt
+- **Legal Review Needed**: Verify the complete identification of both parties (employee name and company legal entity name), proper signature authority, and dates of execution
+
+**Section 12 - Interpretation, Amendment and Enforcement:**
+```
+""This letter agreement and the Company's standard Proprietary Information and Inventions Agreement supersede and replace any prior agreements, representations or understandings (whether written, oral, implied or otherwise) between you and the Company""
+```
+- **Parties Identified**: ""you"" (employee) and ""the Company"" (Kiromic, Inc.)
+- **Legal Review Needed**: Confirm the legal entity name of the Company and verify the employee's full legal name appears in the complete document
+
+## **Document 2 (Consulting Agreement)**
+
+**Signature Block (Page 6):**
+```
+KIROMIC, INC: CONSULTANT:
+By: /s/ Scott Dahlbeck /s/ Gianluca Rotino
+Name: Scott Dahlbeck Gianluca Rotino
+Title: President
+```
+- **Parties Clearly Identified**: 
+  - **Company**: Kiromic, Inc. (signed by Scott Dahlbeck, President)
+  - **Consultant**: Gianluca Rotino (individual)
+- **Legal Review Needed**: Verify Scott Dahlbeck's authority to bind Kiromic, Inc. and confirm Gianluca Rotino's capacity to enter the agreement
+
+**Section 9 - General:**
+```
+""This Agreement (together with the Exhibits hereto) is the sole agreement and understanding between Company and Consultant""
+```
+- Confirms the two parties to this agreement
+
+## **Recommendation**
+
+A lawyer should verify:
+1. Complete legal names and proper identification of all parties
+2. Signatory authority
+3.",27829.415,3,3891,994,0.016439,3,3950,1174,0.018328,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0",Parties,[205],knowledge
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__miss,Parties: different clause should miss,legal_semantic_negative,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,40,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Parties_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Kiromic, Inc""]",contains,miss,miss,False,False,True,True,True,True,"# Parties Review - Contract Analysis
+
+Based on my review of the provided documents, here are the sections related to **Parties** that should be reviewed by a lawyer:
+
+## **Document 1 (Employment Agreement)**
+
+**Signature Block (Page 5):**
+```
+""IN WITNESS WHEREOF, the parties hereto have executed this Agreement""
+```
+- **Issue**: The signature page is referenced but not fully shown in the excerpt
+- **Legal Review Needed**: Verify the complete identification of both parties (employee name/title and company representative name/title with proper authority)
+
+**Section 12 - Complete Agreement Clause:**
+```
+""This letter agreement and the Company's standard Proprietary Information and Inventions Agreement supersede and replace any prior agreements, representations or understandings (whether written, oral, implied or otherwise) between you and the Company""
+```
+- **Issue**: References ""you and the Company"" but the employee's name is not visible in these excerpts
+- **Legal Review Needed**: Confirm proper identification of the employee party
+
+## **Document 2 (Consulting Agreement)**
+
+**Signature Block (Page 6):**
+```
+KIROMIC, INC: CONSULTANT:
+By: /s/ Scott Dahlbeck /s/ Gianluca Rotino
+Name: Scott Dahlbeck Gianluca Rotino
+Title: President
+```
+- **Parties Identified**: 
+  - **Company**: KIROMIC, INC (signed by Scott Dahlbeck, President)
+  - **Consultant**: Gianluca Rotino
+- **Legal Review Needed**: Verify Scott Dahlbeck has proper authority to bind the company as President
+
+**Section 9 - General Provisions:**
+```
+""This Agreement (together with the Exhibits hereto) is the sole agreement and understanding between Company and Consultant""
+```
+- Confirms the two parties to this agreement
+
+### **Lawyer Should Verify:**
+1. Proper legal names and capacity of all signatories
+2. Authority of company representatives to bind the entity
+3. Complete signature pages with dates",26340.009,3,3783,933,0.015378,3,3916,1103,0.017619,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0",Parties,[205],miss
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__exact,Agreement Date: exact reuse,legal_exact_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,41,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""July 20, 2018""]",contains,exact,miss,True,False,False,False,False,False,"# Agreement Date - Legal Review Required
+
+Based on my analysis of the provided documents, here are the parts related to **Agreement Date** that should be reviewed by a lawyer:
+
+## Document 1 (Employment Agreement):
+
+**Section 12. Interpretation, Amendment and Enforcement:**
+> ""This letter agreement **will be effective as of July 1, 2018**.""
+
+**Key Legal Considerations:**
+- This establishes **July 1, 2018** as the effective date of the employment agreement
+- The effective date determines when contractual obligations begin
+- Important for calculating benefits, vesting schedules, and termination provisions
+
+## Document 2 (Consultant Agreement):
+
+**Signature Page Reference:**
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+**Key Legal Considerations:**
+- The document references an ""Effective Date"" but does not explicitly state what that date is in the provided excerpts
+- The signature page shows executed signatures but the actual date of execution is not visible in the provided text
+- A lawyer should verify that the ""Effective Date"" is clearly defined elsewhere in the complete agreement
+
+## Recommendation:
+
+A lawyer should review these provisions to ensure:
+1. The effective dates are clearly stated and unambiguous
+2. The effective date aligns with the parties' intentions regarding when obligations commence
+3. Any retroactive or future effective dates are properly documented
+4. The date is consistent throughout all related documents and exhibits",23912.918,3,3760,815,0.014535,3,3757,822,0.014537,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0",Agreement Date,[157],exact
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__semantic,Agreement Date: semantic paraphrase,legal_semantic_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,42,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__semantic,False,1,Which contract language should counsel review for the Agreement Date issue?,"[""July 20, 2018""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Section 12 (""Interpretation, Amendment and Enforcement"")** for the Agreement Date issue.
+
+Specifically, this section states:
+
+> ""This letter agreement will be effective as of **July 1, 2018**.""
+
+This clause establishes the effective date of the agreement. Section 12 also addresses how the agreement supersedes prior agreements and the requirements for any amendments (which must be ""by an express written agreement signed by both you and a duly authorized officer of the Company"").
+
+Additionally, counsel should review the **signature page language** which references execution ""as of the Effective Date,"" as shown in the document excerpt:
+
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+These two provisions work together to establish when the agreement becomes effective, which is critical for resolving any Agreement Date issues.",19214.721,3,3758,784,0.014358,3,3587,578,0.011807,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0",Agreement Date,[157],semantic
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__knowledge,Agreement Date: knowledge reuse,legal_knowledge_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,43,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""July 20, 2018""]",contains,knowledge,miss,True,False,False,False,False,False,"# Agreement Date - Legal Review Required
+
+Based on my analysis of the provided documents, here are the parts related to **Agreement Date** that should be reviewed by a lawyer:
+
+## Document 1 (Employment Agreement):
+
+**Section 12. Interpretation, Amendment and Enforcement:**
+> ""This letter agreement **will be effective as of July 1, 2018**.""
+
+**Key Legal Considerations:**
+- This establishes **July 1, 2018** as the effective date of the employment agreement
+- The effective date determines when contractual obligations begin
+- Important for calculating benefits, vesting schedules, and termination provisions
+
+## Document 2 (Consultant Agreement):
+
+**Signature Page Reference:**
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+**Key Legal Considerations:**
+- The document references an ""Effective Date"" but does not explicitly state what that date is in the provided excerpts
+- The signature page shows executed signatures but the actual date of execution is not visible in the provided text
+- A lawyer should verify that the ""Effective Date"" is clearly defined elsewhere in the complete agreement
+
+## Recommendation:
+
+A lawyer should review these provisions to ensure:
+1. The effective dates are clearly stated and unambiguous
+2. The effective date aligns with the parties' intentions regarding when obligations commence
+3. Any retroactive or future effective dates are properly documented
+4. The date is consistent throughout all related documents and exhibits",22253.612,3,3816,789,0.014661,3,3757,805,0.014452,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0",Agreement Date,[157],knowledge
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__miss,Agreement Date: different clause should miss,legal_semantic_negative,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,44,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Agreement_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""July 20, 2018""]",contains,miss,miss,False,False,False,True,True,False,"# Agreement Date - Legal Review Required
+
+Based on my analysis of the provided documents, here are the parts related to **Agreement Date** that should be reviewed by a lawyer:
+
+## Document 1 (Employment Agreement):
+
+**Section 12. Interpretation, Amendment and Enforcement:**
+> ""This letter agreement **will be effective as of July 1, 2018**.""
+
+**Key Legal Considerations:**
+- This establishes **July 1, 2018** as the effective date of the employment agreement
+- The effective date determines when contractual obligations begin
+- Important for calculating benefits, vesting schedules, and termination provisions
+
+## Document 2 (Consultant Agreement):
+
+**Signature Page Reference:**
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+**Key Legal Considerations:**
+- The document references an ""Effective Date"" but does not explicitly state what that date is in the provided excerpts
+- The signature page shows executed signatures but the actual date of execution is not visible in the provided text
+- A lawyer should verify that the ""Effective Date"" is clearly defined elsewhere in the complete agreement
+
+## Recommendation:
+
+A lawyer should review these provisions to ensure:
+1. The effective dates are clearly stated and unambiguous
+2. The effective date aligns with the parties' intentions regarding when obligations commence
+3. Any retroactive or future effective dates are properly documented
+4. The date is consistent throughout all related documents and exhibits",22734.931,3,3932,1115,0.017855,3,3757,842,0.014637,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Agreement Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0",Agreement Date,[157],miss
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__exact,Effective Date: exact reuse,legal_exact_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,45,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""This letter agreement will be effective as of July 1, 2018.""]",contains,exact,miss,True,False,False,False,False,False,"# Effective Date - Legal Review Required
+
+Based on the provided documents, here are the specific parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## **Document 1 (Employment Agreement):**
+
+**Section 12. Interpretation, Amendment and Enforcement:**
+> ""This letter agreement **will be effective as of July 1, 2018**.""
+
+**Legal Review Notes:**
+- This establishes a specific effective date of **July 1, 2018**
+- The lawyer should verify whether this date aligns with the actual start of employment or services
+- Should confirm if any obligations or benefits are retroactive to this date
+
+## **Document 2 (Consultant Agreement):**
+
+**Signature Page Reference:**
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+**Legal Review Notes:**
+- This references an ""Effective Date"" but **does not specify the actual date** in the provided excerpts
+- The lawyer should locate where the Effective Date is defined in the complete agreement
+- This is a critical gap - the contract references an Effective Date without clearly stating it in the visible portions
+
+## **Key Legal Concerns:**
+
+1. **Ambiguity in Document 2**: The consultant agreement references ""the Effective Date"" without clearly defining it in the provided sections
+2. **Date certainty**: Ensure the effective date is clearly stated and matches the parties' intentions
+3. **Retroactivity**: Verify if any provisions take effect before or after the signing date
+4. **Relationship to start date**: Confirm alignment between effective date and actual commencement of work/services",23477.797,3,3785,932,0.015341,3,3803,831,0.015034,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Effective Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Effective Date_0",Effective Date,[14454],exact
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__semantic,Effective Date: semantic paraphrase,legal_semantic_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,46,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__semantic,False,1,Which contract language should counsel review for the Effective Date issue?,"[""This letter agreement will be effective as of July 1, 2018.""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review the **signature page and execution clause** for the Effective Date issue.
+
+Specifically, the relevant contract language states:
+
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+This language appears on PAGE 6 of the document, immediately before the signature blocks for both Kiromic, Inc. and the Consultant (Gianluca Rotino).
+
+**Key Issue:** The contract references ""the Effective Date"" but the provided excerpts do not show where this term is actually defined. The signature page indicates the agreement is executed ""as of the Effective Date,"" but there is no specific date filled in or defined in the visible portions of the document.
+
+Counsel should review:
+1. The definitions section (likely earlier in the contract, not shown in these excerpts)
+2. Any recitals or introductory paragraphs that may specify the Effective Date
+3. Whether the Effective Date is intended to be the signature date or a different specified date
+
+The absence of a clearly defined Effective Date in the visible contract language creates ambiguity that should be addressed.",19372.983,3,3779,796,0.014595,3,1180,702,0.008144,,,,,,,,,7,7,True,1,False,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Effective Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Effective Date_0",Effective Date,[14454],semantic
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__knowledge,Effective Date: knowledge reuse,legal_knowledge_positive,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,47,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""This letter agreement will be effective as of July 1, 2018.""]",contains,knowledge,miss,True,False,False,False,False,False,"# Effective Date - Legal Review Required
+
+Based on the provided documents, here are the specific parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## 1. **Primary Effective Date Clause**
+
+**Location:** Section 12 (Interpretation, Amendment and Enforcement)
+
+**Text:** 
+> ""This letter agreement will be effective as of **July 1, 2018**.""
+
+**Why this needs legal review:**
+- This establishes when contractual obligations begin
+- Determines when rights and responsibilities commence
+- May affect compensation start dates, benefits eligibility, and other time-sensitive provisions
+
+## 2. **Signature Page Reference**
+
+**Location:** End of consultant agreement
+
+**Text:**
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+**Why this needs legal review:**
+- References ""the Effective Date"" without explicitly defining it in this particular document
+- Creates potential ambiguity if the effective date differs from the signature date
+- Should be cross-referenced with any defined effective date in the complete agreement
+
+## Key Legal Considerations:
+
+1. **Verify consistency** - Ensure the July 1, 2018 date aligns with the intended start of employment/services
+2. **Check retroactivity** - Determine if the agreement is being signed after July 1, 2018, making it retroactive
+3. **Confirm alignment** - Ensure the effective date coordinates with background check completion, work authorization verification, and other contingencies mentioned in the contract",24466.511,3,3826,821,0.014877,3,3781,874,0.015007,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Effective Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Effective Date_0",Effective Date,[14454],knowledge
+KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__miss,Effective Date: different clause should miss,legal_semantic_negative,KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT,baseline,48,legal_cache_suite_cuad_v1_KIROMICBIOPHARMA_INC_05_11_2020-EX-10.23-CONSULTING_AGREEMENT__Effective_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""This letter agreement will be effective as of July 1, 2018.""]",contains,miss,miss,False,False,False,True,True,False,"# Effective Date - Legal Review Required
+
+Based on the provided documents, here are the specific parts related to ""Effective Date"" that should be reviewed by a lawyer:
+
+## **Document 1 (Employment Agreement):**
+
+**Section 12. Interpretation, Amendment and Enforcement:**
+> ""This letter agreement will be effective as of **July 1, 2018**.""
+
+**Legal Review Notes:**
+- This establishes a specific calendar date (July 1, 2018) as the effective date
+- The effective date appears in the middle of the contract rather than at the beginning
+- A lawyer should verify whether this date aligns with the actual employment start date and other contractual obligations
+
+## **Document 2 (Consultant Agreement):**
+
+**Signature Page:**
+> ""IN WITNESS WHEREOF, the parties hereto have executed this Agreement **as of the Effective Date**.""
+
+**Legal Review Notes:**
+- This references an ""Effective Date"" but does NOT specify what that date actually is
+- The term ""Effective Date"" appears to be capitalized, suggesting it should be a defined term, but no definition is provided in the excerpts shown
+- **Critical Issue:** A lawyer should ensure the Effective Date is clearly defined elsewhere in the contract (typically in the opening paragraph or definitions section)
+- Without a specified effective date, there could be ambiguity about when contractual obligations begin
+
+## **Recommendation:**
+A lawyer should review both contracts to ensure the effective dates are clearly stated, properly defined, and align with the parties' intentions regarding when rights and obligations commence.",24063.665,3,3872,1029,0.016765,3,3780,829,0.014771,,,,,,,,,7,7,True,0,True,cuad_qa,"KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Effective Date_0","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT","KIROMICBIOPHARMA,INC_05_11_2020-EX-10.23-CONSULTING AGREEMENT__Parties_0",Effective Date,[14454],miss
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__exact,Parties: exact reuse,legal_exact_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,49,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Nissin Kogyo Co., Ltd.""]",contains,exact,miss,True,False,True,False,False,False,"# Parties Review - Legal Analysis
+
+Based on the provided contract documents, here are the parties that should be reviewed by a lawyer:
+
+## Primary Contracting Parties:
+
+### **Veoneer Parties:**
+1. **Veoneer AB** - a Swedish corporation
+2. **Veoneer US, Inc.** - a Delaware corporation
+
+**Signatories:**
+- Veoneer AB signed by Mats Backman (Director) and Amelie Wendels (Director)
+- Veoneer US, Inc. signed by Eric R. Swanson (President & Secretary)
+
+### **Nissin Parties:**
+1. **Nissin Kogyo Co., Ltd.** - a Japanese corporation
+2. **Nissin Kogyo Holdings USA, Inc.** - an Ohio corporation
+3. **Zhongshan Nissin Industry Co., Ltd.** - a People's Republic of China company
+
+**Signatory:**
+- Nissin Kogyo Co., Ltd. signed by Yasushi Kawaguchi (Representative Director, President) ""for and on behalf of each of the Nissin Parties""
+
+## Additional Acknowledging Parties:
+
+The following companies ""acknowledge and agree to be bound by the terms and conditions"" of the Amendment:
+
+1. **Veoneer Nissin Brake Systems Japan Co., Ltd.** - signed by John T. Jensen (President, Representative Director)
+2. **Veoneer Nissin Brake Systems (Zhongshan) Co., Ltd.** - signed by Steven M. Rodé (Director)
+
+## Historical/Referenced Parties:
+
+The document also references previous parties to the original JV Agreement who are no longer primary parties but retain limited obligations:
+- **Autoliv AB** - remains party only for ANRA liquidation proceedings
+- **Honda Motor Co., Ltd.** - mentioned as party to related share purchase agreements
+
+**Legal Review Note:** The structure where one representative signs ""for and on behalf of each of the Nissin Parties"" warrants particular legal scrutiny regarding authority and liability allocation.",20125.662,3,5675,1229,0.021596,3,5684,1238,0.02174,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0",Parties,[416],exact
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__semantic,Parties: semantic paraphrase,legal_semantic_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,50,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__semantic,False,1,Which contract language should counsel review for the Parties issue?,"[""Nissin Kogyo Co., Ltd.""]",contains,semantic,miss,True,False,False,False,False,False,"Based on the provided documents, counsel should review **Article 1** of the Amendment and Termination of Joint Venture Agreement for the Parties issue.
+
+Specifically, the relevant contract language states:
+
+**Article 1.1 and 1.2** address how references to parties are modified:
+- Article 1.1 states: ""all references to 'Company' or 'Companies' in the JV Agreement (either in the body of the JV Agreement or its schedules and other attachments) shall read and be interpreted to mean VNBZ and/or ANRA except as the context otherwise requires.""
+
+- Article 1.2 states: ""all references to 'Company' or 'Companies' in the JV Agreement (either in the body of the JV Agreement or its schedules and other attachments) shall read and be interpreted to mean VNBJ and/or ANRA except as the context otherwise requires.""
+
+**Article 1.3(c)** addresses party termination: ""effective as of the later of the VNBJ Closing and the VNBZ Closing, the JV Agreement shall terminate in its entirety with respect to the Veoneer Parties and (b) after the later of the VNBJ Closing and the VNBZ Closing, the Veoneer Parties shall cease to be a party to the JV Agreement and shall have no further obligations with respect thereto.""
+
+This article also clarifies that ""the JV Agreement will remain in full force and effect in accordance with the terms thereof solely **between the Nissin Parties and Autoliv AB** with respect to the liquidation proceedings of ANRA.""",15337.081,3,5658,1212,0.021324,3,5540,811,0.018453,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0",Parties,[416],semantic
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__knowledge,Parties: knowledge reuse,legal_knowledge_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,51,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Nissin Kogyo Co., Ltd.""]",contains,knowledge,miss,True,False,True,False,False,False,"# Parties Review - Legal Analysis
+
+Based on the provided contract documents, here are the parties that should be reviewed by a lawyer:
+
+## Primary Contracting Parties:
+
+### **Veoneer Parties:**
+1. **Veoneer AB** - a Swedish corporation
+2. **Veoneer US, Inc.** - a Delaware corporation
+
+**Signatories:**
+- Veoneer AB signed by Mats Backman (Director) and Amelie Wendels (Director)
+- Veoneer US, Inc. signed by Eric R. Swanson (President & Secretary)
+
+### **Nissin Parties:**
+1. **Nissin Kogyo Co., Ltd.** - a Japanese corporation
+2. **Nissin Kogyo Holdings USA, Inc.** - an Ohio corporation
+3. **Zhongshan Nissin Industry Co., Ltd.** - a People's Republic of China company
+
+**Signatory:**
+- Nissin Kogyo Co., Ltd. signed by Yasushi Kawaguchi (Representative Director, President) ""for and on behalf of each of the Nissin Parties""
+
+## Additional Acknowledging Parties:
+
+The following companies ""acknowledge and agree to be bound by the terms and conditions"" of the Amendment:
+
+1. **Veoneer Nissin Brake Systems Japan Co., Ltd.** - signed by John T. Jensen (President, Representative Director)
+2. **Veoneer Nissin Brake Systems (Zhongshan) Co., Ltd.** - signed by Steven M. Rodé (Director)
+
+## Historical/Referenced Parties:
+
+- **Autoliv AB** - remains party only for ANRA liquidation proceedings
+- **Honda Motor Co., Ltd.** - mentioned as party to related share purchase agreements (VNBJ SPA and VNBZ SPA)
+
+**Legal Review Note:** The structure involves multiple jurisdictions (Sweden, US, Japan, China) and complex party relationships requiring careful review.",19552.721,3,5769,1280,0.022495,3,5665,1219,0.021436,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0",Parties,[416],knowledge
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__miss,Parties: different clause should miss,legal_semantic_negative,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,52,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Parties_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Parties"" that should be reviewed by a lawyer. Details: The two or more parties who signed the contract","[""Nissin Kogyo Co., Ltd.""]",contains,miss,miss,False,False,True,True,True,True,"# Parties Review - Legal Analysis
+
+Based on the provided contract documents, here are the parties that should be reviewed by a lawyer:
+
+## Primary Contracting Parties:
+
+### **Veoneer Parties:**
+1. **Veoneer AB** - a Swedish corporation
+2. **Veoneer US, Inc.** - a Delaware corporation
+
+**Signatories:**
+- Veoneer AB signed by Mats Backman (Director) and Amelie Wendels (Director)
+- Veoneer US, Inc. signed by Eric R. Swanson (President & Secretary)
+
+### **Nissin Parties:**
+1. **Nissin Kogyo Co., Ltd.** - a Japanese corporation
+2. **Nissin Kogyo Holdings USA, Inc.** - an Ohio corporation
+3. **Zhongshan Nissin Industry Co., Ltd.** - a People's Republic of China company
+
+**Signatory:**
+- Yasushi Kawaguchi (Representative Director, President) signed ""for and on behalf of each of the Nissin Parties""
+
+## Additional Acknowledging Parties:
+
+The following companies acknowledged and agreed to be bound by the Amendment terms:
+- **Veoneer Nissin Brake Systems Japan Co., Ltd.** (signed by John T. Jensen, President, Representative Director)
+- **Veoneer Nissin Brake Systems (Zhongshan) Co., Ltd.** (signed by Steven M. Rodé, Director)
+
+## Historical/Referenced Parties:
+
+The documents reference previous parties to the original JV Agreement:
+- **Autoliv AB** (remains party only for ANRA liquidation proceedings)
+- **Honda Motor Co., Ltd.** (mentioned as party to VNBJ and VNBZ Share Purchase Agreements)
+
+**Legal Review Note:** The structure where one representative signs on behalf of multiple Nissin entities warrants particular legal scrutiny regarding authority and binding effect.",20168.323,3,5654,1160,0.021092,3,5658,1212,0.021324,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0",Parties,[416],miss
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__exact,Agreement Date: exact reuse,legal_exact_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,53,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""October 30, 2019""]",contains,exact,miss,True,False,True,False,False,False,"# Agreement Date Review
+
+Based on my analysis of the provided contract documents, here are the parts related to ""Agreement Date"" that should be reviewed by a lawyer:
+
+## Key Agreement Dates Identified:
+
+### 1. **Primary Effective Date**
+**Location:** First page of Amendment document
+**Text:** *""This AMENDMENT AND TERMINATION OF JOINT VENTURE AGREEMENT (this ""Amendment"") is made and entered into effective as of **October 30, 2019** (the ""Effective Date"")""*
+
+**Legal Significance:** This establishes when the amendment becomes operative.
+
+### 2. **Original JV Agreement Date**
+**Location:** Recitals section (A)
+**Text:** *""The Autoliv Parties and the Nissin Parties entered into the JV Agreement as of **March 7, 2016**""*
+
+**Legal Significance:** This is the foundational contract date being amended.
+
+### 3. **Prior Amendment Dates Referenced:**
+- **September 3, 2018** - Addendum to Joint Venture Agreement (Recital B)
+- **June 14, 2019** - VNBA Separation Agreement (Recital D)
+- **June 28, 2019** - Amendment to Joint Venture Agreement and transaction closing date (Recital E)
+
+### 4. **Signature Date Reference**
+**Location:** Signature page
+**Text:** *""effective as of the date first above written""*
+
+**Legal Significance:** This ties the execution date back to the Effective Date of October 30, 2019.
+
+## Lawyer Review Recommendation:
+A lawyer should verify that all dates are consistent, properly sequenced, and that the effective date aligns with the parties' intentions regarding when obligations commence and terminate.",20891.852,3,5676,1148,0.021274,3,5608,969,0.019631,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0",Agreement Date,[189],exact
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__semantic,Agreement Date: semantic paraphrase,legal_semantic_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,54,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__semantic,False,1,Which contract language should counsel review for the Agreement Date issue?,"[""October 30, 2019""]",contains,semantic,miss,True,False,True,False,False,False,"Based on the provided documents, counsel should review the **Effective Date provisions** in the contract language to address the Agreement Date issue.
+
+Specifically, the documents show:
+
+1. **The Amendment's Effective Date**: The Amendment is stated as ""effective as of October 30, 2019 (the 'Effective Date')"" in the opening paragraph.
+
+2. **Article 4 - Effectiveness Provision**: This article contains critical conditional language that counsel should review:
+   - ""This Amendment shall only become effective upon the VNBJ Closing with respect to Article 1.1 and the VNBZ Closing with respect to Article 1.2""
+   - ""and shall terminate without any force or effect in the event that the VNBJ SPA and the VNBZ SPA are terminated in accordance with the terms thereof.""
+
+3. **Signature Page Language**: The signature page states the parties executed the Amendment ""effective as of the date first above written.""
+
+**The issue**: There appears to be a potential conflict between:
+- The stated ""Effective Date"" of October 30, 2019 in the opening paragraph
+- The conditional effectiveness provisions in Article 4 that tie effectiveness to the VNBJ Closing and VNBZ Closing dates (which may occur on different dates than October 30, 2019)
+
+Counsel should carefully review **Article 4 (Effectiveness)** and reconcile it with the stated Effective Date to determine when the Amendment actually becomes operative and binding on the parties.",19420.084,3,5610,1022,0.019918,3,5505,861,0.018318,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0",Agreement Date,[189],semantic
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__knowledge,Agreement Date: knowledge reuse,legal_knowledge_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,55,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""October 30, 2019""]",contains,knowledge,miss,True,False,True,False,False,False,"Based on the provided documents, here are the parts related to ""Agreement Date"" that should be reviewed by a lawyer:
+
+## Agreement Date References:
+
+1. **Primary Effective Date:**
+   - **""This AMENDMENT AND TERMINATION OF JOINT VENTURE AGREEMENT (this ""Amendment"") is made and entered into effective as of October 30, 2019 (the ""Effective Date"")""**
+   - This establishes **October 30, 2019** as the effective date of this Amendment.
+
+2. **Original JV Agreement Date:**
+   - **""Joint Venture Agreement dated March 7, 2016""**
+   - This references the original agreement date of **March 7, 2016** between the Autoliv Parties and Nissin Parties.
+
+3. **Prior Amendment Dates Referenced:**
+   - **""Addendum to Joint Venture Agreement as of September 3, 2018""** - when Autoliv parties assigned rights to Veoneer parties
+   - **""VNBA Separation Agreement as of June 14, 2019""**
+   - **""Amendment to Joint Venture Agreement as of June 28, 2019""**
+
+4. **Signature Clause:**
+   - **""IN WITNESS WHEREOF, each of the Veoneer Parties and the Nissin Parties has caused this Amendment to be executed through its duly authorized representative effective as of the date first above written.""**
+   - This confirms the agreement is effective as of the date stated at the beginning (October 30, 2019).
+
+## Legal Review Considerations:
+A lawyer should verify that the effective date aligns with the intended timing of obligations, particularly regarding the VNBJ Closing and VNBZ Closing dates referenced throughout the document.",19754.838,3,5646,977,0.019729,3,5609,980,0.019697,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0",Agreement Date,[189],knowledge
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__miss,Agreement Date: different clause should miss,legal_semantic_negative,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,56,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Agreement_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Agreement Date"" that should be reviewed by a lawyer. Details: The date of the contract","[""October 30, 2019""]",contains,miss,miss,False,False,True,True,True,True,"Based on the provided documents, here are the parts related to ""Agreement Date"" that should be reviewed by a lawyer:
+
+## Agreement Date References:
+
+1. **Primary Effective Date:**
+   - **""This AMENDMENT AND TERMINATION OF JOINT VENTURE AGREEMENT (this ""Amendment"") is made and entered into effective as of October 30, 2019 (the ""Effective Date"")""**
+   - This establishes **October 30, 2019** as the effective date of this Amendment.
+
+2. **Original JV Agreement Date:**
+   - **""Joint Venture Agreement dated March 7, 2016""**
+   - This references the original agreement date of **March 7, 2016** between the Autoliv Parties and Nissin Parties.
+
+3. **Prior Amendment Dates Referenced:**
+   - **""Addendum to Joint Venture Agreement as of September 3, 2018""** - when Autoliv parties assigned rights to Veoneer parties
+   - **""VNBA Separation Agreement as of June 14, 2019""**
+   - **""Amendment to Joint Venture Agreement as of June 28, 2019""**
+
+4. **Signature Clause:**
+   - **""IN WITNESS WHEREOF, each of the Veoneer Parties and the Nissin Parties has caused this Amendment to be executed through its duly authorized representative effective as of the date first above written.""**
+   - This confirms the agreement is effective as of the date stated at the beginning (October 30, 2019).
+
+## Legal Review Considerations:
+A lawyer should verify that the effective date aligns with the intended timing of obligations, particularly regarding the VNBJ Closing and VNBZ Closing dates referenced throughout the document.",20682.93,3,5679,1233,0.02166,3,5609,1061,0.020102,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Agreement Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0",Agreement Date,[189],miss
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__exact,Effective Date: exact reuse,legal_exact_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,57,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__exact,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""October 30, 2019""]",contains,exact,miss,True,False,True,False,False,False,"# Effective Date Analysis
+
+## Parts Related to ""Effective Date"" for Legal Review:
+
+### 1. **Primary Effective Date Clause**
+**Location:** Opening paragraph of the contract
+
+**Text:** *""This AMENDMENT AND TERMINATION OF JOINT VENTURE AGREEMENT (this ""Amendment"") is made and entered into effective as of **October 30, 2019 (the ""Effective Date"")**""*
+
+**Why this needs review:** This establishes October 30, 2019 as the nominal effective date of the agreement.
+
+---
+
+### 2. **Conditional Effectiveness Provision**
+**Location:** Article 4 - Effectiveness
+
+**Text:** *""This Amendment shall only become **effective upon the VNBJ Closing** with respect to Article 1.1 and **the VNBZ Closing** with respect to Article 1.2, and shall **terminate without any force or effect** in the event that the VNBJ SPA and the VNBZ SPA are terminated in accordance with the terms thereof.""*
+
+**Why this needs review:** This creates a **critical distinction** between:
+- The stated ""Effective Date"" of October 30, 2019, AND
+- The actual effectiveness being **conditional** upon future closing events (VNBJ Closing and VNBZ Closing)
+
+This means different articles of the Amendment become effective at different times, creating potential ambiguity about when obligations actually commence.
+
+---
+
+## Legal Concern:
+The contract has **two different concepts of effectiveness**: a stated effective date versus conditional effectiveness tied to future events. A lawyer should clarify which provisions (if any) take effect on October 30, 2019 versus which await the closing conditions.",20524.691,3,3964,1023,0.016577,3,3952,999,0.016325,,,,,,,,,3,3,True,2,False,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Effective Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Effective Date_0",Effective Date,[189],exact
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__semantic,Effective Date: semantic paraphrase,legal_semantic_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,58,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__semantic,False,1,Which contract language should counsel review for the Effective Date issue?,"[""October 30, 2019""]",contains,semantic,miss,True,False,True,False,False,False,"Based on the provided documents, counsel should review **Article 4 (Effectiveness)** of the Amendment and Termination of Joint Venture Agreement for the Effective Date issue.
+
+Specifically, Article 4 states:
+
+""This Amendment shall only become effective upon the VNBJ Closing with respect to Article 1.1 and the VNBZ Closing with respect to Article 1.2, and shall terminate without any force or effect in the event that the VNBJ SPA and the VNBZ SPA are terminated in accordance with the terms thereof.""
+
+This provision is critical because while the Amendment has a stated ""Effective Date"" of October 30, 2019 (as defined in the opening paragraph), **Article 4 creates a conditional effectiveness** that depends on the occurrence of future closing events (VNBJ Closing and VNBZ Closing). This creates potential ambiguity about when the Amendment actually becomes operative versus when it was executed.
+
+Additionally, counsel should review the interplay between:
+- The stated Effective Date (October 30, 2019) in the opening paragraph
+- The conditional effectiveness provisions in Article 4
+- The timing references in Article 1 regarding when various termination provisions take effect (""As of the VNBJ Closing"" and ""As of the VNBZ Closing"")
+
+This conditional effectiveness structure could create issues regarding when parties' rights and obligations under the Amendment actually commence.",21722.369,3,3967,1023,0.01661,3,5487,988,0.018737,,,,,,,,,3,3,True,0,True,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Effective Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Effective Date_0",Effective Date,[189],semantic
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__knowledge,Effective Date: knowledge reuse,legal_knowledge_positive,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,59,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__knowledge,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""October 30, 2019""]",contains,knowledge,miss,True,False,True,False,False,False,"# Effective Date Analysis
+
+## Parts Related to ""Effective Date"" for Legal Review:
+
+### 1. **Primary Effective Date Clause**
+**Location:** Opening paragraph of the contract
+
+**Text:** *""This AMENDMENT AND TERMINATION OF JOINT VENTURE AGREEMENT (this ""Amendment"") is made and entered into effective as of **October 30, 2019 (the ""Effective Date"")**""*
+
+**Why this matters:** This establishes October 30, 2019 as the nominal effective date of the agreement.
+
+---
+
+### 2. **Conditional Effectiveness Provision**
+**Location:** Article 4 - Effectiveness
+
+**Text:** *""This Amendment shall only become **effective upon the VNBJ Closing** with respect to Article 1.1 and **the VNBZ Closing** with respect to Article 1.2, and shall **terminate without any force or effect** in the event that the VNBJ SPA and the VNBZ SPA are terminated in accordance with the terms thereof.""*
+
+**Why this matters:** This creates a **critical distinction** between the stated ""Effective Date"" of October 30, 2019 and the actual effectiveness of the amendment's provisions. The amendment's key provisions only become effective upon:
+- VNBJ Closing (for Article 1.1)
+- VNBZ Closing (for Article 1.2)
+
+This conditional effectiveness clause could create ambiguity about when obligations actually commence and should be carefully reviewed to understand the timing of rights and obligations under this contract.
+
+---
+
+## Legal Review Recommendation:
+A lawyer should clarify whether October 30, 2019 represents the execution date only, or if certain provisions take effect on that date while others are contingent on the specified closings.",20585.272,3,2417,996,0.013051,3,3967,997,0.01648,,,,,,,,,3,3,True,2,False,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Effective Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Effective Date_0",Effective Date,[189],knowledge
+VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__miss,Effective Date: different clause should miss,legal_semantic_negative,VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT,baseline,60,legal_cache_suite_cuad_v1_VEONEER_INC_02_21_2020-EX-10.11-JOINT_VENTURE_AGREEMENT__Effective_Date_0__miss,False,1,"Highlight the parts (if any) of this contract related to ""Effective Date"" that should be reviewed by a lawyer. Details: The date when the contract is effective","[""October 30, 2019""]",contains,miss,miss,False,False,True,True,True,True,"# Effective Date Analysis
+
+## Parts Related to ""Effective Date"" for Legal Review:
+
+### 1. **Primary Effective Date Clause**
+**Location:** Opening paragraph of the contract
+
+**Text:** *""This AMENDMENT AND TERMINATION OF JOINT VENTURE AGREEMENT (this ""Amendment"") is made and entered into effective as of **October 30, 2019** (the ""Effective Date"")...""*
+
+**Why this matters:** This establishes October 30, 2019 as the nominal effective date of the agreement.
+
+---
+
+### 2. **Conditional Effectiveness Provision**
+**Location:** Article 4 - Effectiveness
+
+**Text:** *""This Amendment shall only become **effective upon the VNBJ Closing** with respect to Article 1.1 and **the VNBZ Closing** with respect to Article 1.2, and shall **terminate without any force or effect** in the event that the VNBJ SPA and the VNBZ SPA are terminated in accordance with the terms thereof.""*
+
+**Why this matters:** This creates a **critical distinction** between:
+- The **stated Effective Date** (October 30, 2019), and
+- The **actual effectiveness** of different provisions, which is contingent upon future closing events (VNBJ Closing and VNBZ Closing)
+
+This conditional effectiveness means different parts of the Amendment become operative at different times, creating potential ambiguity about when obligations actually commence.
+
+---
+
+## Legal Concerns:
+
+A lawyer should review whether the October 30, 2019 ""Effective Date"" conflicts with the conditional effectiveness provisions in Article 4, and clarify which obligations (if any) take effect on October 30, 2019 versus at the respective closings.",21123.82,3,5658,1212,0.021324,3,3963,1056,0.016731,,,,,,,,,3,3,True,2,False,cuad_qa,"VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Effective Date_0","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT","VEONEER,INC_02_21_2020-EX-10.11-JOINT VENTURE AGREEMENT__Parties_0",Effective Date,[189],miss

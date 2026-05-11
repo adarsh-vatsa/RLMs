@@ -1,0 +1,44 @@
+{
+  "run_id": "20260412T223700Z",
+  "created_at": "2026-04-12T22:39:09.623778+00:00",
+  "official_target": "nolima",
+  "mode": "baseline",
+  "domain": "general",
+  "corpus_id": "official_nolima",
+  "executor_model": "claude-sonnet-4-5",
+  "top_k": 20,
+  "rerank_top": 5,
+  "seed": 42,
+  "shift": 0,
+  "static_depth": -1.0,
+  "depth_intervals": 5,
+  "lengths_requested": [
+    1000,
+    4000
+  ],
+  "samples_selected": 20,
+  "needle_set_path": "benchmark_data/nolima/fixtures/needlesets/needle_set.json",
+  "needle_set_hash": "698ad003c20f097d41133cf019280ca4539d2a0e0b0de81ce86136a47019de03",
+  "haystack_dir": "benchmark_data/nolima/fixtures/haystack/rand_shuffle",
+  "haystack_count": 1,
+  "dataset_signature": "fafdcfd9f3ff98c2",
+  "artifacts": {
+    "predictions": "benchmark_artifacts/official_nolima/20260412T223700Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/official_nolima/20260412T223700Z/bridge_rows.jsonl"
+  },
+  "nolima_parity": {
+    "metric_default": "contains",
+    "depth_interval_count": 5,
+    "lengths": [
+      1000,
+      4000
+    ],
+    "needle_set_variant": "needle_set.json",
+    "system_under_test": "semantic_cache_system"
+  },
+  "cache_reuse": {
+    "enabled": false,
+    "reason": "mode is baseline"
+  },
+  "note": "dry-run-step1-baseline"
+}

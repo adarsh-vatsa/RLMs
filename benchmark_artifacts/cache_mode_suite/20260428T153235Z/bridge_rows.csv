@@ -1,0 +1,97 @@
+case_id,title,scenario,corpus_id,mode,case_index,seed_query_count,query,expected_answers,expected_answer_mode,expected_cache_type,actual_cache_type,expected_from_cache,actual_from_cache,answer_correct,cache_type_match,from_cache_match,overall_pass,prediction,latency_ms,setup_calls,setup_input_tokens,setup_output_tokens,setup_cost_usd,delta_calls,delta_input_tokens,delta_output_tokens,delta_cost_usd,knowledge_top_score,knowledge_margin,knowledge_verifier_called,knowledge_verifier_allow,knowledge_verifier_reason,knowledge_verifier_confidence,knowledge_verifier_trigger_reasons,knowledge_lexical_support
+finance_exact_arr,Exact reuse for ARR query,exact_positive,finance_q1,cache,1,1,What was ACME's ARR in Q1 2023?,"[""$12.4M"", ""12.4M""]",contains,exact,exact,True,True,True,True,True,True,"Based on the provided document, **ACME's ARR in Q1 2023 was $12.4M**.
+
+This is explicitly stated in the ACME Corp Q1 2023 operating report: ""Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.""",0.007,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+finance_semantic_arr,Paraphrase reuse for ARR query,semantic_positive,finance_q1,cache,2,1,How much annual recurring revenue did ACME report for Q1 2023?,"[""$12.4M"", ""12.4M""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, **ACME's ARR in Q1 2023 was $12.4M**.
+
+This is explicitly stated in the ACME Corp Q1 2023 operating report: ""Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.""",1149.471,0,0,0,0.0,1,456,19,0.000551,,,,,,,,
+finance_semantic_mrr,MRR semantic paraphrase,semantic_positive,finance_q1,cache,3,1,Report the monthly recurring revenue figure for ACME in Q1 2023.,"[""$1.03M"", ""1.03M""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, ACME's MRR in Q1 2023 was **$1.03M** (Monthly Recurring Revenue).
+
+This is stated directly in the ACME Corp Q1 2023 operating report: ""Monthly recurring revenue (MRR) was $1.03M, equivalent to annual recurring revenue (ARR) of $12.4M.""",619.621,0,0,0,0.0,1,456,19,0.000551,,,,,,,,
+finance_semantic_ebitda,EBITDA semantic paraphrase,semantic_positive,finance_q1,cache,4,1,What was the EBITDA figure?,"[""$3.1M"", ""3.1M""]",contains,semantic,exact,True,True,True,False,True,False,"Based on the provided document, the EBITDA figure was **$3.1M**.
+
+This is stated in the ACME Corp Q1 2023 operating report.",0.025,1,395,14,0.000465,0,0,0,0.0,,,,,,,,
+finance_knowledge_churn,Knowledge reuse for churn after summary seed,knowledge_positive,finance_q1,cache,5,1,What was customer churn in Q1 2023?,"[""4.2%""]",contains,knowledge,exact,True,True,True,False,True,False,"Based on the provided document, **customer churn in Q1 2023 was 4.2%**.
+
+This figure is explicitly stated in the ACME Corp Q1 2023 operating report.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+finance_knowledge_margin,Knowledge reuse for gross margin after summary seed,knowledge_positive,finance_q1,cache,6,1,What gross margin did ACME report?,"[""71%""]",contains,knowledge,exact,True,True,True,False,True,False,"According to the ACME Corp Q1 2023 operating report, ACME reported a **gross margin of 71%**.",0.005,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+finance_knowledge_cogs,Knowledge reuse for COGS after summary seed,knowledge_positive,finance_q1,cache,7,1,What was ACME's cost of goods sold?,"[""$2.8M"", ""2.8M""]",contains,knowledge,exact,True,True,True,False,True,False,"Based on the provided document, **ACME's cost of goods sold (COGS) was $2.8M** in Q1 2023.
+
+This figure is explicitly stated in the ACME Corp Q1 2023 operating report.",0.005,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+finance_negative_other_metric,Different metric should not reuse ARR cache entry,semantic_negative,finance_q1,cache,8,1,What was ACME's EBITDA in Q1 2023?,"[""$3.1M"", ""3.1M""]",contains,miss,exact,False,True,True,False,False,False,"Based on the provided document, **ACME's EBITDA in Q1 2023 was $3.1M**.
+
+This figure is explicitly stated in the ACME Corp Q1 2023 operating report.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+finance_negative_omitted_fact,Omitted summary fact should not knowledge-hit,knowledge_negative,finance_q1,cache,9,1,What was ACME's net revenue retention?,"[""118%""]",contains,miss,exact,False,True,True,False,False,False,"Based on the provided document, **ACME's net revenue retention was 118%**.
+
+This information is explicitly stated in the ACME Corp Q1 2023 operating report.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+doctor_exact_director,Exact reuse for Doctor Strange director,exact_positive,doctor_strange_facts,cache,10,1,Who directed Doctor Strange?,"[""Scott Derrickson""]",contains,exact,exact,True,True,True,True,True,True,"Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.
+
+The document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill.",0.004,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+doctor_semantic_director,Director paraphrase should semantic-hit,semantic_positive,doctor_strange_facts,cache,11,1,Who was the director of Doctor Strange?,"[""Scott Derrickson""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.
+
+The document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill.",657.057,0,0,0,0.0,1,297,19,0.000392,,,,,,,,
+doctor_semantic_release,Release-year paraphrase should semantic-hit,semantic_positive,doctor_strange_facts,cache,12,1,What year did Doctor Strange come out?,"[""2016""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, **Doctor Strange was released in November 2016**.
+
+The document specifically states: ""The film was released in November 2016.""",645.478,0,0,0,0.0,1,297,14,0.000367,,,,,,,,
+doctor_knowledge_director,Knowledge reuse for director after broad summary,knowledge_positive,doctor_strange_facts,cache,13,1,Who directed Doctor Strange?,"[""Scott Derrickson""]",contains,knowledge,exact,True,True,True,False,True,False,"Based on the provided document, **Doctor Strange** was directed by **Scott Derrickson**.
+
+The document also notes that Derrickson co-wrote the film alongside Jon Spaihts and C. Robert Cargill.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+doctor_knowledge_writer,Knowledge reuse for writers after broad summary,knowledge_positive,doctor_strange_facts,cache,14,1,Who wrote Doctor Strange?,"[""Jon Spaihts"", ""C. Robert Cargill""]",contains,knowledge,exact,True,True,True,False,True,False,"Based on the provided document, **Doctor Strange** (2016 film) was written by:
+
+1. **Jon Spaihts**
+2. **Scott Derrickson**
+3. **C. Robert Cargill**
+
+All three individuals are credited as writers for the film.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+doctor_knowledge_star,Knowledge reuse for lead actor after broad summary,knowledge_positive,doctor_strange_facts,cache,15,1,Who starred as Stephen Strange?,"[""Benedict Cumberbatch""]",contains,knowledge,exact,True,True,True,False,True,False,"According to the provided document, **Benedict Cumberbatch** starred as Stephen Strange in the 2016 Marvel film ""Doctor Strange.""",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+doctor_negative_writer_vs_director,Writer query should not reuse director answer,semantic_negative,doctor_strange_facts,cache,16,1,Who wrote Doctor Strange?,"[""Jon Spaihts"", ""C. Robert Cargill""]",contains,miss,exact,False,True,True,False,False,False,"Based on the provided document, **Doctor Strange** (2016 film) was written by:
+
+1. **Jon Spaihts**
+2. **Scott Derrickson**
+3. **C. Robert Cargill**
+
+All three individuals are credited as writers for the film.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+doctor_negative_composer_omitted,Composer query should miss when summary omitted it,knowledge_negative,doctor_strange_facts,cache,17,1,Who composed the score for Doctor Strange?,"[""Michael Giacchino""]",contains,miss,miss,False,False,True,True,True,True,"According to the provided document, **Michael Giacchino** composed the score for Doctor Strange (2016).",5954.329,0,0,0,0.0,5,951,262,0.002793,,,,,,,,
+ops_exact_include_timeout,Exact reuse for include-timeout query,exact_positive,ops_incident_policy,cache,18,1,Which timeout errors should be included in the incident review?,"[""production timeout errors""]",contains,exact,exact,True,True,True,True,True,True,"Based on the provided document, the following timeout errors should be included in the incident review:
+
+**Include:**
+- **Production timeout errors generated during the deployment window**
+
+**Exclude:**
+- **Sandbox timeout warnings** - these should NOT be included in the review packet
+
+The policy specifically distinguishes between production timeout errors (which should be included) and sandbox timeout warnings (which should be excluded).",0.012,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+ops_semantic_include_timeout,Include-timeout paraphrase should semantic-hit,semantic_positive,ops_incident_policy,cache,19,1,List the timeout errors we should keep in the incident review packet.,"[""production timeout errors""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the provided document, the following timeout errors should be included in the incident review:
+
+**Include:**
+- **Production timeout errors generated during the deployment window**
+
+**Exclude:**
+- **Sandbox timeout warnings** - these should NOT be included in the review packet
+
+The policy specifically distinguishes between production timeout errors (which should be included) and sandbox timeout warnings (which should be excluded).",1843.787,0,0,0,0.0,1,277,14,0.000347,,,,,,,,
+ops_semantic_auth_include,Authentication-failure paraphrase should semantic-hit,semantic_positive,ops_incident_policy,cache,20,1,List the production authentication failures we should keep.,"[""authentication failures from production""]",contains,semantic,semantic,True,True,True,True,True,True,"Based on the document provided, **authentication failures from production** should be included in the incident review policy for the payments API.
+
+Specifically, the policy states: ""Include authentication failures from production.""
+
+Authentication failures from other environments (such as sandbox) are not mentioned as inclusions, so only production authentication failures should be included in the review packet.",514.97,0,0,0,0.0,1,273,19,0.000368,,,,,,,,
+ops_negative_timeout_inversion,Exclude-timeout inversion should miss,semantic_negative,ops_incident_policy,cache,21,1,Which timeout warnings should be excluded from the incident review?,"[""sandbox timeout warnings""]",contains,miss,exact,False,True,True,False,False,False,"Based on the provided document, **sandbox timeout warnings** should be excluded from the incident review.
+
+The policy specifically states: ""Exclude sandbox timeout warnings from the review packet.""
+
+Note that production timeout errors should still be included (specifically those ""generated during the deployment window""), but sandbox timeout warnings are explicitly excluded.",0.008,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+ops_negative_auth_inversion,Exclude-auth inversion should miss,semantic_negative,ops_incident_policy,cache,22,1,Which authentication failures should be excluded?,"[""health-check noise"", ""routine success logs""]",contains,miss,exact,False,True,True,False,False,False,"Based on the provided document, **no authentication failures should be excluded** from the incident review.
+
+The policy specifically states: ""**Include authentication failures from production**"" - meaning all production authentication failures should be included in the review packet.
+
+The exclusions mentioned in the policy are:
+- Sandbox timeout warnings
+- Health-check noise
+- Routine success logs
+
+Authentication failures are explicitly listed as items to include, not exclude.",0.007,0,0,0,0.0,0,0,0,0.0,,,,,,,,
+ops_negative_timeout_vs_auth,Different log category should miss,semantic_negative,ops_incident_policy,cache,23,1,Which authentication failures should be included?,"[""authentication failures from production""]",contains,miss,exact,False,True,True,False,False,False,"Based on the document provided, **authentication failures from production** should be included in the incident review policy for the payments API.
+
+Specifically, the policy states: ""Include authentication failures from production.""
+
+Authentication failures from other environments (such as sandbox) are not mentioned as inclusions, so only production authentication failures should be included in the review packet.",0.006,0,0,0,0.0,0,0,0,0.0,,,,,,,,

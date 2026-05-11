@@ -1,0 +1,132 @@
+{
+  "run_id": "20260504T020700Z",
+  "created_at": "2026-05-04T03:27:48.681542+00:00",
+  "started_at": "2026-05-04T02:07:00.424657+00:00",
+  "finished_at": "2026-05-04T03:27:48.681542+00:00",
+  "elapsed_seconds": 4848.257,
+  "benchmark_target": "legal_cache_suite",
+  "suite_name": "legal_cache_suite_cuad_v1",
+  "suite_path": "benchmark_data/legal_bench/legal_cache_suite_cuad_v1.json",
+  "suite_sha256": "37221217524c1abcce30faa668af8bc55e2a72517d4428fe9314fb55c68ccdcf",
+  "cases_selected": 60,
+  "mode": "baseline",
+  "executor_model": "claude-sonnet-4-5",
+  "top_k": 20,
+  "rerank_top": 5,
+  "disable_reranker": false,
+  "retrieval": {
+    "reranker_enabled": true,
+    "reranker_enabled_rows": 60,
+    "reranker_fallback_count": 50,
+    "reranker_fallback_rate": 0.833333
+  },
+  "artifacts": {
+    "predictions": "benchmark_artifacts/legal_cache_suite/20260504T020700Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/legal_cache_suite/20260504T020700Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/legal_cache_suite/20260504T020700Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/legal_cache_suite/20260504T020700Z/official_legal_cache_eval_report.json"
+  },
+  "case_cache_isolation": {
+    "enabled": true,
+    "reason": "prevents unrelated legal cases from contaminating route labels",
+    "namespaces_used": 0
+  },
+  "total_api_calls": 360,
+  "total_input_tokens": 498161,
+  "total_output_tokens": 113249,
+  "total_tokens": 611410,
+  "total_estimated_cost_usd": 1.962066,
+  "setup_api_calls": 180,
+  "setup_input_tokens": 250068,
+  "setup_output_tokens": 58630,
+  "setup_total_tokens": 308698,
+  "setup_estimated_cost_usd": 1.002566,
+  "evaluation_api_calls": 180,
+  "evaluation_input_tokens": 248093,
+  "evaluation_output_tokens": 54619,
+  "evaluation_total_tokens": 302712,
+  "evaluation_estimated_cost_usd": 0.9595,
+  "answer_accuracy": 0.583333,
+  "cache_type_match_rate": 0.25,
+  "overall_pass_rate": 0.166667,
+  "expected_miss_rate": 0.25,
+  "actual_miss_rate": 1.0,
+  "unexpected_miss_rate": 0.75,
+  "positive_case_miss_rate": 1.0,
+  "expected_route_counts": {
+    "semantic": 15,
+    "knowledge": 15,
+    "miss": 15,
+    "exact": 15
+  },
+  "actual_route_counts": {
+    "semantic": 0,
+    "knowledge": 0,
+    "miss": 60,
+    "exact": 0
+  },
+  "by_scenario": {
+    "legal_exact_positive": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "legal_knowledge_positive": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "legal_semantic_negative": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 0.666667
+    },
+    "legal_semantic_positive": {
+      "cases": 15,
+      "answer_accuracy": 0.333333,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    }
+  },
+  "by_expected_cache_type": {
+    "exact": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "knowledge": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    },
+    "miss": {
+      "cases": 15,
+      "answer_accuracy": 0.666667,
+      "route_match_rate": 1.0,
+      "overall_pass_rate": 0.666667
+    },
+    "semantic": {
+      "cases": 15,
+      "answer_accuracy": 0.333333,
+      "route_match_rate": 0.0,
+      "overall_pass_rate": 0.0
+    }
+  },
+  "by_actual_cache_type": {
+    "miss": {
+      "cases": 60,
+      "answer_accuracy": 0.583333,
+      "route_match_rate": 0.25,
+      "overall_pass_rate": 0.166667
+    }
+  },
+  "cache_reuse": {
+    "enabled": false,
+    "reason": "mode is baseline"
+  }
+}
