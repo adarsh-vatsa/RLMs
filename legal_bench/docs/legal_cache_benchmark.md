@@ -97,7 +97,23 @@ python legal_bench/build_suite.py \
   --max-records 15
 ```
 
-## 2. Run the Legal Benchmark (see section 3 before running)
+## 2. Route Case Question Types
+
+Each selected CUAD row generates route-labeled cases. The original CUAD
+question is a `Highlight...` clause-review query.
+
+| Expected route | Seed query | Eval query | Purpose |
+| --- | --- | --- | --- |
+| `exact` | Original `Highlight the parts...` question | Same original `Highlight the parts...` question | Verifies exact string reuse. |
+| `semantic` | Original `Highlight the parts...` question | Deterministic paraphrase, currently `Which contract language should counsel review for the <clause> issue?` | Verifies paraphrased reuse of the same clause question. |
+| `knowledge` | Generated `Summarize the contract evidence...` question | Original `Highlight the parts...` question | Verifies reuse through extracted facts/knowledge from a broader summary seed. |
+| `miss` | Original `Highlight the parts...` question for a different clause in the same contract | Original `Highlight the parts...` question for the target clause | Verifies the cache does not reuse an answer for the wrong clause. |
+
+In isolated mode, each route case gets its own cache namespace. A `miss` case
+can therefore seed `Parties` and evaluate `Agreement Date` without inheriting
+an earlier `Agreement Date` answer from another case.
+
+## 3. Run the Legal Benchmark (see section 4 before running)
 
 Baseline/no-cache run:
 
@@ -141,7 +157,7 @@ python legal_bench/run_benchmark.py \
   --output-dir benchmark_artifacts
 ```
 
-## 3. Case Cache Isolation
+## 4. Case Cache Isolation
 
 The legal runner uses a separate persistent cache namespace per case by default.
 This is a diagnostic setting, not the realistic deployment setting.
