@@ -17,6 +17,8 @@ CSV_COLUMNS = [
     "case_id",
     "source_id",
     "row_type",
+    "is_scored",
+    "setup_case_id",
     "context_id",
     "expected_cache_type",
     "expected_from_cache",
@@ -81,6 +83,8 @@ def load_rows(input_path: Path, include_exact: bool = True) -> list[dict]:
         rows.append({
             "case_id": original_case_id,
             "row_type": "original",
+            "is_scored": "true",
+            "setup_case_id": "",
             "expected_cache_type": "miss",
             "expected_from_cache": "false",
             "depends_on_case_id": "",
@@ -90,6 +94,8 @@ def load_rows(input_path: Path, include_exact: bool = True) -> list[dict]:
             rows.append({
                 "case_id": f"{source_id}__exact",
                 "row_type": "exact",
+                "is_scored": "true",
+                "setup_case_id": "",
                 "expected_cache_type": "exact",
                 "expected_from_cache": "true",
                 "depends_on_case_id": original_case_id,

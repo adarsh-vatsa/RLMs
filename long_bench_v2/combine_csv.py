@@ -1,0 +1,105 @@
+"""Combine LongBench-v2 original/exact rows with generated workload rows."""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import sys
+from collections import Counter
+from pathlib import Path
+from typing import Sequence
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from long_bench_v2.export_csv import CSV_COLUMNS
+
+
+DEFAULT_BASE_CSV_PATH = Path("benchmark_data/long_bench_v2/data.csv")
+DEFAULT_SEMANTIC_CSV_PATH = Path("benchmark_data/long_bench_v2/data_semantic_codex.csv")
+DEFAULT_KNOWLEDGE_CSV_PATH = Path("benchmark_data/long_bench_v2/data_knowledge_codex.csv")
+DEFAULT_OUTPUT_PATH = Path("benchmark_data/long_bench_v2/data_cache_suite.csv")
+
+
+LAST_ROW_TYPE_COUNTS: Counter[str] = Counter()
+
+
+def _normalize_row(row: dict) -> dict:
+    normalized = {column: row.get(column, "") for column in CSV_COLUMNS}
+    row_type = normalized["row_type"]
+    if not normalized["is_scored"]:
+        normalized["is_scored"] = "false" if row_type == "setup" else "true"
+    return normalized
+
+
+def _read_rows(path: Path) -> list[dict]:
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        missing_columns = [column for column in CSV_COLUMNS if column not in (reader.fieldnames or [])]
+        required_missing = [
+            column
+            for column in missing_columns
+            if column not in {"is_scored", "setup_case_id"}
+        ]
+        if required_missing:
+            raise ValueError(f"{path} is missing required columns: {', '.join(required_missing)}")
+        return [_normalize_row(row) for row in reader]
+
+
+def combine_csv(
+    base_csv_path: Path,
+    semantic_csv_path: Path,
+    output_path: Path,
+    knowledge_csv_path: Path | None = None,
+) -> int:
+    global LAST_ROW_TYPE_COUNTS
+    base_rows = _read_rows(base_csv_path)
+    semantic_rows = _read_rows(semantic_csv_path)
+    knowledge_rows = _read_rows(knowledge_csv_path) if knowledge_csv_path and knowledge_csv_path.exists() else []
+    combined_rows = [*base_rows, *semantic_rows, *knowledge_rows]
+
+    seen_case_ids = set()
+    for row in combined_rows:
+        case_id = row.get("case_id", "")
+        if not case_id:
+            raise ValueError("Found row with empty case_id")
+        if case_id in seen_case_ids:
+            raise ValueError(f"Duplicate case_id found: {case_id}")
+        seen_case_ids.add(case_id)
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(combined_rows)
+    LAST_ROW_TYPE_COUNTS = Counter(row.get("row_type", "") or "<blank>" for row in combined_rows)
+    return len(combined_rows)
+
+
+def print_row_type_summary(row_type_counts: Counter[str]) -> None:
+    if not row_type_counts:
+        return
+    rows = sorted(row_type_counts.items())
+    row_type_width = max(len("row_type"), *(len(row_type) for row_type, _ in rows))
+    count_width = max(len("count"), *(len(str(count)) for _, count in rows))
+    print("[LONGBENCH-V2] Row type summary:")
+    print(f"{'row_type'.ljust(row_type_width)}  {'count'.rjust(count_width)}")
+    print(f"{'-' * row_type_width}  {'-' * count_width}")
+    for row_type, count in rows:
+        print(f"{row_type.ljust(row_type_width)}  {str(count).rjust(count_width)}")
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Combine LongBench-v2 base, semantic, and knowledge CSV rows")
+    parser.add_argument("--base-csv-path", type=Path, default=DEFAULT_BASE_CSV_PATH)
+    parser.add_argument("--semantic-csv-path", type=Path, default=DEFAULT_SEMANTIC_CSV_PATH)
+    parser.add_argument("--knowledge-csv-path", type=Path, default=DEFAULT_KNOWLEDGE_CSV_PATH)
+    parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH)
+    args = parser.parse_args(argv)
+
+    row_count = combine_csv(args.base_csv_path, args.semantic_csv_path, args.output_path, args.knowledge_csv_path)
+    print(f"[LONGBENCH-V2] Wrote {row_count} rows to {args.output_path}")
+    print_row_type_summary(LAST_ROW_TYPE_COUNTS)
+
+
+if __name__ == "__main__":
+    main()
