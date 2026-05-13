@@ -7,21 +7,21 @@ Collaborator: Adarsh Vatsa, PhD student in Prof. William Eiers's lab
 
 ## Introduction
 
-Large language models are increasingly used as autonomous problem solvers: they search through long documents, decompose tasks into smaller steps, call other models or tools, and combine intermediate results into final answers. Recursive Language Models (RLMs) are one example of this direction. Instead of forcing the entire task into a single prompt, an RLM can break a large input into smaller pieces and ask additional language-model calls to process those pieces. This makes RLMs promising for long-context work, but it also creates a practical problem: recursive workflows often repeat the same or similar subquestions many times. Each repeated call costs money, takes time, and can introduce another opportunity for an unsupported or inconsistent answer.
+Recursive Language Models (RLMs) are a promising way to apply LLMs to long-context tasks by decomposing large inputs into smaller model calls. However, this recursive structure creates repeated subquestions, repeated document chunks, and repeated intermediate summaries. Each repeated call adds cost, latency, and another opportunity for an unsupported answer.
 
-Existing approaches do not fully solve this problem. A standard language-model call has no memory of equivalent work that was already completed. A simple string cache can reuse exact duplicate questions, but it misses paraphrases and related questions. A pure vector-similarity cache can find similar questions, but it can also return dangerous false matches, especially when two queries are worded similarly but ask for different information. Long-context retrieval systems can reduce the amount of text sent to a model, but they do not automatically solve repeated recursive calls, source contamination, or the need to prove that a cached answer came from the correct document.
+Existing approaches only partially address this issue. Standard LLM calls do not reuse previous work; string caches miss paraphrases; and pure vector-similarity caches can return unsafe matches when similar-looking queries ask for different information. Retrieval systems reduce context length, but they do not by themselves prevent repeated synthesis or ensure that a reused answer came from the correct source.
 
-This project proposes a scoped semantic caching system for RLM-style and autonomous LLM workflows. The system stores answers from previous model calls and reuses them only when the new request is sufficiently related and tied to the correct source context. It first uses fast local retrieval to find candidate cached answers, then applies a stricter semantic check before serving a cached result. It also tracks source identity, document-set identity, estimated cost, benchmark metadata, and extracted knowledge so that cache reuse can be measured and audited rather than treated as an opaque shortcut.
+This project proposes a scoped semantic cache for RLM-style workflows. The system stores previous answers, retrieves candidate matches with local embeddings, verifies semantic equivalence before reuse, and gates cache hits by source and document-set identity. It also records cost, provenance, benchmark metadata, and extracted knowledge so reuse can be audited.
 
-The main finding so far is that semantic caching can substantially reduce repeated API usage and estimated cost while preserving the measured accuracy of the original cold-cache run in selected benchmarks. In the RULER v2 benchmark runs, a warm-cache rerun eliminated API calls and estimated API cost for the repeated workload while preserving the same measured accuracy as the cold-cache run. In the LegalBench/CUAD runs, the warm-cache setting reduced API calls, token usage, estimated cost, and runtime by large margins while maintaining the same answer accuracy observed in the cache-enabled cold run. These results suggest that caching is not just an implementation convenience: it is a necessary infrastructure layer for making future recursive and agentic language-model systems more efficient, reproducible, and practical on large workloads.
+Current results show that this approach can reduce repeated API usage and estimated cost while preserving measured accuracy on repeated workloads. A warm-cache RULER v2 run eliminated API calls for the repeated workload while matching cold-cache accuracy, and LegalBench/CUAD warm-cache runs substantially reduced cost, tokens, and runtime while preserving cache-enabled answer accuracy. The project is still incomplete, and broader evaluation on the modified LongBench-v2 setup remains future work.
 
-At a high level, the motivation of this work is to make recursive and long-context LLM systems economically usable. The problem is that repeated model calls are expensive and difficult to control, while unsafe reuse can return answers from the wrong source. The solution developed in this project is a semantic cache that combines reuse with source isolation and benchmark tracking. The finding is that this approach can turn repeated work into inexpensive lookups without changing the answer quality measured by the current benchmark runs, although more evaluation is still needed on broader reasoning benchmarks such as LongBench-v2.
+The semester work progressed from understanding the RLM codebase to building and evaluating a two-stage semantic cache. By the current point in the project, the repository includes RLM execution notes, early local/API experiments, a scoped cache implementation, benchmark runners for RULER v2, NoLiMa, synthetic cache-mode tests, LegalBench/CUAD, and a prepared modified LongBench-v2 cache dataset.
 
 ## Related Work
 
-Several recent papers study the same broad problem as this project: how to make LLMs reliable and useful when the relevant input is much longer than a single convenient prompt. [Recursive Language Models](https://huggingface.co/papers/2512.24601) (Zhang, Kraska, and Khattab, 2025) propose an inference strategy where a model treats the prompt as part of an external environment and recursively decomposes long inputs into smaller model calls. [MemGPT](https://huggingface.co/papers/2310.08560) (Packer et al., 2023) approaches the same context-window limitation through operating-system-inspired memory management, moving information between active context and external storage. Long-context benchmarks show why these systems are needed: [LongBench](https://aclanthology.org/2024.acl-long.172/) (Bai et al., ACL 2024) introduced a bilingual multitask benchmark for long-context understanding; [RULER](https://openreview.net/forum?id=kIoBbc76Sy) (Hsieh et al., COLM 2024) showed that simple needle-in-a-haystack retrieval is too shallow and that models degrade as context length and task complexity increase; [NoLiMa](https://research.adobe.com/publication/nolima-long-context-evaluation-beyond-literal-matching/) (Modarressi et al., ICML 2025) further showed that long-context retrieval becomes much harder when questions and evidence do not share obvious lexical overlap; and [LongBench-v2](https://huggingface.co/papers/2412.15204) (Bai et al., 2025) moves toward more realistic long-context reasoning with multiple-choice questions over contexts ranging from thousands to millions of words. This project is closest to RLMs because it studies repeated recursive model calls, but it focuses on an infrastructure layer that those systems need: safe reuse of prior subcall results. Unlike the benchmark papers, this work does not only evaluate long-context failure modes; it builds a cache mechanism intended to reduce the cost and runtime of systems that operate in those settings.
+Several recent papers study the same broad problem as this project: how to make LLMs reliable and useful when the relevant input is much longer than a single convenient prompt. Recursive Language Models (RLMs) propose an inference strategy where a model treats the prompt as part of an external environment and recursively decomposes long inputs into smaller model calls [1]. MemGPT approaches the same context-window limitation through operating-system-inspired memory management, moving information between active context and external storage [2]. Long-context benchmarks show why these systems are needed: LongBench introduced a bilingual multitask benchmark for long-context understanding [3]; RULER showed that simple needle-in-a-haystack retrieval is too shallow and that models degrade as context length and task complexity increase [4]; NoLiMa further showed that long-context retrieval becomes much harder when questions and evidence do not share obvious lexical overlap [5]; and LongBench-v2 moves toward more realistic long-context reasoning with multiple-choice questions over contexts ranging from thousands to millions of words [6]. This project is closest to RLMs because it studies repeated recursive model calls, but it focuses on an infrastructure layer that those systems need: safe reuse of prior subcall results. Unlike the benchmark papers, this work does not only evaluate long-context failure modes; it builds a cache mechanism intended to reduce the cost and runtime of systems that operate in those settings.
 
-Other papers use related caching and memory ideas, but often for different deployment problems. [GPTCache](https://www.researchgate.net/publication/376404523_GPTCache_An_Open-Source_Semantic_Cache_for_LLM_Applications_Enabling_Faster_Answers_and_Cost_Savings) (Bang, NLP-OSS 2023) introduced an open-source semantic cache for LLM applications, reusing previous answers for semantically similar prompts to reduce latency and cost. [MeanCache](https://huggingface.co/papers/2403.02694) (Gill et al., 2024) studies semantic caching for LLM web services with attention to user-centric behavior and privacy. [VectorQ](https://huggingface.co/papers/2502.03771) (Schroeder et al., 2025) improves semantic prompt caching by adapting similarity thresholds instead of relying on one fixed cutoff. [RAGCache](https://huggingface.co/papers/2404.12457) (Jin et al., ACM Transactions on Computer Systems 2024) targets retrieval-augmented generation systems by caching intermediate knowledge states to improve serving latency and throughput. Apple’s [Krites work on asynchronous verified semantic caching](https://machinelearning.apple.com/research/semantic-caching) (Singh et al., 2026) is especially relevant because it uses an LLM judge to verify borderline semantic-cache candidates before promoting them for future reuse. This project also uses semantic reuse and an evaluator-style verification step, but the target problem is different: it applies caching to RLM-style and benchmarked autonomous workflows, where source-context isolation, cache-route diagnostics, persistent benchmark state, and answer provenance are central requirements rather than optional service-level features.
+Other papers use related caching and memory ideas, but often for different deployment problems. GPTCache introduced an open-source semantic cache for LLM applications, reusing previous answers for semantically similar prompts to reduce latency and cost [7]. MeanCache studies semantic caching for LLM web services with attention to user-centric behavior and privacy [8]. VectorQ improves semantic prompt caching by adapting similarity thresholds instead of relying on one fixed cutoff [9]. RAGCache targets retrieval-augmented generation systems by caching intermediate knowledge states to improve serving latency and throughput [10]. Krites is especially relevant because it uses an LLM judge to verify borderline semantic-cache candidates before promoting them for future reuse [11]. This project also uses semantic reuse and an evaluator-style verification step, but the target problem is different: it applies caching to RLM-style and benchmarked autonomous workflows, where source-context isolation, cache-route diagnostics, persistent benchmark state, and answer provenance are central requirements rather than optional service-level features.
 
 ## Method
 
@@ -53,13 +53,13 @@ sim(q, q_i) = dot(z, z_i) / (norm(z) * norm(z_i)).
 
 FAISS is used to retrieve the top candidates efficiently. A candidate enters the semantic verification stage only if its similarity is above a configured threshold. The second stage is an evaluator-model check, called the "Sniper" in the project notes. Instead of trusting vector similarity alone, the evaluator decides whether the new query and cached query ask for the same information. This two-stage design was chosen because exact caching is too conservative, but vector-only semantic caching is too risky: questions such as "include timeout errors" and "exclude timeout errors" can be close in embedding space while requiring opposite answers.
 
-The system also maintains a knowledge cache. When an answer is generated, the cache extracts structured facts that can be represented as triples:
+The system also maintains a knowledge cache. When an answer is generated, the cache extracts structured facts that can be represented as scoped triples:
 
 ```text
-f_j = (subject_j, relation_j, object_j, support_j, s_j, h_j).
+f_j = (subject_j, relation_j, object_j, s_j, h_j).
 ```
 
-These facts are embedded and indexed separately. A later query may match a fact even when it is not equivalent to the original cached query. The intended use is cross-query reuse: a broad setup question can populate reusable facts, and later narrower questions can retrieve those facts. The current implementation records these facts and indexes them, but the benchmark results show that knowledge-hit behavior still needs stronger span support and route diagnostics before it can be treated as a final contribution.
+These facts are embedded and indexed separately. A later query may match a fact even when it is not equivalent to the original cached query. The intended use is cross-query reuse: a broad setup question can populate reusable facts, and later narrower questions can retrieve those facts. The current implementation records these facts and indexes them, but the benchmark results show that knowledge-hit behavior still needs stronger span support, verifier status, and route diagnostics before it can be treated as a final contribution.
 
 On a cache miss, the system runs a retrieval and synthesis pipeline. The active corpus is chunked and embedded. FAISS retrieves a broad candidate set, a local reranker filters and ranks the candidates, and the executor model synthesizes an answer from the selected evidence. The generated answer is then checked for grounding, optionally verified through a second model, stored in the cache, and used to extract new facts. The high-level miss path is:
 
@@ -69,42 +69,9 @@ query -> FAISS retrieval -> reranking -> LLM synthesis -> grounding/consensus ->
 
 There are several reasonable alternatives to this design. One alternative is a simple string cache; this is safe but misses paraphrases and therefore gives low hit rates in realistic recursive workflows. Another alternative is a pure embedding cache; this improves hit rate but can return false positives when two queries are lexically similar but semantically different. A third alternative is to use only retrieval-augmented generation without answer caching; this avoids cache collisions but still pays for repeated synthesis. The chosen design combines exact matching, vector retrieval, evaluator verification, source scoping, and persistent benchmark state because the project goal is not only to reduce cost, but to reduce cost without allowing cached answers to cross into the wrong document or benchmark sample.
 
-## Data
+## Project Development
 
-The project uses several datasets and benchmark fixtures because each one tests a different part of the system. RULER v2 is used as a long-context retrieval stress test. The prepared local RULER data contains 102 samples: 17 samples for each combination of three tasks (`mk_niah_basic`, `mv_niah_basic`, and `qa_basic`) and two context lengths (8,192 and 32,768 tokens). In a `qa_basic` example, the model receives many numbered documents and a target text, then must return the most relevant document index. This tests whether the system can retrieve and preserve the correct evidence over long contexts. The RULER data was not generated by an LLM for this project; it was prepared in RULER-style JSONL files and then passed through the repository's benchmark runner.
-
-The LegalBench/CUAD cache suite is used to test route behavior on real contract text. The local suite contains 400 route-labeled cases from 10 contract corpora: 100 exact cases, 100 semantic cases, 100 knowledge cases, and 100 miss cases. The reported May 2026 runs selected 60 of these cases. A typical CUAD-style query is: `Highlight the parts (if any) of this contract related to "Parties" that should be reviewed by a lawyer.` The expected answer is a span or phrase from the contract, such as `Distributor`. This dataset is useful because the task is realistic and source-grounded: a correct answer must come from the contract, not from world knowledge. The route-labeled cases are generated programmatically from CUAD-style contract QA records; the semantic route uses deterministic paraphrases such as asking which contract language counsel should review for a given clause issue.
-
-The synthetic cache-mode suite is a small debugging fixture designed specifically for cache routes. It contains 23 cases over three small corpora: a finance report, Doctor Strange film notes, and an operations incident policy. The expected route distribution is 3 exact, 7 semantic, 6 knowledge, and 7 miss cases. For example, the finance corpus states that ACME's ARR was `$12.4M`; an exact case repeats `What was ACME's ARR in Q1 2023?`, while a semantic case asks `How much annual recurring revenue did ACME report for Q1 2023?`. This dataset is not intended to prove real-world benchmark performance. Its purpose is to make cache behavior observable in a small controlled setting.
-
-NoLiMa is included as an integration track for long-context retrieval beyond literal matching. The current repository fixture is small: it has two needle templates and one haystack file. One example needle is `The traveler finally settled in Lisbon after years of moving`, and the corresponding question is `Which city did the traveler finally settle in?` This fixture verifies that the NoLiMa runner and scorer work, but it should be treated as a smoke test unless a larger official NoLiMa run is added.
-
-LongBench-v2 is the next broader reasoning dataset being prepared. The local LongBench-v2 export contains 503 original multiple-choice questions and 503 exact duplicate rows, covering 462 unique contexts. A pilot cache-suite file currently contains 1,032 rows: 503 original rows, 503 exact rows, 10 semantic rewrite rows, 5 setup rows, and 11 knowledge rows. LongBench-v2 examples include tasks such as translating from a grammar book, answering questions from reports, comparing government documents, and reasoning over long structured or multi-document contexts. This dataset is attractive because the answer format is multiple choice, making scoring more deterministic than free-form span matching.
-
-Some LongBench-v2 cache rows were generated with an LLM. The semantic rewrite rows were generated with the Codex SDK using `gpt-5.5` with `reasoning_effort=high`. The rewrite prompt instructed the model to rewrite only the question text so that it asked for the same answer with different wording, while preserving names, dates, numbers, quoted strings, code identifiers, and answer choices without revealing the answer. The knowledge setup rows were also generated with `gpt-5.5` at high reasoning effort. That prompt asked for exactly one open-ended setup question useful for extracting reusable facts from the same hidden long context, while avoiding answer choices, benchmark metadata, yes/no questions, or overly broad requests for every detail. Example generated setup question: `Summarize the Kalamang vocabulary, word order, grammatical markers, pronoun/possession patterns, tense/aspect cues, and short example translations that would help translate later Kalamang sentences into English.`
-
-## Project Summary
-
-This semester project investigates how to make Recursive Language Models (RLMs) more efficient and more practical for long-context autonomous workflows. The project started as an exploration of the RLM repository and its execution model, then developed into a semantic caching system for repeated LLM subcalls. The current repository, `adarsh-rlms`, implements and evaluates a two-stage semantic cache designed to reduce repeated API calls, preserve source provenance, and support benchmark-driven evaluation.
-
-The motivating observation was that RLMs decompose large tasks into many smaller language-model calls. This decomposition can let an LLM work over inputs larger than a single model context window, but it also creates repeated subquestions, repeated document chunks, repeated extraction templates, and repeated intermediate summaries. Without caching, each recursive call is blocking, incurs API cost, and may repeat work that has already been performed. The main research direction became whether recursive LLM workflows can be made cheaper, faster, and more reliable by memoizing repeated subcalls in a scoped semantic cache.
-
-By the current point in the semester, the project has produced:
-
-- An initial understanding and diagram of RLM execution flow, including root/sub-RLM calls, local REPL environments, persistence, depth, iterations, and stopping behavior.
-- Early local and API-based RLM experiments using GPT-style and local Qwen/Ollama models.
-- A proposed caching direction for RLMs, motivated by limitations in cost control, runtime control, blocking recursive calls, and lack of prefix/cache reuse.
-- A working two-stage semantic cache implementation with local embeddings, FAISS vector search, reranking, LLM-based semantic verification, provenance tracking, knowledge extraction, persistent cache state, and corpus/data-scope isolation.
-- Benchmark infrastructure for RULER v2, NoLiMa, a synthetic cache-mode suite, LegalBench/CUAD, and a modified LongBench-v2 cache dataset.
-- Recorded evaluation artifacts showing strong cost and API-call reductions on warm-cache runs while preserving measured benchmark accuracy in selected settings.
-
-## Collaboration Context
-
-This work is being conducted with Adarsh Vatsa, a PhD student in Prof. William Eiers's Neurosymbolic Software Engineering Lab. The work has combined research reading, system design, implementation, benchmark construction, experiment execution, and evaluation analysis.
-
-The semester work can be divided into two phases. The first phase focused on understanding Recursive Language Models: how the provided RLM codebase works, what limitations it has, and how it behaves on long-context tasks. The second phase focused on building and evaluating infrastructure around RLM-style workflows, especially semantic caching and benchmark runners that make the cost, runtime, and correctness tradeoffs measurable.
-
-## Initial RLM Exploration
+### Initial RLM Exploration and Early Experiments
 
 At the start of the semester, the work focused on understanding the RLM codebase and reproducing simple examples. This included setting up VPN and JARVIS/HPC access, reading the repository structure, and constructing an execution-flow diagram to make the system easier to reason about. The diagram in `report/Notes on RLMs.png` summarizes the root RLM process, how prompts are loaded into a local environment, how sub-RLM calls are spawned, and how final answers are returned.
 
@@ -119,34 +86,11 @@ The initial architecture notes captured several important details:
 - Persistence changes whether the environment is reused across calls.
 - The current RLM implementation appeared to support only `max_depth=1` in practice, even when higher values were configured.
 
-This early analysis led to several research questions that shaped the rest of the semester:
+This early analysis raised questions about the practical difference between increasing `max_depth` and increasing `max_iterations`, whether deeper recursive calls should run sequentially or in parallel, and whether a caching layer could make repeated subcalls reusable without returning answers from the wrong source context. Initial experiments also tested an Ollama client, local Qwen/Ollama execution, and API-based RLM workflows. The recorded quickstart runs included a GPT-style API run with a 400K input / 128K output budget at about 120 seconds, and a local `qwen2.5:7b` Q4 Ollama run with a 128K input / 8K output budget at about 43 seconds.
 
-- What is the practical difference between increasing `max_depth` and increasing `max_iterations`?
-- Should deeper recursive calls run sequentially, in parallel, or only when earlier calls cannot find an answer?
-- Can an RLM signal that it should stop once it has found the answer?
-- Are repeated recursive calls wasting cost and runtime because they recompute equivalent work?
-- Can a memory or caching layer make repeated subcalls reusable without returning answers from the wrong source context?
+Small synthetic RLM-style tasks were then used to check reliability on repeated long-context search. These included finding hidden numbers and answering context-grounded questions where the supplied context intentionally conflicted with real-world knowledge. The experiments showed that simple extraction could work, but reliability varied by prompt, model, context length, and grounding. This motivated later requirements: benchmark tasks need clear scoring, answers must be tied to the supplied source context, and cache reuse must not cross source boundaries.
 
-## Early Experiments
-
-An Ollama client was implemented and tested, and remote/API model behavior was compared with local-model behavior on the quickstart RLM workflow. The weekly logs record the following early measurements:
-
-| Setup | Input/Output Budget | Approximate Runtime | Notes |
-| --- | ---: | ---: | --- |
-| `gpt-5-nano-2025-08-07` | 400K input / 128K output tokens | about 120 seconds | Tested on `quickstart.py` |
-| `qwen2.5:7b` via Ollama, Q4 quantization | 128K input / 8K output tokens | about 43 seconds | Worked locally; HPC was not yet tested |
-
-Small synthetic RLM-style tasks were also run to understand answer quality under repeated long-context search. The CSV log `report/Experiments_03032026.csv` records tasks such as finding one or two hidden numbers and answering a question about the location of Stevens Institute of Technology using only provided context, including contexts with intentionally false information.
-
-These experiments showed that simple extraction tasks could work, but reliability varied by prompt, model, context size, and whether the model defaulted to outside knowledge. For example:
-
-- Number-finding tasks generally performed well across `gpt-5-mini` and `gpt-5-nano`.
-- Location questions were more brittle, especially for smaller models, because the model sometimes defaulted to the real-world answer instead of obeying the supplied false context.
-- Longer contexts, including approximately 65K-token contexts, made prompt design and grounding more important.
-
-The experiments helped motivate later project requirements: benchmark tasks need clear scoring, answers need to be tied to the supplied source context, and cache reuse must not cross from one source context into another.
-
-## Research Reading and Benchmark Survey
+### Benchmark Survey and Data
 
 A major part of the semester was surveying long-context and RLM-relevant benchmarks. Candidate benchmarks were collected in `report/Benchmarks.csv` and later organized into implemented and candidate benchmark tracks in `docs/benchmarks.md`.
 
@@ -161,7 +105,13 @@ The benchmark survey included:
 
 This research changed the evaluation plan. RULER and NoLiMa are useful engineering stress tests, but they are mostly retrieval-focused. LongBench-v2 became the next primary candidate because it offers broader long-context reasoning and deterministic multiple-choice scoring. LegalBench/CUAD became useful for real-domain cache-route debugging because it contains real contracts, clause labels, and answer spans.
 
-## Architecture Direction
+The evaluated data so far comes mainly from RULER v2 and LegalBench/CUAD. The prepared RULER v2 data contains 102 samples across `mk_niah_basic`, `mv_niah_basic`, and `qa_basic` at 8,192 and 32,768 token contexts; for example, `qa_basic` asks the system to find the most relevant document index for a target text. The LegalBench/CUAD suite contains 400 route-labeled contract cases across exact, semantic, knowledge, and miss categories, with 60 cases selected in the reported runs. A typical CUAD-style query asks the model to highlight contract language related to a clause such as `Parties`, with the expected answer being a contract span such as `Distributor`.
+
+Two smaller tracks were used mainly for implementation checks. The synthetic cache-mode suite has 23 cases over three small corpora and directly tests exact, semantic, knowledge, and miss behavior; for example, it asks both `What was ACME's ARR in Q1 2023?` and the paraphrase `How much annual recurring revenue did ACME report for Q1 2023?`. NoLiMa is currently represented by a small fixture with two needle templates and one haystack file, so it should be treated as a runner/scorer smoke test rather than a headline benchmark result.
+
+The modified LongBench-v2 setup is the next broader reasoning benchmark being prepared. The local export contains 503 original multiple-choice questions and 503 exact duplicate rows across 462 unique contexts. A pilot cache-suite file contains 1,032 rows: original, exact, semantic rewrite, setup, and knowledge rows. The semantic and setup rows were generated with the Codex SDK using `gpt-5.5` at high reasoning effort, then saved as reviewable CSV/audit files. This design preserves LongBench-v2's deterministic answer labels while adding cache-route structure for exact reuse, paraphrase reuse, setup-driven fact extraction, and later knowledge reuse.
+
+### System Architecture
 
 The central architecture direction became a two-stage semantic cache for autonomous agents and RLM-style workflows. The system is designed around the idea that recursive LLM systems repeatedly ask similar questions over the same or related source material. A simple string cache only catches exact duplicates, while a pure vector cache can produce dangerous false hits. The project therefore uses a two-stage "Dragnet and Sniper" design:
 
@@ -181,7 +131,7 @@ The implemented architecture in `semantic_cache_system.py` includes:
 
 The system uses local Qwen3 models for embedding/reranking and Anthropic Claude models for synthesis/evaluation roles. [OPEN: Confirm whether the final report should describe current model names exactly or keep them generic to avoid stale model-ID issues.]
 
-## Cache Correctness and Source Isolation
+### Cache Correctness and Source Isolation
 
 A recurring challenge was that cache reuse can improve efficiency while also introducing correctness risks. The project therefore added multiple isolation mechanisms.
 
@@ -196,50 +146,11 @@ This distinction became an important implementation and reportable research cont
 
 Regression tests were added for scoped exact hits, scoped knowledge hits, scoped persistence, and legacy unscoped cache entries.
 
-## Benchmark Infrastructure Completed
+### Evaluation Infrastructure
 
-Several benchmark tracks were implemented or prepared during the semester.
+Several benchmark tracks were implemented or prepared so that the cache system could be evaluated reproducibly rather than only demonstrated manually. The repository now includes runners and artifact pipelines for RULER v2, an initial RLM baseline, NoLiMa, a synthetic cache-mode suite, and LegalBench/CUAD; these write predictions, bridge rows, manifests, evaluation reports, and reusable cache state.
 
-### RULER v2
-
-The RULER v2 cache runner in `ruler_v2/run_benchmark.py` evaluates the semantic cache system on selected RULER tasks and context lengths. The implemented task set currently includes `mk_niah_basic`, `mv_niah_basic`, and `qa_basic` at 8,192 and 32,768 token contexts. The runner writes reproducible artifacts including predictions, bridge rows, manifests, sample documents, and official-style evaluation reports.
-
-The RULER v2 RLM baseline in `ruler_v2/run_rlm_benchmark.py` provides an uncached RLM comparison path over prepared RULER v2 data. This is important because it lets the project compare the semantic cache system with a recursive baseline rather than only direct LLM calls.
-
-### NoLiMa
-
-The NoLiMa integration in `nolima/` includes a benchmark runner, scorer, and parity bridge. It expands needle sets into placement sweeps and writes repository-native artifacts. NoLiMa is useful because it tests long-context retrieval when the query and needle have reduced literal overlap.
-
-The current NoLiMa fixture is still small and should be treated as an integration/smoke-test track rather than a final headline result.
-
-### Synthetic Cache-Mode Suite
-
-The synthetic cache-mode suite in `cache_bench/` is a small hand-authored fixture designed to test cache route behavior directly. It includes exact, semantic, knowledge, and miss cases. This suite is not meant to be a final accuracy benchmark; it is a debugging harness for route behavior.
-
-The latest recorded run, `benchmark_artifacts/cache_mode_suite/20260428T153235Z`, selected 23 cases and reached 100% answer accuracy, but route-type matching was only 43.48%. This showed that the system often answered correctly while taking a different cache path than the case label expected. In particular, many expected knowledge or miss cases became exact hits because the warmed cache already contained a directly reusable answer.
-
-### LegalBench/CUAD Cache Suite
-
-The legal benchmark track in `legal_bench/` builds route-labeled cases from CUAD-style contract QA data. It generates exact, semantic, knowledge, and miss cases from real contract clauses and answer spans.
-
-This benchmark is useful because it moves beyond hand-authored toy documents. It tests cache behavior on real legal text and asks contract-review questions such as highlighting language related to parties, agreement dates, effective dates, and other CUAD clause categories.
-
-The implementation also added case-level cache isolation. This is important for route diagnostics because otherwise one case can warm the cache in a way that prevents a later case from exercising the intended route.
-
-### Modified LongBench-v2
-
-The current branch includes a modified LongBench-v2 dataset preparation workflow. The utilities under `long_bench_v2/` export the original dataset to CSV, generate semantic rewrites, generate setup/knowledge rows, and combine rows into a cache-suite CSV.
-
-Current local files show:
-
-| File | CSV Records | Purpose |
-| --- | ---: | --- |
-| `benchmark_data/long_bench_v2/data.csv` | 1,006 | 503 original rows and 503 exact rows |
-| `benchmark_data/long_bench_v2/data_semantic_codex.csv` | 10 | Generated semantic rewrite pilot |
-| `benchmark_data/long_bench_v2/data_knowledge_codex.csv` | 16 | 5 setup rows and 11 knowledge rows |
-| `benchmark_data/long_bench_v2/data_cache_suite.csv` | 1,032 | Combined cache suite |
-
-The modified LongBench-v2 approach is the current next direction for the project. The goal is to preserve LongBench-v2's original multiple-choice answer labels while adding cache-route structure around the benchmark. Original rows establish cold-cache behavior; exact rows duplicate the same question/context pair to test string-level reuse; semantic rows rewrite the question while preserving the answer to test paraphrase reuse; setup rows ask broad unscored questions intended to populate reusable facts; and knowledge rows test whether later scored questions can reuse those facts. The route labels are diagnostic metadata only: the benchmark runner should still pass the model only the context, question, choices, and answer format, so the cache system cannot use the label to choose an easier route.
+The benchmark work also produced a modified LongBench-v2 preparation workflow. It preserves the original multiple-choice labels while adding route-oriented rows for exact reuse, semantic paraphrases, setup questions, and knowledge reuse, so the next stage can evaluate broader long-context reasoning while still measuring cache behavior.
 
 ## Results
 
@@ -307,7 +218,9 @@ There was also an implementation-level ablation during development. An earlier e
 
 The project still needs stronger final ablations. The next report should compare exact-only caching, vector-only semantic caching, vector-plus-verifier caching, knowledge caching with and without source-span verification, and direct RAG without answer caching. These ablations are future work because the current project stage has focused on building the system, generating benchmark tracks, and validating the main cold/warm cache behavior.
 
-## Key Technical Problems Solved
+## Discussion and Future Work
+
+### Completed Technical Work
 
 The project solved or made progress on several technical problems.
 
@@ -323,7 +236,7 @@ Fifth, it identified and fixed important evaluation/caching bugs. One major bug 
 
 Sixth, it expanded the benchmark plan from one benchmark to a portfolio. RULER, NoLiMa, LegalBench/CUAD, and LongBench-v2 now each serve different purposes: retrieval stress testing, latent retrieval, real-domain route debugging, and broader long-context reasoning.
 
-## Discussion
+### Interpretation and Recommendations
 
 The designed solution is a good fit for the chosen problem because RLM-style systems naturally create repeated subproblems. When a model decomposes a large task into many smaller calls, some calls are exact duplicates, some are paraphrases, and some ask for facts that were already extracted by a previous branch of the computation. A cache is therefore not an add-on optimization; it matches the structure of the workload. The important design constraint is that reuse must be scoped. A global cache can reduce cost, but it can also return an answer generated from the wrong source document. The source-chunk and data-scope hash mechanisms are therefore central to the method because they let the system reuse work while still respecting the boundary between documents, corpora, and benchmark samples.
 
@@ -337,7 +250,7 @@ A second recommendation is to strengthen provenance. The current system has usef
 
 A third recommendation is to run stronger ablations. The final evaluation should compare exact-only caching, vector-only semantic caching, vector-plus-verifier semantic caching, knowledge caching with and without span verification, and direct RAG without answer caching. These comparisons would clarify which part of the system is responsible for each gain. The current cold/warm-cache results show that persistence can produce large cost reductions, but the next stage should isolate the value of the semantic verifier, the reranker, the knowledge index, and the source-scope gates.
 
-## Current Limitations and Open Issues
+### Limitations
 
 Several limitations remain.
 
@@ -351,7 +264,7 @@ LongBench-v2 is prepared but not fully evaluated in the visible artifacts. The d
 
 Some benchmark scores need careful interpretation. RULER and NoLiMa are useful retrieval stress tests, but they do not fully measure complex reasoning. CUAD has real legal text, but answer-span scoring can be brittle when compared with free-form LLM outputs. LongBench-v2 should help address this because multiple-choice labels make scoring cleaner.
 
-## Work Remaining
+### Next Steps
 
 The next steps are:
 
@@ -370,6 +283,30 @@ This report described the semester's progress from understanding Recursive Langu
 The experiments completed so far show that this approach can substantially reduce repeated API usage. On RULER v2, the warm-cache run preserved the cold-cache accuracy of 0.8113 while reducing API calls from 306 to 0 and estimated API cost from $1.212457 to $0. On LegalBench/CUAD, the warm-cache run reduced API calls from 360 in the baseline to 30, reduced estimated cost from $1.962066 to $0.009688, and reduced runtime from 4,848.257 seconds to 659.463 seconds, while preserving the cache-enabled answer accuracy of 0.6667. The synthetic cache-mode suite further showed 100% answer accuracy and a 95.65% cache hit rate, but also exposed route-diagnostic issues because answer correctness and route correctness were not always aligned.
 
 The main conclusion is that semantic caching is a promising infrastructure layer for RLM-style workloads, but the project is not finished. The current results support the cost-reduction claim for repeated workloads, while the route-level diagnostics show where the system still needs improvement. The next stage should complete the LongBench-v2 evaluation, expand the RLM baseline, add span-supported provenance for knowledge hits, and run cleaner ablations. These steps will test whether the same efficiency gains hold for broader long-context reasoning tasks, not only repeated benchmark reruns and cache-route fixtures.
+
+## References
+
+[1] A. L. Zhang, T. Kraska, and O. Khattab, "Recursive Language Models," arXiv:2512.24601, 2025.
+
+[2] C. Packer, S. Wooders, K. Lin, V. Fang, S. G. Patil, I. Stoica, and J. E. Gonzalez, "MemGPT: Towards LLMs as Operating Systems," arXiv:2310.08560, 2023.
+
+[3] Y. Bai et al., "LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding," in Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 2024.
+
+[4] C.-P. Hsieh et al., "RULER: What's the Real Context Size of Your Long-Context Language Models?" in Conference on Language Modeling (COLM), 2024.
+
+[5] A. Modarressi, H. Deilamsalehy, F. Dernoncourt, T. Bui, R. A. Rossi, S. Yoon, and H. Schuetze, "NoLiMa: Long-Context Evaluation Beyond Literal Matching," in International Conference on Machine Learning (ICML), 2025.
+
+[6] Y. Bai et al., "LongBench v2: Towards Deeper Understanding and Reasoning on Realistic Long-context Multitasks," in Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), 2025.
+
+[7] B. Fu and D. Feng, "GPTCache: An Open-Source Semantic Cache for LLM Applications Enabling Faster Answers and Cost Savings," in Proceedings of the 3rd Workshop for Natural Language Processing Open Source Software (NLP-OSS), 2023.
+
+[8] W. Gill, M. Elidrisi, P. Kalapatapu, A. Ahmed, A. Anwar, and M. A. Gulzar, "MeanCache: User-Centric Semantic Caching for LLM Web Services," in Proceedings of the 39th IEEE International Parallel and Distributed Processing Symposium (IPDPS), 2025.
+
+[9] L. G. Schroeder et al., "Adaptive Semantic Prompt Caching with VectorQ," arXiv:2502.03771, 2025.
+
+[10] C. Jin et al., "RAGCache: Efficient Knowledge Caching for Retrieval-Augmented Generation," ACM Transactions on Computer Systems, 2024.
+
+[11] A. K. Singh, H. Wang, L. N. S. Attaluri, T. Chiam, and W. Zhu, "Asynchronous Verified Semantic Caching for Tiered LLM Architectures," arXiv:2602.13165, 2026.
 
 ## Remaining Open Items
 
