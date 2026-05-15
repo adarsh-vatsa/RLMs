@@ -1,0 +1,22 @@
+﻿#,Task,Model,Prompt,Max Iterations,Correct Results,Notes
+6,Find a number,gpt-5-mini-2025-08-07,I'm looking for a number in the context.,10,3/4,"- Create a new input context in every execution (shuffle number position)
+- All trials returned 'stop_workflow=True'"
+7,Find a number,gpt-5-mini-2025-08-07,"I'm looking for a number. I know that there is ONLY one number in the entire context. Return the number if you can find it in your chunk. If you can't find any, return 'I couldn't find any magic numbers.'",10,3/3,"- Create a new input context in every execution (shuffle number position)
+- All trials returned 'stop_workflow=True'"
+1,Find a number,gpt-5-nano-2025-08-07,I'm looking for a number in the context.,10,3/3,"- Create a new input context in every execution (shuffle number position)
+- All trials returned 'stop_workflow=True'"
+2,Find a number,gpt-5-nano-2025-08-07,"I'm looking for a number. I know that there is ONLY one number in the entire context. Return the number if you can find it in your chunk. If you can't find any, return 'I couldn't find any magic numbers.'",10,3/3,"- Create a new input context in every execution (shuffle number position)
+- All trials returned 'stop_workflow=True'"
+10,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-mini-2025-08-07,"Based on the given context, answer the following question: Where is Stevens Institute of Technology located?""",10,4/5,- All trials returned 'stop_workflow=True'
+11,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-mini-2025-08-07,"Based on the given context, answer the following question: Where is Stevens Institute of Technology located?""",10,3/3,"- Context length 10000 lines, 65K tokens (above were 100 lines)"
+9,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-mini-2025-08-07,Where is Stevens Institute of Technology located?,10,3/4,- All trials returned 'stop_workflow=True'
+14,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-mini-2025-08-07,Where is Stevens Institute of Technology located?,10,3/4,"- Context length 10000 lines, 65K tokens (above were 100 lines)"
+4,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-nano-2025-08-07,Where is Stevens Institute of Technology located?,10,0/3,"- Defaults to Hoboken even when the context is present (finds it context but does not return it)
+- All trials returned 'stop_workflow=True'"
+5,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-nano-2025-08-08,"Based on the given context, answer the following question: Where is Stevens Institute of Technology located?""",10,2/5,- All trials returned 'stop_workflow=True'
+12,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-nano-2025-08-08,"Based on the given context, answer the following question: Where is Stevens Institute of Technology located?""",10,3/5,"- Context length 10000 lines, 65K tokens (above were 100 lines)"
+13,Find location of Stevens Institute of Technology (only based on given context with false information),gpt-5-nano-2025-08-08,Where is Stevens Institute of Technology located?,10,1/3,"- Context length 10000 lines, 65K tokens (above were 100 lines)"
+8,Find two numbers,gpt-5-mini-2025-08-07,I'm looking for two numbers in the context.,10,3/3,"- Set ""number_of_needles=2""
+- All trials returned 'stop_workflow=True'"
+3,Find two numbers,gpt-5-nano-2025-08-07,I'm looking for two numbers in the context.,10,3/3,"- Set ""number_of_needles=2""
+- All trials returned 'stop_workflow=True'"
