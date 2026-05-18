@@ -19,6 +19,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv(REPO_ROOT / ".env")
 
 ARTIFACT_SUBDIR = "official_ruler_v2_rlm"
 DEFAULT_RLM_BACKEND = "anthropic"
@@ -413,10 +420,14 @@ def _build_default_rlm_factory(args: argparse.Namespace, out_dir: Path) -> Calla
             "https://github.com/alexzhang13/rlm."
         ) from exc
 
+    args = normalize_rlm_args(args)
     backend_kwargs = {"model_name": args.rlm_model}
     api_key = os.getenv(args.rlm_api_key_env) if args.rlm_api_key_env else ""
     if api_key:
         backend_kwargs["api_key"] = api_key
+    base_url = getattr(args, "rlm_base_url", "")
+    if base_url:
+        backend_kwargs["base_url"] = base_url
 
     logger = None
     if args.rlm_log_trajectories:
@@ -438,10 +449,21 @@ def _build_default_rlm_factory(args: argparse.Namespace, out_dir: Path) -> Calla
     return factory
 
 
+def normalize_rlm_args(args: argparse.Namespace) -> argparse.Namespace:
+    api_key_env = getattr(args, "rlm_api_key_env", None)
+    base_url = (getattr(args, "rlm_base_url", "") or "").lower()
+    if api_key_env is None:
+        args.rlm_api_key_env = (
+            "OPENROUTER_API_KEY" if "openrouter.ai" in base_url else "ANTHROPIC_API_KEY"
+        )
+    return args
+
+
 def run_rlm_benchmark(
     args: argparse.Namespace,
     rlm_factory: Optional[Callable[[], Any]] = None,
 ) -> None:
+    args = normalize_rlm_args(args)
     selected_tasks = _parse_csv_values(args.official_tasks)
     selected_lengths = _parse_csv_values(args.official_lengths)
     if not selected_tasks:
@@ -676,10 +698,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rlm-max-iterations", type=int, default=30)
     parser.add_argument("--rlm-max-depth", type=int, default=1)
     parser.add_argument(
+        "--rlm-base-url",
+        type=str,
+        default="",
+        help="Optional OpenAI-compatible backend base URL, e.g. https://openrouter.ai/api/v1",
+    )
+    parser.add_argument(
         "--rlm-api-key-env",
         type=str,
-        default="ANTHROPIC_API_KEY",
-        help="Environment variable used as backend_kwargs['api_key'] when present",
+        default=None,
+        help=(
+            "Environment variable used as backend_kwargs['api_key'] when present. "
+            "Defaults to ANTHROPIC_API_KEY, or OPENROUTER_API_KEY when --rlm-base-url uses openrouter.ai."
+        ),
     )
     parser.add_argument("--rlm-verbose", action="store_true")
     parser.add_argument("--rlm-log-trajectories", action="store_true")
@@ -701,7 +732,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main() -> None:
     start = time.time()
     parser = build_arg_parser()
-    args = parser.parse_args()
+    args = normalize_rlm_args(parser.parse_args())
     run_rlm_benchmark(args)
     elapsed = time.time() - start
     print(f"\nTotal elapsed time: {elapsed:.2f} seconds")

@@ -167,12 +167,19 @@ def parse_choice(text: str) -> str:
     if stripped in CHOICE_LETTERS:
         return stripped
 
-    patterns = [
-        r"(?:FINAL\s+ANSWER|ANSWER|CHOICE|OPTION)\s*(?:IS|:)?\s*[\(\[]?\s*([A-D])\s*[\)\]]?",
+    explicit_pattern = (
+        r"(?:FINAL\s+ANSWER|CORRECT\s+(?:ANSWER|CHOICE|OPTION)|ANSWER|CHOICE|OPTION)"
+        r"\s*(?:IS\s*:|IS|:)?\s*[\(\[]?\s*([A-D])\s*[\)\]]?"
+    )
+    explicit_matches = list(re.finditer(explicit_pattern, stripped))
+    if explicit_matches:
+        return explicit_matches[-1].group(1)
+
+    boundary_patterns = [
         r"^\s*[\(\[]?\s*([A-D])\s*[\)\].:-]",
-        r"\b([A-D])\b",
+        r"(?:^|\n)\s*[\(\[]?\s*([A-D])\s*[\)\].:-]?\s*$",
     ]
-    for pattern in patterns:
+    for pattern in boundary_patterns:
         match = re.search(pattern, stripped)
         if match:
             return match.group(1)
@@ -211,13 +218,15 @@ def resolve_cache_namespace(
     top_k: int,
     rerank_top: int,
     row_types: Sequence[str],
+    llm_provider: str = "anthropic",
+    evaluator_model: str = "",
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
     digest = hashlib.sha256(
         (
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
-            f"{executor_model}\n{top_k}\n{rerank_top}\n{row_type_sig}"
+            f"{llm_provider}\n{executor_model}\n{evaluator_model}\n{top_k}\n{rerank_top}\n{row_type_sig}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -348,7 +357,19 @@ def _import_semantic_cache_system():
     return scs
 
 
+def normalize_llm_args(args: argparse.Namespace) -> argparse.Namespace:
+    if args.api_key_env is None:
+        args.api_key_env = "OPENROUTER_API_KEY" if args.llm_provider == "openrouter" else "ANTHROPIC_API_KEY"
+    if args.llm_provider == "openrouter":
+        if args.executor_model == "claude-sonnet-4-5":
+            args.executor_model = "anthropic/claude-sonnet-4.5"
+        if args.evaluator_model == "claude-haiku-4-5":
+            args.evaluator_model = "anthropic/claude-haiku-4.5"
+    return args
+
+
 def run_longbench_benchmark(args: argparse.Namespace) -> None:
+    args = normalize_llm_args(args)
     suite_csv = Path(args.suite_csv)
     source_json_path = Path(args.source_json_path)
     row_types = _parse_csv_values(args.row_types)
@@ -397,6 +418,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             top_k=args.top_k,
             rerank_top=args.rerank_top,
             row_types=row_types,
+            llm_provider=args.llm_provider,
+            evaluator_model=args.evaluator_model,
         )
         cache_state_root = Path(args.cache_state_root) if args.cache_state_root else Path(args.output_dir) / ARTIFACT_SUBDIR / "cache_state"
         cache_state_path = cache_state_root / cache_namespace
@@ -418,7 +441,13 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
     scs = _import_semantic_cache_system()
-    scs.EXECUTOR_MODEL = args.executor_model
+    scs.configure_llm_provider(
+        provider=args.llm_provider,
+        api_key_env=args.api_key_env,
+        executor_model=args.executor_model,
+        evaluator_model=args.evaluator_model,
+        openrouter_base_url=args.openrouter_base_url,
+    )
     shared_embedder = scs.EmbeddingEngine()
     shared_reranker = None if args.disable_reranker else scs.Reranker()
 
@@ -543,7 +572,11 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "source_json_path": str(source_json_path),
         "source_json_sha256": source_json_sha256,
         "mode": args.mode,
+        "llm_provider": args.llm_provider,
+        "api_key_env": args.api_key_env,
+        "openrouter_base_url": args.openrouter_base_url,
         "executor_model": args.executor_model,
+        "evaluator_model": args.evaluator_model,
         "top_k": args.top_k,
         "rerank_top": args.rerank_top,
         "reranker_disabled": bool(args.disable_reranker),
@@ -616,7 +649,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-state-root", type=Path, default=None)
     parser.add_argument("--row-types", type=str, default=DEFAULT_ROW_TYPES)
     parser.add_argument("--max-rows", type=int, default=0, help="Cap selected rows after filtering (0 means all)")
+    parser.add_argument("--llm-provider", choices=["anthropic", "openrouter"], default="anthropic")
+    parser.add_argument("--api-key-env", type=str, default=None)
     parser.add_argument("--executor-model", type=str, default="claude-sonnet-4-5")
+    parser.add_argument("--evaluator-model", type=str, default="claude-haiku-4-5")
+    parser.add_argument("--openrouter-base-url", type=str, default="https://openrouter.ai/api/v1")
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--rerank-top", type=int, default=5)
     parser.add_argument("--disable-reranker", action="store_true")
@@ -629,6 +666,7 @@ def main() -> None:
     start = time.time()
     parser = build_arg_parser()
     args = parser.parse_args()
+    args = normalize_llm_args(args)
     run_longbench_benchmark(args)
     print(f"\nTotal elapsed time: {time.time() - start:.2f} seconds")
 

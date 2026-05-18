@@ -7,6 +7,8 @@ import json
 import os
 import sys
 import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +19,13 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv(REPO_ROOT / ".env")
 
 from long_bench_v2.run_benchmark import (  # noqa: E402
     DEFAULT_ROW_TYPES,
@@ -46,6 +55,8 @@ ARTIFACT_SUBDIR = "longbench_v2_api"
 REPORT_FILENAME = "official_longbench_v2_api_eval_report.json"
 DEFAULT_API_PROVIDER = "anthropic"
 DEFAULT_API_MODEL = "claude-sonnet-4-5"
+DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5"
+OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_SYSTEM_PROMPT = (
     "Answer the multiple-choice question using only the provided context. "
     "Return only the final answer choice letter: A, B, C, or D."
@@ -68,6 +79,18 @@ def _extract_response_text(response: Any) -> str:
     if isinstance(response, str):
         return response.strip()
     if isinstance(response, dict):
+        choices = response.get("choices")
+        if isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                message = first_choice.get("message")
+                if isinstance(message, dict):
+                    content_value = message.get("content")
+                    if isinstance(content_value, str) and content_value.strip():
+                        return content_value.strip()
+                text_value = first_choice.get("text")
+                if isinstance(text_value, str) and text_value.strip():
+                    return text_value.strip()
         for key in ("text", "content", "response", "answer", "output"):
             value = response.get(key)
             if isinstance(value, str) and value.strip():
@@ -146,8 +169,21 @@ def build_eval_report(run_dir: Path, bridge_rows: list[dict], manifest: dict) ->
 
 
 def _build_default_api_client_factory(args: argparse.Namespace) -> Callable[[], Any]:
+    if args.api_provider == "openrouter":
+        api_key = os.getenv(args.api_key_env) if args.api_key_env else ""
+        if not api_key:
+            raise RuntimeError(
+                f"OpenRouter API key not found. Set {args.api_key_env} or pass --api-key-env."
+            )
+
+        def factory():
+            return {"api_key": api_key, "url": OPENROUTER_CHAT_COMPLETIONS_URL}
+
+        return factory
+
     if args.api_provider != "anthropic":
         raise ValueError(f"Unsupported --api-provider: {args.api_provider}")
+
     try:
         from anthropic import Anthropic
     except ModuleNotFoundError as exc:
@@ -174,10 +210,64 @@ def _call_anthropic(client: Any, args: argparse.Namespace, prompt: str) -> Any:
     )
 
 
+def normalize_api_args(args: argparse.Namespace) -> argparse.Namespace:
+    if getattr(args, "api_model", None) is None:
+        args.api_model = DEFAULT_OPENROUTER_MODEL if args.api_provider == "openrouter" else DEFAULT_API_MODEL
+    if getattr(args, "api_key_env", None) is None:
+        args.api_key_env = "OPENROUTER_API_KEY" if args.api_provider == "openrouter" else "ANTHROPIC_API_KEY"
+    return args
+
+
+def _call_openrouter(client: Any, args: argparse.Namespace, prompt: str) -> dict:
+    if isinstance(client, dict):
+        api_key = _coerce_text(client.get("api_key"))
+        url = _coerce_text(client.get("url")) or OPENROUTER_CHAT_COMPLETIONS_URL
+        opener = client.get("opener") or urllib.request.urlopen
+    else:
+        api_key = _coerce_text(getattr(client, "api_key", ""))
+        url = _coerce_text(getattr(client, "url", "")) or OPENROUTER_CHAT_COMPLETIONS_URL
+        opener = getattr(client, "opener", urllib.request.urlopen)
+    if not api_key:
+        raise RuntimeError("OpenRouter API key is missing")
+
+    payload = {
+        "model": args.api_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": args.max_output_tokens,
+    }
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with opener(request, timeout=120) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenRouter HTTP {exc.code}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"OpenRouter request failed: {exc}") from exc
+    return json.loads(raw)
+
+
+def _call_api(client: Any, args: argparse.Namespace, prompt: str) -> Any:
+    if args.api_provider == "anthropic":
+        return _call_anthropic(client, args, prompt)
+    if args.api_provider == "openrouter":
+        return _call_openrouter(client, args, prompt)
+    raise ValueError(f"Unsupported --api-provider: {args.api_provider}")
+
+
 def run_longbench_api_benchmark(
     args: argparse.Namespace,
     client_factory: Optional[Callable[[], Any]] = None,
 ) -> None:
+    args = normalize_api_args(args)
     suite_csv = Path(args.suite_csv)
     source_json_path = Path(args.source_json_path)
     row_types = _parse_csv_values(args.row_types)
@@ -223,7 +313,7 @@ def run_longbench_api_benchmark(
         response = None
         t0 = time.time()
         try:
-            response = _call_anthropic(client, args, prompt)
+            response = _call_api(client, args, prompt)
             generation = _extract_response_text(response)
             usage = parse_api_usage(response, args.api_model, success=True)
         except Exception as exc:
@@ -361,13 +451,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-json-path", type=Path, default=DEFAULT_SOURCE_JSON)
     parser.add_argument("--row-types", type=str, default=DEFAULT_ROW_TYPES)
     parser.add_argument("--max-rows", type=int, default=0, help="Cap selected rows after filtering (0 means all)")
-    parser.add_argument("--api-provider", type=str, default=DEFAULT_API_PROVIDER)
-    parser.add_argument("--api-model", type=str, default=DEFAULT_API_MODEL)
+    parser.add_argument("--api-provider", choices=["anthropic", "openrouter"], default=DEFAULT_API_PROVIDER)
+    parser.add_argument("--api-model", type=str, default=None)
     parser.add_argument(
         "--api-key-env",
         type=str,
-        default="ANTHROPIC_API_KEY",
-        help="Environment variable used for the Anthropic API key when present",
+        default=None,
+        help="Environment variable used for the API key. Defaults to ANTHROPIC_API_KEY or OPENROUTER_API_KEY by provider.",
     )
     parser.add_argument("--max-output-tokens", type=int, default=256)
     parser.add_argument("--fail-fast", action="store_true")
@@ -380,6 +470,7 @@ def main() -> None:
     start = time.time()
     parser = build_arg_parser()
     args = parser.parse_args()
+    args = normalize_api_args(args)
     run_longbench_api_benchmark(args)
     print(f"\nTotal elapsed time: {time.time() - start:.2f} seconds")
 

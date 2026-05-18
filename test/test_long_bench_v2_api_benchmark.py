@@ -1,16 +1,23 @@
 import csv
+import io
 import json
+import os
 import sys
 import tempfile
 import types
+import urllib.error
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from long_bench_v2.run_api_benchmark import (
     ARTIFACT_SUBDIR,
+    DEFAULT_OPENROUTER_MODEL,
+    _build_default_api_client_factory,
     build_arg_parser,
+    normalize_api_args,
     parse_api_usage,
     run_longbench_api_benchmark,
 )
@@ -78,7 +85,7 @@ class FakeMessages:
     def create(self, **kwargs):
         self.calls.append(kwargs)
         if self.fail:
-            raise RuntimeError("context length exceeded")
+            raise RuntimeError("input too long")
         return FakeResponse()
 
 
@@ -87,17 +94,114 @@ class FakeClient:
         self.messages = FakeMessages(calls, fail=fail)
 
 
+class FakeOpenRouterHTTPResponse:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
+
+
+class FakeOpenRouterOpener:
+    def __init__(self, calls):
+        self.calls = calls
+
+    def __call__(self, request, timeout=120):
+        self.calls.append(
+            {
+                "url": request.full_url,
+                "timeout": timeout,
+                "headers": dict(request.header_items()),
+                "body": json.loads(request.data.decode("utf-8")),
+            }
+        )
+        return FakeOpenRouterHTTPResponse(
+            {
+                "choices": [{"message": {"content": "Final answer: C"}}],
+                "usage": {
+                    "prompt_tokens": 500,
+                    "completion_tokens": 25,
+                    "total_tokens": 525,
+                },
+            }
+        )
+
+
+class FakeOpenRouterErrorOpener:
+    def __init__(self, calls):
+        self.calls = calls
+
+    def __call__(self, request, timeout=120):
+        self.calls.append(
+            {
+                "url": request.full_url,
+                "body": json.loads(request.data.decode("utf-8")),
+            }
+        )
+        raise urllib.error.HTTPError(
+            request.full_url,
+            400,
+            "Bad Request",
+            hdrs={},
+            fp=io.BytesIO(b'{"error":{"message":"input too long"}}'),
+        )
+
+
 class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
     def test_cli_defaults_to_anthropic_sonnet(self):
         parser = build_arg_parser()
-        args = parser.parse_args([])
+        args = normalize_api_args(parser.parse_args([]))
 
         self.assertEqual(args.api_provider, "anthropic")
         self.assertEqual(args.api_model, "claude-sonnet-4-5")
+        self.assertEqual(args.api_key_env, "ANTHROPIC_API_KEY")
         self.assertEqual(args.max_output_tokens, 256)
+
+    def test_cli_openrouter_defaults(self):
+        parser = build_arg_parser()
+        args = normalize_api_args(parser.parse_args(["--api-provider", "openrouter"]))
+
+        self.assertEqual(args.api_provider, "openrouter")
+        self.assertEqual(args.api_model, DEFAULT_OPENROUTER_MODEL)
+        self.assertEqual(args.api_key_env, "OPENROUTER_API_KEY")
+
+    def test_openrouter_client_factory_reads_environment_key(self):
+        parser = build_arg_parser()
+        args = normalize_api_args(parser.parse_args(["--api-provider", "openrouter"]))
+
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-openrouter-key"}):
+            factory = _build_default_api_client_factory(args)
+            client = factory()
+
+        self.assertEqual(client["api_key"], "test-openrouter-key")
 
     def test_parse_api_usage_from_anthropic_response(self):
         usage = parse_api_usage(FakeResponse(), model="claude-sonnet-4-5", success=True)
+
+        self.assertEqual(usage["calls"], 1)
+        self.assertEqual(usage["input_tokens"], 500)
+        self.assertEqual(usage["output_tokens"], 25)
+        self.assertEqual(usage["total_tokens"], 525)
+        self.assertEqual(usage["cost_usd"], 0.001875)
+        self.assertEqual(usage["usage_parse_status"], "parsed")
+
+    def test_parse_api_usage_from_openrouter_response(self):
+        response = {
+            "choices": [{"message": {"content": "Final answer: C"}}],
+            "usage": {
+                "prompt_tokens": 500,
+                "completion_tokens": 25,
+                "total_tokens": 525,
+            },
+        }
+
+        usage = parse_api_usage(response, model="anthropic/claude-sonnet-4.5", success=True)
 
         self.assertEqual(usage["calls"], 1)
         self.assertEqual(usage["input_tokens"], 500)
@@ -169,6 +273,105 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertIn("Context:", calls[0]["messages"][0]["content"])
         self.assertIn("Choices:", calls[0]["messages"][0]["content"])
 
+    def test_fake_openrouter_run_uses_chat_completions_shape(self):
+        calls = []
+
+        def fake_factory():
+            return {
+                "api_key": "test-openrouter-key",
+                "url": "https://openrouter.ai/api/v1/chat/completions",
+                "opener": FakeOpenRouterOpener(calls),
+            }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source_path = root / "data.json"
+            suite_path = root / "suite.csv"
+            source_path.write_text(json.dumps([_source_row("row_1")]), encoding="utf-8")
+            with suite_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(_suite_row("row_1").keys()))
+                writer.writeheader()
+                writer.writerow(_suite_row("row_1", "original"))
+
+            args = types.SimpleNamespace(
+                suite_csv=suite_path,
+                source_json_path=source_path,
+                row_types="original",
+                max_rows=0,
+                api_provider="openrouter",
+                api_model="anthropic/claude-sonnet-4.5",
+                api_key_env="OPENROUTER_API_KEY",
+                max_output_tokens=256,
+                fail_fast=False,
+                output_dir=root / "artifacts",
+                manifest_note="openrouter test",
+            )
+
+            run_longbench_api_benchmark(args, client_factory=fake_factory)
+
+            run_dir = next((root / "artifacts" / ARTIFACT_SUBDIR).iterdir())
+            manifest = json.loads((run_dir / "manifest.json").read_text())
+            bridge_row = json.loads((run_dir / "bridge_rows.jsonl").read_text().splitlines()[0])
+            prediction_row = json.loads((run_dir / "predictions.jsonl").read_text().splitlines()[0])
+
+        self.assertEqual(calls[0]["url"], "https://openrouter.ai/api/v1/chat/completions")
+        self.assertEqual(calls[0]["body"]["model"], "anthropic/claude-sonnet-4.5")
+        self.assertEqual(calls[0]["body"]["max_tokens"], 256)
+        self.assertEqual(calls[0]["body"]["messages"][0]["role"], "user")
+        self.assertIn("Choices:", calls[0]["body"]["messages"][0]["content"])
+        self.assertEqual(manifest["api_provider"], "openrouter")
+        self.assertEqual(manifest["api_model"], "anthropic/claude-sonnet-4.5")
+        self.assertEqual(manifest["answer_accuracy"], 1.0)
+        self.assertEqual(bridge_row["api_provider"], "openrouter")
+        self.assertEqual(bridge_row["delta_input_tokens"], 500)
+        self.assertEqual(bridge_row["delta_output_tokens"], 25)
+        self.assertEqual(prediction_row["prediction"], "C")
+
+    def test_openrouter_error_records_provider_response_text(self):
+        calls = []
+
+        def fake_factory():
+            return {
+                "api_key": "test-openrouter-key",
+                "url": "https://openrouter.ai/api/v1/chat/completions",
+                "opener": FakeOpenRouterErrorOpener(calls),
+            }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source_path = root / "data.json"
+            suite_path = root / "suite.csv"
+            source_path.write_text(json.dumps([_source_row("row_1")]), encoding="utf-8")
+            with suite_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(_suite_row("row_1").keys()))
+                writer.writeheader()
+                writer.writerow(_suite_row("row_1", "original"))
+
+            args = types.SimpleNamespace(
+                suite_csv=suite_path,
+                source_json_path=source_path,
+                row_types="original",
+                max_rows=0,
+                api_provider="openrouter",
+                api_model="anthropic/claude-sonnet-4.5",
+                api_key_env="OPENROUTER_API_KEY",
+                max_output_tokens=256,
+                fail_fast=False,
+                output_dir=root / "artifacts",
+                manifest_note="",
+            )
+
+            run_longbench_api_benchmark(args, client_factory=fake_factory)
+
+            run_dir = next((root / "artifacts" / ARTIFACT_SUBDIR).iterdir())
+            manifest = json.loads((run_dir / "manifest.json").read_text())
+            bridge_row = json.loads((run_dir / "bridge_rows.jsonl").read_text().splitlines()[0])
+
+        self.assertEqual(calls[0]["url"], "https://openrouter.ai/api/v1/chat/completions")
+        self.assertEqual(manifest["api_error_count"], 1)
+        self.assertEqual(bridge_row["api_status"], "error")
+        self.assertIn("input too long", bridge_row["api_error"])
+
     def test_api_error_records_failed_row_and_continues(self):
         calls = []
 
@@ -208,7 +411,7 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["api_error_count"], 1)
         self.assertEqual(manifest["total_api_calls"], 0)
         self.assertEqual(bridge_row["api_status"], "error")
-        self.assertIn("context length exceeded", bridge_row["api_error"])
+        self.assertIn("input too long", bridge_row["api_error"])
         self.assertFalse(bridge_row["answer_correct"])
 
 

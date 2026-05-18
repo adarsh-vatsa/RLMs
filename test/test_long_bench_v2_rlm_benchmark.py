@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from long_bench_v2.run_rlm_benchmark import (
     ARTIFACT_SUBDIR,
     build_arg_parser,
+    normalize_rlm_args,
     run_longbench_rlm_benchmark,
 )
 
@@ -79,10 +80,20 @@ class FakeRLM:
 class LongBenchV2RlmBenchmarkTests(unittest.TestCase):
     def test_cli_defaults_to_anthropic_sonnet(self):
         parser = build_arg_parser()
-        args = parser.parse_args([])
+        args = normalize_rlm_args(parser.parse_args([]))
 
         self.assertEqual(args.rlm_backend, "anthropic")
         self.assertEqual(args.rlm_model, "claude-sonnet-4-5")
+        self.assertEqual(args.rlm_base_url, "")
+        self.assertEqual(args.rlm_api_key_env, "ANTHROPIC_API_KEY")
+
+    def test_cli_openrouter_base_url_defaults_to_openrouter_key_env(self):
+        parser = build_arg_parser()
+        args = normalize_rlm_args(
+            parser.parse_args(["--rlm-base-url", "https://openrouter.ai/api/v1"])
+        )
+
+        self.assertEqual(args.rlm_api_key_env, "OPENROUTER_API_KEY")
 
     def test_fake_rlm_run_writes_uncached_artifacts(self):
         calls = []

@@ -42,11 +42,17 @@ import time
 import json
 import re
 import math
+import urllib.error
+import urllib.request
+from types import SimpleNamespace
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from anthropic import Anthropic
+try:
+    from anthropic import Anthropic
+except ModuleNotFoundError:
+    Anthropic = None
 from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
@@ -56,10 +62,13 @@ from dotenv import load_dotenv
 #dotenv_path = '/Users/zeitgeist/research/RLMs/.env'
 #load_dotenv(dotenv_path)
 load_dotenv()  # loads .env from current/project directory
-API_KEY = os.getenv("ANTHROPIC_API_KEY")
-if not API_KEY:
-    raise RuntimeError("ANTHROPIC_API_KEY not found. Check your .env and working directory.")
-client = Anthropic(api_key=API_KEY)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
+API_KEY_ENV = os.getenv("LLM_API_KEY_ENV") or (
+    "OPENROUTER_API_KEY" if LLM_PROVIDER == "openrouter" else "ANTHROPIC_API_KEY"
+)
+OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+API_KEY = os.getenv(API_KEY_ENV)
+client = Anthropic(api_key=API_KEY) if Anthropic and API_KEY and LLM_PROVIDER == "anthropic" else None
 
 # ---------------------------------------------------------------------------
 # Model Config
@@ -69,6 +78,8 @@ RERANKER_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 EMBEDDING_DIM = 1024
 EXECUTOR_MODEL = "claude-sonnet-4-20250514"
 EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
+OPENROUTER_EXECUTOR_MODEL = "anthropic/claude-sonnet-4.5"
+OPENROUTER_EVALUATOR_MODEL = "anthropic/claude-haiku-4.5"
 RERANKER_RELEVANCE_THRESHOLD = 0.5
 
 # Anthropic pricing config (USD per 1K tokens, early 2026 estimates).
@@ -77,6 +88,111 @@ MODEL_FAMILY_PRICING_USD_PER_1K = {
     "sonnet": {"input": 0.003, "output": 0.015},
     "haiku": {"input": 0.001, "output": 0.005},
 }
+
+
+def configure_llm_provider(
+    *,
+    provider: str = "anthropic",
+    api_key_env: str | None = None,
+    executor_model: str | None = None,
+    evaluator_model: str | None = None,
+    openrouter_base_url: str | None = None,
+) -> None:
+    """Configure the external LLM provider used by cache/evaluation calls."""
+    global LLM_PROVIDER, API_KEY_ENV, OPENROUTER_BASE_URL, API_KEY, client
+    global EXECUTOR_MODEL, EVALUATOR_MODEL
+
+    LLM_PROVIDER = (provider or "anthropic").strip().lower()
+    if LLM_PROVIDER not in {"anthropic", "openrouter"}:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
+
+    API_KEY_ENV = api_key_env or (
+        "OPENROUTER_API_KEY" if LLM_PROVIDER == "openrouter" else "ANTHROPIC_API_KEY"
+    )
+    OPENROUTER_BASE_URL = openrouter_base_url or OPENROUTER_BASE_URL
+    API_KEY = os.getenv(API_KEY_ENV)
+
+    if executor_model:
+        EXECUTOR_MODEL = executor_model
+    if evaluator_model:
+        EVALUATOR_MODEL = evaluator_model
+        if "SemanticCacheController" in globals():
+            SemanticCacheController.EVALUATOR_MODEL = evaluator_model
+
+    client = Anthropic(api_key=API_KEY) if Anthropic and API_KEY and LLM_PROVIDER == "anthropic" else None
+
+
+def _openrouter_messages_create(
+    *,
+    model: str,
+    max_tokens: int,
+    temperature: float = 0,
+    messages: list[dict],
+    system: str | None = None,
+):
+    api_key = os.getenv(API_KEY_ENV)
+    if not api_key:
+        raise RuntimeError(f"{API_KEY_ENV} not found. Check your .env and working directory.")
+
+    payload_messages = []
+    if system:
+        payload_messages.append({"role": "system", "content": system})
+    payload_messages.extend(messages)
+    payload = {
+        "model": model,
+        "messages": payload_messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    url = OPENROUTER_BASE_URL.rstrip("/") + "/chat/completions"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenRouter HTTP {exc.code}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"OpenRouter request failed: {exc}") from exc
+
+    data = json.loads(raw)
+    choices = data.get("choices") or []
+    message = choices[0].get("message", {}) if choices else {}
+    usage = data.get("usage") or {}
+    return SimpleNamespace(
+        content=[SimpleNamespace(text=message.get("content", ""))],
+        usage=SimpleNamespace(
+            input_tokens=int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
+            output_tokens=int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
+        ),
+        raw=data,
+    )
+
+
+def create_llm_message(**kwargs):
+    """Provider-neutral message call preserving Anthropic-like response shape."""
+    if LLM_PROVIDER == "openrouter":
+        return _openrouter_messages_create(**kwargs)
+    if LLM_PROVIDER != "anthropic":
+        raise ValueError(f"Unsupported LLM provider: {LLM_PROVIDER}")
+    if Anthropic is None:
+        raise RuntimeError("Anthropic package is not installed. Install it first, for example: `pip install anthropic`.")
+    if client is None:
+        api_key = os.getenv(API_KEY_ENV)
+        if not api_key:
+            raise RuntimeError(f"{API_KEY_ENV} not found. Check your .env and working directory.")
+        local_client = Anthropic(api_key=api_key)
+    else:
+        local_client = client
+    return local_client.messages.create(**kwargs)
 
 
 # ============================================================================
@@ -602,7 +718,7 @@ class SemanticCacheController:
         )
 
         try:
-            response = client.messages.create(
+            response = create_llm_message(
                 model=self.EVALUATOR_MODEL,
                 max_tokens=50,
                 temperature=0,
@@ -707,7 +823,7 @@ class SemanticCacheController:
         )
 
         try:
-            response = client.messages.create(
+            response = create_llm_message(
                 model=self.EVALUATOR_MODEL,
                 max_tokens=120,
                 temperature=0,
@@ -957,7 +1073,7 @@ class SemanticCacheController:
             """Summarize a single chunk via Haiku. Designed for parallel dispatch."""
             idx, chunk_text = args
             try:
-                response = client.messages.create(
+                response = create_llm_message(
                     model=self.EVALUATOR_MODEL,
                     max_tokens=200,
                     temperature=0,
@@ -1150,7 +1266,7 @@ class SemanticCacheController:
             }
         """
         try:
-            response = client.messages.create(
+            response = create_llm_message(
                 model=self.EVALUATOR_MODEL,
                 max_tokens=256,
                 temperature=0,
@@ -1219,7 +1335,7 @@ class SemanticCacheController:
         """
         source_file = sources[0].get("metadata", {}).get("filename", "unknown") if sources else "unknown"
         try:
-            response = client.messages.create(
+            response = create_llm_message(
                 model=self.EVALUATOR_MODEL,
                 max_tokens=512,
                 temperature=0,
@@ -1582,14 +1698,16 @@ class SemanticCacheController:
         source_text = "\n\n---\n\n".join(r["text"] for r in results[:3])
         t_synth = time.time()
         model = EXECUTOR_MODEL
-        response = client.messages.create(
+        response = create_llm_message(
             model=model,
             max_tokens=512,
             temperature=0,
             system=(
                 "You are a document analysis expert. Answer the query using ONLY "
                 "the provided documents. If the answer isn't in the documents, say so. "
-                "Cite specific details. Be precise and thorough."
+                "Follow any output-format instruction in the query exactly. If the query "
+                "asks for a single multiple-choice letter, return only that letter. "
+                "Otherwise, cite specific details and be precise and thorough."
             ),
             messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}]
         )
@@ -1938,7 +2056,7 @@ class AutonomousAgent:
         model = self.router.select_model(query)
         print(f"      [EXECUTE] Cache miss. Dispatching to {model}...")
 
-        response = client.messages.create(
+        response = create_llm_message(
             model=model,
             max_tokens=256,
             temperature=0,

@@ -14,6 +14,7 @@ from long_bench_v2.run_benchmark import (
     filter_suite_rows,
     load_context_by_source_id,
     load_suite_rows,
+    normalize_llm_args,
     parse_choice,
     resolve_cache_namespace,
 )
@@ -100,9 +101,18 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
         self.assertEqual(parse_choice("Final answer: C"), "C")
+        self.assertEqual(parse_choice("Therefore, the correct choice is:\nC"), "C")
         self.assertEqual(parse_choice("(D) because the passage says so"), "D")
         self.assertTrue(answer_correct("Option B", "B"))
         self.assertFalse(answer_correct("Option B", "C"))
+
+    def test_parse_choice_prefers_final_letter_over_prose_articles(self):
+        generation = (
+            "Based on the provided documents, the only event mentioned from the choices "
+            "is that the user took a writing workshop.\n\nC"
+        )
+
+        self.assertEqual(parse_choice(generation), "C")
 
     def test_build_query_preserves_multiple_choice_fields(self):
         query = build_query(_suite_row("row_1"))
@@ -134,6 +144,37 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(cold["run_start_type"], "cold_start")
         self.assertEqual(cold["cache_hit_rate"], 0.5)
         self.assertEqual(warm["run_start_type"], "warm_start")
+
+    def test_normalize_llm_args_keeps_anthropic_default_and_maps_openrouter(self):
+        anthropic = type(
+            "Args",
+            (),
+            {
+                "llm_provider": "anthropic",
+                "api_key_env": None,
+                "executor_model": "claude-sonnet-4-5",
+                "evaluator_model": "claude-haiku-4-5",
+            },
+        )()
+        openrouter = type(
+            "Args",
+            (),
+            {
+                "llm_provider": "openrouter",
+                "api_key_env": None,
+                "executor_model": "claude-sonnet-4-5",
+                "evaluator_model": "claude-haiku-4-5",
+            },
+        )()
+
+        normalize_llm_args(anthropic)
+        normalize_llm_args(openrouter)
+
+        self.assertEqual(anthropic.api_key_env, "ANTHROPIC_API_KEY")
+        self.assertEqual(anthropic.executor_model, "claude-sonnet-4-5")
+        self.assertEqual(openrouter.api_key_env, "OPENROUTER_API_KEY")
+        self.assertEqual(openrouter.executor_model, "anthropic/claude-sonnet-4.5")
+        self.assertEqual(openrouter.evaluator_model, "anthropic/claude-haiku-4.5")
 
 
 if __name__ == "__main__":

@@ -36,6 +36,7 @@ from ruler_v2.run_rlm_benchmark import (  # noqa: E402
     _aggregate_bridge_row_totals,
     _build_default_rlm_factory,
     _write_csv_rows,
+    normalize_rlm_args,
     parse_rlm_usage_summary,
 )
 
@@ -97,6 +98,7 @@ def run_longbench_rlm_benchmark(
     args: argparse.Namespace,
     rlm_factory: Optional[Callable[[], Any]] = None,
 ) -> None:
+    args = normalize_rlm_args(args)
     suite_csv = Path(args.suite_csv)
     source_json_path = Path(args.source_json_path)
     row_types = _parse_csv_values(args.row_types)
@@ -225,6 +227,7 @@ def run_longbench_rlm_benchmark(
         "rlm_environment": args.rlm_environment,
         "rlm_max_iterations": args.rlm_max_iterations,
         "rlm_max_depth": args.rlm_max_depth,
+        "rlm_base_url": getattr(args, "rlm_base_url", ""),
         "rlm_log_trajectories": bool(args.rlm_log_trajectories),
         "artifacts": {
             "predictions": str(predictions_path),
@@ -274,10 +277,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--rlm-max-iterations", type=int, default=30)
     parser.add_argument("--rlm-max-depth", type=int, default=1)
     parser.add_argument(
+        "--rlm-base-url",
+        type=str,
+        default="",
+        help="Optional OpenAI-compatible backend base URL, e.g. https://openrouter.ai/api/v1",
+    )
+    parser.add_argument(
         "--rlm-api-key-env",
         type=str,
-        default="ANTHROPIC_API_KEY",
-        help="Environment variable used as backend_kwargs['api_key'] when present",
+        default=None,
+        help=(
+            "Environment variable used as backend_kwargs['api_key'] when present. "
+            "Defaults to ANTHROPIC_API_KEY, or OPENROUTER_API_KEY when --rlm-base-url uses openrouter.ai."
+        ),
     )
     parser.add_argument("--rlm-verbose", action="store_true")
     parser.add_argument("--rlm-log-trajectories", action="store_true")
@@ -289,7 +301,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def main() -> None:
     start = time.time()
     parser = build_arg_parser()
-    args = parser.parse_args()
+    args = normalize_rlm_args(parser.parse_args())
     run_longbench_rlm_benchmark(args)
     print(f"\nTotal elapsed time: {time.time() - start:.2f} seconds")
 

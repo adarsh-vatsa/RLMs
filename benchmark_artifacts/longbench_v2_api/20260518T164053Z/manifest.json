@@ -1,0 +1,64 @@
+{
+  "run_id": "20260518T164053Z",
+  "created_at": "2026-05-18T16:41:39.757089+00:00",
+  "started_at": "2026-05-18T16:40:53.281994+00:00",
+  "finished_at": "2026-05-18T16:41:39.757089+00:00",
+  "elapsed_seconds": 46.475,
+  "benchmark_target": "longbench_v2_api",
+  "baseline_type": "plain_api_uncached_full_context",
+  "suite_csv": "benchmark_data/long_bench_v2/data_cache_suite_sample.csv",
+  "suite_csv_sha256": "a105de5364fc6f1e08070f03f90f6907402d97b6da6b4992d2c2ad77ab0b9223",
+  "source_json_path": "benchmark_data/long_bench_v2/data.json",
+  "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+  "row_types_requested": [
+    "original",
+    "exact",
+    "semantic"
+  ],
+  "max_rows": 0,
+  "rows_selected": 3,
+  "row_type_counts": {
+    "exact": 1,
+    "original": 1,
+    "semantic": 1
+  },
+  "answer_correct_count": 2,
+  "answer_accuracy": 0.666667,
+  "by_row_type": {
+    "exact": {
+      "rows": 1,
+      "answer_accuracy": 0.0,
+      "cache_hit_rate": 0.0
+    },
+    "original": {
+      "rows": 1,
+      "answer_accuracy": 1.0,
+      "cache_hit_rate": 0.0
+    },
+    "semantic": {
+      "rows": 1,
+      "answer_accuracy": 1.0,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "api_provider": "openrouter",
+  "api_model": "google/gemini-3.1-pro-preview",
+  "max_output_tokens": 256,
+  "api_error_count": 0,
+  "artifacts": {
+    "predictions": "benchmark_artifacts/longbench_v2_api/20260518T164053Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/longbench_v2_api/20260518T164053Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/longbench_v2_api/20260518T164053Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/longbench_v2_api/20260518T164053Z/official_longbench_v2_api_eval_report.json"
+  },
+  "total_api_calls": 3,
+  "total_input_tokens": 370754,
+  "total_output_tokens": 730,
+  "total_tokens": 371484,
+  "total_estimated_cost_usd": 0.0,
+  "cache_reuse": {
+    "enabled": false,
+    "reason": "Plain API baseline is intentionally uncached"
+  },
+  "note": "LongBench-v2 OpenRouter plain API baseline"
+}

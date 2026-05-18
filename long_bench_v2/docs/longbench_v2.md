@@ -216,7 +216,7 @@ Use `long_bench_v2/sample_csv.py` to create a smaller balanced CSV for cheap loc
 python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
-  --sample-size 2 \
+  --sample-size 1 \
   --seed 0
 ```
 
@@ -268,6 +268,21 @@ python long_bench_v2/run_benchmark.py \
 
 The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_eval_report.json` under `benchmark_artifacts/longbench_v2/<run_id>/`. It scores answers by parsing the final multiple-choice letter and comparing it to the CSV `answer` field.
 
+To run the cache experiment through OpenRouter, use provider-prefixed model ids. The Anthropic model ids below are examples, not a requirement; substitute any OpenRouter model ids you want to compare.
+
+```bash
+python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --mode cache \
+  --cache-reset \
+  --llm-provider openrouter \
+  --executor-model google/gemini-3.1-pro-preview \
+  --evaluator-model google/gemini-3.1-flash-lite
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 OpenRouter cold-start cache"
+```
+
 Useful options:
 
 - `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
@@ -277,7 +292,11 @@ Useful options:
 - `--cache-state-root PATH`: persistent cache state root. Default: `benchmark_artifacts/longbench_v2/cache_state`.
 - `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
 - `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
+- `--llm-provider NAME`: external LLM provider, either `anthropic` or `openrouter`. Default: `anthropic`.
+- `--api-key-env NAME`: environment variable used for the provider API key. Default: `ANTHROPIC_API_KEY` for Anthropic and `OPENROUTER_API_KEY` for OpenRouter. You do not need to add this if your API key is defined in `.env`.
 - `--executor-model MODEL`: model assigned to `semantic_cache_system.EXECUTOR_MODEL`. Default: `claude-sonnet-4-5`.
+- `--evaluator-model MODEL`: model assigned to cache verification/fact extraction calls. Default: `claude-haiku-4-5`.
+- `--openrouter-base-url URL`: OpenRouter-compatible base URL. Default: `https://openrouter.ai/api/v1`.
 - `--top-k N`: FAISS retrieval candidates. Default: `20`.
 - `--rerank-top N`: reranked chunks kept for synthesis. Default: `5`.
 - `--disable-reranker`: skip the reranker and use FAISS candidates directly.
@@ -302,6 +321,21 @@ python long_bench_v2/run_rlm_benchmark.py \
 
 The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_rlm_eval_report.json` under `benchmark_artifacts/longbench_v2_rlm/<run_id>/`. Use `--rlm-log-trajectories` only when you want per-run RLM trajectory logs under the same run directory.
 
+To run RLM through OpenRouter, use RLM's OpenAI-compatible backend settings. The model below is only an example; any compatible OpenRouter model id can be passed to `--rlm-model`.
+
+```bash
+python long_bench_v2/run_rlm_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --rlm-backend openai \
+  --rlm-model google/gemini-3.1-pro-preview \
+  --rlm-base-url https://openrouter.ai/api/v1 \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 RLM OpenRouter uncached baseline"
+```
+
+For OpenRouter RLM runs, set `OPENROUTER_API_KEY`. When `--rlm-base-url` contains `openrouter.ai`, the runner uses `OPENROUTER_API_KEY` by default, so `--rlm-api-key-env` is only needed if your key uses a different environment variable name.
+
 Useful options:
 
 - `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
@@ -310,10 +344,11 @@ Useful options:
 - `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
 - `--rlm-backend NAME`: RLM backend. Default: `anthropic`.
 - `--rlm-model MODEL`: RLM backend model. Default: `claude-sonnet-4-5`.
+- `--rlm-base-url URL`: optional OpenAI-compatible backend base URL, such as `https://openrouter.ai/api/v1`.
 - `--rlm-environment NAME`: RLM environment. Default: `local`.
 - `--rlm-max-iterations N`: RLM maximum iterations. Default: `30`.
 - `--rlm-max-depth N`: RLM maximum depth. Default: `1`.
-- `--rlm-api-key-env NAME`: environment variable used for the backend API key when present. Default: `ANTHROPIC_API_KEY`.
+- `--rlm-api-key-env NAME`: environment variable used for the backend API key when present. Default: `ANTHROPIC_API_KEY`, or `OPENROUTER_API_KEY` when `--rlm-base-url` uses OpenRouter.
 - `--rlm-verbose`: enable RLM verbose mode.
 - `--rlm-log-trajectories`: write RLM trajectory logs under `rlm_trajectories/`.
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
@@ -321,7 +356,7 @@ Useful options:
 
 ## STEP 8 - Run Plain API Baseline
 
-Use `long_bench_v2/run_api_benchmark.py` to run the same prepared CSV rows as direct full-context Anthropic API calls. This runner does not use retrieval, RLM, embeddings, reranking, persistent cache state, or any cache route metadata during inference. It sends the full context from `data.json` plus the formatted multiple-choice question directly to Sonnet, parses the final A/B/C/D answer, and writes comparable artifacts under `benchmark_artifacts/longbench_v2_api/<run_id>/`.
+Use `long_bench_v2/run_api_benchmark.py` to run the same prepared CSV rows as direct full-context API calls. This runner defaults to direct Anthropic, but can also use OpenRouter with any provider-supported model id. It does not use retrieval, RLM, embeddings, reranking, persistent cache state, or any cache route metadata during inference. It sends the full context from `data.json` plus the formatted multiple-choice question directly to the selected model, parses the final A/B/C/D answer, and writes comparable artifacts under `benchmark_artifacts/longbench_v2_api/<run_id>/`.
 
 Start with the sampled suite:
 
@@ -336,16 +371,48 @@ python long_bench_v2/run_api_benchmark.py \
 
 The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_api_eval_report.json` under `benchmark_artifacts/longbench_v2_api/<run_id>/`. Very large LongBench-v2 contexts may exceed the provider context window; those rows are recorded as `api_status=error` and counted in the manifest unless `--fail-fast` is set.
 
+To run the same plain API baseline through OpenRouter credits, switch providers and use an OpenRouter model id. The Anthropic model below is an example, not a requirement:
+
+```bash
+python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --api-provider openrouter \
+  --api-model google/gemini-3.1-pro-preview \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 OpenRouter plain API baseline"
+```
+
+For OpenRouter, set `OPENROUTER_API_KEY`. If `--api-provider openrouter` is used without `--api-model`, the runner defaults to `anthropic/claude-sonnet-4.5`. OpenRouter uses provider-specific model ids, so direct Anthropic ids like `claude-sonnet-4-5` should not be used for OpenRouter runs. OpenRouter API errors are logged from the response body in `api_error`. For clean comparisons, use the same chosen model family across the cache runner, RLM runner, and plain API runner unless the experiment is explicitly about model choice.
+
 Useful options:
 
 - `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
 - `--source-json-path PATH`: original LongBench-v2 JSON used to recover full context text by `source_id`. Default: `benchmark_data/long_bench_v2/data.json`.
 - `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
 - `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
-- `--api-provider NAME`: API provider. Default: `anthropic`.
-- `--api-model MODEL`: API model. Default: `claude-sonnet-4-5`.
-- `--api-key-env NAME`: environment variable used for the Anthropic API key when present. Default: `ANTHROPIC_API_KEY`.
+- `--api-provider NAME`: API provider, either `anthropic` or `openrouter`. Default: `anthropic`.
+- `--api-model MODEL`: API model. Default: `claude-sonnet-4-5` for Anthropic and `anthropic/claude-sonnet-4.5` for OpenRouter.
+- `--api-key-env NAME`: environment variable used for the API key. Default: `ANTHROPIC_API_KEY` for Anthropic and `OPENROUTER_API_KEY` for OpenRouter. You do not need to add this if your API key is defined in `.env`.
 - `--max-output-tokens N`: maximum output tokens per API call. Default: `256`.
 - `--fail-fast`: stop immediately on the first API error instead of recording the failed row and continuing.
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
 - `--manifest-note TEXT`: optional note stored in `manifest.json`.
+
+## STEP 9 - Concatenate Experiment Bridge Rows
+
+Use `long_bench_v2/concat_bridge_rows.py` after running the LongBench-v2 cache, RLM, and plain API experiments. This script scans only the LongBench artifact namespaces: `longbench_v2`, `longbench_v2_rlm`, and `longbench_v2_api`. It does not include RULER, legal, or cache-mode artifacts.
+
+```bash
+python long_bench_v2/concat_bridge_rows.py \
+  --artifact-root benchmark_artifacts \
+  --output-path benchmark_artifacts/longbench_v2_combined_bridge_rows.csv
+```
+
+The combined CSV includes all original bridge row columns plus run metadata columns such as `experiment_namespace`, `run_id`, `benchmark_target`, `mode`, `api_model`, `rlm_model`, and `source_bridge_rows_csv`.
+
+Useful options:
+
+- `--artifact-root PATH`: benchmark artifact root to scan. Default: `benchmark_artifacts`.
+- `--output-path PATH`: destination CSV. Default: `benchmark_artifacts/longbench_v2_combined_bridge_rows.csv`.
+- `--namespaces NAMES`: comma-separated LongBench namespaces to include. Default: `longbench_v2,longbench_v2_rlm,longbench_v2_api`.

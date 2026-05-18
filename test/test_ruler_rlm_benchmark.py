@@ -9,10 +9,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ruler_v2.run_rlm_benchmark import (
     ARTIFACT_SUBDIR,
+    _build_default_rlm_factory,
     _filter_official_samples,
     _load_official_samples,
     _normalize_official_sample,
     build_arg_parser,
+    normalize_rlm_args,
     parse_rlm_usage_summary,
     run_rlm_benchmark,
 )
@@ -39,6 +41,13 @@ class FakeRLM:
     def completion(self, prompt, root_prompt=None):
         self.calls.append({"prompt": prompt, "root_prompt": root_prompt})
         return FakeRLMResult()
+
+
+class CapturingRLM:
+    last_kwargs = None
+
+    def __init__(self, **kwargs):
+        CapturingRLM.last_kwargs = kwargs
 
 
 class RulerRlmBenchmarkTests(unittest.TestCase):
@@ -93,10 +102,72 @@ class RulerRlmBenchmarkTests(unittest.TestCase):
 
     def test_cli_defaults_to_anthropic_haiku(self):
         parser = build_arg_parser()
-        args = parser.parse_args(["--official-prepared-data", "benchmark_data/ruler2"])
+        args = normalize_rlm_args(parser.parse_args(["--official-prepared-data", "benchmark_data/ruler2"]))
 
         self.assertEqual(args.rlm_backend, "anthropic")
         self.assertEqual(args.rlm_model, "claude-haiku-4-5-20251001")
+        self.assertEqual(args.rlm_base_url, "")
+        self.assertEqual(args.rlm_api_key_env, "ANTHROPIC_API_KEY")
+
+    def test_cli_openrouter_base_url_defaults_to_openrouter_key_env(self):
+        parser = build_arg_parser()
+        args = normalize_rlm_args(
+            parser.parse_args(
+                [
+                    "--official-prepared-data",
+                    "benchmark_data/ruler2",
+                    "--rlm-base-url",
+                    "https://openrouter.ai/api/v1",
+                ]
+            )
+        )
+
+        self.assertEqual(args.rlm_api_key_env, "OPENROUTER_API_KEY")
+
+    def test_rlm_factory_passes_base_url_to_backend_kwargs(self):
+        fake_rlm_module = types.ModuleType("rlm")
+        fake_rlm_module.RLM = CapturingRLM
+        fake_logger_module = types.ModuleType("rlm.logger")
+
+        class FakeLogger:
+            def __init__(self, log_dir):
+                self.log_dir = log_dir
+
+        fake_logger_module.RLMLogger = FakeLogger
+        args = types.SimpleNamespace(
+            rlm_backend="openai",
+            rlm_model="anthropic/claude-sonnet-4.5",
+            rlm_environment="local",
+            rlm_max_depth=1,
+            rlm_max_iterations=30,
+            rlm_api_key_env=None,
+            rlm_base_url="https://openrouter.ai/api/v1",
+            rlm_log_trajectories=False,
+            rlm_verbose=False,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            previous_rlm = sys.modules.get("rlm")
+            previous_logger = sys.modules.get("rlm.logger")
+            sys.modules["rlm"] = fake_rlm_module
+            sys.modules["rlm.logger"] = fake_logger_module
+            try:
+                factory = _build_default_rlm_factory(args, Path(tmpdir))
+                factory()
+            finally:
+                if previous_rlm is None:
+                    sys.modules.pop("rlm", None)
+                else:
+                    sys.modules["rlm"] = previous_rlm
+                if previous_logger is None:
+                    sys.modules.pop("rlm.logger", None)
+                else:
+                    sys.modules["rlm.logger"] = previous_logger
+
+        backend_kwargs = CapturingRLM.last_kwargs["backend_kwargs"]
+        self.assertEqual(CapturingRLM.last_kwargs["backend"], "openai")
+        self.assertEqual(backend_kwargs["model_name"], "anthropic/claude-sonnet-4.5")
+        self.assertEqual(backend_kwargs["base_url"], "https://openrouter.ai/api/v1")
 
     def test_fake_rlm_run_writes_uncached_artifacts(self):
         calls = []
