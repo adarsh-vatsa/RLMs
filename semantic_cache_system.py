@@ -48,6 +48,18 @@ import numpy as np
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from anthropic import Anthropic
 from dotenv import load_dotenv
+from language_memoization import (
+    ContextScope,
+    EvidenceSpan,
+    MemoEntry,
+    MemoStore,
+    REUSE_AGGREGATION_COMPONENT,
+    REUSE_EXACT_ANSWER,
+    REUSE_RULED_OUT,
+    REUSE_SUPPORTING_FACT,
+    TaskSpec,
+    coerce_confidence,
+)
 
 # ---------------------------------------------------------------------------
 # Environment Setup
@@ -403,26 +415,19 @@ class ExecutionMetrics:
 
 
 # ============================================================================
-# 2. SEMANTIC CACHE CONTROLLER — The core Two-Stage engine
+# 2. SEMANTIC CACHE CONTROLLER — Memo-first retrieval and reuse engine
 # ============================================================================
 class SemanticCacheController:
     """
-    THEORY: The Two-Stage "Dragnet & Sniper" Architecture
+    THEORY: A memo-first retrieval and reuse architecture
     -----------------------------------------------------------------------
-    Standard Semantic Caches (like GPTCache) rely solely on vector similarity
-    thresholds. This causes catastrophic collisions: "Include X" and "Exclude X"
-    have nearly identical embeddings but opposite meanings.
+    The memo graph is the canonical source of reusable work:
+      task + context scope -> result + evidence + dependencies.
 
-    Our architecture splits the cache lookup into two stages:
-      Stage 1 (Dragnet): Fast, cheap vector search to find Top-K candidates.
-      Stage 2 (Sniper):  A micro-LLM (Haiku) performs logical validation,
-                         catching inversions that math alone cannot detect.
-
-    Additionally, we implement:
-      - Hash Bucketing:     Partition by document chunk hash.
-      - Parallel Chunking:  Batch large candidate sets to prevent evaluator
-                            Context Rot.
-      - Context Collapse Guard: Protect the agent from oversized cache returns.
+    Older cache rows, knowledge triples, vector indexes, and document indexes are
+    retained as compatibility mirrors and candidate generators. They do not own
+    independent reuse decisions in the main search path. Exact replay,
+    composition, and semantic reuse are represented as memo entries.
     """
 
     # Configuration constants
@@ -442,11 +447,12 @@ class SemanticCacheController:
 
     def __init__(self, metrics: ExecutionMetrics, embedder: EmbeddingEngine = None,
                  reranker: Reranker = None, corpus_id: str = None,
-                 corpus_domain: str = "general"):
+                 corpus_domain: str = "general", memo_store: MemoStore = None):
         self.cache = {}  # Key: chunk_hash -> Value: List[{query, result, embedding, source_context, ...}]
         self.metrics = metrics
         self.embedder = embedder  # Will be set externally or via init_models()
         self.reranker = reranker  # Optional: for document retrieval
+        self.memo_store = memo_store or MemoStore()
         self.doc_index = None     # FAISS index for document retrieval
         self.knowledge: List[Dict] = []       # Extracted (subj, rel, obj) triples
         self.knowledge_index = None            # FAISS index for fact lookup
@@ -510,6 +516,879 @@ class SemanticCacheController:
                     return entry
                 flat_idx += 1
         return None
+
+    def _memo_task(self, query: str, task_type: str = "generic",
+                   output_contract: str = "text", constraints: Dict = None) -> TaskSpec:
+        """Build a structural task identity for memoized subproblem reuse."""
+        return TaskSpec(
+            prompt=query,
+            task_type=task_type,
+            output_contract=output_contract,
+            constraints=constraints or {},
+        )
+
+    def _memo_scope(self, document_id: str, start: int, end: int,
+                    unit: str = "chunk", content_hash: str = None) -> ContextScope:
+        """Build a corpus-scoped interval for language memoization."""
+        return ContextScope(
+            corpus_id=self.corpus_id or "default",
+            document_id=document_id,
+            start=start,
+            end=end,
+            unit=unit,
+            content_hash=content_hash or self.data_scope_hash or "",
+        )
+
+    def _active_search_memo_scope(self) -> Optional[ContextScope]:
+        """Return a scope representing the currently ingested document chunks."""
+        if not hasattr(self, "_doc_chunks") or not self._doc_chunks:
+            if self.data_scope_hash:
+                return self._memo_scope(
+                    document_id="active_search_corpus",
+                    start=0,
+                    end=1,
+                    unit="scope",
+                    content_hash=self.data_scope_hash,
+                )
+            return None
+        return self._memo_scope(
+            document_id="active_search_corpus",
+            start=0,
+            end=len(self._doc_chunks),
+            unit="chunk",
+            content_hash=self.data_scope_hash or "",
+        )
+
+    def _search_task(self, query: str) -> TaskSpec:
+        """Canonical task identity for synthesized retrieval answers."""
+        return self._memo_task(
+            query,
+            task_type="retrieval_search",
+            output_contract="synthesized_answer",
+        )
+
+    def _entry_data_scope_hash(self, entry: Dict, chunk_hash: str) -> Optional[str]:
+        return entry.get("data_scope_hash") or None
+
+    def _memo_scope_for_legacy_cache_entry(
+        self,
+        entry: Dict,
+        chunk_hash: str,
+        active_scope: ContextScope = None,
+    ) -> Optional[ContextScope]:
+        """Map a legacy cache entry onto a memo scope, or reject it as unsafe."""
+        entry_scope_hash = self._entry_data_scope_hash(entry, chunk_hash)
+        if active_scope is not None:
+            if entry_scope_hash and (
+                not active_scope.content_hash or entry_scope_hash == active_scope.content_hash
+            ):
+                return active_scope
+            # Legacy unscoped entries are unsafe once an active data scope exists.
+            return None
+
+        if entry_scope_hash:
+            return self._memo_scope(
+                document_id="active_search_corpus",
+                start=0,
+                end=1,
+                unit="scope",
+                content_hash=entry_scope_hash,
+            )
+        if self.data_scope_hash:
+            return None
+        return self._memo_scope(
+            document_id=f"legacy_cache:{chunk_hash}",
+            start=0,
+            end=1,
+            unit="legacy_cache_entry",
+            content_hash=chunk_hash,
+        )
+
+    def _memo_exact_for_task(self, task: TaskSpec, scope: ContextScope = None) -> Optional[MemoEntry]:
+        """Find an exact memo entry, scoped when possible and legacy-global otherwise."""
+        if scope is not None:
+            return self.memo_store.find_exact(task, scope)
+        entries = self.memo_store.entries.values() if hasattr(self.memo_store.entries, "values") else self.memo_store.entries
+        for entry in entries:
+            if (
+                not entry.is_rejected
+                and REUSE_EXACT_ANSWER in entry.reusable_as
+                and entry.task.exact_match(task)
+            ):
+                return entry
+        return None
+
+    def _migrate_legacy_cache_to_memo(self, active_scope: ContextScope = None) -> int:
+        """Compatibility adapter: represent old final-answer cache rows as memo entries."""
+        migrated = 0
+        for chunk_hash, entries in self.cache.items():
+            for entry in entries:
+                scope = self._memo_scope_for_legacy_cache_entry(entry, chunk_hash, active_scope)
+                if scope is None:
+                    continue
+                task = self._search_task(str(entry.get("query", "")))
+                if self.memo_store.find_exact(task, scope) is not None:
+                    continue
+                evidence_text = str(entry.get("source_context", ""))
+                memo_entry = self.memo_store.add_answer(
+                    task,
+                    scope,
+                    str(entry.get("result", "")),
+                    evidence=[
+                        EvidenceSpan(
+                            document_id=scope.document_id,
+                            start=scope.start,
+                            end=scope.end,
+                            unit=scope.unit,
+                            text=evidence_text[:500],
+                        )
+                    ] if evidence_text else [],
+                    reusable_as=(REUSE_EXACT_ANSWER,),
+                    metadata={
+                        "source": "legacy_cache_adapter",
+                        "chunk_hash": chunk_hash,
+                        "model_used": entry.get("model_used", "unknown"),
+                    },
+                )
+                entry["memo_entry_id"] = memo_entry.entry_id
+                migrated += 1
+        return migrated
+
+    def _migrate_legacy_knowledge_to_memo(self, active_scope: ContextScope = None) -> int:
+        """Compatibility adapter: represent old knowledge triples as supporting memo facts."""
+        migrated = 0
+        for fact in self.knowledge:
+            source_entry = self._find_cache_entry_by_flat_idx(fact.get("source_cache_idx", -1))
+            if not source_entry:
+                continue
+            chunk_hash = fact.get("source_chunk_hash") or self._get_chunk_hash(source_entry.get("source_context", ""))
+            scope = self._memo_scope_for_legacy_cache_entry(source_entry, chunk_hash, active_scope)
+            if scope is None:
+                continue
+            fact_text = f"{fact.get('subject', '')} {fact.get('relation', '')} {fact.get('object', '')}".strip()
+            if not fact_text:
+                continue
+            task = self._memo_task(
+                fact_text,
+                task_type="legacy_knowledge_fact",
+                output_contract="fact_triple",
+            )
+            if self.memo_store.find_exact(task, scope) is not None:
+                continue
+            self.memo_store.add_answer(
+                task,
+                scope,
+                fact_text,
+                evidence=[
+                    EvidenceSpan(
+                        document_id=str(fact.get("source_file", scope.document_id)),
+                        start=scope.start,
+                        end=scope.end,
+                        unit=scope.unit,
+                        text=str(source_entry.get("source_context", ""))[:500],
+                    )
+                ],
+                reusable_as=(REUSE_SUPPORTING_FACT,),
+                metadata={
+                    "source": "legacy_knowledge_adapter",
+                    "legacy_fact": dict(fact),
+                },
+            )
+            migrated += 1
+        return migrated
+
+    def _prepare_memo_reuse_index(self, active_scope: ContextScope = None) -> None:
+        """Keep legacy compatibility data mirrored into the memo graph."""
+        self._migrate_legacy_cache_to_memo(active_scope)
+        self._migrate_legacy_knowledge_to_memo(active_scope)
+
+    def _entry_to_search_response(self, query: str, entry: MemoEntry, cache_type: str = "memo") -> dict:
+        return {
+            "query": query,
+            "answer": entry.result,
+            "from_cache": True,
+            "cache_type": cache_type,
+            "from_memo": True,
+            "memo_entry_id": entry.entry_id,
+            "memo_reuse": list(entry.reusable_as),
+        }
+
+    def _memo_entry_packet(
+        self,
+        entry: MemoEntry,
+        *,
+        score: float = None,
+        matched_terms: Tuple[str, ...] = (),
+        max_result_chars: Optional[int] = 800,
+        max_evidence_chars: Optional[int] = 240,
+    ) -> dict:
+        """Compact memo entry representation suitable for planner prompts."""
+        result_text, result_truncated = self._bounded_packet_text(entry.result, max_result_chars)
+        evidence_packets = []
+        for item in entry.evidence[:3]:
+            evidence_text, evidence_truncated = self._bounded_packet_text(item.text, max_evidence_chars)
+            evidence_packets.append(
+                {
+                    "document_id": item.document_id,
+                    "start": item.start,
+                    "end": item.end,
+                    "unit": item.unit,
+                    "text": evidence_text,
+                    "text_chars": len(item.text),
+                    "text_truncated": evidence_truncated,
+                }
+            )
+        return {
+            "entry_id": entry.entry_id,
+            "score": score,
+            "matched_terms": list(matched_terms or ()),
+            "task": {
+                "prompt": entry.task.prompt,
+                "task_type": entry.task.task_type,
+                "output_contract": entry.task.output_contract,
+                "constraints": dict(entry.task.constraints),
+            },
+            "scope": entry.scope.to_dict(),
+            "scope_length": entry.scope.length,
+            "fragment_kind": entry.fragment_kind,
+            "can_cover_scope": entry.can_cover_scope(),
+            "is_negative": entry.is_negative,
+            "result": result_text,
+            "result_chars": len(entry.result),
+            "result_truncated": result_truncated,
+            "result_type": entry.result_type,
+            "reusable_as": list(entry.reusable_as),
+            "confidence": entry.confidence,
+            "dependencies": list(entry.dependencies),
+            "evidence": evidence_packets,
+            "evidence_count": len(entry.evidence),
+            "metadata": dict(entry.metadata),
+        }
+
+    @staticmethod
+    def _bounded_packet_text(text: str, limit: Optional[int]) -> Tuple[str, bool]:
+        text = str(text)
+        if limit is None or int(limit) < 0:
+            return text, False
+        max_chars = int(limit)
+        if len(text) <= max_chars:
+            return text, False
+        return text[:max_chars], True
+
+    def memo_candidate_packets(
+        self,
+        query: str,
+        *,
+        scope: ContextScope = None,
+        limit: int = 12,
+        max_result_chars: Optional[int] = 800,
+        max_evidence_chars: Optional[int] = 240,
+    ) -> List[dict]:
+        """Return compact candidate memo entries for model-level planning."""
+        candidates = self.memo_store.ranked_text_candidates(query, scope=scope, limit=limit)
+        return [
+            self._memo_entry_packet(
+                candidate.entry,
+                score=candidate.score,
+                matched_terms=candidate.matched_terms,
+                max_result_chars=max_result_chars,
+                max_evidence_chars=max_evidence_chars,
+            )
+            for candidate in candidates
+        ]
+
+    def context_candidate_packets(
+        self,
+        query: str,
+        *,
+        scope: ContextScope = None,
+        limit: int = 12,
+        max_text_chars: Optional[int] = 1000,
+    ) -> List[dict]:
+        """Return raw persisted context chunks from stores that support it."""
+        if not hasattr(self.memo_store, "search_context_chunks"):
+            return []
+        corpus_id = scope.corpus_id if scope else (self.corpus_id or "default")
+        document_id = scope.document_id if scope else None
+        content_hash = scope.content_hash if scope else None
+        unit = scope.unit if scope else "chunk"
+        rows = self.memo_store.search_context_chunks(
+            query,
+            corpus_id=corpus_id,
+            document_id=document_id,
+            content_hash=content_hash,
+            unit=unit,
+            limit=limit,
+        )
+        packets = []
+        for chunk, score, matched_terms in rows:
+            text, truncated = self._bounded_packet_text(chunk.text, max_text_chars)
+            packets.append(
+                {
+                "corpus_id": chunk.corpus_id,
+                "document_id": chunk.document_id,
+                "chunk_index": chunk.chunk_index,
+                "unit": chunk.unit,
+                "content_hash": chunk.content_hash,
+                "text": text,
+                "text_chars": len(chunk.text),
+                "text_truncated": truncated,
+                "score": score,
+                "matched_terms": list(matched_terms),
+                "metadata": dict(chunk.metadata),
+                }
+            )
+        return packets
+
+    def reuse_candidate_packets(
+        self,
+        query: str,
+        *,
+        scope: ContextScope = None,
+        memo_limit: int = 12,
+        context_limit: int = 12,
+        max_result_chars: Optional[int] = 800,
+        max_evidence_chars: Optional[int] = 240,
+        max_context_chars: Optional[int] = 1000,
+    ) -> dict:
+        """Return all first-class candidates available to a planner.
+
+        This is the clean boundary: memo entries are reusable work; context
+        chunks are raw evidence candidates. Legacy cache and knowledge rows are
+        mirrored into memo before this packet is built.
+        """
+        self._prepare_memo_reuse_index(scope)
+        memo_entries = self.memo_candidate_packets(
+            query,
+            scope=scope,
+            limit=memo_limit,
+            max_result_chars=max_result_chars,
+            max_evidence_chars=max_evidence_chars,
+        )
+        context_chunks = self.context_candidate_packets(
+            query,
+            scope=scope,
+            limit=context_limit,
+            max_text_chars=max_context_chars,
+        )
+        return {
+            "query": query,
+            "scope": scope.to_dict() if scope else None,
+            "memo_entries": memo_entries,
+            "context_chunks": context_chunks,
+            "candidate_generators": {
+                "memo_entries": len(memo_entries),
+                "context_chunks": len(context_chunks),
+            },
+        }
+
+    def memo_context_plan(
+        self,
+        query: str,
+        planner,
+        *,
+        scope: ContextScope = None,
+        candidate_limit: int = 12,
+    ) -> dict:
+        """Ask a planner to inspect memo candidates and choose the next action."""
+        packet = self.reuse_candidate_packets(
+            query,
+            scope=scope,
+            memo_limit=candidate_limit,
+            context_limit=0,
+        )
+        candidates = packet["memo_entries"]
+        raw_plan = planner(query, candidates)
+        if isinstance(raw_plan, dict):
+            plan = dict(raw_plan)
+        else:
+            plan = {"action": "unknown", "raw": str(raw_plan)}
+        plan.setdefault("action", "unknown")
+        return {
+            "query": query,
+            "scope": scope.to_dict() if scope else None,
+            "candidate_count": len(candidates),
+            "candidates": candidates,
+            "context_candidates": packet["context_chunks"],
+            "plan": plan,
+            "planner_calls": 1,
+        }
+
+    def answer_from_memo_context(
+        self,
+        query: str,
+        planner,
+        scope: ContextScope,
+        *,
+        task_type: str = "memo_context_answer",
+        output_contract: str = "answer",
+        candidate_limit: int = 12,
+    ) -> dict:
+        """Let a planner answer from candidate memo entries and store lineage."""
+        task = self._memo_task(query, task_type=task_type, output_contract=output_contract)
+        exact = self.memo_store.find_exact(task, scope)
+        if exact is not None:
+            return {
+                "query": query,
+                "answer": exact.result,
+                "from_memo": True,
+                "memo_type": "exact",
+                "memo_entry_id": exact.entry_id,
+                "planner_calls": 0,
+                "candidate_count": 0,
+            }
+
+        planned = self.memo_context_plan(
+            query,
+            planner,
+            scope=scope,
+            candidate_limit=candidate_limit,
+        )
+        plan = planned["plan"]
+        action = str(plan.get("action", "")).lower()
+        answer = str(plan.get("answer") or plan.get("result") or "")
+        if action not in {"answer", "final_answer"} or not answer:
+            return {
+                **planned,
+                "answer": "",
+                "from_memo": False,
+                "memo_type": "planner_action",
+                "planner_action": action,
+            }
+
+        used_entry_ids = [
+            str(value)
+            for value in (plan.get("used_entry_ids") or plan.get("use_entry_ids") or [])
+        ]
+        candidate_by_id = {
+            packet["entry_id"]: packet
+            for packet in planned["candidates"]
+        }
+        dependencies = [entry_id for entry_id in used_entry_ids if entry_id in candidate_by_id]
+        evidence = []
+        for packet in planned["candidates"]:
+            if packet["entry_id"] not in dependencies:
+                continue
+            for item in packet.get("evidence", []):
+                evidence.append(EvidenceSpan.from_dict(item))
+
+        memo_entry = self.memo_store.add_answer(
+            task,
+            scope,
+            answer,
+            evidence=evidence,
+            confidence=coerce_confidence(plan.get("confidence", 1.0)),
+            dependencies=dependencies,
+            reusable_as=(REUSE_EXACT_ANSWER,),
+            metadata={
+                "derived_from": "memo_context_plan",
+                "planner_action": action,
+                "candidate_count": planned["candidate_count"],
+                "reason": str(plan.get("reason", "")),
+            },
+        )
+        return {
+            **planned,
+            "answer": answer,
+            "from_memo": True,
+            "memo_type": "memo_context_answer",
+            "memo_entry_id": memo_entry.entry_id,
+            "dependencies": dependencies,
+        }
+
+    def memoized_subproblem(
+        self,
+        query: str,
+        scope: ContextScope,
+        solver,
+        *,
+        task_type: str = "generic",
+        output_contract: str = "text",
+        constraints: Dict = None,
+        aggregate_fn=None,
+    ) -> dict:
+        """
+        Solve a scoped language subproblem with structural memo reuse.
+
+        `solver` is called only for missing scopes. It receives `(task, scope)`
+        and may return either a string result or a dict with:
+          - result: answer text
+          - not_found: bool
+          - evidence: list[EvidenceSpan | dict]
+          - confidence: float
+          - metadata: dict
+
+        This keeps tests deterministic while letting production callers provide
+        a real model/subagent-backed solver.
+        """
+        task = self._memo_task(
+            query,
+            task_type=task_type,
+            output_contract=output_contract,
+            constraints=constraints,
+        )
+        plan = self.memo_store.plan_reuse(task, scope)
+        if plan.has_exact_replay:
+            return {
+                "query": query,
+                "answer": plan.exact_entry.result,
+                "from_memo": True,
+                "memo_type": "exact",
+                "memo_entry_id": plan.exact_entry.entry_id,
+                "memo_plan": plan,
+                "initial_memo_telemetry": plan.to_telemetry(),
+                "memo_telemetry": plan.to_telemetry(),
+                "model_calls": 0,
+            }
+
+        model_calls = 0
+        created_entries: List[MemoEntry] = []
+        for missing_scope in plan.missing_scopes:
+            raw = solver(task, missing_scope)
+            model_calls += 1
+            if isinstance(raw, dict):
+                result = str(raw.get("result", ""))
+                not_found = bool(raw.get("not_found", False))
+                confidence = coerce_confidence(raw.get("confidence", 1.0))
+                metadata = dict(raw.get("metadata", {}))
+                evidence_items = raw.get("evidence", [])
+                reusable_as = tuple(raw.get("reusable_as", (REUSE_AGGREGATION_COMPONENT,)))
+            else:
+                result = str(raw)
+                not_found = False
+                confidence = 1.0
+                metadata = {}
+                evidence_items = []
+                reusable_as = (REUSE_AGGREGATION_COMPONENT,)
+
+            evidence = []
+            for item in evidence_items:
+                if isinstance(item, EvidenceSpan):
+                    evidence.append(item)
+                elif isinstance(item, dict):
+                    evidence.append(EvidenceSpan.from_dict(item))
+
+            if not_found:
+                entry = self.memo_store.add_negative(
+                    task,
+                    missing_scope,
+                    reason=result or "not_found",
+                    confidence=confidence,
+                    evidence=evidence,
+                    metadata=metadata,
+                )
+            else:
+                entry = self.memo_store.add_answer(
+                    task,
+                    missing_scope,
+                    result,
+                    evidence=evidence,
+                    confidence=confidence,
+                    reusable_as=reusable_as,
+                    metadata=metadata,
+                )
+            created_entries.append(entry)
+
+        final_plan = self.memo_store.plan_reuse(task, scope)
+        if aggregate_fn is not None:
+            answer = aggregate_fn(query, scope, final_plan)
+        else:
+            answer_parts = [
+                entry.result
+                for entry in final_plan.reusable_entries
+                if REUSE_RULED_OUT not in entry.reusable_as and entry.result
+            ]
+            answer = "\n".join(answer_parts)
+
+        exact_entry = None
+        if final_plan.is_complete and answer:
+            exact_entry = self.memo_store.add_answer(
+                task,
+                scope,
+                answer,
+                dependencies=[entry.entry_id for entry in final_plan.reusable_entries + final_plan.negative_entries],
+                reusable_as=(REUSE_EXACT_ANSWER,),
+                metadata={"derived_from": "memoized_subproblem"},
+            )
+
+        if self._persist_path:
+            self.save(self._persist_path)
+
+        return {
+            "query": query,
+            "answer": answer,
+            "from_memo": model_calls == 0,
+            "memo_type": "composed" if final_plan.is_complete else "partial",
+            "memo_entry_id": exact_entry.entry_id if exact_entry else None,
+            "memo_plan": final_plan,
+            "initial_memo_telemetry": plan.to_telemetry(),
+            "memo_telemetry": final_plan.to_telemetry(),
+            "created_entries": created_entries,
+            "model_calls": model_calls,
+        }
+
+    def solve_with_memo(
+        self,
+        query: str,
+        chunks: List[str],
+        solver,
+        *,
+        document_id: str = "active_document",
+        chunk_size: int = 4,
+        content_hash: str = None,
+        task_type: str = "memoized_document_qa",
+        output_contract: str = "supported_answer",
+        aggregate_fn=None,
+        reuse_verifier=None,
+    ) -> dict:
+        """
+        Solve a question over chunked context with automatic memoized decomposition.
+
+        The controller decomposes the requested document into chunk windows, asks
+        the supplied solver only for missing windows, stores those partial answers,
+        then composes and stores an exact answer for the full document scope.
+        """
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+
+        self._doc_chunks = list(chunks)
+        scope_hash = content_hash or self.data_scope_hash or ""
+        full_scope = self._memo_scope(
+            document_id,
+            0,
+            len(chunks),
+            unit="chunk",
+            content_hash=scope_hash,
+        )
+        task = self._memo_task(
+            query,
+            task_type=task_type,
+            output_contract=output_contract,
+            constraints={"chunk_size": chunk_size},
+        )
+        full_plan = self.memo_store.plan_reuse(task, full_scope)
+        if full_plan.has_exact_replay:
+            telemetry = full_plan.to_telemetry()
+            return {
+                "query": query,
+                "answer": full_plan.exact_entry.result,
+                "from_memo": True,
+                "memo_type": "exact",
+                "memo_entry_id": full_plan.exact_entry.entry_id,
+                "initial_memo_telemetry": telemetry,
+                "memo_telemetry": telemetry,
+                "window_memo_telemetry": [],
+                "window_count": 0,
+                "reused_window_count": 0,
+                "missing_window_count": 0,
+                "model_calls": 0,
+                "aggregate_calls": 0,
+                "solver_scopes": [],
+                "semantic_reuse": False,
+            }
+
+        if reuse_verifier is not None:
+            for candidate in self.memo_store.scope_candidates(full_scope):
+                if candidate.task.exact_match(task):
+                    continue
+                if REUSE_EXACT_ANSWER not in candidate.reusable_as:
+                    continue
+                if not candidate.scope.exact_match(full_scope):
+                    continue
+                verdict = reuse_verifier(task, candidate)
+                if isinstance(verdict, dict):
+                    reuse_status = str(verdict.get("reuse_as", verdict.get("status", ""))).lower()
+                    confidence = coerce_confidence(verdict.get("confidence", candidate.confidence))
+                    reason = str(verdict.get("reason", ""))
+                else:
+                    reuse_status = str(verdict).lower()
+                    confidence = candidate.confidence
+                    reason = ""
+                if reuse_status in {"exact", "exact_answer", "replay"}:
+                    semantic_entry = self.memo_store.add_answer(
+                        task,
+                        full_scope,
+                        candidate.result,
+                        evidence=candidate.evidence,
+                        confidence=confidence,
+                        dependencies=(candidate.entry_id,),
+                        reusable_as=(REUSE_EXACT_ANSWER,),
+                        metadata={
+                            "derived_from": "semantic_reuse_verifier",
+                            "source_entry_id": candidate.entry_id,
+                            "source_prompt": candidate.task.prompt,
+                            "verifier_reason": reason,
+                        },
+                    )
+                    return {
+                        "query": query,
+                        "answer": semantic_entry.result,
+                        "from_memo": True,
+                        "memo_type": "semantic_exact",
+                        "memo_entry_id": semantic_entry.entry_id,
+                        "initial_memo_telemetry": full_plan.to_telemetry(),
+                        "memo_telemetry": self.memo_store.plan_reuse(task, full_scope).to_telemetry(),
+                        "window_memo_telemetry": [],
+                        "window_count": 0,
+                        "reused_window_count": 0,
+                        "missing_window_count": 0,
+                        "model_calls": 0,
+                        "aggregate_calls": 0,
+                        "solver_scopes": [],
+                        "semantic_reuse": True,
+                        "source_memo_entry_id": candidate.entry_id,
+                    }
+
+        if hasattr(self.memo_store, "upsert_context_chunks"):
+            self.memo_store.upsert_context_chunks(
+                corpus_id=self.corpus_id or "default",
+                document_id=document_id,
+                chunks=self._doc_chunks,
+                content_hash=scope_hash,
+                unit="chunk",
+                metadata={"source": "solve_with_memo"},
+            )
+
+        model_calls = 0
+        solver_scopes = []
+        window_memo_telemetry = []
+        for start in range(0, len(chunks), chunk_size):
+            window_scope = self._memo_scope(
+                document_id,
+                start,
+                min(start + chunk_size, len(chunks)),
+                unit="chunk",
+                content_hash=scope_hash,
+            )
+            window_plan = self.memo_store.plan_reuse(task, window_scope)
+            window_memo_telemetry.append(window_plan.to_telemetry())
+            if window_plan.is_complete:
+                continue
+            raw = solver(task, window_scope)
+            model_calls += 1
+            solver_scopes.append((window_scope.start, window_scope.end))
+
+            if isinstance(raw, dict):
+                result = str(raw.get("result", ""))
+                not_found = bool(raw.get("not_found", False))
+                confidence = coerce_confidence(raw.get("confidence", 1.0))
+                metadata = dict(raw.get("metadata", {}))
+                evidence_items = raw.get("evidence", [])
+                reusable_as = tuple(raw.get("reusable_as", (REUSE_AGGREGATION_COMPONENT,)))
+            else:
+                result = str(raw)
+                not_found = False
+                confidence = 1.0
+                metadata = {}
+                evidence_items = []
+                reusable_as = (REUSE_AGGREGATION_COMPONENT,)
+
+            evidence = []
+            for item in evidence_items:
+                if isinstance(item, EvidenceSpan):
+                    evidence.append(item)
+                elif isinstance(item, dict):
+                    evidence.append(EvidenceSpan.from_dict(item))
+
+            if not_found:
+                self.memo_store.add_negative(
+                    task,
+                    window_scope,
+                    reason=result or "not_found",
+                    confidence=confidence,
+                    evidence=evidence,
+                    metadata=metadata,
+                )
+            else:
+                self.memo_store.add_answer(
+                    task,
+                    window_scope,
+                    result,
+                    evidence=evidence,
+                    confidence=confidence,
+                    reusable_as=reusable_as,
+                    metadata=metadata,
+                )
+
+        final_plan = self.memo_store.plan_reuse(task, full_scope)
+        aggregate_calls = 0
+        aggregate_confidence = 1.0
+        aggregate_metadata = {}
+        aggregate_evidence = []
+        dependency_entries = final_plan.reusable_entries + final_plan.negative_entries
+        if aggregate_fn is not None:
+            raw_aggregate = aggregate_fn(query, full_scope, final_plan)
+            aggregate_calls = 1
+            if isinstance(raw_aggregate, dict):
+                answer = str(raw_aggregate.get("result", ""))
+                aggregate_confidence = coerce_confidence(raw_aggregate.get("confidence", 1.0))
+                aggregate_metadata = dict(raw_aggregate.get("metadata", {}))
+                used_entry_ids = set(str(v) for v in raw_aggregate.get("used_entry_ids", []))
+                if used_entry_ids:
+                    dependency_entries = tuple(
+                        entry for entry in dependency_entries if entry.entry_id in used_entry_ids
+                    )
+                for item in raw_aggregate.get("evidence", []):
+                    if isinstance(item, EvidenceSpan):
+                        aggregate_evidence.append(item)
+                    elif isinstance(item, dict):
+                        aggregate_evidence.append(EvidenceSpan.from_dict(item))
+            else:
+                answer = str(raw_aggregate)
+        else:
+            answer = "\n".join(
+                entry.result
+                for entry in final_plan.reusable_entries
+                if REUSE_RULED_OUT not in entry.reusable_as and entry.result
+            )
+
+        exact_entry = None
+        if final_plan.is_complete and answer:
+            if not aggregate_evidence:
+                for entry in dependency_entries:
+                    aggregate_evidence.extend(entry.evidence)
+            exact_entry = self.memo_store.add_answer(
+                task,
+                full_scope,
+                answer,
+                dependencies=[
+                    entry.entry_id
+                    for entry in dependency_entries
+                ],
+                evidence=aggregate_evidence,
+                confidence=aggregate_confidence,
+                reusable_as=(REUSE_EXACT_ANSWER,),
+                metadata={
+                    "derived_from": "solve_with_memo",
+                    "chunk_size": chunk_size,
+                    "aggregate_fn": bool(aggregate_fn),
+                    **aggregate_metadata,
+                },
+            )
+
+        if self._persist_path:
+            self.save(self._persist_path)
+
+        reused_window_count = sum(1 for item in window_memo_telemetry if item["is_complete"])
+        missing_window_count = sum(1 for item in window_memo_telemetry if item["requires_model_calls"])
+        return {
+            "query": query,
+            "answer": answer,
+            "from_memo": model_calls == 0 and aggregate_calls == 0,
+            "memo_type": "composed" if final_plan.is_complete else "partial",
+            "memo_entry_id": exact_entry.entry_id if exact_entry else None,
+            "memo_plan": final_plan,
+            "initial_memo_telemetry": full_plan.to_telemetry(),
+            "memo_telemetry": final_plan.to_telemetry(),
+            "window_memo_telemetry": window_memo_telemetry,
+            "window_count": len(window_memo_telemetry),
+            "reused_window_count": reused_window_count,
+            "missing_window_count": missing_window_count,
+            "model_calls": model_calls,
+            "aggregate_calls": aggregate_calls,
+            "solver_scopes": solver_scopes,
+            "semantic_reuse": False,
+        }
 
     # ------------------------------------------------------------------
     # STAGE 1: THE VECTOR DRAGNET
@@ -1096,6 +1975,10 @@ class SemanticCacheController:
             [{"cache_idx": cache_idx, "chunk_hash": chunk_hash, "data_scope_hash": data_scope_hash}]
         )
 
+        # Memo is the canonical reuse substrate. The legacy cache and knowledge
+        # lists remain as compatibility mirrors and candidate sources.
+        self._prepare_memo_reuse_index(self._active_search_memo_scope())
+
         # Auto-persist
         if self._persist_path:
             self.save(self._persist_path)
@@ -1188,11 +2071,11 @@ class SemanticCacheController:
     # ------------------------------------------------------------------
     def _extract_facts(self, answer: str, sources: List[dict]) -> List[dict]:
         """
-        THEORY: Intelligent Knowledge Extraction
+        LEGACY ADAPTER: Intelligent Knowledge Extraction
         ---------------------------------------------------------------
-        Instead of storing monolithic query→answer blobs, decompose each
-        answer into atomic (subject, relation, object) triples that are
-        independently indexed for cross-query reuse.
+        This remains for backward compatibility with older cache artifacts.
+        Extracted triples are mirrored into memo entries as supporting facts,
+        so the memo graph remains the canonical reuse substrate.
 
         Cost: ~$0.0002 per write (one Haiku call).
         """
@@ -1354,164 +2237,21 @@ class SemanticCacheController:
         """
         t_start = time.time()
 
-        # ── Stage 0: Cache check (Dragnet + Sniper) ──
-        # For retrieval-based search, we use a global cache (not hash-bucketed)
-        if cache_read and self.cache:
-            # Exact match scan
-            for chunk_hash, entries in self.cache.items():
-                for entry in entries:
-                    if (
-                        entry["query"].lower().strip() == query.lower().strip()
-                        and self._entry_matches_active_scope(entry)
-                    ):
-                        self.metrics.exact_hits += 1
-                        print(f"  [CACHE] ✓ Exact Match — free retrieval")
-                        return {
-                            "query": query, "answer": entry["result"],
-                            "from_cache": True, "cache_type": "exact",
-                            "grounding": entry.get("grounding_info", {}),
-                        }
+        # ── Stage 0: unified memo reuse check ──
+        # The memo graph is now the canonical reuse substrate. Legacy cache and
+        # knowledge rows are mirrored into memo entries as compatibility data,
+        # but they no longer make independent return decisions inside search().
+        active_memo_scope = self._active_search_memo_scope()
+        if cache_read:
+            self._prepare_memo_reuse_index(active_memo_scope)
 
-            query_emb = None
-            strong = []
-            if self._cache_index and self._cache_index.total > 0:
-                query_emb = self.embedder.encode_query(query)
-                # Semantic cache lookup via FAISS + Sniper
-                cache_top_k = min(max(3, self.TOP_K_CANDIDATES * 10), self._cache_index.total)
-                cache_results = self._cache_index.search(query_emb, top_k=cache_top_k)
-                strong = [(score, meta) for score, meta in cache_results if score > 0.85]
-            if strong:
-                candidate_entries = []
-                candidate_scores = []
-                for score, meta in strong:
-                    ci = meta["cache_idx"]
-                    entry = self._find_cache_entry_by_flat_idx(ci)
-                    if entry and self._entry_matches_active_scope(entry):
-                        candidate_entries.append(entry)
-                        candidate_scores.append(score)
-
-                if candidate_entries:
-                    sniper = self._llm_sniper_evaluate(query, [
-                        (entry, i, score) for i, (entry, score) in enumerate(zip(candidate_entries, candidate_scores))
-                    ])
-                    if sniper and sniper.get("hit"):
-                        idx = sniper["id"]
-                        cached = candidate_entries[idx]
-                        self.metrics.semantic_hits += 1
-                        print(f"  [SNIPER] ✓ Semantic Hit! '{query}' ≡ '{cached['query']}'")
-                        return {
-                            "query": query, "answer": cached["result"],
-                            "from_cache": True, "cache_type": "semantic",
-                            "grounding": cached.get("grounding_info", {}),
-                        }
-
-            # Knowledge fact lookup
-            if self.knowledge and self.knowledge_index and self.knowledge_index.total > 0:
-                if query_emb is None:
-                    query_emb = self.embedder.encode_query(query)
-
-                fact_top_k = min(max(5, self.KNOWLEDGE_VERIFIER_MAX_FACTS * 5), self.knowledge_index.total)
-                fact_results = self.knowledge_index.search(query_emb, top_k=fact_top_k)
-                scoped_fact_hits = []
-                for score, meta in fact_results:
-                    fact = self.knowledge[meta["fact_idx"]]
-                    source_entry_for_fact = self._find_cache_entry_by_flat_idx(fact.get("source_cache_idx", -1))
-                    if source_entry_for_fact and self._entry_matches_active_scope(source_entry_for_fact):
-                        scoped_fact_hits.append((score, meta, fact, source_entry_for_fact))
-                strong_facts = [hit for hit in scoped_fact_hits if hit[0] >= self.KNOWLEDGE_MIN_SCORE]
-
-                top_score = 0.0
-                second_score = None
-                margin = 0.0
-                relevant_facts = []
-                source_entry = None
-                verifier_called = False
-                verifier_allow = None
-                verifier_reason = None
-                verifier_confidence = None
-                trigger_reasons = []
-                lexical_support = None
-
-                if strong_facts:
-                    top_score = float(strong_facts[0][0])
-                    second_score = float(strong_facts[1][0]) if len(strong_facts) > 1 else None
-                    margin = (top_score - second_score) if second_score is not None else top_score
-
-                    # When verifier is off, preserve strict low-margin rejection behavior.
-                    if (
-                        not self.KNOWLEDGE_VERIFIER_ENABLED
-                        and second_score is not None
-                        and margin < self.KNOWLEDGE_MIN_MARGIN
-                    ):
-                        print(
-                            f"  [KNOWLEDGE] ✗ Skip: ambiguous hit "
-                            f"(top1={top_score:.3f}, top2={second_score:.3f}, margin={margin:.3f})"
-                        )
-                        strong_facts = []
-
-                if strong_facts:
-                    for score, meta, fact, entry in strong_facts:
-                        relevant_facts.append(fact)
-                        if source_entry is None:
-                            source_entry = entry
-
-                if strong_facts and relevant_facts and source_entry:
-                    should_verify, trigger_reasons, lexical_support = self._should_run_knowledge_verifier(
-                        query=query,
-                        top_score=top_score,
-                        margin=margin,
-                        relevant_facts=relevant_facts,
-                        source_entry=source_entry,
-                    )
-
-                    if should_verify:
-                        verifier_called = True
-                        self.metrics.knowledge_verifier_calls += 1
-                        print(
-                            "  [KNOWLEDGE-SNIPER] Escalating verifier "
-                            f"(reasons={trigger_reasons}, lexical_support={lexical_support:.3f})"
-                        )
-                        verifier_decision = self._knowledge_sniper_evaluate(query, relevant_facts, source_entry)
-                        verifier_allow = bool(verifier_decision.get("allow", False))
-                        verifier_reason = str(verifier_decision.get("reason", "unspecified"))
-                        verifier_confidence = float(verifier_decision.get("confidence", 0.0))
-
-                        if verifier_allow:
-                            self.metrics.knowledge_verifier_allowed += 1
-                            print(
-                                f"  [KNOWLEDGE-SNIPER] ✓ Allow "
-                                f"(confidence={verifier_confidence:.2f}, reason={verifier_reason})"
-                            )
-                        else:
-                            self.metrics.knowledge_verifier_rejected += 1
-                            print(
-                                f"  [KNOWLEDGE-SNIPER] ✗ Reject "
-                                f"(confidence={verifier_confidence:.2f}, reason={verifier_reason})"
-                            )
-                            strong_facts = []
-
-                if strong_facts and relevant_facts and source_entry:
-                    self.metrics.knowledge_hits += 1
-                    print(
-                        f"  [KNOWLEDGE] ✓ Fact Hit! {len(relevant_facts)} facts found "
-                        f"(top1={top_score:.3f}, margin={margin:.3f})"
-                    )
-                    for f in relevant_facts:
-                        print(f"    → {f['subject']} | {f['relation']} | {f['object']}")
-                    return {
-                        "query": query, "answer": source_entry["result"],
-                        "from_cache": True, "cache_type": "knowledge",
-                        "relevant_facts": relevant_facts,
-                        "knowledge_top_score": top_score,
-                        "knowledge_margin": margin,
-                        "knowledge_verifier_called": verifier_called,
-                        "knowledge_verifier_allow": verifier_allow,
-                        "knowledge_verifier_reason": verifier_reason,
-                        "knowledge_verifier_confidence": verifier_confidence,
-                        "knowledge_verifier_trigger_reasons": trigger_reasons,
-                        "knowledge_lexical_support": lexical_support,
-                        "grounding": source_entry.get("grounding_info", {}),
-                    }
+        if cache_read and synthesize:
+            memo_task = self._search_task(query)
+            memo_exact = self._memo_exact_for_task(memo_task, active_memo_scope)
+            if memo_exact is not None:
+                self.metrics.exact_hits += 1
+                print(f"  [MEMO] ✓ Exact scoped answer replay")
+                return self._entry_to_search_response(query, memo_exact, cache_type="memo_exact")
 
         # ── Stage 1: Retrieve relevant documents ──
         self.metrics.cache_misses += 1
@@ -1546,6 +2286,26 @@ class SemanticCacheController:
         consensus = self.consensus_verify(query, source_text, answer, model)
         self.store(query, source_text, answer, model_used=model, sources=results)
 
+        if active_memo_scope is not None and self.memo_store.find_exact(self._search_task(query), active_memo_scope) is None:
+            self.memo_store.add_answer(
+                self._search_task(query),
+                active_memo_scope,
+                answer,
+                evidence=[
+                    EvidenceSpan(
+                        document_id=r.get("metadata", {}).get("filename", "unknown"),
+                        start=int(r.get("metadata", {}).get("char_start", 0)),
+                        end=int(r.get("metadata", {}).get("char_start", 0)) + len(r.get("text", "")),
+                        unit="char",
+                        text=r.get("text", "")[:500],
+                    )
+                    for r in results[:3]
+                ],
+                dependencies=[],
+                reusable_as=(REUSE_EXACT_ANSWER,),
+                metadata={"source": "SemanticCacheController.search"},
+            )
+
         return {
             "query": query, "answer": answer,
             "from_cache": False, "results": results,
@@ -1559,6 +2319,7 @@ class SemanticCacheController:
         """Persist cache entries, knowledge triples, FAISS indices, and corpus config."""
         path = Path(path)
         path.mkdir(parents=True, exist_ok=True)
+        self._prepare_memo_reuse_index(self._active_search_memo_scope())
 
         # Save corpus config — namespace identity and metadata
         config = {
@@ -1567,6 +2328,7 @@ class SemanticCacheController:
             "doc_vectors": self.doc_index.total if self.doc_index else 0,
             "cache_entries": self.get_total_entries(),
             "knowledge_facts": len(self.knowledge),
+            "memo_entries": len(self.memo_store.entries),
             "embedding_model": EMBEDDING_MODEL,
             "embedding_dim": EMBEDDING_DIM,
             "data_scope_hash": self.data_scope_hash,
@@ -1595,6 +2357,9 @@ class SemanticCacheController:
         # Save knowledge triples
         with open(path / "knowledge.json", "w") as f:
             json.dump(self.knowledge, f, indent=2, default=str)
+
+        # Save language memoization entries
+        self.memo_store.save(path / "memo_entries.json")
 
         # Save FAISS indices
         if self._cache_index and self._cache_index.total > 0:
@@ -1701,6 +2466,12 @@ class SemanticCacheController:
                         [{"fact_idx": i, "data_scope_hash": fact.get("data_scope_hash")}]
                     )
 
+        memo_path = path / "memo_entries.json"
+        if memo_path.exists():
+            self.memo_store = MemoStore.load(memo_path)
+
+        self._prepare_memo_reuse_index(self._active_search_memo_scope())
+
         # Initialize indices if they don't exist yet
         if self._cache_index is None:
             self._cache_index = FAISSIndex()
@@ -1728,6 +2499,7 @@ class SemanticCacheController:
             "doc_vectors": self.doc_index.total if self.doc_index else 0,
             "cache_entries": 0,
             "knowledge_facts": 0,
+            "memo_entries": len(self.memo_store.entries),
             "embedding_model": EMBEDDING_MODEL,
             "embedding_dim": EMBEDDING_DIM,
             "data_scope_hash": self.data_scope_hash,
@@ -1913,18 +2685,16 @@ class AutonomousAgent:
 # ============================================================================
 def run_full_demonstration():
     """
-    Runs a complete 4-pass demonstration of the Two-Stage Semantic Cache:
+    Runs a complete 4-pass demonstration of the memo-first cache controller:
 
-    Pass 1 (COLD START):   All cache misses. The agent processes a corpus
-                           for the first time, populating the cache.
+    Pass 1 (COLD START):   All memo misses. The agent processes a corpus
+                           for the first time, populating memo-backed cache.
 
     Pass 2 (PARAPHRASED):  The agent returns with differently-worded queries
-                           that ask for the same information. The Haiku Sniper
-                           correctly identifies semantic equivalence → cache hits.
+                           that ask for the same information.
 
     Pass 3 (DISTINCT):     The agent asks logically DIFFERENT questions about
-                           the same data. The Haiku Sniper correctly rejects
-                           them → cache misses (no false positives).
+                           the same data.
 
     Pass 4 (PRE-WARMED):   We run the Cache Pre-Warmer with finance-style
                            extraction queries, then demonstrate instant hits.
