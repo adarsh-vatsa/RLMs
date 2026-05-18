@@ -24,8 +24,9 @@ def _read_rows(path: Path) -> list[dict]:
     with path.open(encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         missing_columns = [column for column in CSV_COLUMNS if column not in (reader.fieldnames or [])]
-        if missing_columns:
-            raise ValueError(f"{path} is missing required columns: {', '.join(missing_columns)}")
+        required_missing = [column for column in missing_columns if column != "token_count"]
+        if required_missing:
+            raise ValueError(f"{path} is missing required columns: {', '.join(required_missing)}")
         return [{column: row.get(column, "") for column in CSV_COLUMNS} for row in reader]
 
 

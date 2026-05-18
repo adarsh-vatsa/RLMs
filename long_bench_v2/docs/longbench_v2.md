@@ -10,6 +10,10 @@ The original dataset remains the source of truth for full context text. The CSV 
 - Step 2: `row_type=original` samples in `benchmark_data/long_bench_v2/data.csv` are sent to the Codex SDK to generate rewritten questions for semantic hit cases. Output is saved to `benchmark_data/long_bench_v2/data_semantic_codex.csv`.
 - Step 3: Unique original contexts in `benchmark_data/long_bench_v2/data.csv` are sent to the Codex SDK to generate setup questions for knowledge workload rows. Output is saved to `benchmark_data/long_bench_v2/data_knowledge_codex.csv`.
 - Step 4: Combine `data.csv`, `data_semantic_codex.csv`, and `data_knowledge_codex.csv` into `benchmark_data/long_bench_v2/data_cache_suite.csv`.
+- Step 5: Create a smaller balanced sample for smoke testing.
+- Step 6: Run retrieval/cache experiments.
+- Step 7: Run the uncached RLM baseline.
+- Step 8: Run the uncached plain API full-context baseline.
 
 ## STEP 1 - Export Original And Exact Rows
 
@@ -43,7 +47,7 @@ python long_bench_v2/export_csv.py \
 
 ### Columns
 
-The CSV columns are `case_id`, `source_id`, `row_type`, `is_scored`, `setup_case_id`, `context_id`, `expected_cache_type`, `expected_from_cache`, `depends_on_case_id`, `domain`, `sub_domain`, `difficulty`, `length`, `question`, `choice_A`, `choice_B`, `choice_C`, `choice_D`, and `answer`. The `context_id` is a short SHA-256 prefix of the original context text, which helps identify repeated contexts without copying the large context into spreadsheet cells.
+The CSV columns are `case_id`, `source_id`, `row_type`, `is_scored`, `setup_case_id`, `context_id`, `token_count`, `expected_cache_type`, `expected_from_cache`, `depends_on_case_id`, `domain`, `sub_domain`, `difficulty`, `length`, `question`, `choice_A`, `choice_B`, `choice_C`, `choice_D`, and `answer`. The `context_id` is a short SHA-256 prefix of the original context text, which helps identify repeated contexts without copying the large context into spreadsheet cells. `token_count` is an estimated context token count using the rule `tokens = ceil(words * 1.33)`.
 
 Use the CSV for observability and filtering. The original JSON remains the canonical source for full context text.
 
@@ -180,12 +184,15 @@ Useful options:
 
 Use `long_bench_v2/combine_csv.py` after reviewing generated CSV files. This writes a separate combined file and does not edit `benchmark_data/long_bench_v2/data.csv`. `--semantic-csv-path` and `--knowledge-csv-path` are optional; only pass the files you want included.
 
+Step 4 also backfills `token_count` from the original JSON if older CSV inputs do not already contain it. The estimate uses `1 word = 1.33 tokens` and is intended for context-window screening before plain API/RLM runs.
+
 For the main cold-start suite, include original/exact rows from `data.csv` and semantic rows only:
 
 ```bash
 python long_bench_v2/combine_csv.py \
   --base-csv-path benchmark_data/long_bench_v2/data.csv \
   --semantic-csv-path benchmark_data/long_bench_v2/data_semantic_codex.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
   --output-path benchmark_data/long_bench_v2/data_cache_suite.csv
 ```
 
@@ -218,3 +225,127 @@ Useful options:
 - `--sample-size N`: number of rows to keep per row type. Default: `10`.
 - `--row-types TYPES`: comma-separated row types to sample together by `source_id`. Default: `original,exact,semantic`.
 - `--seed N`: random seed for reproducible samples. Default: `0`.
+
+## STEP 6 - Run Cache Experiments
+
+Use `long_bench_v2/run_benchmark.py` to run the prepared CSV suite through the project retrieval pipeline. In this script, `baseline` means the same retrieval/rerank/synthesis path with cache reads and persistent cache state disabled. It is not the later plain full-context API baseline.
+
+Start with the sampled suite before running the full CSV.
+
+Baseline, cache disabled:
+
+```bash
+python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --mode baseline \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 retrieval baseline, cache disabled"
+```
+
+Cold-start cache, reset namespace first:
+
+```bash
+python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --mode cache \
+  --cache-reset \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 cold-start cache"
+```
+
+Warm-start cache, same suite/settings and no reset:
+
+```bash
+python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --mode cache \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 warm-start cache"
+```
+
+The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_eval_report.json` under `benchmark_artifacts/longbench_v2/<run_id>/`. It scores answers by parsing the final multiple-choice letter and comparing it to the CSV `answer` field.
+
+Useful options:
+
+- `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
+- `--source-json-path PATH`: original LongBench-v2 JSON used to recover full context text by `source_id`. Default: `benchmark_data/long_bench_v2/data.json`.
+- `--mode baseline|cache`: `baseline` disables cache reads and persistent cache state; `cache` enables persistent cache reuse. Default: `cache`.
+- `--cache-reset`: remove the resolved cache namespace before a cache run. Use this for cold-start runs.
+- `--cache-state-root PATH`: persistent cache state root. Default: `benchmark_artifacts/longbench_v2/cache_state`.
+- `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
+- `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
+- `--executor-model MODEL`: model assigned to `semantic_cache_system.EXECUTOR_MODEL`. Default: `claude-sonnet-4-5`.
+- `--top-k N`: FAISS retrieval candidates. Default: `20`.
+- `--rerank-top N`: reranked chunks kept for synthesis. Default: `5`.
+- `--disable-reranker`: skip the reranker and use FAISS candidates directly.
+- `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
+- `--manifest-note TEXT`: optional note stored in `manifest.json`.
+
+## STEP 7 - Run RLM Baseline
+
+Use `long_bench_v2/run_rlm_benchmark.py` to run the same prepared CSV rows through RLM without the cache system. This runner does not use embeddings, FAISS, reranking, persistent cache state, or any cache route metadata during inference. It resolves full context from `data.json`, sends the context plus formatted multiple-choice question to RLM, parses the final A/B/C/D answer, and writes comparable artifacts under `benchmark_artifacts/longbench_v2_rlm/<run_id>/`.
+
+Start with the sampled suite:
+
+```bash
+python long_bench_v2/run_rlm_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --rlm-backend anthropic \
+  --rlm-model claude-sonnet-4-5 \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 RLM uncached baseline"
+```
+
+The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_rlm_eval_report.json` under `benchmark_artifacts/longbench_v2_rlm/<run_id>/`. Use `--rlm-log-trajectories` only when you want per-run RLM trajectory logs under the same run directory.
+
+Useful options:
+
+- `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
+- `--source-json-path PATH`: original LongBench-v2 JSON used to recover full context text by `source_id`. Default: `benchmark_data/long_bench_v2/data.json`.
+- `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
+- `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
+- `--rlm-backend NAME`: RLM backend. Default: `anthropic`.
+- `--rlm-model MODEL`: RLM backend model. Default: `claude-sonnet-4-5`.
+- `--rlm-environment NAME`: RLM environment. Default: `local`.
+- `--rlm-max-iterations N`: RLM maximum iterations. Default: `30`.
+- `--rlm-max-depth N`: RLM maximum depth. Default: `1`.
+- `--rlm-api-key-env NAME`: environment variable used for the backend API key when present. Default: `ANTHROPIC_API_KEY`.
+- `--rlm-verbose`: enable RLM verbose mode.
+- `--rlm-log-trajectories`: write RLM trajectory logs under `rlm_trajectories/`.
+- `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
+- `--manifest-note TEXT`: optional note stored in `manifest.json`.
+
+## STEP 8 - Run Plain API Baseline
+
+Use `long_bench_v2/run_api_benchmark.py` to run the same prepared CSV rows as direct full-context Anthropic API calls. This runner does not use retrieval, RLM, embeddings, reranking, persistent cache state, or any cache route metadata during inference. It sends the full context from `data.json` plus the formatted multiple-choice question directly to Sonnet, parses the final A/B/C/D answer, and writes comparable artifacts under `benchmark_artifacts/longbench_v2_api/<run_id>/`.
+
+Start with the sampled suite:
+
+```bash
+python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --api-model claude-sonnet-4-5 \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 plain API uncached baseline"
+```
+
+The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_api_eval_report.json` under `benchmark_artifacts/longbench_v2_api/<run_id>/`. Very large LongBench-v2 contexts may exceed the provider context window; those rows are recorded as `api_status=error` and counted in the manifest unless `--fail-fast` is set.
+
+Useful options:
+
+- `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
+- `--source-json-path PATH`: original LongBench-v2 JSON used to recover full context text by `source_id`. Default: `benchmark_data/long_bench_v2/data.json`.
+- `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
+- `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
+- `--api-provider NAME`: API provider. Default: `anthropic`.
+- `--api-model MODEL`: API model. Default: `claude-sonnet-4-5`.
+- `--api-key-env NAME`: environment variable used for the Anthropic API key when present. Default: `ANTHROPIC_API_KEY`.
+- `--max-output-tokens N`: maximum output tokens per API call. Default: `256`.
+- `--fail-fast`: stop immediately on the first API error instead of recording the failed row and continuing.
+- `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
+- `--manifest-note TEXT`: optional note stored in `manifest.json`.

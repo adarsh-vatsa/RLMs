@@ -6,6 +6,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Sequence
 
@@ -20,6 +21,7 @@ CSV_COLUMNS = [
     "is_scored",
     "setup_case_id",
     "context_id",
+    "token_count",
     "expected_cache_type",
     "expected_from_cache",
     "depends_on_case_id",
@@ -44,10 +46,17 @@ def _context_id(context: str) -> str:
     return hashlib.sha256(context.encode("utf-8")).hexdigest()[:12]
 
 
+def _estimated_token_count(text: str) -> str:
+    word_count = len(text.split())
+    return str(math.ceil(word_count * 1.33))
+
+
 def _base_row(item: dict, source_id: str) -> dict:
+    context = _coerce_text(item.get("context"))
     return {
         "source_id": source_id,
-        "context_id": _context_id(_coerce_text(item.get("context"))),
+        "context_id": _context_id(context),
+        "token_count": _estimated_token_count(context),
         "domain": _coerce_text(item.get("domain")),
         "sub_domain": _coerce_text(item.get("sub_domain")),
         "difficulty": _coerce_text(item.get("difficulty")),

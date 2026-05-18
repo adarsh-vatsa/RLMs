@@ -18,6 +18,7 @@ const CSV_COLUMNS = [
   "is_scored",
   "setup_case_id",
   "context_id",
+  "token_count",
   "expected_cache_type",
   "expected_from_cache",
   "depends_on_case_id",

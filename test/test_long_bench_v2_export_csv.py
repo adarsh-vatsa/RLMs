@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from long_bench_v2.export_csv import CSV_COLUMNS, _context_id, export_csv, load_rows
+from long_bench_v2.export_csv import CSV_COLUMNS, _context_id, _estimated_token_count, export_csv, load_rows
 from long_bench_v2.combine_csv import combine_csv
 from long_bench_v2.sample_csv import sample_rows
 
@@ -46,6 +46,7 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
         self.assertEqual(rows[0]["expected_from_cache"], "false")
         self.assertEqual(rows[0]["depends_on_case_id"], "")
         self.assertEqual(rows[0]["context_id"], _context_id("Context text"))
+        self.assertEqual(rows[0]["token_count"], _estimated_token_count("Context text"))
         self.assertNotIn("_id", rows[0])
         self.assertNotIn("context", rows[0])
 
@@ -71,6 +72,7 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
         self.assertEqual(rows[0]["expected_from_cache"], "false")
         self.assertEqual(rows[0]["depends_on_case_id"], "")
         self.assertEqual(rows[0]["context_id"], _context_id(long_context))
+        self.assertEqual(rows[0]["token_count"], _estimated_token_count(long_context))
         self.assertNotIn("context", rows[0])
         self.assertEqual(rows[1]["source_id"], "row_1")
         self.assertEqual(rows[1]["row_type"], "exact")
@@ -80,7 +82,54 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
         self.assertEqual(rows[1]["expected_cache_type"], "exact")
         self.assertEqual(rows[1]["expected_from_cache"], "true")
         self.assertEqual(rows[1]["depends_on_case_id"], "row_1__original")
+        self.assertEqual(rows[1]["token_count"], _estimated_token_count(long_context))
         self.assertEqual(rows[1]["question"], rows[0]["question"])
+
+    def test_combine_csv_backfills_token_count_from_source_json(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir) / "data.csv"
+            source_json_path = Path(tmpdir) / "data.json"
+            output_path = Path(tmpdir) / "data_cache_suite.csv"
+            context = "one two three four"
+            source_json_path.write_text(json.dumps([_row("row_1", context=context)]), encoding="utf-8")
+            legacy_columns = [column for column in CSV_COLUMNS if column != "token_count"]
+            base_rows = [
+                {
+                    "case_id": "row_1__original",
+                    "source_id": "row_1",
+                    "row_type": "original",
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": _context_id(context),
+                    "expected_cache_type": "miss",
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": "Single-Document QA",
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                }
+            ]
+            with base_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=legacy_columns, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(base_rows)
+
+            count = combine_csv(base_path, output_path, source_json_path=source_json_path)
+
+            with output_path.open(encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle)
+                rows = list(reader)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(reader.fieldnames, CSV_COLUMNS)
+        self.assertEqual(rows[0]["token_count"], _estimated_token_count(context))
 
     def test_combine_csv_writes_base_and_semantic_rows(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -151,7 +200,7 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
                     writer.writeheader()
                     writer.writerows(rows)
 
-            count = combine_csv(base_path, output_path, semantic_csv_path=semantic_path)
+            count = combine_csv(base_path, output_path, semantic_csv_path=semantic_path, source_json_path=None)
 
             with output_path.open(encoding="utf-8", newline="") as handle:
                 rows = list(csv.DictReader(handle))
@@ -239,6 +288,7 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
                 output_path,
                 semantic_csv_path=semantic_path,
                 knowledge_csv_path=knowledge_path,
+                source_json_path=None,
             )
 
             with output_path.open(encoding="utf-8", newline="") as handle:
@@ -284,7 +334,7 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
                 writer.writeheader()
                 writer.writerows(base_rows)
 
-            count = combine_csv(base_path, output_path)
+            count = combine_csv(base_path, output_path, source_json_path=None)
 
             with output_path.open(encoding="utf-8", newline="") as handle:
                 rows = list(csv.DictReader(handle))
