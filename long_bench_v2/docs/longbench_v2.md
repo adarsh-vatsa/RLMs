@@ -101,8 +101,7 @@ npm run generate-semantic-questions -- \
   --reasoning-effort high \
   --delay-ms 100 \
   --no-keep-existing-on-error \
-  --force \
-  --limit 10
+  --force
 ```
 
 IMPORTANT: Use `--force` only when you intentionally want to overwrite the previous generated CSV and audit log.
@@ -177,16 +176,45 @@ Useful options:
 - `--delay-ms N`: wait between Codex calls.
 - `--max-retries N`: retry failed context setup generation.
 
-## STEP 4 - Combine Original, Exact, Semantic, And Knowledge Rows
+## STEP 4 - Combine Rows
 
-Use `long_bench_v2/combine_csv.py` after reviewing `data_semantic_codex.csv` and `data_knowledge_codex.csv`. This writes a separate combined file and does not edit `benchmark_data/long_bench_v2/data.csv`.
+Use `long_bench_v2/combine_csv.py` after reviewing generated CSV files. This writes a separate combined file and does not edit `benchmark_data/long_bench_v2/data.csv`. `--semantic-csv-path` and `--knowledge-csv-path` are optional; only pass the files you want included.
+
+For the main cold-start suite, include original/exact rows from `data.csv` and semantic rows only:
+
+```bash
+python long_bench_v2/combine_csv.py \
+  --base-csv-path benchmark_data/long_bench_v2/data.csv \
+  --semantic-csv-path benchmark_data/long_bench_v2/data_semantic_codex.csv \
+  --output-path benchmark_data/long_bench_v2/data_cache_suite.csv
+```
+
+The combined file contains the original and exact rows from `data.csv`, followed by semantic rows from `data_semantic_codex.csv`. Do not pass `--knowledge-csv-path` for the main cold-start comparison.
+
+For a later prewarm/knowledge experiment, pass the knowledge file explicitly:
 
 ```bash
 python long_bench_v2/combine_csv.py \
   --base-csv-path benchmark_data/long_bench_v2/data.csv \
   --semantic-csv-path benchmark_data/long_bench_v2/data_semantic_codex.csv \
   --knowledge-csv-path benchmark_data/long_bench_v2/data_knowledge_codex.csv \
-  --output-path benchmark_data/long_bench_v2/data_cache_suite.csv
+  --output-path benchmark_data/long_bench_v2/data_cache_suite_with_knowledge.csv
 ```
 
-The combined file contains the original and exact rows from `data.csv`, followed by semantic rows from `data_semantic_codex.csv`, followed by setup and knowledge rows from `data_knowledge_codex.csv`.
+## STEP 5 - Sample A Smaller Test Suite
+
+Use `long_bench_v2/sample_csv.py` to create a smaller balanced CSV for cheap local testing. The sampler chooses shared `source_id` values, so a sample size of 10 keeps the matching 10 `original`, 10 `exact`, and 10 `semantic` rows instead of unrelated rows from each group.
+
+```bash
+python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --sample-size 2 \
+  --seed 0
+```
+
+Useful options:
+
+- `--sample-size N`: number of rows to keep per row type. Default: `10`.
+- `--row-types TYPES`: comma-separated row types to sample together by `source_id`. Default: `original,exact,semantic`.
+- `--seed N`: random seed for reproducible samples. Default: `0`.

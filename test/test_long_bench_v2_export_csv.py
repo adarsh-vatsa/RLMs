@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from long_bench_v2.export_csv import CSV_COLUMNS, _context_id, export_csv, load_rows
 from long_bench_v2.combine_csv import combine_csv
+from long_bench_v2.sample_csv import sample_rows
 
 
 def _row(row_id: str, context: str = "Context text") -> dict:
@@ -150,7 +151,7 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
                     writer.writeheader()
                     writer.writerows(rows)
 
-            count = combine_csv(base_path, semantic_path, output_path)
+            count = combine_csv(base_path, output_path, semantic_csv_path=semantic_path)
 
             with output_path.open(encoding="utf-8", newline="") as handle:
                 rows = list(csv.DictReader(handle))
@@ -233,7 +234,12 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
                     writer.writeheader()
                     writer.writerows(rows_to_write)
 
-            count = combine_csv(base_path, semantic_path, output_path, knowledge_path)
+            count = combine_csv(
+                base_path,
+                output_path,
+                semantic_csv_path=semantic_path,
+                knowledge_csv_path=knowledge_path,
+            )
 
             with output_path.open(encoding="utf-8", newline="") as handle:
                 rows = list(csv.DictReader(handle))
@@ -245,6 +251,83 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
         )
         self.assertEqual(rows[2]["is_scored"], "false")
         self.assertEqual(rows[3]["setup_case_id"], "ctx__setup")
+
+    def test_combine_csv_allows_generated_inputs_to_be_omitted(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_path = Path(tmpdir) / "data.csv"
+            output_path = Path(tmpdir) / "data_cache_suite.csv"
+            base_rows = [
+                {
+                    "case_id": "row_1__original",
+                    "source_id": "row_1",
+                    "row_type": "original",
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": "ctx",
+                    "expected_cache_type": "miss",
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": "Single-Document QA",
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                }
+            ]
+            with base_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
+                writer.writeheader()
+                writer.writerows(base_rows)
+
+            count = combine_csv(base_path, output_path)
+
+            with output_path.open(encoding="utf-8", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+
+        self.assertEqual(count, 1)
+        self.assertEqual([row["case_id"] for row in rows], ["row_1__original"])
+
+    def test_sample_rows_keeps_balanced_source_linked_row_types(self):
+        rows = []
+        for source_id in ["row_1", "row_2", "row_3"]:
+            for row_type in ["original", "exact", "semantic"]:
+                rows.append({
+                    "case_id": f"{source_id}__{row_type}",
+                    "source_id": source_id,
+                    "row_type": row_type,
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": "ctx",
+                    "expected_cache_type": row_type,
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": "Single-Document QA",
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                })
+
+        sampled = sample_rows(rows, sample_size=2, row_types=("original", "exact", "semantic"), seed=7)
+
+        self.assertEqual(len(sampled), 6)
+        sampled_by_type = {}
+        for row in sampled:
+            sampled_by_type.setdefault(row["row_type"], set()).add(row["source_id"])
+        self.assertEqual(set(sampled_by_type), {"original", "exact", "semantic"})
+        self.assertEqual(sampled_by_type["original"], sampled_by_type["exact"])
+        self.assertEqual(sampled_by_type["original"], sampled_by_type["semantic"])
+        self.assertEqual(len(sampled_by_type["original"]), 2)
 
 
 if __name__ == "__main__":

@@ -15,8 +15,6 @@ from long_bench_v2.export_csv import CSV_COLUMNS
 
 
 DEFAULT_BASE_CSV_PATH = Path("benchmark_data/long_bench_v2/data.csv")
-DEFAULT_SEMANTIC_CSV_PATH = Path("benchmark_data/long_bench_v2/data_semantic_codex.csv")
-DEFAULT_KNOWLEDGE_CSV_PATH = Path("benchmark_data/long_bench_v2/data_knowledge_codex.csv")
 DEFAULT_OUTPUT_PATH = Path("benchmark_data/long_bench_v2/data_cache_suite.csv")
 
 
@@ -47,13 +45,13 @@ def _read_rows(path: Path) -> list[dict]:
 
 def combine_csv(
     base_csv_path: Path,
-    semantic_csv_path: Path,
     output_path: Path,
+    semantic_csv_path: Path | None = None,
     knowledge_csv_path: Path | None = None,
 ) -> int:
     global LAST_ROW_TYPE_COUNTS
     base_rows = _read_rows(base_csv_path)
-    semantic_rows = _read_rows(semantic_csv_path)
+    semantic_rows = _read_rows(semantic_csv_path) if semantic_csv_path else []
     knowledge_rows = _read_rows(knowledge_csv_path) if knowledge_csv_path and knowledge_csv_path.exists() else []
     combined_rows = [*base_rows, *semantic_rows, *knowledge_rows]
 
@@ -91,12 +89,17 @@ def print_row_type_summary(row_type_counts: Counter[str]) -> None:
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Combine LongBench-v2 base, semantic, and knowledge CSV rows")
     parser.add_argument("--base-csv-path", type=Path, default=DEFAULT_BASE_CSV_PATH)
-    parser.add_argument("--semantic-csv-path", type=Path, default=DEFAULT_SEMANTIC_CSV_PATH)
-    parser.add_argument("--knowledge-csv-path", type=Path, default=DEFAULT_KNOWLEDGE_CSV_PATH)
+    parser.add_argument("--semantic-csv-path", type=Path, default=None)
+    parser.add_argument("--knowledge-csv-path", type=Path, default=None)
     parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH)
     args = parser.parse_args(argv)
 
-    row_count = combine_csv(args.base_csv_path, args.semantic_csv_path, args.output_path, args.knowledge_csv_path)
+    row_count = combine_csv(
+        args.base_csv_path,
+        args.output_path,
+        semantic_csv_path=args.semantic_csv_path,
+        knowledge_csv_path=args.knowledge_csv_path,
+    )
     print(f"[LONGBENCH-V2] Wrote {row_count} rows to {args.output_path}")
     print_row_type_summary(LAST_ROW_TYPE_COUNTS)
 
