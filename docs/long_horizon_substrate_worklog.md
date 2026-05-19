@@ -515,6 +515,66 @@ python -m pytest test/test_summarize_dp_memo_runs.py
 2 passed
 ```
 
+## 2026-05-18 20:30 EDT Update
+
+Added the post-depth-sweep research state. The current thesis is no longer just
+that memoization can replay answers. The stronger question is how to make
+scoped language fragments reusable, trustworthy, and composable under noisy
+evidence.
+
+Open research questions after today's NoLiMa work:
+
+1. Fragment design. What should the reusable unit be? Final answers are too
+   coarse, while broad fact extraction can flood aggregation with distractors.
+   The useful NoLiMa fragment was a compact bridge fact such as `Megan lives
+   next to the Kiasma museum.`
+2. Aggregation under noise. The 16K D03 failure showed that the correct
+   fragment can exist in the memo graph while the aggregator still chooses a
+   frequent distractor. Aggregation needs stronger ranking, evidence typing,
+   and possibly verifier passes.
+3. Domain-specific scope design. The generic memo graph can stay shared, but
+   code, textbooks, logs, legal documents, financial tables, and spreadsheets
+   need different chunking, stable IDs, and invalidation policies.
+4. Stable addressing. The system must identify whether new context is the same
+   chunk, appended context, edited context, moved context, or overlapping
+   context with shifted boundaries. Content hashes are necessary but not
+   sufficient; structural anchors and neighbor hashes are likely needed.
+5. Beyond exact replay. The warm replay results are strong, but the larger
+   research claim depends on broader partial composition and cross-question
+   reuse: new tasks should be solved as old solved fragments plus a small
+   amount of new work.
+6. Semantic reuse verification. The system needs to decide when an old memo is
+   an exact answer, supporting evidence, a search hint, irrelevant, or a
+   dangerous distractor for a new but related question.
+7. Retrieval over the memo graph. Current DuckDB lookup is deterministic and
+   safe, mostly keyed by task and scope. The next layer needs richer candidate
+   generation using SQL filters, lexical search, embeddings, graph traversal,
+   and model-ranked bounded packets without flooding the aggregator.
+8. Benchmark design. Single-shot QA undermeasures this substrate. Better
+   benchmarks should report cold cost, warm replay cost, partial reuse,
+   cross-question reuse, stale-memory handling, accuracy under noisy fragments,
+   model calls saved, and wall-clock time saved.
+9. Cache safety. Memoization amplifies both correct work and mistakes. We need
+   confidence calibration, source grounding, verifier checks, staleness
+   detection, human correction hooks, parent invalidation, and audit trails.
+10. Scheduling policy. The agent needs policies for when to pre-warm, when to
+    solve on demand, when to extract broad versus narrow facts, when to
+    aggregate, when to verify, and when to discard noisy fragments.
+
+The concise research framing:
+
+```text
+Dynamic programming over language tasks works only if fragment design,
+scope identity, and composition under noise are solved together.
+```
+
+Today's useful failure was the 16K D03 two-hop sample. The memo graph contained
+the right evidence, but aggregation selected `Ray` instead of `Megan` because
+irrelevant Ray facts were frequent. A general aggregation prompt fix that
+prefers explicit character-to-place bridge facts made the targeted rerun answer
+`Megan` correctly. This supports the idea that the next layer is not more
+storage alone; it is better fragment typing and composition policy.
+
 ## 2026-05-18 14:47 EDT Update
 
 Extended the stable overlap experiment to 64K official NoLiMa context using the
