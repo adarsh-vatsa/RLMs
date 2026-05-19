@@ -106,6 +106,77 @@ ruled_out_region fragments: 2
 Tradeoff: this improves recall for two-hop questions but creates more
 supporting fragments and is slower than aggressive `NOT_FOUND` filtering.
 
+## Depth-Sweep Results
+
+After the first D00-only overlap experiments, we ran five-depth official
+NoLiMa slices to test needle placements across the whole coarse context range:
+
+```text
+D00 = 0%
+D01 = 25%
+D02 = 50%
+D03 = 75%
+D04 = 100%
+```
+
+These runs are much smaller than the common 26-depth NoLiMa setting, but they
+cover beginning, quarter, middle, three-quarter, and end placements.
+
+```text
+8K one-hop Helsinki:      5 / 5 correct, 104 model calls, 5 aggregate calls
+8K one-hop warm replay:   5 / 5 correct, 0 model calls, 0 aggregate calls
+8K two-hop Uusimaa:       5 / 5 correct, 104 model calls, 5 aggregate calls
+8K two-hop warm replay:   5 / 5 correct, 0 model calls, 0 aggregate calls
+16K two-hop Uusimaa:      4 / 5 correct, 204 model calls, 5 aggregate calls
+```
+
+Artifacts:
+
+```text
+benchmark_artifacts/dp_memo_nolima_official_8k_depth_sweep/20260518T222635Z/manifest.json
+benchmark_artifacts/dp_memo_nolima_official_8k_depth_sweep_warm/20260518T225326Z/manifest.json
+benchmark_artifacts/dp_memo_nolima_official_8k_twohop_depth_sweep/20260518T225338Z/manifest.json
+benchmark_artifacts/dp_memo_nolima_official_8k_twohop_depth_sweep_warm/20260518T232012Z/manifest.json
+benchmark_artifacts/dp_memo_nolima_official_16k_twohop_depth_sweep/20260518T232034Z/manifest.json
+```
+
+The 16K two-hop failure was:
+
+```text
+sample: 0401_T17_C02_twohop__rand_book_1__L16000__D03
+question: Which character has been to Uusimaa?
+wrong answer: Ray
+gold: Megan
+```
+
+Inspection showed this was not an extraction miss. The memo graph contained the
+right scoped evidence:
+
+```text
+Megan lives next to the Kiasma museum.
+```
+
+The failure was aggregation under noisy evidence: unrelated `Ray` facts appeared
+many times in surrounding chunks, and Q3 selected the frequent distractor name.
+The NoLiMa aggregator prompt now explicitly prefers direct
+character-to-landmark bridge facts over unrelated repeated character mentions.
+
+Targeted rerun of the failed sample after this prompt fix:
+
+```text
+sample: 0401_T17_C02_twohop__rand_book_1__L16000__D03
+correct: 1 / 1
+answer: Megan
+model_calls: 41
+aggregate_calls: 1
+```
+
+Artifact:
+
+```text
+benchmark_artifacts/dp_memo_nolima_official_16k_twohop_d03_prompt_fix/20260519T001643Z/manifest.json
+```
+
 ## Mutable-Workspace Result
 
 The mutable workload solves a four-chunk runbook, updates one chunk, invalidates

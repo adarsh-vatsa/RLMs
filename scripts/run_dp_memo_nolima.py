@@ -436,6 +436,9 @@ def main() -> None:
                             "Use explicitly stated facts and strong logical/common-knowledge inferences. "
                             "For two-hop location questions, connect landmarks, cities, regions, and countries "
                             "using common geographic knowledge when the evidence names a relevant place. "
+                            "Prefer explicit character-to-place bridge facts such as '<character> lives next to "
+                            "<landmark>' over unrelated narrative mentions of character names. "
+                            "Do not choose a character merely because that name appears often in unrelated facts. "
                             "Return only JSON with result, used_entry_ids, confidence. "
                             "The result should be the shortest answer string."
                         ),
