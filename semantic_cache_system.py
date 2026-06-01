@@ -63,11 +63,24 @@ from dotenv import load_dotenv
 #load_dotenv(dotenv_path)
 load_dotenv()  # loads .env from current/project directory
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
-API_KEY_ENV = os.getenv("LLM_API_KEY_ENV") or (
-    "OPENROUTER_API_KEY" if LLM_PROVIDER == "openrouter" else "ANTHROPIC_API_KEY"
-)
+def _default_api_key_env_for_provider(provider: str) -> str | None:
+    if provider == "openrouter":
+        return "OPENROUTER_API_KEY"
+    if provider == "anthropic":
+        return "ANTHROPIC_API_KEY"
+    return os.getenv("OPENAI_COMPAT_API_KEY_ENV") or None
+
+
+API_KEY_ENV = os.getenv("LLM_API_KEY_ENV") or _default_api_key_env_for_provider(LLM_PROVIDER)
 OPENROUTER_BASE_URL = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-API_KEY = os.getenv(API_KEY_ENV)
+OPENAI_COMPAT_BASE_URL = os.getenv("OPENAI_COMPAT_BASE_URL", "http://127.0.0.1:8000/v1")
+OPENAI_COMPAT_EXECUTOR_BASE_URL = os.getenv("OPENAI_COMPAT_EXECUTOR_BASE_URL", "").strip()
+OPENAI_COMPAT_EVALUATOR_BASE_URL = os.getenv("OPENAI_COMPAT_EVALUATOR_BASE_URL", "").strip()
+OPENAI_COMPAT_API_KEY_ENV = os.getenv("OPENAI_COMPAT_API_KEY_ENV", "").strip()
+OPENAI_COMPAT_STRUCTURED_OUTPUTS = os.getenv("OPENAI_COMPAT_STRUCTURED_OUTPUTS", "1").strip().lower() not in {
+    "0", "false", "no", "off"
+}
+API_KEY = os.getenv(API_KEY_ENV) if API_KEY_ENV else None
 client = Anthropic(api_key=API_KEY) if Anthropic and API_KEY and LLM_PROVIDER == "anthropic" else None
 
 # ---------------------------------------------------------------------------
@@ -80,6 +93,11 @@ EXECUTOR_MODEL = "claude-sonnet-4-20250514"
 EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
 OPENROUTER_EXECUTOR_MODEL = "anthropic/claude-sonnet-4.5"
 OPENROUTER_EVALUATOR_MODEL = "anthropic/claude-haiku-4.5"
+OPENAI_COMPAT_EXECUTOR_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
+OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+if LLM_PROVIDER == "openai_compatible":
+    EXECUTOR_MODEL = os.getenv("OPENAI_COMPAT_EXECUTOR_MODEL", OPENAI_COMPAT_EXECUTOR_MODEL)
+    EVALUATOR_MODEL = os.getenv("OPENAI_COMPAT_EVALUATOR_MODEL", OPENAI_COMPAT_EVALUATOR_MODEL)
 RERANKER_RELEVANCE_THRESHOLD = 0.5
 
 # Anthropic pricing config (USD per 1K tokens, early 2026 estimates).
@@ -97,27 +115,56 @@ def configure_llm_provider(
     executor_model: str | None = None,
     evaluator_model: str | None = None,
     openrouter_base_url: str | None = None,
+    openai_compat_base_url: str | None = None,
+    openai_compat_executor_base_url: str | None = None,
+    openai_compat_evaluator_base_url: str | None = None,
+    openai_compat_api_key_env: str | None = None,
+    openai_compat_structured_outputs: bool | None = None,
 ) -> None:
     """Configure the external LLM provider used by cache/evaluation calls."""
     global LLM_PROVIDER, API_KEY_ENV, OPENROUTER_BASE_URL, API_KEY, client
     global EXECUTOR_MODEL, EVALUATOR_MODEL
+    global OPENAI_COMPAT_BASE_URL, OPENAI_COMPAT_EXECUTOR_BASE_URL
+    global OPENAI_COMPAT_EVALUATOR_BASE_URL, OPENAI_COMPAT_API_KEY_ENV
+    global OPENAI_COMPAT_STRUCTURED_OUTPUTS
 
     LLM_PROVIDER = (provider or "anthropic").strip().lower()
-    if LLM_PROVIDER not in {"anthropic", "openrouter"}:
+    if LLM_PROVIDER not in {"anthropic", "openrouter", "openai_compatible"}:
         raise ValueError(f"Unsupported LLM provider: {provider}")
 
-    API_KEY_ENV = api_key_env or (
-        "OPENROUTER_API_KEY" if LLM_PROVIDER == "openrouter" else "ANTHROPIC_API_KEY"
-    )
+    if openai_compat_api_key_env is not None:
+        OPENAI_COMPAT_API_KEY_ENV = openai_compat_api_key_env.strip()
+
+    API_KEY_ENV = api_key_env or _default_api_key_env_for_provider(LLM_PROVIDER)
     OPENROUTER_BASE_URL = openrouter_base_url or OPENROUTER_BASE_URL
-    API_KEY = os.getenv(API_KEY_ENV)
+    OPENAI_COMPAT_BASE_URL = openai_compat_base_url or os.getenv(
+        "OPENAI_COMPAT_BASE_URL", OPENAI_COMPAT_BASE_URL
+    )
+    OPENAI_COMPAT_EXECUTOR_BASE_URL = (
+        openai_compat_executor_base_url
+        if openai_compat_executor_base_url is not None
+        else os.getenv("OPENAI_COMPAT_EXECUTOR_BASE_URL", OPENAI_COMPAT_EXECUTOR_BASE_URL)
+    ).strip()
+    OPENAI_COMPAT_EVALUATOR_BASE_URL = (
+        openai_compat_evaluator_base_url
+        if openai_compat_evaluator_base_url is not None
+        else os.getenv("OPENAI_COMPAT_EVALUATOR_BASE_URL", OPENAI_COMPAT_EVALUATOR_BASE_URL)
+    ).strip()
+    if openai_compat_structured_outputs is not None:
+        OPENAI_COMPAT_STRUCTURED_OUTPUTS = bool(openai_compat_structured_outputs)
+    API_KEY = os.getenv(API_KEY_ENV) if API_KEY_ENV else None
 
     if executor_model:
         EXECUTOR_MODEL = executor_model
+    elif LLM_PROVIDER == "openai_compatible":
+        EXECUTOR_MODEL = os.getenv("OPENAI_COMPAT_EXECUTOR_MODEL", OPENAI_COMPAT_EXECUTOR_MODEL)
     if evaluator_model:
         EVALUATOR_MODEL = evaluator_model
-        if "SemanticCacheController" in globals():
-            SemanticCacheController.EVALUATOR_MODEL = evaluator_model
+    elif LLM_PROVIDER == "openai_compatible":
+        EVALUATOR_MODEL = os.getenv("OPENAI_COMPAT_EVALUATOR_MODEL", OPENAI_COMPAT_EVALUATOR_MODEL)
+
+    if "SemanticCacheController" in globals():
+        SemanticCacheController.EVALUATOR_MODEL = EVALUATOR_MODEL
 
     client = Anthropic(api_key=API_KEY) if Anthropic and API_KEY and LLM_PROVIDER == "anthropic" else None
 
@@ -129,6 +176,8 @@ def _openrouter_messages_create(
     temperature: float = 0,
     messages: list[dict],
     system: str | None = None,
+    response_format: dict | None = None,
+    extra_body: dict | None = None,
 ):
     api_key = os.getenv(API_KEY_ENV)
     if not api_key:
@@ -144,6 +193,10 @@ def _openrouter_messages_create(
         "max_tokens": max_tokens,
         "temperature": temperature,
     }
+    if response_format:
+        payload["response_format"] = response_format
+    if extra_body:
+        payload.update(extra_body)
     url = OPENROUTER_BASE_URL.rstrip("/") + "/chat/completions"
     request = urllib.request.Request(
         url,
@@ -164,6 +217,10 @@ def _openrouter_messages_create(
         raise RuntimeError(f"OpenRouter request failed: {exc}") from exc
 
     data = json.loads(raw)
+    return _normalize_chat_completion_response(data)
+
+
+def _normalize_chat_completion_response(data: dict):
     choices = data.get("choices") or []
     message = choices[0].get("message", {}) if choices else {}
     usage = data.get("usage") or {}
@@ -177,14 +234,137 @@ def _openrouter_messages_create(
     )
 
 
+def _openai_compatible_base_url_for_model(model: str) -> str:
+    if model == EVALUATOR_MODEL and OPENAI_COMPAT_EVALUATOR_BASE_URL:
+        return OPENAI_COMPAT_EVALUATOR_BASE_URL
+    if model == EXECUTOR_MODEL and OPENAI_COMPAT_EXECUTOR_BASE_URL:
+        return OPENAI_COMPAT_EXECUTOR_BASE_URL
+    return OPENAI_COMPAT_BASE_URL
+
+
+def _openai_compatible_messages_create(
+    *,
+    model: str,
+    max_tokens: int,
+    temperature: float = 0,
+    messages: list[dict],
+    system: str | None = None,
+    response_format: dict | None = None,
+    extra_body: dict | None = None,
+):
+    payload_messages = []
+    if system:
+        payload_messages.append({"role": "system", "content": system})
+    payload_messages.extend(messages)
+    payload = {
+        "model": model,
+        "messages": payload_messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+    if response_format:
+        payload["response_format"] = response_format
+    if extra_body:
+        payload.update(extra_body)
+
+    headers = {"Content-Type": "application/json"}
+    api_key_env = OPENAI_COMPAT_API_KEY_ENV or API_KEY_ENV
+    api_key = os.getenv(api_key_env) if api_key_env else None
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    url = _openai_compatible_base_url_for_model(model).rstrip("/") + "/chat/completions"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=120) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenAI-compatible HTTP {exc.code}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"OpenAI-compatible request failed: {exc}") from exc
+
+    return _normalize_chat_completion_response(json.loads(raw))
+
+
+def _json_response_format() -> dict | None:
+    if LLM_PROVIDER == "openai_compatible" and OPENAI_COMPAT_STRUCTURED_OUTPUTS:
+        return {"type": "json_object"}
+    return None
+
+
+def _strip_thinking_blocks(text: str) -> str:
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"^.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    return text.strip()
+
+
+def _extract_llm_json_object(text: str) -> dict | None:
+    """Extract the first valid JSON object from an LLM response."""
+    text = _strip_thinking_blocks(text or "")
+    start = None
+    depth = 0
+    in_string = False
+    escape = False
+
+    for idx, char in enumerate(text):
+        if start is None:
+            if char == "{":
+                start = idx
+                depth = 1
+            continue
+
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                candidate = text[start:idx + 1]
+                try:
+                    parsed = json.loads(candidate)
+                except json.JSONDecodeError:
+                    start = None
+                    continue
+                return parsed if isinstance(parsed, dict) else None
+    return None
+
+
+def _coerce_bool(value) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "allow"}
+    return bool(value)
+
+
 def create_llm_message(**kwargs):
     """Provider-neutral message call preserving Anthropic-like response shape."""
     if LLM_PROVIDER == "openrouter":
         return _openrouter_messages_create(**kwargs)
+    if LLM_PROVIDER == "openai_compatible":
+        return _openai_compatible_messages_create(**kwargs)
     if LLM_PROVIDER != "anthropic":
         raise ValueError(f"Unsupported LLM provider: {LLM_PROVIDER}")
     if Anthropic is None:
         raise RuntimeError("Anthropic package is not installed. Install it first, for example: `pip install anthropic`.")
+    kwargs.pop("response_format", None)
+    kwargs.pop("extra_body", None)
     if client is None:
         api_key = os.getenv(API_KEY_ENV)
         if not api_key:
@@ -563,7 +743,7 @@ class SemanticCacheController:
     """
 
     # Configuration constants
-    EVALUATOR_MODEL = "claude-haiku-4-5"
+    EVALUATOR_MODEL = EVALUATOR_MODEL
     TOP_K_CANDIDATES = 5           # Default number of vector search results
     PARALLEL_BATCH_SIZE = 5        # Max candidates per single Haiku evaluation call
     KNOWLEDGE_MIN_SCORE = 0.78     # Minimum top-1 fact similarity to allow knowledge reuse
@@ -718,22 +898,36 @@ class SemanticCacheController:
         )
 
         try:
-            response = create_llm_message(
-                model=self.EVALUATOR_MODEL,
-                max_tokens=50,
-                temperature=0,
-                messages=[{"role": "user", "content": prompt}]
-            )
+            llm_kwargs = {
+                "model": self.EVALUATOR_MODEL,
+                "max_tokens": 50,
+                "temperature": 0,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            response_format = _json_response_format()
+            if response_format:
+                llm_kwargs["response_format"] = response_format
+
+            response = create_llm_message(**llm_kwargs)
             self.metrics.record_call(
                 self.EVALUATOR_MODEL,
                 response.usage.input_tokens,
                 response.usage.output_tokens
             )
 
-            raw = response.content[0].text
-            json_match = re.search(r'\{.*\}', raw.replace('\n', ''))
-            if json_match:
-                return json.loads(json_match.group(0))
+            parsed = _extract_llm_json_object(response.content[0].text)
+            if parsed is not None:
+                candidate_ids = {orig_idx for _, orig_idx, _ in candidates}
+                hit = _coerce_bool(parsed.get("hit", False))
+                candidate_id = parsed.get("id")
+                if candidate_id is not None:
+                    try:
+                        candidate_id = int(candidate_id)
+                    except (TypeError, ValueError):
+                        candidate_id = None
+                if hit and candidate_id in candidate_ids:
+                    return {"hit": True, "id": candidate_id}
+                return {"hit": False, "id": None}
         except Exception as e:
             print(f"      [SNIPER ERROR] {e}. Defaulting to miss.")
 
@@ -823,23 +1017,26 @@ class SemanticCacheController:
         )
 
         try:
-            response = create_llm_message(
-                model=self.EVALUATOR_MODEL,
-                max_tokens=120,
-                temperature=0,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            llm_kwargs = {
+                "model": self.EVALUATOR_MODEL,
+                "max_tokens": 120,
+                "temperature": 0,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            response_format = _json_response_format()
+            if response_format:
+                llm_kwargs["response_format"] = response_format
+
+            response = create_llm_message(**llm_kwargs)
             self.metrics.record_call(
                 self.EVALUATOR_MODEL,
                 response.usage.input_tokens,
                 response.usage.output_tokens,
             )
 
-            raw = response.content[0].text
-            json_match = re.search(r'\{.*\}', raw.replace('\n', ''))
-            if json_match:
-                parsed = json.loads(json_match.group(0))
-                allow = bool(parsed.get("allow", False))
+            parsed = _extract_llm_json_object(response.content[0].text)
+            if parsed is not None:
+                allow = _coerce_bool(parsed.get("allow", False))
                 reason = str(parsed.get("reason", "unspecified"))
                 confidence = parsed.get("confidence", 0.0)
                 try:
@@ -1995,8 +2192,8 @@ class Router:
         """Route to cheap models for simple tasks, expensive for complex ones."""
         simple_keywords = ["classify", "extract", "find", "count", "identify", "list", "check"]
         if any(kw in query.lower() for kw in simple_keywords):
-            return "claude-haiku-4-5"
-        return "claude-sonnet-4-5"
+            return EVALUATOR_MODEL
+        return EXECUTOR_MODEL
 
 
 # ============================================================================

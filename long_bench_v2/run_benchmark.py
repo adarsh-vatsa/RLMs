@@ -30,6 +30,8 @@ REPORT_FILENAME = "official_longbench_v2_eval_report.json"
 DEFAULT_SUITE_CSV = Path("benchmark_data/long_bench_v2/data_cache_suite.csv")
 DEFAULT_SOURCE_JSON = Path("benchmark_data/long_bench_v2/data.json")
 DEFAULT_ROW_TYPES = "original,exact,semantic"
+DEFAULT_OPENAI_COMPAT_EXECUTOR_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
+DEFAULT_OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
 VALID_CACHE_TYPES = {"exact", "semantic", "knowledge", "miss", "unknown"}
 CHOICE_LETTERS = {"A", "B", "C", "D"}
 
@@ -359,12 +361,22 @@ def _import_semantic_cache_system():
 
 def normalize_llm_args(args: argparse.Namespace) -> argparse.Namespace:
     if args.api_key_env is None:
-        args.api_key_env = "OPENROUTER_API_KEY" if args.llm_provider == "openrouter" else "ANTHROPIC_API_KEY"
+        if args.llm_provider == "openrouter":
+            args.api_key_env = "OPENROUTER_API_KEY"
+        elif args.llm_provider == "openai_compatible":
+            args.api_key_env = None
+        else:
+            args.api_key_env = "ANTHROPIC_API_KEY"
     if args.llm_provider == "openrouter":
         if args.executor_model == "claude-sonnet-4-5":
             args.executor_model = "anthropic/claude-sonnet-4.5"
         if args.evaluator_model == "claude-haiku-4-5":
             args.evaluator_model = "anthropic/claude-haiku-4.5"
+    if args.llm_provider == "openai_compatible":
+        if args.executor_model == "claude-sonnet-4-5":
+            args.executor_model = DEFAULT_OPENAI_COMPAT_EXECUTOR_MODEL
+        if args.evaluator_model == "claude-haiku-4-5":
+            args.evaluator_model = DEFAULT_OPENAI_COMPAT_EVALUATOR_MODEL
     return args
 
 
@@ -447,6 +459,10 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         executor_model=args.executor_model,
         evaluator_model=args.evaluator_model,
         openrouter_base_url=args.openrouter_base_url,
+        openai_compat_base_url=args.openai_compat_base_url,
+        openai_compat_executor_base_url=args.openai_compat_executor_base_url,
+        openai_compat_evaluator_base_url=args.openai_compat_evaluator_base_url,
+        openai_compat_api_key_env=args.openai_compat_api_key_env,
     )
     shared_embedder = scs.EmbeddingEngine()
     shared_reranker = None if args.disable_reranker else scs.Reranker()
@@ -575,6 +591,10 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "llm_provider": args.llm_provider,
         "api_key_env": args.api_key_env,
         "openrouter_base_url": args.openrouter_base_url,
+        "openai_compat_base_url": args.openai_compat_base_url,
+        "openai_compat_executor_base_url": args.openai_compat_executor_base_url,
+        "openai_compat_evaluator_base_url": args.openai_compat_evaluator_base_url,
+        "openai_compat_api_key_env": args.openai_compat_api_key_env,
         "executor_model": args.executor_model,
         "evaluator_model": args.evaluator_model,
         "top_k": args.top_k,
@@ -649,11 +669,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-state-root", type=Path, default=None)
     parser.add_argument("--row-types", type=str, default=DEFAULT_ROW_TYPES)
     parser.add_argument("--max-rows", type=int, default=0, help="Cap selected rows after filtering (0 means all)")
-    parser.add_argument("--llm-provider", choices=["anthropic", "openrouter"], default="anthropic")
+    parser.add_argument("--llm-provider", choices=["anthropic", "openrouter", "openai_compatible"], default="anthropic")
     parser.add_argument("--api-key-env", type=str, default=None)
     parser.add_argument("--executor-model", type=str, default="claude-sonnet-4-5")
     parser.add_argument("--evaluator-model", type=str, default="claude-haiku-4-5")
     parser.add_argument("--openrouter-base-url", type=str, default="https://openrouter.ai/api/v1")
+    parser.add_argument("--openai-compat-base-url", type=str, default=os.getenv("OPENAI_COMPAT_BASE_URL", "http://127.0.0.1:8000/v1"))
+    parser.add_argument("--openai-compat-executor-base-url", type=str, default=os.getenv("OPENAI_COMPAT_EXECUTOR_BASE_URL", ""))
+    parser.add_argument("--openai-compat-evaluator-base-url", type=str, default=os.getenv("OPENAI_COMPAT_EVALUATOR_BASE_URL", ""))
+    parser.add_argument("--openai-compat-api-key-env", type=str, default=os.getenv("OPENAI_COMPAT_API_KEY_ENV", ""))
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--rerank-top", type=int, default=5)
     parser.add_argument("--disable-reranker", action="store_true")

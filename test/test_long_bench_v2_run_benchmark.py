@@ -145,7 +145,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(cold["cache_hit_rate"], 0.5)
         self.assertEqual(warm["run_start_type"], "warm_start")
 
-    def test_normalize_llm_args_keeps_anthropic_default_and_maps_openrouter(self):
+    def test_normalize_llm_args_keeps_anthropic_default_and_maps_openrouter_and_local(self):
         anthropic = type(
             "Args",
             (),
@@ -166,15 +166,29 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
                 "evaluator_model": "claude-haiku-4-5",
             },
         )()
+        local = type(
+            "Args",
+            (),
+            {
+                "llm_provider": "openai_compatible",
+                "api_key_env": None,
+                "executor_model": "claude-sonnet-4-5",
+                "evaluator_model": "claude-haiku-4-5",
+            },
+        )()
 
         normalize_llm_args(anthropic)
         normalize_llm_args(openrouter)
+        normalize_llm_args(local)
 
         self.assertEqual(anthropic.api_key_env, "ANTHROPIC_API_KEY")
         self.assertEqual(anthropic.executor_model, "claude-sonnet-4-5")
         self.assertEqual(openrouter.api_key_env, "OPENROUTER_API_KEY")
         self.assertEqual(openrouter.executor_model, "anthropic/claude-sonnet-4.5")
         self.assertEqual(openrouter.evaluator_model, "anthropic/claude-haiku-4.5")
+        self.assertIsNone(local.api_key_env)
+        self.assertEqual(local.executor_model, "meta-llama/Llama-3.3-70B-Instruct")
+        self.assertEqual(local.evaluator_model, "mistralai/Mistral-Small-3.2-24B-Instruct-2506")
 
 
 if __name__ == "__main__":
