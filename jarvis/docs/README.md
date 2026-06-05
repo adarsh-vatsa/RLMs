@@ -8,51 +8,81 @@ vLLM and running semantic-cache benchmark clients against those services.
 ```text
 jarvis/run.sh             User-facing dispatcher. Calls sbatch with the right resources.
 jarvis/lib/env.sh         Shared paths, cache env vars, venv activation, and cleanup.
-jarvis/serve_vllm.sh      Starts executor/evaluator/smoke vLLM services inside GPU jobs.
+jarvis/serve_vllm.sh      Starts small-smoke/executor/evaluator/smoke vLLM services inside GPU jobs.
 jarvis/run_client.sh      Runs benchmark/client commands inside CPU jobs.
 jarvis/download_models.sh Optional model prefetch job for Hugging Face weights.
+jarvis/cleanup_local.sh   Inspects or cleans guarded node-local scratch paths.
 ```
 
 Use `jarvis/run.sh` from the login node. The other scripts are role scripts that
 `run.sh` submits or delegates to inside Slurm allocations.
 
 For the exact first-run sequence on the cluster, use
-[`jarvis/HPC_RUNBOOK.md`](HPC_RUNBOOK.md).
+[`jarvis/docs/HPC_RUNBOOK.md`](HPC_RUNBOOK.md).
 
 ## Storage Policy
 
-Use project storage for durable model cache files and node-local scratch for
-active serving:
+There are two storage modes. Scratch mode is the default because this account
+cannot currently create `/mmfs1/project/llm_caching`.
+
+Use project mode only if you have permission to create the project directory:
 
 ```text
-Persistent cache: /mmfs1/project/llm_caching
+JARVIS_STORAGE_MODE=project
+Persistent cache:  /mmfs1/project/llm_caching
+Runtime scratch:   /local/$USER/$SLURM_JOB_ID/adarsh-rlms
+```
+
+If you cannot create `/mmfs1/project/llm_caching`, use scratch mode:
+
+```text
+JARVIS_STORAGE_MODE=scratch
+Node-local cache: /local/$USER/llm_caching
 Runtime scratch:  /local/$USER/$SLURM_JOB_ID/adarsh-rlms
+Small logs:       /home/edogu/adarsh-rlms-logs
 ```
 
-The run script creates:
+In default scratch mode, the scripts point Hugging Face and vLLM caches at
+`/local/$USER/llm_caching`, then clean only the per-job
+`/local/$USER/$SLURM_JOB_ID/adarsh-rlms` directory on exit. This lets a later
+job on the same node reuse model files.
 
-```text
-/mmfs1/project/llm_caching/hf_cache
-/mmfs1/project/llm_caching/vllm_cache
-/mmfs1/project/llm_caching/logs
-```
+In project mode, or if `SCRATCH_SHARED_NODE_CACHE=0`, the scripts can stage
+runtime cache files under the per-job `/local` directory and sync back to the
+configured cache root during cleanup.
 
-It exports Hugging Face and vLLM cache variables to the per-job `/local` path,
-then cleans only `/local/$USER/$SLURM_JOB_ID/adarsh-rlms` on exit. It never
-deletes `/mmfs1/project/llm_caching`.
+In scratch mode, `/local/$USER/llm_caching` is node-local. It may be reused by
+later jobs on the same node, but it is not shared across nodes and may be purged
+by cluster policy.
+
+In scratch mode, benchmark cache state defaults to per-job `/local` and is
+cleaned with the client job. For warm cache reuse across separate client jobs,
+set `JARVIS_CACHE_STATE_ROOT` to a small persistent path such as
+`/home/edogu/adarsh-rlms-cache-state`. Do not use `/home` for model weights.
+
+Before model-serving or download work starts, the scripts check free space on the
+allocated node. Default minimums are 250 GB for the executor, 60 GB for
+`small-smoke`, 160 GB for the evaluator/smoke service, 350 GB for
+`download-all`, and 30 GB for client jobs.
+These thresholds are larger than the model weights because first startup can
+also need partial download files and cache overhead. Override with
+`MIN_LOCAL_FREE_GB=<gb>` only when the model is already cached or you have
+inspected the node manually.
 
 Expected persistent storage:
 
 ```text
 Llama 3.3 70B BF16:      about 141 GB
 Mistral Small 24B:       about 50 GB minimal, about 100 GB if full repo files are cached
+Qwen2.5 7B smoke model:  about 15-25 GB
 Qwen embed/reranker:     about 2-4 GB
 Comfortable cache size:  about 300 GB
 Room for variants:       about 500 GB
 ```
 
-Do not place these model caches under `/home`, because `/home` is backed by
+Do not place model weights under `/home`, because `/home` is backed by
 `/mmfs1/home` and Jarvis best practices warn against large permanent files there.
+Small Slurm logs and endpoint URL files are fine under `/home`.
 
 ## Install vLLM
 
@@ -63,8 +93,7 @@ environments, use `/mmfs1/project/llm_caching/venvs/adarsh-vllm` instead of the
 
 Installing the vLLM package under `/home/edogu` is acceptable only as a
 user-owned software environment. Keep model weights and Hugging Face caches out
-of `/home`; `jarvis/run.sh` points those caches at `/local` during jobs and can
-sync model files to `/mmfs1/project/llm_caching`.
+of `/home`; `jarvis/run.sh` points those caches at `/local` during jobs.
 
 Python 3.9.18 is not enough for the current setup:
 
@@ -144,11 +173,14 @@ VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit evaluator
 
 ## Remote Preflight
 
-Before the first Slurm run on Jarvis:
+Before the first Slurm run on Jarvis, use scratch mode if you cannot create the
+project directory:
 
 ```bash
 cd /path/to/adarsh-rlms
-mkdir -p /mmfs1/project/llm_caching/{hf_cache,vllm_cache,logs}
+export JARVIS_STORAGE_MODE=scratch
+export PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs
+mkdir -p "$PROJECT_LOG_DIR"
 ```
 
 Make sure the Slurm job can read gated Hugging Face models. Prefer exporting
@@ -179,6 +211,7 @@ for the full advertised context window of the model:
 ```text
 executor:  --max-model-len 32768
 evaluator: --max-model-len 16384
+small-smoke: --max-model-len 8192
 smoke:     --max-model-len 8192
 ```
 
@@ -202,30 +235,38 @@ VLLM_GPU_MEMORY_UTILIZATION=0.90
 Use `jarvis/run.sh` as a dispatcher:
 
 ```bash
+bash jarvis/run.sh submit small-smoke
 bash jarvis/run.sh submit executor
 bash jarvis/run.sh submit evaluator
 bash jarvis/run.sh submit smoke
 bash jarvis/run.sh submit client
+bash jarvis/run.sh submit download-small-smoke
 bash jarvis/run.sh submit download-all
+bash jarvis/run.sh submit cleanup
 ```
 
 The submit helper applies the expected Slurm resources:
 
 ```text
+small-smoke: gpu-l40s, gpu:l40s:1, Qwen2.5 7B, tensor parallel 1
 executor:  gpu-l40s, gpu:l40s:4, Llama 3.3 70B, tensor parallel 4
 evaluator: gpu-l40s, gpu:l40s:2, Mistral Small 24B, tensor parallel 2
 smoke:     gpu-l40s, gpu:l40s:2, one shared endpoint
 client:    compute-short, no GPU, benchmark/client command only
-download:  compute-short, no GPU, prefetch model weights into project cache
+download:  compute-short, no GPU, prefetch model weights into the configured cache root
+cleanup:   gpu-l40s by default, inspect or clean node-local Jarvis scratch
 ```
 
 You can also submit manually:
 
 ```bash
+MODE=small-smoke sbatch --partition=gpu-l40s --gres=gpu:l40s:1 jarvis/serve_vllm.sh
 MODE=executor sbatch --partition=gpu-l40s --gres=gpu:l40s:4 jarvis/serve_vllm.sh
 MODE=evaluator sbatch --partition=gpu-l40s --gres=gpu:l40s:2 jarvis/serve_vllm.sh
 MODE=client sbatch --partition=compute-short jarvis/run_client.sh
+MODE=download-small-smoke sbatch --partition=compute-short jarvis/download_models.sh
 MODE=download-all sbatch --partition=compute-short jarvis/download_models.sh
+MODE=cleanup sbatch --partition=gpu-l40s --nodelist=<gpu-node> jarvis/cleanup_local.sh
 ```
 
 ## Endpoint Wiring
@@ -233,7 +274,7 @@ MODE=download-all sbatch --partition=compute-short jarvis/download_models.sh
 Each vLLM service writes its advertised URL to:
 
 ```text
-/mmfs1/project/llm_caching/logs/<mode>-<job_id>.url
+$PROJECT_LOG_DIR/<mode>-<job_id>.url
 ```
 
 For serious benchmark runs, start two services and point the client at both:
@@ -254,6 +295,13 @@ export OPENAI_COMPAT_EXECUTOR_BASE_URL=$OPENAI_COMPAT_BASE_URL
 export OPENAI_COMPAT_EVALUATOR_BASE_URL=$OPENAI_COMPAT_BASE_URL
 ```
 
+For `small-smoke`, also point both roles at the served Qwen model:
+
+```bash
+export OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen2.5-7B-Instruct
+export OPENAI_COMPAT_EVALUATOR_MODEL=Qwen/Qwen2.5-7B-Instruct
+```
+
 Then submit a client job with the command you want to run:
 
 ```bash
@@ -268,14 +316,22 @@ evaluator endpoints before it starts the command. For benchmark runs, set
 
 ## Cache Hydration
 
-By default, the role scripts copy already cached Hugging Face files from
-`/mmfs1/project/llm_caching/hf_cache` into `/local` with `rsync --ignore-existing`.
-If the project cache is empty, Hugging Face/vLLM downloads into `/local`.
+By default in scratch mode, the role scripts use the node-local cache directly:
+`/local/$USER/llm_caching/hf_cache`. That cache survives per-job cleanup and can
+be reused by later jobs on the same node.
+
+In project mode, or when `SCRATCH_SHARED_NODE_CACHE=0`, the scripts copy already
+cached Hugging Face files into the per-job `/local` runtime cache with
+`rsync --ignore-existing`.
+
+In project mode, the durable source is `/mmfs1/project/llm_caching/hf_cache`.
+In scratch mode, the reusable source is `/local/$USER/llm_caching/hf_cache` on
+the same node. This does not hydrate jobs that land on different nodes.
 
 vLLM can download models automatically on first service startup, so a separate
-download job is not required for correctness. It is still recommended before a
-serious run because it gives cleaner logs for gated-model auth, quota, and
-network issues.
+download job is not required for correctness. In scratch mode, CPU download jobs
+are useful only for checking Hugging Face auth/network access because they write
+to `/local` on the CPU node, not the later GPU node.
 
 Prefetch both default models:
 
@@ -294,10 +350,10 @@ VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash jarvis/run.sh submit download-evaluator
 ```
 
-`download_models.sh` sets `SYNC_BACK_MODELS=1` by default, so files downloaded
-into `/local` are synced back to `/mmfs1/project/llm_caching/hf_cache` during
-cleanup. For first-time population, run one download job at a time to avoid
-multiple jobs downloading and syncing the same large model concurrently.
+`download_models.sh` sets `SYNC_BACK_MODELS=1` by default. With the default
+scratch settings, downloads go directly to the node-local cache root. If you
+switch to a per-job runtime cache layout, the same flag syncs downloaded files
+back to the configured cache root during cleanup.
 
 You can also let a service job download and sync on first startup:
 
@@ -319,3 +375,23 @@ DRY_RUN=1 MODE=executor PROJECT_CACHE_ROOT=/tmp/llm_caching_test \
 
 The cleanup trap removes the dry-run `LOCAL_BASE` only if it matches the guarded
 scratch path pattern.
+
+## Cleanup
+
+Cleanup is node-local. Run it on the node you want to inspect:
+
+```bash
+JARVIS_STORAGE_MODE=scratch CLEANUP_NODE=<gpu-node> \
+  bash jarvis/run.sh submit cleanup
+```
+
+The cleanup script is a dry run by default. After reviewing the log, remove stale
+per-job scratch with:
+
+```bash
+JARVIS_STORAGE_MODE=scratch CLEANUP_NODE=<gpu-node> CONFIRM_CLEANUP=1 \
+  bash jarvis/run.sh submit cleanup
+```
+
+To delete the node-local model cache too, add `CLEAN_NODE_CACHE=1`. Do this only
+when you want future jobs on that node to download models again.

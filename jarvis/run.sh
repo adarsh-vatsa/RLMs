@@ -14,9 +14,12 @@ source "$SCRIPT_DIR/lib/env.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  bash jarvis/run.sh submit <executor|evaluator|smoke|client|download-executor|download-evaluator|download-all>
+  bash jarvis/run.sh submit <small-smoke|executor|evaluator|smoke|client|download-small-smoke|download-executor|download-evaluator|download-all|cleanup>
 
 Common commands:
+  JARVIS_STORAGE_MODE=scratch PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs bash jarvis/run.sh submit small-smoke
+  JARVIS_STORAGE_MODE=scratch PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs bash jarvis/run.sh submit smoke
+  JARVIS_STORAGE_MODE=scratch CLEANUP_NODE=g101 bash jarvis/run.sh submit cleanup
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit evaluator
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit download-all
@@ -35,6 +38,18 @@ submit_mode() {
   mkdir -p "$PROJECT_LOG_DIR"
 
   case "$submit_mode" in
+    small-smoke)
+      sbatch \
+        --partition=gpu-l40s \
+        --gres=gpu:l40s:1 \
+        --cpus-per-task=8 \
+        --mem=64G \
+        --time=04:00:00 \
+        --job-name=rlms-small-smoke \
+        --output="$PROJECT_LOG_DIR/%x-%j.out" \
+        --export=ALL,MODE=small-smoke \
+        "$SCRIPT_DIR/serve_vllm.sh"
+      ;;
     executor)
       sbatch \
         --partition=gpu-l40s \
@@ -82,7 +97,7 @@ submit_mode() {
         --export=ALL,MODE=client \
         "$SCRIPT_DIR/run_client.sh"
       ;;
-    download-executor|download-evaluator|download-smoke|download-all)
+    download-small-smoke|download-executor|download-evaluator|download-smoke|download-all)
       sbatch \
         --partition=compute-short \
         --cpus-per-task=8 \
@@ -93,6 +108,22 @@ submit_mode() {
         --export=ALL,MODE="$submit_mode" \
         "$SCRIPT_DIR/download_models.sh"
       ;;
+    cleanup)
+      local cleanup_args=()
+      if [[ -n "${CLEANUP_NODE:-}" ]]; then
+        cleanup_args+=(--nodelist="$CLEANUP_NODE")
+      fi
+      sbatch \
+        --partition="${CLEANUP_PARTITION:-gpu-l40s}" \
+        "${cleanup_args[@]}" \
+        --cpus-per-task=1 \
+        --mem=4G \
+        --time=00:30:00 \
+        --job-name=rlms-cleanup \
+        --output="$PROJECT_LOG_DIR/%x-%j.out" \
+        --export=ALL,MODE=cleanup \
+        "$SCRIPT_DIR/cleanup_local.sh"
+      ;;
     *)
       usage
       exit 2
@@ -102,14 +133,17 @@ submit_mode() {
 
 delegate_inside_slurm() {
   case "$MODE" in
-    executor|evaluator|smoke)
+    executor|evaluator|smoke|small-smoke)
       exec bash "$SCRIPT_DIR/serve_vllm.sh"
       ;;
     client)
       exec bash "$SCRIPT_DIR/run_client.sh"
       ;;
-    download-executor|download-evaluator|download-smoke|download-all)
+    download-small-smoke|download-executor|download-evaluator|download-smoke|download-all)
       exec bash "$SCRIPT_DIR/download_models.sh"
+      ;;
+    cleanup)
+      exec bash "$SCRIPT_DIR/cleanup_local.sh"
       ;;
     *)
       usage

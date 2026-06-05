@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prefetch Hugging Face model weights through Slurm, then sync them to project cache.
+# Prefetch Hugging Face model weights through Slurm, then sync them to the configured cache root.
 
 #SBATCH --job-name=rlms-download
 #SBATCH --time=12:00:00
@@ -15,6 +15,15 @@ source "$SCRIPT_DIR/lib/env.sh"
 jarvis_setup_runtime
 jarvis_print_runtime "$(jarvis_advertised_host)"
 
+if [[ "$JARVIS_STORAGE_MODE" == "scratch" ]]; then
+  cat <<'EOF'
+[JARVIS] scratch storage mode: this download job writes to the node-local
+[JARVIS] /local cache on the node where the job runs. It validates Hugging Face
+[JARVIS] access, but it does not seed other nodes. GPU service jobs may still
+[JARVIS] need to download weights on first startup.
+EOF
+fi
+
 target="${DOWNLOAD_TARGET:-$MODE}"
 models=()
 case "$target" in
@@ -23,6 +32,9 @@ case "$target" in
     ;;
   download-evaluator|evaluator)
     models=("$EVALUATOR_MODEL")
+    ;;
+  download-small-smoke|small-smoke)
+    models=("$SMALL_SMOKE_MODEL")
     ;;
   download-smoke|smoke)
     models=("$SMOKE_MODEL")
@@ -58,4 +70,4 @@ snapshot_download(repo_id=model_id, cache_dir=cache_dir)
 PY
 done
 
-echo "[JARVIS] download step complete; project sync runs in cleanup."
+echo "[JARVIS] download step complete; cache sync runs in cleanup when needed."

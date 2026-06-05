@@ -61,6 +61,9 @@ case "$MODE" in
   evaluator)
     run_vllm "$EVALUATOR_MODEL" "$EVALUATOR_PORT" "${EVALUATOR_TP_SIZE:-2}" "$EVALUATOR_MAX_MODEL_LEN"
     ;;
+  small-smoke)
+    run_vllm "$SMALL_SMOKE_MODEL" "$SMALL_SMOKE_PORT" "${SMALL_SMOKE_TP_SIZE:-1}" "$SMALL_SMOKE_MAX_MODEL_LEN"
+    ;;
   smoke)
     run_vllm "$SMOKE_MODEL" "$SMOKE_PORT" "${SMOKE_TP_SIZE:-2}" "$SMOKE_MAX_MODEL_LEN"
     ;;
