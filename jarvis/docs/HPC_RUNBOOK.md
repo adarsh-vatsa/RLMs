@@ -98,18 +98,25 @@ SKIP_LOCAL_SPACE_CHECK=1 bash adarsh-rlms/jarvis/run.sh submit smoke
 
 ## 2. Prepare Authentication
 
-The default models may require Hugging Face access approval. Export `HF_TOKEN`
-before submitting jobs so Slurm passes it through:
+The default models may require Hugging Face access approval. Best practice on a
+shared cluster is to keep tokens out of committed files. This repo's `.gitignore`
+already excludes `.env`, and the Jarvis scripts can read `HF_TOKEN` from the repo
+`.env` without sourcing the whole file as shell code.
+
+Add this to `adarsh-rlms/.env`:
 
 ```bash
-export HF_TOKEN=<your-hugging-face-token>
+HF_TOKEN=<your-hugging-face-token>
 ```
 
-Confirm the token is present without printing it:
+Then confirm the scripts can see it without printing the token:
 
 ```bash
-test -n "$HF_TOKEN" && echo "HF_TOKEN is set"
+test -n "${HF_TOKEN:-}" && echo "HF_TOKEN is exported" || grep -q '^HF_TOKEN=' adarsh-rlms/.env && echo "HF_TOKEN is in .env"
 ```
+
+If both are set, the exported shell variable wins. To disable `.env` loading for
+Jarvis scripts, set `JARVIS_LOAD_DOTENV=0`.
 
 ## 3. Install vLLM In Your User Environment
 
@@ -170,58 +177,14 @@ python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 
 Do not pass `MODULES="cuda"`; that module does not exist. If you created the
 venv from the `python/3.11.10` module, load that same module inside Slurm before
-the venv is activated. For GPU vLLM service jobs, use:
+the venv is activated. The exact Slurm commands are in the validation steps
+below.
 
-```bash
-MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
-DRY_RUN=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash adarsh-rlms/jarvis/run.sh submit small-smoke
-```
-
-For CPU download jobs created from the same module-based venv, only the Python
-module is needed:
-
-```bash
-MODULES="python/3.11.10" \
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash adarsh-rlms/jarvis/run.sh submit download-small-smoke
-```
-
-If you used `uv python install 3.12` rather than the site Python module, you can
-omit `python/3.11.10` from `MODULES`. The vLLM/PyTorch wheels may also work with
-the NVIDIA driver on GPU nodes without a CUDA module.
-
-## 4. Prepare The Client Environment
-
-The vLLM service environment and benchmark client environment can be different.
-The service environment needs `vllm`; the client environment needs this repo's
-dependencies.
-
-From the parent directory, prepare the client environment inside the repo:
-
-```bash
-cd adarsh-rlms
-uv python install 3.13
-uv sync --python 3.13
-uv pip install transformers torch faiss-cpu sentence-transformers anthropic python-dotenv numpy scikit-learn
-cd ..
-```
-
-Quick import check:
-
-```bash
-cd adarsh-rlms
-uv run python - <<'PY'
-import semantic_cache_system
-print("semantic_cache_system import ok")
-PY
-cd ..
-```
-
-## 5. Run A Slurm Dry Run
+## 4. Run A Slurm Dry Run
 
 This verifies Slurm submission, path creation, logs, environment export, and
-cleanup without starting vLLM:
+cleanup without starting vLLM. For GPU vLLM service jobs, use both the Python
+and CUDA modules:
 
 ```bash
 MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
@@ -244,12 +207,17 @@ It should also print a line like:
 [JARVIS] local free space at /local/...: 700 GB available; 60 GB required
 ```
 
-## 6. Optional Hugging Face Access Check
+If you used `uv python install 3.12` rather than the site Python module, you can
+omit `python/3.11.10` from `MODULES`. The vLLM/PyTorch wheels may also work with
+the NVIDIA driver on GPU nodes without a CUDA module.
+
+## 5. Optional Hugging Face Access Check
 
 In scratch mode, CPU download jobs do not seed the future GPU nodes because
 `/local` is node-local. Use this only as an authentication/network check. The
 real vLLM service jobs may still download weights when they start on their GPU
-nodes.
+nodes. For CPU download jobs created from the same module-based venv, only the
+Python module is needed:
 
 ```bash
 MODULES="python/3.11.10" \
@@ -269,7 +237,7 @@ settings, vLLM writes model weights directly to the node-local
 `/local/$USER/llm_caching` cache; if you later switch to a per-job cache layout,
 that flag preserves the same sync-back behavior before cleanup.
 
-## 7. Run The 7B Small-Smoke Service
+## 6. Run The 7B Small-Smoke Service
 
 Start one vLLM service with `Qwen/Qwen2.5-7B-Instruct`:
 
@@ -292,6 +260,35 @@ The endpoint will look like:
 ```text
 http://<small-smoke-node>:8000/v1
 ```
+
+## 7. Prepare The Client Environment
+
+The vLLM service environment and benchmark client environment can be different.
+The service environment needs `vllm`; the client environment needs this repo's
+dependencies. Prepare this before running client smoke tests or benchmarks.
+
+From the parent directory, prepare the client environment inside the repo:
+
+```bash
+cd adarsh-rlms
+uv python install 3.13
+uv sync --python 3.13
+uv pip install transformers torch faiss-cpu sentence-transformers anthropic python-dotenv numpy scikit-learn
+cd ..
+```
+
+Quick import check:
+
+```bash
+cd adarsh-rlms
+uv run python - <<'PY'
+import semantic_cache_system
+print("semantic_cache_system import ok")
+PY
+cd ..
+```
+
+## 8. Run Small-Smoke Client Checks
 
 Submit a client smoke test against that endpoint:
 
@@ -345,7 +342,7 @@ done:
 scancel <small_smoke_job_id>
 ```
 
-## 8. Optional 24B One-Service Smoke Test
+## 9. Optional 24B One-Service Smoke Test
 
 After `small-smoke` passes, you can run the existing Mistral 24B one-service
 smoke path before starting both production services:
@@ -356,7 +353,7 @@ SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit smoke
 ```
 
-## 9. Start The Two Production Services
+## 10. Start The Two Production Services
 
 Start the executor service:
 
@@ -399,7 +396,7 @@ executor:  http://<executor-node>:8000/v1
 evaluator: http://<evaluator-node>:8001/v1
 ```
 
-## 10. Run A Small Benchmark Client Job
+## 11. Run A Small Benchmark Client Job
 
 Start with a capped LongBench-v2 run:
 
@@ -429,7 +426,7 @@ tail -f "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
 When this finishes, inspect the generated artifact paths printed in the client
 log. They should point under `benchmark_artifacts/longbench_v2/...`.
 
-## 11. Run The Full Benchmark
+## 12. Run The Full Benchmark
 
 Use the same service URLs and remove the row cap:
 
@@ -452,7 +449,7 @@ For a cold-cache rerun, add `--cache-reset` to `CLIENT_CMD`. Do not delete
 `/local/$USER/llm_caching` unless you intentionally want to force model
 downloads again on that node.
 
-## 12. Stop Services After The Experiment
+## 13. Stop Services After The Experiment
 
 The vLLM service jobs are long-running servers. They do not stop automatically
 when a client job finishes.
@@ -468,7 +465,7 @@ Confirm:
 squeue -u "$USER"
 ```
 
-## 13. Clean Node-Local Scratch
+## 14. Clean Node-Local Scratch
 
 `/local` is per node, so cleanup must run on the node you want to clean. The
 cleanup script defaults to dry-run behavior and removes nothing unless
@@ -518,7 +515,7 @@ The cleanup script is guarded to target only this project's paths:
 
 Stop active vLLM jobs before deleting node-local model cache on their node.
 
-## 14. Common Failure Checks
+## 15. Common Failure Checks
 
 If a service never becomes reachable:
 

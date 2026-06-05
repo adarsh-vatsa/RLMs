@@ -9,6 +9,39 @@ fi
 JARVIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "$JARVIS_DIR/.." && pwd)"
 
+jarvis_load_hf_token_from_dotenv() {
+  if [[ -n "${HF_TOKEN:-}" || "${JARVIS_LOAD_DOTENV:-1}" != "1" ]]; then
+    return 0
+  fi
+
+  local env_file="${JARVIS_DOTENV_PATH:-$REPO_ROOT/.env}"
+  if [[ ! -f "$env_file" ]]; then
+    return 0
+  fi
+
+  local line value
+  line="$(awk '/^[[:space:]]*(export[[:space:]]+)?HF_TOKEN[[:space:]]*=/ {print; exit}' "$env_file")"
+  if [[ -z "$line" ]]; then
+    return 0
+  fi
+
+  value="${line#*=}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+    value="${value:1:${#value}-2}"
+  elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+    value="${value:1:${#value}-2}"
+  fi
+
+  if [[ -n "$value" ]]; then
+    export HF_TOKEN="$value"
+    echo "[JARVIS] loaded HF_TOKEN from $env_file"
+  fi
+}
+
+jarvis_load_hf_token_from_dotenv
+
 MODE="${MODE:-client}"
 JARVIS_STORAGE_MODE="${JARVIS_STORAGE_MODE:-scratch}"
 LOCAL_BASE="${LOCAL_BASE:-/local/${USER:-user}/${SLURM_JOB_ID:-manual}/adarsh-rlms}"

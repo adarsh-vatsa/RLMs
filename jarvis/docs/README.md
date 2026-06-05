@@ -192,13 +192,15 @@ export PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs
 mkdir -p "$PROJECT_LOG_DIR"
 ```
 
-Make sure the Slurm job can read gated Hugging Face models. Prefer exporting
-`HF_TOKEN` before `sbatch`, because the scripts redirect `HF_HOME` to `/local`
-inside jobs:
+Make sure the Slurm job can read gated Hugging Face models. The scripts can load
+`HF_TOKEN` from `adarsh-rlms/.env` if it is not already exported:
 
 ```bash
-export HF_TOKEN=<your-hugging-face-token>
+HF_TOKEN=<your-hugging-face-token>
 ```
+
+Exporting `HF_TOKEN` in the shell still works and takes precedence. Set
+`JARVIS_LOAD_DOTENV=0` to disable `.env` loading.
 
 Also prepare a client environment for the benchmark code. The service venv only
 needs vLLM; the client needs this repository's runtime dependencies:
