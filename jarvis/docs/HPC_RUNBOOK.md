@@ -2,7 +2,8 @@
 
 This is the operational checklist for running the local vLLM services and the
 benchmark client on Jarvis. Run these commands from the Jarvis login node unless
-the step explicitly says otherwise.
+the step explicitly says otherwise. The commands below assume your current
+directory is the parent directory that contains the `adarsh-rlms` repo.
 
 ## 0. Push Locally, Pull Remotely
 
@@ -19,9 +20,12 @@ On Jarvis:
 
 ```bash
 ssh edogu@jarvis.stevens.edu
-cd /path/to/adarsh-rlms
-git pull
+cd /path/to/parent-directory
+git -C adarsh-rlms pull
 ```
+
+If you instead `cd` directly into the repo, replace
+`adarsh-rlms/jarvis/run.sh` with `jarvis/run.sh` in the commands below.
 
 ## 1. Choose Scratch Storage
 
@@ -83,13 +87,13 @@ Override only if you know the model is already cached or you intentionally want 
 lower threshold:
 
 ```bash
-MIN_LOCAL_FREE_GB=180 bash jarvis/run.sh submit evaluator
+MIN_LOCAL_FREE_GB=180 bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
 Disable only for debugging:
 
 ```bash
-SKIP_LOCAL_SPACE_CHECK=1 bash jarvis/run.sh submit smoke
+SKIP_LOCAL_SPACE_CHECK=1 bash adarsh-rlms/jarvis/run.sh submit smoke
 ```
 
 ## 2. Prepare Authentication
@@ -112,28 +116,33 @@ test -n "$HF_TOKEN" && echo "HF_TOKEN is set"
 Use a private environment. This does not change system Python or affect other
 users.
 
-If Jarvis has a Python 3.12 module:
+First check whether Jarvis exposes useful module names. Module names are
+cluster-specific, and `python/3.12` or `cuda` may not exist:
 
 ```bash
-module load python/3.12
-module load cuda
-
-mkdir -p /home/edogu/.venvs
-uv venv /home/edogu/.venvs/adarsh-vllm --python 3.12 --seed
-source /home/edogu/.venvs/adarsh-vllm/bin/activate
-uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
-
-python -c "import sys, torch, vllm; print(sys.version); print(torch.__version__); print(vllm.__version__); print(torch.cuda.is_available())"
+module avail 2>&1 | grep -Ei 'python|cuda|gcc|anaconda|conda' || true
 ```
 
-If Jarvis only exposes Python 3.9.18, install a user-local Python with `uv`:
+On the current Jarvis module listing, useful names include:
+
+```text
+python/3.11.10
+cuda12.4/toolkit/12.4.1
+cuda12.8/toolkit/12.8.1
+gcc/13.1.0
+```
+
+The preferred path is still a user-local Python 3.12 with `uv`. This does not
+change the system Python:
 
 ```bash
-module load cuda
-
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc
+if [ -f "$HOME/.local/bin/env" ]; then
+  source "$HOME/.local/bin/env"
+else
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+uv --version
 
 uv python install 3.12
 mkdir -p /home/edogu/.venvs
@@ -142,15 +151,45 @@ source /home/edogu/.venvs/adarsh-vllm/bin/activate
 uv pip install --upgrade pip
 uv pip install vllm --torch-backend=auto
 
-python -c "import sys, torch, vllm; print(sys.version); print(torch.__version__); print(vllm.__version__); print(torch.cuda.is_available())"
+python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
 
-If Jarvis requires modules inside the Slurm job, pass them when submitting.
-Keep `JARVIS_STORAGE_MODE=scratch` exported in the login shell:
+If `uv python install 3.12` is not available or you prefer the site module,
+`python/3.11.10` is a reasonable vLLM environment base:
 
 ```bash
-MODULES="cuda" VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit smoke
+module load python/3.11.10
+mkdir -p /home/edogu/.venvs
+uv venv /home/edogu/.venvs/adarsh-vllm --python 3.11 --seed
+source /home/edogu/.venvs/adarsh-vllm/bin/activate
+uv pip install --upgrade pip
+uv pip install vllm --torch-backend=auto
+
+python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
+
+Do not pass `MODULES="cuda"`; that module does not exist. If you created the
+venv from the `python/3.11.10` module, load that same module inside Slurm before
+the venv is activated. For GPU vLLM service jobs, use:
+
+```bash
+MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
+DRY_RUN=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit small-smoke
+```
+
+For CPU download jobs created from the same module-based venv, only the Python
+module is needed:
+
+```bash
+MODULES="python/3.11.10" \
+VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit download-small-smoke
+```
+
+If you used `uv python install 3.12` rather than the site Python module, you can
+omit `python/3.11.10` from `MODULES`. The vLLM/PyTorch wheels may also work with
+the NVIDIA driver on GPU nodes without a CUDA module.
 
 ## 4. Prepare The Client Environment
 
@@ -158,21 +197,25 @@ The vLLM service environment and benchmark client environment can be different.
 The service environment needs `vllm`; the client environment needs this repo's
 dependencies.
 
-From the repo root:
+From the parent directory, prepare the client environment inside the repo:
 
 ```bash
+cd adarsh-rlms
 uv python install 3.13
 uv sync --python 3.13
 uv pip install transformers torch faiss-cpu sentence-transformers anthropic python-dotenv numpy scikit-learn
+cd ..
 ```
 
 Quick import check:
 
 ```bash
+cd adarsh-rlms
 uv run python - <<'PY'
 import semantic_cache_system
 print("semantic_cache_system import ok")
 PY
+cd ..
 ```
 
 ## 5. Run A Slurm Dry Run
@@ -181,8 +224,9 @@ This verifies Slurm submission, path creation, logs, environment export, and
 cleanup without starting vLLM:
 
 ```bash
+MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
 DRY_RUN=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit small-smoke
+  bash adarsh-rlms/jarvis/run.sh submit small-smoke
 ```
 
 The command prints a Slurm job id. Watch it:
@@ -208,8 +252,9 @@ real vLLM service jobs may still download weights when they start on their GPU
 nodes.
 
 ```bash
+MODULES="python/3.11.10" \
 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit download-small-smoke
+  bash adarsh-rlms/jarvis/run.sh submit download-small-smoke
 ```
 
 Monitor:
@@ -229,8 +274,9 @@ that flag preserves the same sync-back behavior before cleanup.
 Start one vLLM service with `Qwen/Qwen2.5-7B-Instruct`:
 
 ```bash
+MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit small-smoke
+  bash adarsh-rlms/jarvis/run.sh submit small-smoke
 ```
 
 Find the endpoint after the job starts:
@@ -260,7 +306,7 @@ OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen2.5-7B-Instruct \
 OPENAI_COMPAT_EVALUATOR_MODEL=Qwen/Qwen2.5-7B-Instruct \
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_llm_provider.py" \
-  bash jarvis/run.sh submit client
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 Monitor the client:
@@ -287,7 +333,7 @@ CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --max-rows 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-smoke' \
-  bash jarvis/run.sh submit client
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 Treat this run as plumbing validation, not benchmark-quality accuracy.
@@ -305,8 +351,9 @@ After `small-smoke` passes, you can run the existing Mistral 24B one-service
 smoke path before starting both production services:
 
 ```bash
+MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit smoke
+  bash adarsh-rlms/jarvis/run.sh submit smoke
 ```
 
 ## 9. Start The Two Production Services
@@ -314,15 +361,17 @@ SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
 Start the executor service:
 
 ```bash
+MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit executor
+  bash adarsh-rlms/jarvis/run.sh submit executor
 ```
 
 Start the evaluator service:
 
 ```bash
+MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit evaluator
+  bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
 Watch both jobs:
@@ -367,7 +416,7 @@ CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --max-rows 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small' \
-  bash jarvis/run.sh submit client
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 Monitor:
@@ -396,7 +445,7 @@ CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --row-types original,exact,semantic \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-full' \
-  bash jarvis/run.sh submit client
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 For a cold-cache rerun, add `--cache-reset` to `CLIENT_CMD`. Do not delete
@@ -430,7 +479,7 @@ Inspect stale per-job scratch on a GPU node:
 ```bash
 JARVIS_STORAGE_MODE=scratch \
 CLEANUP_NODE=<gpu-node> \
-  bash jarvis/run.sh submit cleanup
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
 ```
 
 Watch the cleanup log:
@@ -446,7 +495,7 @@ Remove stale per-job scratch after reviewing the dry run:
 JARVIS_STORAGE_MODE=scratch \
 CLEANUP_NODE=<gpu-node> \
 CONFIRM_CLEANUP=1 \
-  bash jarvis/run.sh submit cleanup
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
 ```
 
 Delete the node-local model cache too only when you intentionally want to force
@@ -457,7 +506,7 @@ JARVIS_STORAGE_MODE=scratch \
 CLEANUP_NODE=<gpu-node> \
 CONFIRM_CLEANUP=1 \
 CLEAN_NODE_CACHE=1 \
-  bash jarvis/run.sh submit cleanup
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
 ```
 
 The cleanup script is guarded to target only this project's paths:
@@ -482,7 +531,8 @@ Likely causes:
 
 - Missing `HF_TOKEN` or gated model access not approved.
 - vLLM environment was not passed with `VLLM_VENV`.
-- CUDA module is required inside the Slurm job; retry with `MODULES="cuda"`.
+- A site-specific CUDA or compiler module is required inside the Slurm job; use
+  only the exact module name shown by `module avail` or recommended by admins.
 - Local scratch has too little free space; run the cleanup script on that node
   or lower `MIN_LOCAL_FREE_GB` if the model is already cached.
 - The model context length is too high for available GPU memory; lower

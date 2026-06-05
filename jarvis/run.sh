@@ -7,7 +7,8 @@
 set -euo pipefail
 
 MODE="${MODE:-${1:-help}}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${JARVIS_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+export JARVIS_SCRIPT_DIR="$SCRIPT_DIR"
 # shellcheck source=jarvis/lib/env.sh
 source "$SCRIPT_DIR/lib/env.sh"
 
@@ -25,9 +26,9 @@ Common commands:
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit download-all
   CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
 
-Direct sbatch is also supported if you pass resources yourself:
-  MODE=executor sbatch --partition=gpu-l40s --gres=gpu:l40s:4 jarvis/run.sh
-  MODE=client sbatch --partition=compute-short jarvis/run.sh
+Direct sbatch is also supported if you pass resources and JARVIS_SCRIPT_DIR yourself:
+  sbatch --partition=gpu-l40s --gres=gpu:l40s:4 --export=ALL,JARVIS_SCRIPT_DIR=/path/to/adarsh-rlms/jarvis,MODE=executor /path/to/adarsh-rlms/jarvis/run.sh
+  sbatch --partition=compute-short --export=ALL,JARVIS_SCRIPT_DIR=/path/to/adarsh-rlms/jarvis,MODE=client /path/to/adarsh-rlms/jarvis/run.sh
 
 Do not run service modes directly on the login node.
 EOF
@@ -47,7 +48,7 @@ submit_mode() {
         --time=04:00:00 \
         --job-name=rlms-small-smoke \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
-        --export=ALL,MODE=small-smoke \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=small-smoke \
         "$SCRIPT_DIR/serve_vllm.sh"
       ;;
     executor)
@@ -59,7 +60,7 @@ submit_mode() {
         --time=24:00:00 \
         --job-name=rlms-executor \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
-        --export=ALL,MODE=executor \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=executor \
         "$SCRIPT_DIR/serve_vllm.sh"
       ;;
     evaluator)
@@ -71,7 +72,7 @@ submit_mode() {
         --time=24:00:00 \
         --job-name=rlms-evaluator \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
-        --export=ALL,MODE=evaluator \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=evaluator \
         "$SCRIPT_DIR/serve_vllm.sh"
       ;;
     smoke)
@@ -83,7 +84,7 @@ submit_mode() {
         --time=04:00:00 \
         --job-name=rlms-smoke \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
-        --export=ALL,MODE=smoke \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=smoke \
         "$SCRIPT_DIR/serve_vllm.sh"
       ;;
     client)
@@ -94,7 +95,7 @@ submit_mode() {
         --time=12:00:00 \
         --job-name=rlms-client \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
-        --export=ALL,MODE=client \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=client \
         "$SCRIPT_DIR/run_client.sh"
       ;;
     download-small-smoke|download-executor|download-evaluator|download-smoke|download-all)
@@ -105,7 +106,7 @@ submit_mode() {
         --time=24:00:00 \
         --job-name=rlms-download \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
-        --export=ALL,MODE="$submit_mode" \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE="$submit_mode" \
         "$SCRIPT_DIR/download_models.sh"
       ;;
     cleanup)
@@ -121,7 +122,7 @@ submit_mode() {
         --time=00:30:00 \
         --job-name=rlms-cleanup \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
-        --export=ALL,MODE=cleanup \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=cleanup \
         "$SCRIPT_DIR/cleanup_local.sh"
       ;;
     *)

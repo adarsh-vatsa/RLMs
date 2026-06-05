@@ -14,7 +14,9 @@ jarvis/download_models.sh Optional model prefetch job for Hugging Face weights.
 jarvis/cleanup_local.sh   Inspects or cleans guarded node-local scratch paths.
 ```
 
-Use `jarvis/run.sh` from the login node. The other scripts are role scripts that
+Use `adarsh-rlms/jarvis/run.sh` from the login node when your current directory
+is the parent directory that contains the repo. If you `cd` directly into the
+repo, use `jarvis/run.sh` instead. The other scripts are role scripts that
 `run.sh` submits or delegates to inside Slurm allocations.
 
 For the exact first-run sequence on the cluster, use
@@ -100,38 +102,21 @@ Python 3.9.18 is not enough for the current setup:
 - Current vLLM releases require Python 3.10+.
 - This repository currently has `.python-version` set to Python 3.13.
 
-Recommended setup with `uv` and Python 3.12:
+Recommended setup with `uv` and Python 3.12. This path does not require a
+system Python module:
 
 ```bash
 ssh edogu@jarvis.stevens.edu
-module avail python
-module avail cuda
-
-# Load the closest available Python 3.12 and CUDA modules on Jarvis if present.
-# Exact module names are cluster-specific. If no Python 3.12 module exists,
-# use `uv python install 3.12` below.
-module load python/3.12
-module load cuda
-
-mkdir -p /home/edogu/.venvs
-uv venv /home/edogu/.venvs/adarsh-vllm --python 3.12 --seed
-source /home/edogu/.venvs/adarsh-vllm/bin/activate
-uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
-
-python -c "import torch, vllm; print(torch.__version__); print(vllm.__version__); print(torch.cuda.is_available())"
-```
-
-If Jarvis only exposes Python 3.9.18, install a user-local Python 3.12 with
-`uv` first:
-
-```bash
-ssh edogu@jarvis.stevens.edu
-module load cuda
+module avail 2>&1 | grep -Ei 'python|cuda|gcc|anaconda|conda' || true
 
 # Installs uv under your user account if it is not already available.
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc
+if [ -f "$HOME/.local/bin/env" ]; then
+  source "$HOME/.local/bin/env"
+else
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+uv --version
 
 uv python install 3.12
 mkdir -p /home/edogu/.venvs
@@ -140,22 +125,38 @@ source /home/edogu/.venvs/adarsh-vllm/bin/activate
 uv pip install --upgrade pip
 uv pip install vllm --torch-backend=auto
 
-python -c "import sys, torch, vllm; print(sys.version); print(torch.__version__); print(vllm.__version__); print(torch.cuda.is_available())"
+python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
+```
+
+On the current Jarvis module listing, `python/3.11.10` is available and is a
+reasonable vLLM environment base if `uv python install 3.12` is unavailable or
+you prefer a site module:
+
+```bash
+ssh edogu@jarvis.stevens.edu
+module load python/3.11.10
+mkdir -p /home/edogu/.venvs
+uv venv /home/edogu/.venvs/adarsh-vllm --python 3.11 --seed
+source /home/edogu/.venvs/adarsh-vllm/bin/activate
+uv pip install --upgrade pip
+uv pip install vllm --torch-backend=auto
+
+python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
 
 Fallback setup if `uv` is not available but a Python 3.10+ module is available:
 
 ```bash
 ssh edogu@jarvis.stevens.edu
-module load python/3.12
-module load cuda
+# Example only; replace with the exact module name shown by `module avail`.
+module load <python-3.10-or-newer-module>
 
 python -m venv /home/edogu/.venvs/adarsh-vllm
 source /home/edogu/.venvs/adarsh-vllm/bin/activate
 python -m pip install --upgrade pip setuptools wheel
 python -m pip install vllm --torch-backend=auto
 
-python -c "import torch, vllm; print(torch.__version__); print(vllm.__version__); print(torch.cuda.is_available())"
+python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
 
 vLLM should be installed in a Python 3.12 environment unless Jarvis provides
@@ -164,11 +165,19 @@ client do not need to run from the same Python environment. The benchmark client
 should use the repository's Python 3.13 environment, or another Python 3.10+
 environment with the repository dependencies installed.
 
+Do not pass `MODULES="cuda"`; that module does not exist. If you created the
+venv from the `python/3.11.10` module, load that same module inside Slurm before
+the venv is activated. If a CUDA toolkit module is needed inside the Slurm job,
+use exact Jarvis module names such as
+`MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1"`. If you used
+`uv python install 3.12`, omit `python/3.11.10` from `MODULES`. The vLLM/PyTorch
+wheels may also work with the NVIDIA driver on GPU nodes without a CUDA module.
+
 When submitting vLLM service jobs, point the dispatcher at the environment:
 
 ```bash
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit evaluator
+VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash adarsh-rlms/jarvis/run.sh submit executor
+VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
 ## Remote Preflight
@@ -177,7 +186,7 @@ Before the first Slurm run on Jarvis, use scratch mode if you cannot create the
 project directory:
 
 ```bash
-cd /path/to/adarsh-rlms
+cd /path/to/parent-directory
 export JARVIS_STORAGE_MODE=scratch
 export PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs
 mkdir -p "$PROJECT_LOG_DIR"
@@ -195,9 +204,11 @@ Also prepare a client environment for the benchmark code. The service venv only
 needs vLLM; the client needs this repository's runtime dependencies:
 
 ```bash
+cd adarsh-rlms
 uv python install 3.13
 uv sync --python 3.13
 uv pip install transformers torch faiss-cpu sentence-transformers anthropic python-dotenv numpy scikit-learn
+cd ..
 ```
 
 If you use a manually activated client venv instead of `uv run`, install the same
@@ -219,8 +230,8 @@ Override these only when the benchmark needs it and the service has enough KV
 cache headroom:
 
 ```bash
-EXECUTOR_MAX_MODEL_LEN=65536 bash jarvis/run.sh submit executor
-EVALUATOR_MAX_MODEL_LEN=32768 bash jarvis/run.sh submit evaluator
+EXECUTOR_MAX_MODEL_LEN=65536 bash adarsh-rlms/jarvis/run.sh submit executor
+EVALUATOR_MAX_MODEL_LEN=32768 bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
 The shared vLLM defaults are:
@@ -232,17 +243,18 @@ VLLM_GPU_MEMORY_UTILIZATION=0.90
 
 ## Modes
 
-Use `jarvis/run.sh` as a dispatcher:
+From the parent directory that contains the repo, use `adarsh-rlms/jarvis/run.sh`
+as a dispatcher:
 
 ```bash
-bash jarvis/run.sh submit small-smoke
-bash jarvis/run.sh submit executor
-bash jarvis/run.sh submit evaluator
-bash jarvis/run.sh submit smoke
-bash jarvis/run.sh submit client
-bash jarvis/run.sh submit download-small-smoke
-bash jarvis/run.sh submit download-all
-bash jarvis/run.sh submit cleanup
+bash adarsh-rlms/jarvis/run.sh submit small-smoke
+bash adarsh-rlms/jarvis/run.sh submit executor
+bash adarsh-rlms/jarvis/run.sh submit evaluator
+bash adarsh-rlms/jarvis/run.sh submit smoke
+bash adarsh-rlms/jarvis/run.sh submit client
+bash adarsh-rlms/jarvis/run.sh submit download-small-smoke
+bash adarsh-rlms/jarvis/run.sh submit download-all
+bash adarsh-rlms/jarvis/run.sh submit cleanup
 ```
 
 The submit helper applies the expected Slurm resources:
@@ -257,16 +269,18 @@ download:  compute-short, no GPU, prefetch model weights into the configured cac
 cleanup:   gpu-l40s by default, inspect or clean node-local Jarvis scratch
 ```
 
-You can also submit manually:
+Prefer the dispatcher above. If you submit role scripts manually, pass
+`JARVIS_SCRIPT_DIR`; otherwise Slurm's spool copy of the script cannot find
+`lib/env.sh`:
 
 ```bash
-MODE=small-smoke sbatch --partition=gpu-l40s --gres=gpu:l40s:1 jarvis/serve_vllm.sh
-MODE=executor sbatch --partition=gpu-l40s --gres=gpu:l40s:4 jarvis/serve_vllm.sh
-MODE=evaluator sbatch --partition=gpu-l40s --gres=gpu:l40s:2 jarvis/serve_vllm.sh
-MODE=client sbatch --partition=compute-short jarvis/run_client.sh
-MODE=download-small-smoke sbatch --partition=compute-short jarvis/download_models.sh
-MODE=download-all sbatch --partition=compute-short jarvis/download_models.sh
-MODE=cleanup sbatch --partition=gpu-l40s --nodelist=<gpu-node> jarvis/cleanup_local.sh
+sbatch --partition=gpu-l40s --gres=gpu:l40s:1 \
+  --export=ALL,JARVIS_SCRIPT_DIR="$PWD/adarsh-rlms/jarvis",MODE=small-smoke \
+  adarsh-rlms/jarvis/serve_vllm.sh
+
+sbatch --partition=compute-short \
+  --export=ALL,JARVIS_SCRIPT_DIR="$PWD/adarsh-rlms/jarvis",MODE=client \
+  adarsh-rlms/jarvis/run_client.sh
 ```
 
 ## Endpoint Wiring
@@ -307,7 +321,7 @@ Then submit a client job with the command you want to run:
 ```bash
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_llm_provider.py" \
-  bash jarvis/run.sh submit client
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 `WAIT_FOR_ENDPOINTS=1` makes the client poll `/v1/models` on the executor and
@@ -337,17 +351,17 @@ Prefetch both default models:
 
 ```bash
 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit download-all
+  bash adarsh-rlms/jarvis/run.sh submit download-all
 ```
 
 Prefetch one model:
 
 ```bash
 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit download-executor
+  bash adarsh-rlms/jarvis/run.sh submit download-executor
 
 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit download-evaluator
+  bash adarsh-rlms/jarvis/run.sh submit download-evaluator
 ```
 
 `download_models.sh` sets `SYNC_BACK_MODELS=1` by default. With the default
@@ -359,7 +373,7 @@ You can also let a service job download and sync on first startup:
 
 ```bash
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit executor
+  bash adarsh-rlms/jarvis/run.sh submit executor
 ```
 
 ## Dry Runs
@@ -370,7 +384,7 @@ without starting vLLM:
 ```bash
 DRY_RUN=1 MODE=executor PROJECT_CACHE_ROOT=/tmp/llm_caching_test \
   LOCAL_BASE=/tmp/llm_caching_local/adarsh-rlms \
-  bash jarvis/serve_vllm.sh
+  bash adarsh-rlms/jarvis/serve_vllm.sh
 ```
 
 The cleanup trap removes the dry-run `LOCAL_BASE` only if it matches the guarded
@@ -382,7 +396,7 @@ Cleanup is node-local. Run it on the node you want to inspect:
 
 ```bash
 JARVIS_STORAGE_MODE=scratch CLEANUP_NODE=<gpu-node> \
-  bash jarvis/run.sh submit cleanup
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
 ```
 
 The cleanup script is a dry run by default. After reviewing the log, remove stale
@@ -390,7 +404,7 @@ per-job scratch with:
 
 ```bash
 JARVIS_STORAGE_MODE=scratch CLEANUP_NODE=<gpu-node> CONFIRM_CLEANUP=1 \
-  bash jarvis/run.sh submit cleanup
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
 ```
 
 To delete the node-local model cache too, add `CLEAN_NODE_CACHE=1`. Do this only

@@ -8,7 +8,7 @@ set -euo pipefail
 
 MODE="${MODE:-cleanup}"
 JARVIS_STORAGE_MODE="${JARVIS_STORAGE_MODE:-scratch}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${JARVIS_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 # shellcheck source=jarvis/lib/env.sh
 source "$SCRIPT_DIR/lib/env.sh"
 

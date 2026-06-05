@@ -7,7 +7,7 @@
 set -euo pipefail
 
 MODE="${MODE:-${1:-smoke}}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="${JARVIS_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 # shellcheck source=jarvis/lib/env.sh
 source "$SCRIPT_DIR/lib/env.sh"
 
