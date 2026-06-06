@@ -387,6 +387,54 @@ SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit smoke
 ```
 
+Wait until the log shows:
+
+```text
+Application startup complete.
+```
+
+Then read the endpoint URL and verify `/v1/models`:
+
+```bash
+SMOKE_URL=$(cat "$PROJECT_LOG_DIR"/smoke-<job_id>.url)
+echo "$SMOKE_URL"
+curl "$SMOKE_URL/models"
+```
+
+The model response should include:
+
+```text
+mistralai/Mistral-Small-24B-Instruct-2501
+```
+
+Run the provider smoke test with both roles pointing at the one 24B endpoint:
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_BASE_URL="$SMOKE_URL" \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMOKE_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMOKE_URL" \
+OPENAI_COMPAT_EXECUTOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501 \
+OPENAI_COMPAT_EVALUATOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501 \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_llm_provider.py" \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+That job should report:
+
+```text
+Ran 9 tests
+OK
+```
+
+Stop the one-service smoke job after these checks unless you want to run another
+tiny benchmark against it:
+
+```bash
+scancel <smoke_job_id>
+```
+
 If you explicitly override `SMOKE_MODEL` or `EVALUATOR_MODEL` back to the 3.2
 model and it fails with `MistralCommonImageProcessor` or
 `MistralCommonPixtralProcessor`, it is a Mistral/vLLM processor dependency
