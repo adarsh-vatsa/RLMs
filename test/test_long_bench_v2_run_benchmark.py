@@ -188,7 +188,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(openrouter.evaluator_model, "anthropic/claude-haiku-4.5")
         self.assertIsNone(local.api_key_env)
         self.assertEqual(local.executor_model, "meta-llama/Llama-3.3-70B-Instruct")
-        self.assertEqual(local.evaluator_model, "mistralai/Mistral-Small-3.2-24B-Instruct-2506")
+        self.assertEqual(local.evaluator_model, "mistralai/Mistral-Small-24B-Instruct-2501")
 
 
 if __name__ == "__main__":

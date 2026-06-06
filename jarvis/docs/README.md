@@ -75,7 +75,7 @@ Expected persistent storage:
 
 ```text
 Llama 3.3 70B BF16:      about 141 GB, https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct
-Mistral Small 24B:       about 50 GB minimal, about 100 GB if full repo files are cached, https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506
+Mistral Small 24B:       about 50 GB minimal, about 100 GB if full repo files are cached, https://huggingface.co/mistralai/Mistral-Small-24B-Instruct-2501
 Qwen2.5 7B smoke model:  about 15-25 GB, https://huggingface.co/Qwen/Qwen2.5-7B-Instruct
 Qwen embed/reranker:     about 2-4 GB, https://huggingface.co/Qwen/Qwen3-Embedding-0.6B and https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
 Comfortable cache size:  about 300 GB
@@ -277,9 +277,9 @@ cleanup:   gpu-l40s by default, inspect or clean node-local Jarvis scratch
 ```
 
 For Mistral Small services, `serve_vllm.sh` adds the Mistral tokenizer/config
-flags recommended by the Hugging Face model card. The 3.x Mistral Small model
-is resolved by vLLM as a Pixtral/multimodal architecture, so the script also
-sets a small multimodal prompt limit for startup compatibility.
+flags recommended by the Hugging Face model card. The Jarvis default is
+`mistralai/Mistral-Small-24B-Instruct-2501`; the newer 3.2 model resolved as a
+Pixtral/multimodal architecture on Jarvis and failed during processor startup.
 
 Prefer the dispatcher above. If you submit role scripts manually, pass
 `JARVIS_SCRIPT_DIR`; otherwise Slurm's spool copy of the script cannot find
@@ -308,7 +308,7 @@ For serious benchmark runs, start two services and point the client at both:
 ```bash
 export LLM_PROVIDER=openai_compatible
 export OPENAI_COMPAT_EXECUTOR_MODEL=meta-llama/Llama-3.3-70B-Instruct
-export OPENAI_COMPAT_EVALUATOR_MODEL=mistralai/Mistral-Small-3.2-24B-Instruct-2506
+export OPENAI_COMPAT_EVALUATOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501
 export OPENAI_COMPAT_EXECUTOR_BASE_URL=http://<executor-node>:8000/v1
 export OPENAI_COMPAT_EVALUATOR_BASE_URL=http://<evaluator-node>:8001/v1
 ```

@@ -374,11 +374,12 @@ scancel <small_smoke_job_id>
 
 ## 9. Optional 24B One-Service Smoke Test
 
-After `small-smoke` passes, you can run the existing Mistral 24B one-service
-smoke path before starting both production services. This path uses
-`mistralai/Mistral-Small-3.2-24B-Instruct-2506`, which vLLM resolves as a
-Pixtral/multimodal architecture, so `jarvis/serve_vllm.sh` adds the
-Mistral-specific vLLM flags automatically.
+After `small-smoke` passes, you can run the Mistral 24B one-service smoke path
+before starting both production services. This path now uses
+`mistralai/Mistral-Small-24B-Instruct-2501` because the newer
+`mistralai/Mistral-Small-3.2-24B-Instruct-2506` resolves as a Pixtral/multimodal
+architecture in vLLM and failed on Jarvis with a
+`MistralCommonPixtralProcessor` startup error.
 
 ```bash
 MODULES="cuda12.8/toolkit/12.8.1" \
@@ -386,7 +387,8 @@ SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit smoke
 ```
 
-If this job fails with `MistralCommonImageProcessor` or
+If you explicitly override `SMOKE_MODEL` or `EVALUATOR_MODEL` back to the 3.2
+model and it fails with `MistralCommonImageProcessor` or
 `MistralCommonPixtralProcessor`, it is a Mistral/vLLM processor dependency
 issue, not a Jarvis storage or Slurm issue. First update the Mistral processor
 dependency inside the vLLM venv:
@@ -397,10 +399,17 @@ uv pip install --upgrade "mistral_common>=1.6.2"
 python -c "import mistral_common; print(mistral_common.__version__)"
 ```
 
-Then resubmit the smoke job. Step 9 is optional; if `small-smoke` and the tiny
-client benchmark already passed, you can skip this step, but do not start the
-production evaluator service with the same Mistral model until this processor
-error is resolved.
+Then resubmit with an explicit override only if you still want to test 3.2:
+
+```bash
+MODULES="cuda12.8/toolkit/12.8.1" \
+SMOKE_MODEL=mistralai/Mistral-Small-3.2-24B-Instruct-2506 \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit smoke
+```
+
+Step 9 is optional; if `small-smoke` and the tiny client benchmark already
+passed, you can skip it.
 
 ## 10. Start The Two Production Services
 

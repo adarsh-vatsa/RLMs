@@ -31,7 +31,7 @@ DEFAULT_SUITE_CSV = Path("benchmark_data/long_bench_v2/data_cache_suite.csv")
 DEFAULT_SOURCE_JSON = Path("benchmark_data/long_bench_v2/data.json")
 DEFAULT_ROW_TYPES = "original,exact,semantic"
 DEFAULT_OPENAI_COMPAT_EXECUTOR_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
-DEFAULT_OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+DEFAULT_OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-24B-Instruct-2501"
 VALID_CACHE_TYPES = {"exact", "semantic", "knowledge", "miss", "unknown"}
 CHOICE_LETTERS = {"A", "B", "C", "D"}
 
