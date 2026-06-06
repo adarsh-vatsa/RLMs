@@ -96,6 +96,32 @@ Disable only for debugging:
 SKIP_LOCAL_SPACE_CHECK=1 bash adarsh-rlms/jarvis/run.sh submit smoke
 ```
 
+### Project Storage If Access Is Granted
+
+If you later get permission to create `/mmfs1/project/llm_caching`, you can
+switch back to durable project storage. In that mode, model caches, vLLM caches,
+logs, and semantic-cache state live under `/mmfs1/project/llm_caching`, while
+active per-job scratch still uses `/local`.
+
+Create the project directories once:
+
+```bash
+mkdir -p /mmfs1/project/llm_caching/{hf_cache,vllm_cache,logs,cache_state}
+```
+
+Then use project mode before submitting jobs:
+
+```bash
+export JARVIS_STORAGE_MODE=project
+export PROJECT_CACHE_ROOT=/mmfs1/project/llm_caching
+unset PROJECT_LOG_DIR
+unset JARVIS_CACHE_STATE_ROOT
+```
+
+With project mode, the same `adarsh-rlms/jarvis/run.sh submit ...` commands work.
+Do not run the node-local cleanup command against `/mmfs1/project/llm_caching`;
+that cleanup script is intended for guarded `/local` paths only.
+
 ## 2. Prepare Authentication
 
 The default models may require Hugging Face access approval. Best practice on a
@@ -156,7 +182,8 @@ mkdir -p /home/edogu/.venvs
 uv venv /home/edogu/.venvs/adarsh-vllm --python 3.12 --seed
 source /home/edogu/.venvs/adarsh-vllm/bin/activate
 uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
+
+uv pip install "vllm==0.19.1" --torch-backend=cu128
 
 python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
@@ -170,24 +197,30 @@ mkdir -p /home/edogu/.venvs
 uv venv /home/edogu/.venvs/adarsh-vllm --python 3.11 --seed
 source /home/edogu/.venvs/adarsh-vllm/bin/activate
 uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
+
+uv pip install "vllm==0.19.1" --torch-backend=cu128
 
 python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
 
-Do not pass `MODULES="cuda"`; that module does not exist. If you created the
-venv from the `python/3.11.10` module, load that same module inside Slurm before
-the venv is activated. The exact Slurm commands are in the validation steps
-below.
+Do not pass `MODULES="cuda"`; that module does not exist. The commands below
+assume the preferred user-local Python 3.12 venv, so they load only the CUDA
+module. If you created the venv from the `python/3.11.10` module instead, prepend
+`python/3.11.10` to `MODULES`.
+
+If you previously installed vLLM with `uv pip install vllm --torch-backend=auto`
+and see `ImportError: libcudart.so.13`, remove and recreate
+`/home/edogu/.venvs/adarsh-vllm` with the pinned CUDA 12.8 install command
+above. Recent vLLM releases default to CUDA 13 builds; Jarvis currently exposes
+CUDA 12.x modules.
 
 ## 4. Run A Slurm Dry Run
 
 This verifies Slurm submission, path creation, logs, environment export, and
-cleanup without starting vLLM. For GPU vLLM service jobs, use both the Python
-and CUDA modules:
+cleanup without starting vLLM:
 
 ```bash
-MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
+MODULES="cuda12.8/toolkit/12.8.1" \
 DRY_RUN=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit small-smoke
 ```
@@ -207,23 +240,23 @@ It should also print a line like:
 [JARVIS] local free space at /local/...: 700 GB available; 60 GB required
 ```
 
-If you used `uv python install 3.12` rather than the site Python module, you can
-omit `python/3.11.10` from `MODULES`. The vLLM/PyTorch wheels may also work with
-the NVIDIA driver on GPU nodes without a CUDA module.
+If you used the site Python module fallback, use
+`MODULES="python/3.11.10 cuda12.8/toolkit/12.8.1"` instead.
 
 ## 5. Optional Hugging Face Access Check
 
 In scratch mode, CPU download jobs do not seed the future GPU nodes because
 `/local` is node-local. Use this only as an authentication/network check. The
 real vLLM service jobs may still download weights when they start on their GPU
-nodes. For CPU download jobs created from the same module-based venv, only the
-Python module is needed:
+nodes.
 
 ```bash
-MODULES="python/3.11.10" \
 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit download-small-smoke
 ```
+
+If you used the site Python module fallback, add
+`MODULES="python/3.11.10"` to this CPU download command.
 
 Monitor:
 
@@ -242,7 +275,7 @@ that flag preserves the same sync-back behavior before cleanup.
 Start one vLLM service with `Qwen/Qwen2.5-7B-Instruct`:
 
 ```bash
-MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
+MODULES="cuda12.8/toolkit/12.8.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit small-smoke
 ```
@@ -270,21 +303,18 @@ dependencies. Prepare this before running client smoke tests or benchmarks.
 From the parent directory, prepare the client environment inside the repo:
 
 ```bash
+deactivate # if the vLLM service is still running, e.g. you see something like (adarsh-vllm) in the terminal
+
 cd adarsh-rlms
-uv python install 3.13
-uv sync --python 3.13
+
+uv sync --python /home/edogu/.local/bin/python3.13
 uv pip install transformers torch faiss-cpu sentence-transformers anthropic python-dotenv numpy scikit-learn
-cd ..
-```
 
-Quick import check:
-
-```bash
-cd adarsh-rlms
 uv run python - <<'PY'
 import semantic_cache_system
 print("semantic_cache_system import ok")
 PY
+
 cd ..
 ```
 
@@ -345,20 +375,39 @@ scancel <small_smoke_job_id>
 ## 9. Optional 24B One-Service Smoke Test
 
 After `small-smoke` passes, you can run the existing Mistral 24B one-service
-smoke path before starting both production services:
+smoke path before starting both production services. This path uses
+`mistralai/Mistral-Small-3.2-24B-Instruct-2506`, which vLLM resolves as a
+Pixtral/multimodal architecture, so `jarvis/serve_vllm.sh` adds the
+Mistral-specific vLLM flags automatically.
 
 ```bash
-MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
+MODULES="cuda12.8/toolkit/12.8.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit smoke
 ```
+
+If this job fails with `MistralCommonImageProcessor` or
+`MistralCommonPixtralProcessor`, it is a Mistral/vLLM processor dependency
+issue, not a Jarvis storage or Slurm issue. First update the Mistral processor
+dependency inside the vLLM venv:
+
+```bash
+source /home/edogu/.venvs/adarsh-vllm/bin/activate
+uv pip install --upgrade "mistral_common>=1.6.2"
+python -c "import mistral_common; print(mistral_common.__version__)"
+```
+
+Then resubmit the smoke job. Step 9 is optional; if `small-smoke` and the tiny
+client benchmark already passed, you can skip this step, but do not start the
+production evaluator service with the same Mistral model until this processor
+error is resolved.
 
 ## 10. Start The Two Production Services
 
 Start the executor service:
 
 ```bash
-MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
+MODULES="cuda12.8/toolkit/12.8.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit executor
 ```
@@ -366,7 +415,7 @@ SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
 Start the evaluator service:
 
 ```bash
-MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1" \
+MODULES="cuda12.8/toolkit/12.8.1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```

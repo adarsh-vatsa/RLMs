@@ -74,10 +74,10 @@ inspected the node manually.
 Expected persistent storage:
 
 ```text
-Llama 3.3 70B BF16:      about 141 GB
-Mistral Small 24B:       about 50 GB minimal, about 100 GB if full repo files are cached
-Qwen2.5 7B smoke model:  about 15-25 GB
-Qwen embed/reranker:     about 2-4 GB
+Llama 3.3 70B BF16:      about 141 GB, https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct
+Mistral Small 24B:       about 50 GB minimal, about 100 GB if full repo files are cached, https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506
+Qwen2.5 7B smoke model:  about 15-25 GB, https://huggingface.co/Qwen/Qwen2.5-7B-Instruct
+Qwen embed/reranker:     about 2-4 GB, https://huggingface.co/Qwen/Qwen3-Embedding-0.6B and https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
 Comfortable cache size:  about 300 GB
 Room for variants:       about 500 GB
 ```
@@ -123,7 +123,8 @@ mkdir -p /home/edogu/.venvs
 uv venv /home/edogu/.venvs/adarsh-vllm --python 3.12 --seed
 source /home/edogu/.venvs/adarsh-vllm/bin/activate
 uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
+
+uv pip install "vllm==0.19.1" --torch-backend=cu128
 
 python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
@@ -139,7 +140,8 @@ mkdir -p /home/edogu/.venvs
 uv venv /home/edogu/.venvs/adarsh-vllm --python 3.11 --seed
 source /home/edogu/.venvs/adarsh-vllm/bin/activate
 uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
+
+uv pip install "vllm==0.19.1" --torch-backend=cu128
 
 python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
@@ -154,7 +156,7 @@ module load <python-3.10-or-newer-module>
 python -m venv /home/edogu/.venvs/adarsh-vllm
 source /home/edogu/.venvs/adarsh-vllm/bin/activate
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install vllm --torch-backend=auto
+python -m pip install "vllm==0.19.1" --extra-index-url https://download.pytorch.org/whl/cu128
 
 python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
@@ -169,9 +171,12 @@ Do not pass `MODULES="cuda"`; that module does not exist. If you created the
 venv from the `python/3.11.10` module, load that same module inside Slurm before
 the venv is activated. If a CUDA toolkit module is needed inside the Slurm job,
 use exact Jarvis module names such as
-`MODULES="python/3.11.10 cuda12.4/toolkit/12.4.1"`. If you used
+`MODULES="python/3.11.10 cuda12.8/toolkit/12.8.1"`. If you used
 `uv python install 3.12`, omit `python/3.11.10` from `MODULES`. The vLLM/PyTorch
 wheels may also work with the NVIDIA driver on GPU nodes without a CUDA module.
+If you see `ImportError: libcudart.so.13`, recreate the vLLM venv with the CUDA
+12.8 install above. Recent vLLM releases default to CUDA 13 builds; Jarvis
+currently exposes CUDA 12.x modules.
 
 When submitting vLLM service jobs, point the dispatcher at the environment:
 
@@ -270,6 +275,11 @@ client:    compute-short, no GPU, benchmark/client command only
 download:  compute-short, no GPU, prefetch model weights into the configured cache root
 cleanup:   gpu-l40s by default, inspect or clean node-local Jarvis scratch
 ```
+
+For Mistral Small services, `serve_vllm.sh` adds the Mistral tokenizer/config
+flags recommended by the Hugging Face model card. The 3.x Mistral Small model
+is resolved by vLLM as a Pixtral/multimodal architecture, so the script also
+sets a small multimodal prompt limit for startup compatibility.
 
 Prefer the dispatcher above. If you submit role scripts manually, pass
 `JARVIS_SCRIPT_DIR`; otherwise Slurm's spool copy of the script cannot find

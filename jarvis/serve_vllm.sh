@@ -31,13 +31,47 @@ run_vllm() {
   echo "[JARVIS] vLLM dtype=$VLLM_DTYPE"
   echo "[JARVIS] vLLM gpu memory utilization=$VLLM_GPU_MEMORY_UTILIZATION"
 
+  local default_extra_args=()
+  case "$model" in
+    mistralai/Mistral-Small-*)
+      default_extra_args+=(
+        --tokenizer_mode mistral
+        --config_format mistral
+        --load_format mistral
+        --tool-call-parser mistral
+        --enable-auto-tool-choice
+      )
+      ;;
+  esac
+  case "$model" in
+    mistralai/Mistral-Small-3.*)
+      default_extra_args+=(--limit-mm-per-prompt '{"image":10}')
+      ;;
+  esac
+
   local extra_args=()
   if [[ -n "${VLLM_EXTRA_ARGS:-}" ]]; then
     read -r -a extra_args <<< "$VLLM_EXTRA_ARGS"
   fi
+  local all_extra_args=()
+  if [[ ${#default_extra_args[@]} -gt 0 ]]; then
+    all_extra_args+=("${default_extra_args[@]}")
+  fi
+  if [[ ${#extra_args[@]} -gt 0 ]]; then
+    all_extra_args+=("${extra_args[@]}")
+  fi
+
+  if [[ ${#all_extra_args[@]} -gt 0 ]]; then
+    echo "[JARVIS] vLLM extra args=${all_extra_args[*]}"
+  fi
 
   if [[ "$DRY_RUN" == "1" ]]; then
-    echo "[JARVIS] dry run: python -m vllm.entrypoints.openai.api_server --host $HOST --port $port --model $model --served-model-name $model --tensor-parallel-size $tp_size --max-model-len $max_model_len --dtype $VLLM_DTYPE --gpu-memory-utilization $VLLM_GPU_MEMORY_UTILIZATION --download-dir $LOCAL_HF_CACHE"
+    local dry_run_cmd="python -m vllm.entrypoints.openai.api_server --host $HOST --port $port --model $model --served-model-name $model --tensor-parallel-size $tp_size --max-model-len $max_model_len --dtype $VLLM_DTYPE --gpu-memory-utilization $VLLM_GPU_MEMORY_UTILIZATION --download-dir $LOCAL_HF_CACHE"
+    if [[ ${#all_extra_args[@]} -gt 0 ]]; then
+      echo "[JARVIS] dry run: $dry_run_cmd ${all_extra_args[*]}"
+    else
+      echo "[JARVIS] dry run: $dry_run_cmd"
+    fi
     return 0
   fi
 
@@ -51,7 +85,7 @@ run_vllm() {
     --dtype "$VLLM_DTYPE" \
     --gpu-memory-utilization "$VLLM_GPU_MEMORY_UTILIZATION" \
     --download-dir "$LOCAL_HF_CACHE" \
-    "${extra_args[@]}"
+    ${all_extra_args[@]+"${all_extra_args[@]}"}
 }
 
 case "$MODE" in
