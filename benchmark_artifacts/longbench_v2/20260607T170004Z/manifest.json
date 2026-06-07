@@ -1,0 +1,86 @@
+{
+  "run_id": "20260607T170004Z",
+  "created_at": "2026-06-07T17:38:14.578543+00:00",
+  "started_at": "2026-06-07T17:00:04.868790+00:00",
+  "finished_at": "2026-06-07T17:38:14.578543+00:00",
+  "elapsed_seconds": 2289.71,
+  "benchmark_target": "longbench_v2",
+  "suite_csv": "benchmark_data/long_bench_v2/data_cache_suite.csv",
+  "suite_csv_sha256": "32fda08f5bcbeaaf36077ca0203ace3cb94d2330168c4866e36252b16fbf51d7",
+  "source_json_path": "benchmark_data/long_bench_v2/data.json",
+  "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+  "mode": "cache",
+  "llm_provider": "openai_compatible",
+  "api_key_env": null,
+  "openrouter_base_url": "https://openrouter.ai/api/v1",
+  "openai_compat_base_url": "http://127.0.0.1:8000/v1",
+  "openai_compat_executor_base_url": "http://g102.eth.cluster:8000/v1",
+  "openai_compat_evaluator_base_url": "http://g202.cm.cluster:8001/v1",
+  "openai_compat_api_key_env": "",
+  "executor_model": "meta-llama/Llama-3.3-70B-Instruct",
+  "evaluator_model": "mistralai/Mistral-Small-24B-Instruct-2501",
+  "top_k": 20,
+  "rerank_top": 5,
+  "reranker_disabled": false,
+  "row_types_requested": [
+    "original",
+    "exact",
+    "semantic"
+  ],
+  "max_rows": 5,
+  "rows_selected": 5,
+  "row_type_counts": {
+    "exact": 2,
+    "original": 3
+  },
+  "answer_correct_count": 0,
+  "answer_accuracy": 0.0,
+  "actual_route_counts": {
+    "exact": 2,
+    "knowledge": 0,
+    "miss": 3,
+    "semantic": 0,
+    "unknown": 0
+  },
+  "by_row_type": {
+    "exact": {
+      "rows": 2,
+      "answer_accuracy": 0.0,
+      "cache_hit_rate": 1.0
+    },
+    "original": {
+      "rows": 3,
+      "answer_accuracy": 0.0,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "artifacts": {
+    "predictions": "benchmark_artifacts/longbench_v2/20260607T170004Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/longbench_v2/20260607T170004Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/longbench_v2/20260607T170004Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/longbench_v2/20260607T170004Z/official_longbench_v2_eval_report.json"
+  },
+  "total_api_calls": 9,
+  "total_input_tokens": 12024,
+  "total_output_tokens": 711,
+  "total_tokens": 12735,
+  "total_estimated_cost_usd": 0.0,
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "longbench_v2__exact-original-semantic__09bf2d6a82af39c8",
+    "dataset_signature": "1d8051ebaa9cc5a3",
+    "cache_state_root": "/local/edogu/1081060/adarsh-rlms/cache_state",
+    "cache_state_path": "/local/edogu/1081060/adarsh-rlms/cache_state/longbench_v2__exact-original-semantic__09bf2d6a82af39c8",
+    "cache_state_existed_before_reset": false,
+    "cache_state_existed_before_run": false,
+    "cache_reset_requested": false,
+    "run_start_type": "cold_start",
+    "cache_load_attempts": 5,
+    "cache_load_successes": 4,
+    "cache_entries_before_run": 0,
+    "cache_entries_after_run": 3,
+    "cache_hits": 2,
+    "cache_hit_rate": 0.4
+  },
+  "note": "jarvis-l40s-small"
+}

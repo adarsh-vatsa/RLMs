@@ -495,6 +495,16 @@ echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
 ```
 
+Example:
+
+```bash
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1081058.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1081059.url)
+
+echo "$EXECUTOR_URL"
+echo "$EVALUATOR_URL"
+```
+
 The expected shape is:
 
 ```text
