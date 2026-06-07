@@ -154,6 +154,35 @@ Knowledge rows use:
 
 ### Full Run (STEP 3 - YOU CAN LIMIT CONTEXTS FOR PILOT RUNS IF NEEDED)
 
+The Codex SDK shells through Codex Exec and reads `~/.codex/config.toml`. If the
+run fails before generation with:
+
+```text
+Error loading config.toml: unknown variant `default`, expected `fast` or `flex`
+in `service_tier`
+```
+
+edit `~/.codex/config.toml` and change:
+
+```toml
+service_tier = "default"
+```
+
+to either:
+
+```toml
+service_tier = "flex"
+```
+
+or:
+
+```toml
+service_tier = "fast"
+```
+
+Use `flex` for lower-priority batch generation, or `fast` if you want the
+generation to start sooner.
+
 ```bash
 cd long_bench_v2
 npm run generate-knowledge-rows -- \
