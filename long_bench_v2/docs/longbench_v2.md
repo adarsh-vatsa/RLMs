@@ -321,7 +321,7 @@ Useful options:
 - `--cache-state-root PATH`: persistent cache state root. Default: `benchmark_artifacts/longbench_v2/cache_state`.
 - `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
 - `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
-- `--llm-provider NAME`: external LLM provider, either `anthropic` or `openrouter`. Default: `anthropic`.
+- `--llm-provider NAME`: external LLM provider, either `anthropic`, `openrouter`, or `openai_compatible`. Default: `anthropic`.
 - `--api-key-env NAME`: environment variable used for the provider API key. Default: `ANTHROPIC_API_KEY` for Anthropic and `OPENROUTER_API_KEY` for OpenRouter. You do not need to add this if your API key is defined in `.env`.
 - `--executor-model MODEL`: model assigned to `semantic_cache_system.EXECUTOR_MODEL`. Default: `claude-sonnet-4-5`.
 - `--evaluator-model MODEL`: model assigned to cache verification/fact extraction calls. Default: `claude-haiku-4-5`.
@@ -331,6 +331,18 @@ Useful options:
 - `--disable-reranker`: skip the reranker and use FAISS candidates directly.
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
 - `--manifest-note TEXT`: optional note stored in `manifest.json`.
+
+Reranker memory can be tuned without changing benchmark semantics:
+
+```bash
+SEMANTIC_CACHE_RERANKER_BATCH_SIZE=2
+SEMANTIC_CACHE_RERANKER_MAX_LENGTH=4096
+```
+
+The default reranker batch size is `4`, and the default max length is `8192`.
+Qwen3 reranking uses only the final-position logits when the installed
+Transformers model exposes `logits_to_keep`; this avoids materializing full
+sequence vocabulary logits for every candidate.
 
 ## STEP 7 - Run RLM Baseline
 

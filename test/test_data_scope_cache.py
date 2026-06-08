@@ -200,7 +200,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(controller._last_retrieval_info["reranker_returned_count"], 0)
         self.assertTrue(controller._last_retrieval_info["reranker_fallback_used"])
 
-    def test_retrieval_prefers_reranker_results_when_available(self):
+    def test_retrieval_keeps_reranker_results_first_and_backfills_when_needed(self):
         controller = make_controller()
         first_meta = {"filename": "contract.txt", "chunk_index": 0}
         second_meta = {"filename": "contract.txt", "chunk_index": 1}
@@ -217,13 +217,14 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         results = controller.retrieve("When does the agreement expire?", top_k=20, rerank_top=5)
 
-        self.assertEqual(len(results), 1)
+        self.assertEqual(len(results), 2)
         self.assertEqual(results[0]["text"], "The agreement expires on December 31, 2028.")
         self.assertEqual(results[0]["score"], 0.77)
+        self.assertEqual(results[1]["text"], "The contract is governed by New York law.")
         self.assertTrue(controller._last_retrieval_info["reranker_enabled"])
         self.assertEqual(controller._last_retrieval_info["faiss_candidate_count"], 2)
         self.assertEqual(controller._last_retrieval_info["reranker_returned_count"], 1)
-        self.assertFalse(controller._last_retrieval_info["reranker_fallback_used"])
+        self.assertTrue(controller._last_retrieval_info["reranker_fallback_used"])
 
 
 if __name__ == "__main__":

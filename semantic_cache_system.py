@@ -44,6 +44,7 @@ import re
 import math
 import urllib.error
 import urllib.request
+import inspect
 from types import SimpleNamespace
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
@@ -123,6 +124,8 @@ if LLM_PROVIDER == "openai_compatible":
 DOCUMENT_CHUNK_SIZE = _env_int("SEMANTIC_CACHE_DOC_CHUNK_SIZE", 10000)
 DOCUMENT_CHUNK_OVERLAP = _env_int("SEMANTIC_CACHE_DOC_CHUNK_OVERLAP", 1000)
 RERANKER_RELEVANCE_THRESHOLD = _env_float("SEMANTIC_CACHE_RERANKER_THRESHOLD", 0.20)
+RERANKER_BATCH_SIZE = _env_int("SEMANTIC_CACHE_RERANKER_BATCH_SIZE", 4)
+RERANKER_MAX_LENGTH = _env_int("SEMANTIC_CACHE_RERANKER_MAX_LENGTH", 8192)
 MIN_RERANKED_RESULTS = _env_int("SEMANTIC_CACHE_MIN_RERANKED_RESULTS", 5)
 SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
@@ -560,15 +563,32 @@ class Reranker:
         self.device = "cpu"
         self.model.to(self.device)
         self.torch = torch
+        self.batch_size = max(1, RERANKER_BATCH_SIZE)
+        self._supports_logits_to_keep = self._model_supports_logits_to_keep(self.model)
 
         self.token_true_id = self.tokenizer.convert_tokens_to_ids("yes")
         self.token_false_id = self.tokenizer.convert_tokens_to_ids("no")
-        self.max_length = 8192
+        self.max_length = max(1, RERANKER_MAX_LENGTH)
         prefix = '<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>\n<|im_start|>user\n'
         suffix = '<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n'
         self.prefix_tokens = self.tokenizer.encode(prefix, add_special_tokens=False)
         self.suffix_tokens = self.tokenizer.encode(suffix, add_special_tokens=False)
-        print(f"  [RERANK] ✓ Loaded on {self.device}")
+        if not self._supports_logits_to_keep:
+            print("  [RERANK] Model does not expose logits_to_keep; rerank memory use may be higher")
+        print(f"  [RERANK] ✓ Loaded on {self.device} (batch_size={self.batch_size}, max_length={self.max_length})")
+
+    @staticmethod
+    def _model_supports_logits_to_keep(model) -> bool:
+        forward = getattr(model, "forward", None) or getattr(model, "__call__", None)
+        if forward is None:
+            return False
+        try:
+            parameters = inspect.signature(forward).parameters
+        except (TypeError, ValueError):
+            return False
+        if "logits_to_keep" in parameters:
+            return True
+        return any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
 
     def _format_pair(self, query: str, doc: str, instruction: str = None) -> str:
         if instruction is None:
@@ -576,10 +596,11 @@ class Reranker:
         return f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {doc}"
 
     def _process_inputs(self, pairs: List[str]):
+        pair_token_budget = max(1, self.max_length - len(self.prefix_tokens) - len(self.suffix_tokens))
         inputs = self.tokenizer(
             pairs, padding=False, truncation="longest_first",
             return_attention_mask=False,
-            max_length=self.max_length - len(self.prefix_tokens) - len(self.suffix_tokens)
+            max_length=pair_token_budget,
         )
         for i, ele in enumerate(inputs["input_ids"]):
             inputs["input_ids"][i] = self.prefix_tokens + ele + self.suffix_tokens
@@ -588,19 +609,53 @@ class Reranker:
             inputs[key] = inputs[key].to(self.device)
         return inputs
 
+    def _forward_last_logits(self, inputs):
+        if self._supports_logits_to_keep:
+            kwargs = dict(inputs)
+            kwargs["logits_to_keep"] = 1
+            try:
+                return self.model(**kwargs).logits[:, -1, :]
+            except TypeError as exc:
+                if "logits_to_keep" not in str(exc):
+                    raise
+                self._supports_logits_to_keep = False
+                print("  [RERANK] logits_to_keep rejected by model; falling back to full logits")
+        return self.model(**inputs).logits[:, -1, :]
+
+    def _inference_context(self):
+        context_factory = getattr(self.torch, "inference_mode", None) or self.torch.no_grad
+        return context_factory()
+
+    def _score_pairs(self, pairs: List[str]) -> List[float]:
+        inputs = self._process_inputs(pairs)
+        with self._inference_context():
+            last_logits = self._forward_last_logits(inputs)
+            true_vector = last_logits[:, self.token_true_id]
+            false_vector = last_logits[:, self.token_false_id]
+            yes_no_logits = self.torch.stack([false_vector, true_vector], dim=1)
+            yes_no_scores = self.torch.nn.functional.log_softmax(yes_no_logits, dim=1)
+            return yes_no_scores[:, 1].exp().tolist()
+
+    @staticmethod
+    def _looks_like_memory_error(exc: RuntimeError) -> bool:
+        message = str(exc).lower()
+        return "out of memory" in message or "can't allocate memory" in message or "cannot allocate memory" in message
+
     def rerank(self, query: str, documents: List[str], top_k: int = 5,
                relevance_threshold: float = RERANKER_RELEVANCE_THRESHOLD) -> List[Tuple[int, float, str]]:
         """Re-score and filter by relevance threshold. Returns [(idx, score, text)]."""
         pairs = [self._format_pair(query, doc) for doc in documents]
-        inputs = self._process_inputs(pairs)
-
-        with self.torch.no_grad():
-            batch_scores = self.model(**inputs).logits[:, -1, :]
-            true_vector = batch_scores[:, self.token_true_id]
-            false_vector = batch_scores[:, self.token_false_id]
-            batch_scores = self.torch.stack([false_vector, true_vector], dim=1)
-            batch_scores = self.torch.nn.functional.log_softmax(batch_scores, dim=1)
-            scores = batch_scores[:, 1].exp().tolist()
+        scores = []
+        for batch_start in range(0, len(pairs), self.batch_size):
+            batch_pairs = pairs[batch_start:batch_start + self.batch_size]
+            try:
+                scores.extend(self._score_pairs(batch_pairs))
+            except RuntimeError as exc:
+                if len(batch_pairs) == 1 or not self._looks_like_memory_error(exc):
+                    raise
+                print("  [RERANK] Batch exceeded memory; retrying candidates one at a time")
+                for pair in batch_pairs:
+                    scores.extend(self._score_pairs([pair]))
 
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         # Apply relevance gate: only return docs the reranker says "yes" to
