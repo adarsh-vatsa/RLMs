@@ -114,6 +114,14 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(parse_choice(generation), "C")
 
+    def test_parse_choice_does_not_capture_answer_choice_prose(self):
+        generation = (
+            "The provided documents do not contain enough information to determine the "
+            "correct answer choice based on the evidence.\n\nA"
+        )
+
+        self.assertEqual(parse_choice(generation), "A")
+
     def test_build_query_preserves_multiple_choice_fields(self):
         query = build_query(_suite_row("row_1"))
 

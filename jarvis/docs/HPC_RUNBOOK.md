@@ -524,6 +524,7 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --llm-provider openai_compatible \
   --mode cache \
+  --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
   --max-rows 5 \
@@ -541,6 +542,22 @@ tail -f "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
 
 When this finishes, inspect the generated artifact paths printed in the client
 log. They should point under `benchmark_artifacts/longbench_v2/...`.
+
+The small validation command resets only this selected cache namespace. Keep
+that reset while testing retrieval or synthesis changes; otherwise exact and
+semantic rows can reuse a bad first-write answer from an older run. Retrieval
+defaults in `semantic_cache_system.py` are intentionally biased toward more
+evidence for this LongBench-style multiple-choice check. If you need to tune
+without editing code, set:
+
+```bash
+SEMANTIC_CACHE_DOC_CHUNK_SIZE=4000
+SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=500
+SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
+SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5
+SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+```
 
 ## 12. Run The Full Benchmark
 

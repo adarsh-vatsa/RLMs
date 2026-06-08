@@ -171,7 +171,7 @@ def parse_choice(text: str) -> str:
 
     explicit_pattern = (
         r"(?:FINAL\s+ANSWER|CORRECT\s+(?:ANSWER|CHOICE|OPTION)|ANSWER|CHOICE|OPTION)"
-        r"\s*(?:IS\s*:|IS|:)?\s*[\(\[]?\s*([A-D])\s*[\)\]]?"
+        r"\s*(?:IS\s*:|IS|:)?\s*[\(\[]?\s*([A-D])\b\s*[\)\]]?"
     )
     explicit_matches = list(re.finditer(explicit_pattern, stripped))
     if explicit_matches:
