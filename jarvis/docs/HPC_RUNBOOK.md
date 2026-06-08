@@ -498,8 +498,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1081058.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1081059.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1081229.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1081230.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -527,7 +527,7 @@ CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
-  --max-rows 5 \
+  --max-rows 10 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -551,8 +551,8 @@ evidence for this LongBench-style multiple-choice check. If you need to tune
 without editing code, set:
 
 ```bash
-SEMANTIC_CACHE_DOC_CHUNK_SIZE=4000
-SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=500
+SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
 SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5
