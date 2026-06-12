@@ -522,9 +522,12 @@ executor:  http://<executor-node>:8000/v1
 evaluator: http://<evaluator-node>:8001/v1
 ```
 
-## 11. Run A Small Benchmark Client Job
+## 11. Run A Small Comparable Benchmark Client Job
 
-Start with a sampled LongBench-v2 run:
+Start with a sampled LongBench-v2 run to verify the services, cache reuse, and
+scoring path before submitting a larger job. This uses the same retrieval/cache
+profile as the full benchmark below; the only intentional difference is that
+`sample_csv.py` selects three short source-linked samples first.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -535,7 +538,6 @@ CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
   --sample-size 3 \
-  --max-token-count 75000 \
   --selection-strategy shortest \
   --seed 0 && \
 uv run python long_bench_v2/run_benchmark.py \
@@ -545,6 +547,9 @@ uv run python long_bench_v2/run_benchmark.py \
   --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
+  --top-k 10 \
+  --rerank-top 3 \
+  --synthesis-max-chunks 3 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -562,10 +567,15 @@ log. They should point under `benchmark_artifacts/longbench_v2/...`.
 
 The small validation command resets only this selected cache namespace. Keep
 that reset while testing retrieval or synthesis changes; otherwise exact and
-semantic rows can reuse a bad first-write answer from an older run. The
-LongBench-v2 runner now defaults to `--top-k 10`, `--rerank-top 3`,
+semantic rows can reuse a bad first-write answer from an older run.
+`--selection-strategy shortest` keeps this sanity check cheap without imposing a
+benchmark-wide token cap. The full benchmark below should run the intended row
+set directly instead of sampling through `sample_csv.py`.
+
+The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
 `--synthesis-max-chunks 3`, `--row-order source_grouped`, and
-`--cache-save-interval 10`. It does not change document chunking.
+`--cache-save-interval 10`. It does not change document chunking unless you set
+the environment variables shown below.
 
 ```bash
 SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
@@ -583,9 +593,45 @@ Prefer the runner flags for benchmark breadth:
 --top-k 10 --rerank-top 3 --synthesis-max-chunks 3
 ```
 
+Optional retrieval ablation: if the comparable sampled run has unexpectedly low
+answer accuracy, rerun the same sampled CSV as a short full-context diagnostic.
+This changes the retrieval profile, so use it only to check whether chunking is
+hurting answer quality; do not compare its throughput or cache behavior to the
+full benchmark.
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_CMD='SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000 \
+SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0 \
+uv run python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --cache-reset \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --row-types original,exact,semantic \
+  --top-k 1 \
+  --rerank-top 1 \
+  --synthesis-max-chunks 1 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-l40s-small-full-context' \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
 ## 12. Run The Full Benchmark
 
-Use the same service URLs and remove the row cap:
+Use the same service URLs and run the intended row set directly:
+
+This command exercises the cache/retrieval benchmark over the full CSV. It is
+not a direct "send every full LongBench context to the model" run. The default
+Jarvis executor starts vLLM with `EXECUTOR_MAX_MODEL_LEN=32768`, while the full
+LongBench-v2 cache suite contains rows well above that length. Whole-context
+diagnostics should stay on short sampled rows unless you also raise the vLLM
+context length enough for the selected rows and confirm the GPU allocation can
+serve that context length.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -595,15 +641,20 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --llm-provider openai_compatible \
   --mode cache \
+  --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
+  --top-k 10 \
+  --rerank-top 3 \
+  --synthesis-max-chunks 3 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-full' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
-For a cold-cache rerun, add `--cache-reset` to `CLIENT_CMD`. Do not delete
-`/local/$USER/llm_caching` unless you intentionally want to force model
+Keep `--cache-reset` for the first comparable full run. Remove it only when you
+intentionally want to resume from an existing benchmark cache namespace. Do not
+delete `/local/$USER/llm_caching` unless you intentionally want to force model
 downloads again on that node.
 
 ## 13. Stop Services After The Experiment
