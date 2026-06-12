@@ -2,7 +2,8 @@
 
 This is the operational checklist for running the local vLLM services and the
 benchmark client on Jarvis. Run these commands from the Jarvis login node unless
-the step explicitly says otherwise.
+the step explicitly says otherwise. The commands below assume your current
+directory is the parent directory that contains the `adarsh-rlms` repo.
 
 ## 0. Push Locally, Pull Remotely
 
@@ -19,239 +20,486 @@ On Jarvis:
 
 ```bash
 ssh edogu@jarvis.stevens.edu
-cd /path/to/adarsh-rlms
-git pull
+cd /path/to/parent-directory
+git -C adarsh-rlms pull
 ```
 
-## 1. Create Project Storage
+If you instead `cd` directly into the repo, replace
+`adarsh-rlms/jarvis/run.sh` with `jarvis/run.sh` in the commands below.
 
-Create the persistent cache directories once:
+## 1. Choose Scratch Storage
+
+Your account currently cannot create `/mmfs1/project/llm_caching`, so use
+Jarvis scratch mode. This keeps large model files under `/local` and keeps only
+small Slurm logs and endpoint URL files under your home directory.
+
+```bash
+export JARVIS_STORAGE_MODE=scratch
+export PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs
+mkdir -p "$PROJECT_LOG_DIR"
+```
+
+The scripts will create these paths inside each Slurm job:
+
+```text
+/local/$USER/llm_caching/hf_cache                 node-local Hugging Face cache
+/local/$USER/llm_caching/vllm_cache               node-local vLLM cache
+/local/$USER/$SLURM_JOB_ID/adarsh-rlms            per-job active scratch
+/home/edogu/adarsh-rlms-logs                      small logs and endpoint files
+```
+
+Important tradeoff: `/local` is node-local scratch, not shared cluster storage.
+A model downloaded on one node is not guaranteed to exist on another node. This
+is acceptable for first experiments, but it means the first startup on each GPU
+node may download model weights again.
+
+The cleanup trap removes only the per-job
+`/local/$USER/$SLURM_JOB_ID/adarsh-rlms` directory. It does not delete
+`/local/$USER/llm_caching`, so a later job on the same node can reuse files if
+Jarvis has not purged that scratch area.
+
+In scratch mode, `JARVIS_CACHE_STATE_ROOT` defaults to the per-job `/local`
+directory and is cleaned when the client job exits. If you need semantic-cache
+state to survive across separate client jobs, set a small persistent path before
+submitting the client:
+
+```bash
+export JARVIS_CACHE_STATE_ROOT=/home/edogu/adarsh-rlms-cache-state
+mkdir -p "$JARVIS_CACHE_STATE_ROOT"
+```
+
+Do this only for benchmark cache state, not model weights.
+
+The scripts now check free space inside the allocated node before starting work
+that can download models. These thresholds are not the model sizes; they include
+the model weights, temporary/partial download files, tokenizer/config files,
+vLLM/Hugging Face cache overhead, and a scratch buffer. Defaults:
+
+```text
+executor:           250 GB free required
+small-smoke:         60 GB free required
+evaluator/smoke:    160 GB free required
+download-all:       350 GB free required
+client:              30 GB free required
+```
+
+Override only if you know the model is already cached or you intentionally want a
+lower threshold:
+
+```bash
+MIN_LOCAL_FREE_GB=180 bash adarsh-rlms/jarvis/run.sh submit evaluator
+```
+
+Disable only for debugging:
+
+```bash
+SKIP_LOCAL_SPACE_CHECK=1 bash adarsh-rlms/jarvis/run.sh submit smoke
+```
+
+### Project Storage If Access Is Granted
+
+If you later get permission to create `/mmfs1/project/llm_caching`, you can
+switch back to durable project storage. In that mode, model caches, vLLM caches,
+logs, and semantic-cache state live under `/mmfs1/project/llm_caching`, while
+active per-job scratch still uses `/local`.
+
+Create the project directories once:
 
 ```bash
 mkdir -p /mmfs1/project/llm_caching/{hf_cache,vllm_cache,logs,cache_state}
 ```
 
-These directories are durable. Do not delete them after each experiment:
+Then use project mode before submitting jobs:
 
-```text
-/mmfs1/project/llm_caching/hf_cache      Hugging Face model cache
-/mmfs1/project/llm_caching/vllm_cache    vLLM persistent cache
-/mmfs1/project/llm_caching/logs          Slurm logs and endpoint URL files
-/mmfs1/project/llm_caching/cache_state   Semantic cache benchmark state
+```bash
+export JARVIS_STORAGE_MODE=project
+export PROJECT_CACHE_ROOT=/mmfs1/project/llm_caching
+unset PROJECT_LOG_DIR
+unset JARVIS_CACHE_STATE_ROOT
 ```
 
-Per-job scratch is created under `/local/$USER/$SLURM_JOB_ID/adarsh-rlms` and is
-cleaned automatically when the job exits.
+With project mode, the same `adarsh-rlms/jarvis/run.sh submit ...` commands work.
+Do not run the node-local cleanup command against `/mmfs1/project/llm_caching`;
+that cleanup script is intended for guarded `/local` paths only.
 
 ## 2. Prepare Authentication
 
-The default models may require Hugging Face access approval. Export `HF_TOKEN`
-before submitting jobs so Slurm passes it through:
+The default models may require Hugging Face access approval. Best practice on a
+shared cluster is to keep tokens out of committed files. This repo's `.gitignore`
+already excludes `.env`, and the Jarvis scripts can read `HF_TOKEN` from the repo
+`.env` without sourcing the whole file as shell code.
+
+Add this to `adarsh-rlms/.env`:
 
 ```bash
-export HF_TOKEN=<your-hugging-face-token>
+HF_TOKEN=<your-hugging-face-token>
 ```
 
-Confirm the token is present without printing it:
+Then confirm the scripts can see it without printing the token:
 
 ```bash
-test -n "$HF_TOKEN" && echo "HF_TOKEN is set"
+test -n "${HF_TOKEN:-}" && echo "HF_TOKEN is exported" || grep -q '^HF_TOKEN=' adarsh-rlms/.env && echo "HF_TOKEN is in .env"
 ```
+
+If both are set, the exported shell variable wins. To disable `.env` loading for
+Jarvis scripts, set `JARVIS_LOAD_DOTENV=0`.
 
 ## 3. Install vLLM In Your User Environment
 
 Use a private environment. This does not change system Python or affect other
 users.
 
-If Jarvis has a Python 3.12 module:
+First check whether Jarvis exposes useful module names. Module names are
+cluster-specific, and `python/3.12` or `cuda` may not exist:
 
 ```bash
-module load python/3.12
-module load cuda
-
-mkdir -p /home/edogu/.venvs
-uv venv /home/edogu/.venvs/adarsh-vllm --python 3.12 --seed
-source /home/edogu/.venvs/adarsh-vllm/bin/activate
-uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
-
-python -c "import sys, torch, vllm; print(sys.version); print(torch.__version__); print(vllm.__version__); print(torch.cuda.is_available())"
+module avail 2>&1 | grep -Ei 'python|cuda|gcc|anaconda|conda' || true
 ```
 
-If Jarvis only exposes Python 3.9.18, install a user-local Python with `uv`:
+On the current Jarvis module listing, useful names include:
+
+```text
+python/3.11.10
+cuda12.4/toolkit/12.4.1
+cuda12.8/toolkit/12.8.1
+gcc/13.1.0
+```
+
+The preferred path is still a user-local Python 3.12 with `uv`. This does not
+change the system Python:
 
 ```bash
-module load cuda
-
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source ~/.bashrc
+if [ -f "$HOME/.local/bin/env" ]; then
+  source "$HOME/.local/bin/env"
+else
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+uv --version
 
 uv python install 3.12
 mkdir -p /home/edogu/.venvs
 uv venv /home/edogu/.venvs/adarsh-vllm --python 3.12 --seed
 source /home/edogu/.venvs/adarsh-vllm/bin/activate
 uv pip install --upgrade pip
-uv pip install vllm --torch-backend=auto
 
-python -c "import sys, torch, vllm; print(sys.version); print(torch.__version__); print(vllm.__version__); print(torch.cuda.is_available())"
+uv pip install "vllm==0.19.1" --torch-backend=cu128
+
+python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
 
-If Jarvis requires modules inside the Slurm job, pass them when submitting:
+If `uv python install 3.12` is not available or you prefer the site module,
+`python/3.11.10` is a reasonable vLLM environment base:
 
 ```bash
-MODULES="cuda" VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit smoke
+module load python/3.11.10
+mkdir -p /home/edogu/.venvs
+uv venv /home/edogu/.venvs/adarsh-vllm --python 3.11 --seed
+source /home/edogu/.venvs/adarsh-vllm/bin/activate
+uv pip install --upgrade pip
+
+uv pip install "vllm==0.19.1" --torch-backend=cu128
+
+python -c "import sys, vllm; print(sys.version); print(vllm.__version__)"
 ```
 
-## 4. Prepare The Client Environment
+Do not pass `MODULES="cuda"`; that module does not exist. The commands below
+assume the preferred user-local Python 3.12 venv, so they load only the CUDA
+module. If you created the venv from the `python/3.11.10` module instead, prepend
+`python/3.11.10` to `MODULES`.
 
-The vLLM service environment and benchmark client environment can be different.
-The service environment needs `vllm`; the client environment needs this repo's
-dependencies.
+If you previously installed vLLM with `uv pip install vllm --torch-backend=auto`
+and see `ImportError: libcudart.so.13`, remove and recreate
+`/home/edogu/.venvs/adarsh-vllm` with the pinned CUDA 12.8 install command
+above. Recent vLLM releases default to CUDA 13 builds; Jarvis currently exposes
+CUDA 12.x modules.
 
-From the repo root:
-
-```bash
-uv python install 3.13
-uv sync --python 3.13
-uv pip install transformers torch faiss-cpu sentence-transformers anthropic python-dotenv numpy scikit-learn
-```
-
-Quick import check:
-
-```bash
-uv run python - <<'PY'
-import semantic_cache_system
-print("semantic_cache_system import ok")
-PY
-```
-
-## 5. Run A Slurm Dry Run
+## 4. Run A Slurm Dry Run
 
 This verifies Slurm submission, path creation, logs, environment export, and
 cleanup without starting vLLM:
 
 ```bash
+MODULES="cuda12.8/toolkit/12.8.1" \
 DRY_RUN=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit smoke
+  bash adarsh-rlms/jarvis/run.sh submit small-smoke
 ```
 
 The command prints a Slurm job id. Watch it:
 
 ```bash
 squeue -u "$USER"
-tail -f /mmfs1/project/llm_caching/logs/rlms-smoke-<job_id>.out
+tail -f "$PROJECT_LOG_DIR"/rlms-small-smoke-<job_id>.out
 ```
 
 The dry-run log should show `/local/$USER/<job_id>/adarsh-rlms`, the selected
 model, the endpoint file path, and the vLLM command that would have run.
+It should also print a line like:
 
-## 6. Prefetch Model Weights
+```text
+[JARVIS] local free space at /local/...: 700 GB available; 60 GB required
+```
 
-For the first real run, prefetch one model at a time. This makes gated-model and
-network failures show up before you reserve GPU jobs.
+If you used the site Python module fallback, use
+`MODULES="python/3.11.10 cuda12.8/toolkit/12.8.1"` instead.
+
+## 5. Optional Hugging Face Access Check
+
+In scratch mode, CPU download jobs do not seed the future GPU nodes because
+`/local` is node-local. Use this only as an authentication/network check. The
+real vLLM service jobs may still download weights when they start on their GPU
+nodes.
 
 ```bash
 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit download-evaluator
+  bash adarsh-rlms/jarvis/run.sh submit download-small-smoke
 ```
 
-After it finishes:
-
-```bash
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit download-executor
-```
+If you used the site Python module fallback, add
+`MODULES="python/3.11.10"` to this CPU download command.
 
 Monitor:
 
 ```bash
 squeue -u "$USER"
-tail -f /mmfs1/project/llm_caching/logs/rlms-download-<job_id>.out
-du -sh /mmfs1/project/llm_caching/hf_cache
+tail -f "$PROJECT_LOG_DIR"/rlms-download-<job_id>.out
 ```
 
-The download job syncs files from `/local` back to
-`/mmfs1/project/llm_caching/hf_cache` during cleanup.
+The service commands below set `SYNC_BACK_MODELS=1`. With the default scratch
+settings, vLLM writes model weights directly to the node-local
+`/local/$USER/llm_caching` cache; if you later switch to a per-job cache layout,
+that flag preserves the same sync-back behavior before cleanup.
 
-## 7. Run One-Service Smoke Test
+## 6. Run The 7B Small-Smoke Service
 
-Start one vLLM service with the smoke model:
+Start one vLLM service with `Qwen/Qwen2.5-7B-Instruct`:
 
 ```bash
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit smoke
+MODULES="cuda12.8/toolkit/12.8.1" \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit small-smoke
 ```
 
 Find the endpoint after the job starts:
 
 ```bash
-ls -ltr /mmfs1/project/llm_caching/logs/*smoke*.url
-cat /mmfs1/project/llm_caching/logs/smoke-<job_id>.url
-tail -f /mmfs1/project/llm_caching/logs/rlms-smoke-<job_id>.out
+ls -ltr "$PROJECT_LOG_DIR"/*small-smoke*.url
+cat "$PROJECT_LOG_DIR"/small-smoke-<job_id>.url
+tail -f "$PROJECT_LOG_DIR"/rlms-small-smoke-<job_id>.out
 ```
 
 The endpoint will look like:
 
 ```text
-http://<smoke-node>:8000/v1
+http://<small-smoke-node>:8000/v1
 ```
+
+## 7. Prepare The Client Environment
+
+The vLLM service environment and benchmark client environment can be different.
+The service environment needs `vllm`; the client environment needs this repo's
+dependencies. Prepare this before running client smoke tests or benchmarks.
+
+From the parent directory, prepare the client environment inside the repo:
+
+```bash
+deactivate # if the vLLM service is still running, e.g. you see something like (adarsh-vllm) in the terminal
+
+cd adarsh-rlms
+
+uv sync --python /home/edogu/.local/bin/python3.13
+uv pip install transformers torch faiss-cpu sentence-transformers anthropic python-dotenv numpy scikit-learn
+
+uv run python - <<'PY'
+import semantic_cache_system
+print("semantic_cache_system import ok")
+PY
+
+cd ..
+```
+
+## 8. Run Small-Smoke Client Checks
 
 Submit a client smoke test against that endpoint:
 
 ```bash
-SMOKE_URL=http://<smoke-node>:8000/v1
+SMALL_SMOKE_URL=http://<small-smoke-node>:8000/v1
 
 LLM_PROVIDER=openai_compatible \
-OPENAI_COMPAT_BASE_URL="$SMOKE_URL" \
-OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMOKE_URL" \
-OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMOKE_URL" \
+OPENAI_COMPAT_BASE_URL="$SMALL_SMOKE_URL" \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMALL_SMOKE_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMALL_SMOKE_URL" \
+OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen2.5-7B-Instruct \
+OPENAI_COMPAT_EVALUATOR_MODEL=Qwen/Qwen2.5-7B-Instruct \
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_llm_provider.py" \
-  bash jarvis/run.sh submit client
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 Monitor the client:
 
 ```bash
 squeue -u "$USER"
-tail -f /mmfs1/project/llm_caching/logs/rlms-client-<job_id>.out
+tail -f "$PROJECT_LOG_DIR"/rlms-client-<job_id>.out
 ```
 
-Stop the smoke service when the client test is done:
+Run a tiny LongBench-v2 plumbing check against the same endpoint:
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMALL_SMOKE_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMALL_SMOKE_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
+  --llm-provider openai_compatible \
+  --executor-model Qwen/Qwen2.5-7B-Instruct \
+  --evaluator-model Qwen/Qwen2.5-7B-Instruct \
+  --mode cache \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --row-types original,exact,semantic \
+  --max-rows 5 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-l40s-small-smoke' \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+Treat this run as plumbing validation, not benchmark-quality accuracy.
+
+Stop the small-smoke service when the provider test and tiny LongBench check are
+done:
+
+```bash
+scancel <small_smoke_job_id>
+```
+
+## 9. Optional 24B One-Service Smoke Test
+
+After `small-smoke` passes, you can run the Mistral 24B one-service smoke path
+before starting both production services. This path now uses
+`mistralai/Mistral-Small-24B-Instruct-2501` because the newer
+`mistralai/Mistral-Small-3.2-24B-Instruct-2506` resolves as a Pixtral/multimodal
+architecture in vLLM and failed on Jarvis with a
+`MistralCommonPixtralProcessor` startup error.
+
+```bash
+MODULES="cuda12.8/toolkit/12.8.1" \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit smoke
+```
+
+Wait until the log shows:
+
+```text
+Application startup complete.
+```
+
+Then read the endpoint URL and verify `/v1/models`:
+
+```bash
+SMOKE_URL=$(cat "$PROJECT_LOG_DIR"/smoke-<job_id>.url)
+echo "$SMOKE_URL"
+curl "$SMOKE_URL/models"
+```
+
+The model response should include:
+
+```text
+mistralai/Mistral-Small-24B-Instruct-2501
+```
+
+Run the provider smoke test with both roles pointing at the one 24B endpoint:
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_BASE_URL="$SMOKE_URL" \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMOKE_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMOKE_URL" \
+OPENAI_COMPAT_EXECUTOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501 \
+OPENAI_COMPAT_EVALUATOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501 \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_llm_provider.py" \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+That job should report:
+
+```text
+Ran 9 tests
+OK
+```
+
+Stop the one-service smoke job after these checks unless you want to run another
+tiny benchmark against it:
 
 ```bash
 scancel <smoke_job_id>
 ```
 
-## 8. Start The Two Production Services
+If you explicitly override `SMOKE_MODEL` or `EVALUATOR_MODEL` back to the 3.2
+model and it fails with `MistralCommonImageProcessor` or
+`MistralCommonPixtralProcessor`, it is a Mistral/vLLM processor dependency
+issue, not a Jarvis storage or Slurm issue. First update the Mistral processor
+dependency inside the vLLM venv:
+
+```bash
+source /home/edogu/.venvs/adarsh-vllm/bin/activate
+uv pip install --upgrade "mistral_common>=1.6.2"
+python -c "import mistral_common; print(mistral_common.__version__)"
+```
+
+Then resubmit with an explicit override only if you still want to test 3.2:
+
+```bash
+MODULES="cuda12.8/toolkit/12.8.1" \
+SMOKE_MODEL=mistralai/Mistral-Small-3.2-24B-Instruct-2506 \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit smoke
+```
+
+Step 9 is optional; if `small-smoke` and the tiny client benchmark already
+passed, you can skip it.
+
+## 10. Start The Two Production Services
 
 Start the executor service:
 
 ```bash
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit executor
+MODULES="cuda12.8/toolkit/12.8.1" \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit executor
 ```
 
 Start the evaluator service:
 
 ```bash
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash jarvis/run.sh submit evaluator
+MODULES="cuda12.8/toolkit/12.8.1" \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
 Watch both jobs:
 
 ```bash
 squeue -u "$USER"
-tail -f /mmfs1/project/llm_caching/logs/rlms-executor-<executor_job_id>.out
-tail -f /mmfs1/project/llm_caching/logs/rlms-evaluator-<evaluator_job_id>.out
+tail -f "$PROJECT_LOG_DIR"/rlms-executor-<executor_job_id>.out
+tail -f "$PROJECT_LOG_DIR"/rlms-evaluator-<evaluator_job_id>.out
 ```
 
 Read the endpoint files:
 
 ```bash
-EXECUTOR_URL=$(cat /mmfs1/project/llm_caching/logs/executor-<executor_job_id>.url)
-EVALUATOR_URL=$(cat /mmfs1/project/llm_caching/logs/evaluator-<evaluator_job_id>.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-<executor_job_id>.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-<evaluator_job_id>.url)
+
+echo "$EXECUTOR_URL"
+echo "$EVALUATOR_URL"
+```
+
+Example:
+
+```bash
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1081229.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1081230.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -264,7 +512,7 @@ executor:  http://<executor-node>:8000/v1
 evaluator: http://<evaluator-node>:8001/v1
 ```
 
-## 9. Run A Small Benchmark Client Job
+## 11. Run A Small Benchmark Client Job
 
 Start with a capped LongBench-v2 run:
 
@@ -273,28 +521,47 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD="uv run python long_bench_v2/run_benchmark.py \
+CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --llm-provider openai_compatible \
   --mode cache \
-  --cache-state-root /mmfs1/project/llm_caching/cache_state \
+  --cache-reset \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
-  --max-rows 5 \
+  --max-rows 10 \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-small" \
-  bash jarvis/run.sh submit client
+  --manifest-note jarvis-l40s-small' \
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 Monitor:
 
 ```bash
 squeue -u "$USER"
-tail -f /mmfs1/project/llm_caching/logs/rlms-client-<client_job_id>.out
+tail -f "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
 ```
 
 When this finishes, inspect the generated artifact paths printed in the client
 log. They should point under `benchmark_artifacts/longbench_v2/...`.
 
-## 10. Run The Full Benchmark
+The small validation command resets only this selected cache namespace. Keep
+that reset while testing retrieval or synthesis changes; otherwise exact and
+semantic rows can reuse a bad first-write answer from an older run. Retrieval
+defaults in `semantic_cache_system.py` are intentionally biased toward more
+evidence for this LongBench-style multiple-choice check. If you need to tune
+without editing code, set:
+
+```bash
+SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
+SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
+SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
+SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
+SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5
+SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+```
+
+## 12. Run The Full Benchmark
 
 Use the same service URLs and remove the row cap:
 
@@ -303,20 +570,21 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD="uv run python long_bench_v2/run_benchmark.py \
+CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
   --llm-provider openai_compatible \
   --mode cache \
-  --cache-state-root /mmfs1/project/llm_caching/cache_state \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-full" \
-  bash jarvis/run.sh submit client
+  --manifest-note jarvis-l40s-full' \
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 For a cold-cache rerun, add `--cache-reset` to `CLIENT_CMD`. Do not delete
-`/mmfs1/project/llm_caching/hf_cache`.
+`/local/$USER/llm_caching` unless you intentionally want to force model
+downloads again on that node.
 
-## 11. Stop Services After The Experiment
+## 13. Stop Services After The Experiment
 
 The vLLM service jobs are long-running servers. They do not stop automatically
 when a client job finishes.
@@ -332,20 +600,73 @@ Confirm:
 squeue -u "$USER"
 ```
 
-## 12. Common Failure Checks
+## 14. Clean Node-Local Scratch
+
+`/local` is per node, so cleanup must run on the node you want to clean. The
+cleanup script defaults to dry-run behavior and removes nothing unless
+`CONFIRM_CLEANUP=1` is set.
+
+Inspect stale per-job scratch on a GPU node:
+
+```bash
+JARVIS_STORAGE_MODE=scratch \
+CLEANUP_NODE=<gpu-node> \
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
+```
+
+Watch the cleanup log:
+
+```bash
+squeue -u "$USER"
+tail -f "$PROJECT_LOG_DIR"/rlms-cleanup-<cleanup_job_id>.out
+```
+
+Remove stale per-job scratch after reviewing the dry run:
+
+```bash
+JARVIS_STORAGE_MODE=scratch \
+CLEANUP_NODE=<gpu-node> \
+CONFIRM_CLEANUP=1 \
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
+```
+
+Delete the node-local model cache too only when you intentionally want to force
+future model downloads on that node:
+
+```bash
+JARVIS_STORAGE_MODE=scratch \
+CLEANUP_NODE=<gpu-node> \
+CONFIRM_CLEANUP=1 \
+CLEAN_NODE_CACHE=1 \
+  bash adarsh-rlms/jarvis/run.sh submit cleanup
+```
+
+The cleanup script is guarded to target only this project's paths:
+
+```text
+/local/$USER/<job_id>/adarsh-rlms
+/local/$USER/llm_caching
+```
+
+Stop active vLLM jobs before deleting node-local model cache on their node.
+
+## 15. Common Failure Checks
 
 If a service never becomes reachable:
 
 ```bash
-tail -n 200 /mmfs1/project/llm_caching/logs/rlms-executor-<job_id>.out
-tail -n 200 /mmfs1/project/llm_caching/logs/rlms-evaluator-<job_id>.out
+tail -n 200 "$PROJECT_LOG_DIR"/rlms-executor-<job_id>.out
+tail -n 200 "$PROJECT_LOG_DIR"/rlms-evaluator-<job_id>.out
 ```
 
 Likely causes:
 
 - Missing `HF_TOKEN` or gated model access not approved.
 - vLLM environment was not passed with `VLLM_VENV`.
-- CUDA module is required inside the Slurm job; retry with `MODULES="cuda"`.
+- A site-specific CUDA or compiler module is required inside the Slurm job; use
+  only the exact module name shown by `module avail` or recommended by admins.
+- Local scratch has too little free space; run the cleanup script on that node
+  or lower `MIN_LOCAL_FREE_GB` if the model is already cached.
 - The model context length is too high for available GPU memory; lower
   `EXECUTOR_MAX_MODEL_LEN` or `EVALUATOR_MAX_MODEL_LEN`.
 - The endpoint URL points to `127.0.0.1` from a different Slurm job. Use the
@@ -353,4 +674,3 @@ Likely causes:
 
 If the benchmark imports fail, fix the client environment and rerun only the
 client job. The vLLM service jobs can stay running.
-

@@ -58,11 +58,12 @@ Built on reliable hardware and HPC management software from DELL, the latest sto
 # Project-Specific LLM Cache Policy
 - Use `jarvis/run.sh` as the project dispatcher for L40S vLLM services, model prefetch jobs, and client jobs.
 - Role scripts are split by responsibility: `jarvis/serve_vllm.sh`, `jarvis/run_client.sh`, `jarvis/download_models.sh`, and shared setup in `jarvis/lib/env.sh`.
-- See `jarvis/README.md` for model sizes, endpoint wiring, smoke-test mode, serious two-service benchmark mode, and cleanup behavior.
-- See `jarvis/HPC_RUNBOOK.md` for the step-by-step Jarvis execution sequence.
-- Persistent model assets should live under `/mmfs1/project/llm_caching`, not under `/home`.
-- Active vLLM jobs should hydrate model files into `/local/$USER/$SLURM_JOB_ID/adarsh-rlms` and serve from local scratch.
-- Cleanup should delete only the per-job `/local` runtime directory. Do not automatically delete `/mmfs1/project/llm_caching`.
+- See `jarvis/docs/README.md` for model sizes, endpoint wiring, smoke-test mode, serious two-service benchmark mode, and cleanup behavior.
+- See `jarvis/docs/HPC_RUNBOOK.md` for the step-by-step Jarvis execution sequence.
+- If `/mmfs1/project/llm_caching` is unavailable, use `JARVIS_STORAGE_MODE=scratch`.
+- In scratch mode, model assets live under node-local `/local/$USER/llm_caching`, while active vLLM jobs serve from `/local/$USER/$SLURM_JOB_ID/adarsh-rlms`.
+- Keep only small logs and endpoint URL files under `/home/edogu/adarsh-rlms-logs`.
+- Cleanup should delete only the per-job `/local` runtime directory. Do not automatically delete `/local/$USER/llm_caching`.
 
 # Important: Best Practices
 - Use the appropriate partition and resources for your job. Do not request more resources than you need, as this will affect the performance and efficiency of the cluster.

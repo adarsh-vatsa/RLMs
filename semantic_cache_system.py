@@ -44,6 +44,7 @@ import re
 import math
 import urllib.error
 import urllib.request
+import inspect
 from types import SimpleNamespace
 from typing import Optional, List, Dict, Tuple
 from pathlib import Path
@@ -83,6 +84,28 @@ OPENAI_COMPAT_STRUCTURED_OUTPUTS = os.getenv("OPENAI_COMPAT_STRUCTURED_OUTPUTS",
 API_KEY = os.getenv(API_KEY_ENV) if API_KEY_ENV else None
 client = Anthropic(api_key=API_KEY) if Anthropic and API_KEY and LLM_PROVIDER == "anthropic" else None
 
+
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        print(f"[CONFIG] Ignoring invalid {name}={value!r}; using {default}")
+        return default
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        print(f"[CONFIG] Ignoring invalid {name}={value!r}; using {default}")
+        return default
+
 # ---------------------------------------------------------------------------
 # Model Config
 # ---------------------------------------------------------------------------
@@ -94,11 +117,19 @@ EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
 OPENROUTER_EXECUTOR_MODEL = "anthropic/claude-sonnet-4.5"
 OPENROUTER_EVALUATOR_MODEL = "anthropic/claude-haiku-4.5"
 OPENAI_COMPAT_EXECUTOR_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
-OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-3.2-24B-Instruct-2506"
+OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-24B-Instruct-2501"
 if LLM_PROVIDER == "openai_compatible":
     EXECUTOR_MODEL = os.getenv("OPENAI_COMPAT_EXECUTOR_MODEL", OPENAI_COMPAT_EXECUTOR_MODEL)
     EVALUATOR_MODEL = os.getenv("OPENAI_COMPAT_EVALUATOR_MODEL", OPENAI_COMPAT_EVALUATOR_MODEL)
-RERANKER_RELEVANCE_THRESHOLD = 0.5
+DOCUMENT_CHUNK_SIZE = _env_int("SEMANTIC_CACHE_DOC_CHUNK_SIZE", 10000)
+DOCUMENT_CHUNK_OVERLAP = _env_int("SEMANTIC_CACHE_DOC_CHUNK_OVERLAP", 1000)
+RERANKER_RELEVANCE_THRESHOLD = _env_float("SEMANTIC_CACHE_RERANKER_THRESHOLD", 0.20)
+RERANKER_BATCH_SIZE = _env_int("SEMANTIC_CACHE_RERANKER_BATCH_SIZE", 4)
+RERANKER_MAX_LENGTH = _env_int("SEMANTIC_CACHE_RERANKER_MAX_LENGTH", 8192)
+MIN_RERANKED_RESULTS = _env_int("SEMANTIC_CACHE_MIN_RERANKED_RESULTS", 5)
+SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
+SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
+MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
 
 # Anthropic pricing config (USD per 1K tokens, early 2026 estimates).
 # Centralized here so all cost math uses a single visible source of truth.
@@ -532,15 +563,32 @@ class Reranker:
         self.device = "cpu"
         self.model.to(self.device)
         self.torch = torch
+        self.batch_size = max(1, RERANKER_BATCH_SIZE)
+        self._supports_logits_to_keep = self._model_supports_logits_to_keep(self.model)
 
         self.token_true_id = self.tokenizer.convert_tokens_to_ids("yes")
         self.token_false_id = self.tokenizer.convert_tokens_to_ids("no")
-        self.max_length = 8192
+        self.max_length = max(1, RERANKER_MAX_LENGTH)
         prefix = '<|im_start|>system\nJudge whether the Document meets the requirements based on the Query and the Instruct provided. Note that the answer can only be "yes" or "no".<|im_end|>\n<|im_start|>user\n'
         suffix = '<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n'
         self.prefix_tokens = self.tokenizer.encode(prefix, add_special_tokens=False)
         self.suffix_tokens = self.tokenizer.encode(suffix, add_special_tokens=False)
-        print(f"  [RERANK] ✓ Loaded on {self.device}")
+        if not self._supports_logits_to_keep:
+            print("  [RERANK] Model does not expose logits_to_keep; rerank memory use may be higher")
+        print(f"  [RERANK] ✓ Loaded on {self.device} (batch_size={self.batch_size}, max_length={self.max_length})")
+
+    @staticmethod
+    def _model_supports_logits_to_keep(model) -> bool:
+        forward = getattr(model, "forward", None) or getattr(model, "__call__", None)
+        if forward is None:
+            return False
+        try:
+            parameters = inspect.signature(forward).parameters
+        except (TypeError, ValueError):
+            return False
+        if "logits_to_keep" in parameters:
+            return True
+        return any(parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
 
     def _format_pair(self, query: str, doc: str, instruction: str = None) -> str:
         if instruction is None:
@@ -548,10 +596,11 @@ class Reranker:
         return f"<Instruct>: {instruction}\n<Query>: {query}\n<Document>: {doc}"
 
     def _process_inputs(self, pairs: List[str]):
+        pair_token_budget = max(1, self.max_length - len(self.prefix_tokens) - len(self.suffix_tokens))
         inputs = self.tokenizer(
             pairs, padding=False, truncation="longest_first",
             return_attention_mask=False,
-            max_length=self.max_length - len(self.prefix_tokens) - len(self.suffix_tokens)
+            max_length=pair_token_budget,
         )
         for i, ele in enumerate(inputs["input_ids"]):
             inputs["input_ids"][i] = self.prefix_tokens + ele + self.suffix_tokens
@@ -560,19 +609,53 @@ class Reranker:
             inputs[key] = inputs[key].to(self.device)
         return inputs
 
+    def _forward_last_logits(self, inputs):
+        if self._supports_logits_to_keep:
+            kwargs = dict(inputs)
+            kwargs["logits_to_keep"] = 1
+            try:
+                return self.model(**kwargs).logits[:, -1, :]
+            except TypeError as exc:
+                if "logits_to_keep" not in str(exc):
+                    raise
+                self._supports_logits_to_keep = False
+                print("  [RERANK] logits_to_keep rejected by model; falling back to full logits")
+        return self.model(**inputs).logits[:, -1, :]
+
+    def _inference_context(self):
+        context_factory = getattr(self.torch, "inference_mode", None) or self.torch.no_grad
+        return context_factory()
+
+    def _score_pairs(self, pairs: List[str]) -> List[float]:
+        inputs = self._process_inputs(pairs)
+        with self._inference_context():
+            last_logits = self._forward_last_logits(inputs)
+            true_vector = last_logits[:, self.token_true_id]
+            false_vector = last_logits[:, self.token_false_id]
+            yes_no_logits = self.torch.stack([false_vector, true_vector], dim=1)
+            yes_no_scores = self.torch.nn.functional.log_softmax(yes_no_logits, dim=1)
+            return yes_no_scores[:, 1].exp().tolist()
+
+    @staticmethod
+    def _looks_like_memory_error(exc: RuntimeError) -> bool:
+        message = str(exc).lower()
+        return "out of memory" in message or "can't allocate memory" in message or "cannot allocate memory" in message
+
     def rerank(self, query: str, documents: List[str], top_k: int = 5,
                relevance_threshold: float = RERANKER_RELEVANCE_THRESHOLD) -> List[Tuple[int, float, str]]:
         """Re-score and filter by relevance threshold. Returns [(idx, score, text)]."""
         pairs = [self._format_pair(query, doc) for doc in documents]
-        inputs = self._process_inputs(pairs)
-
-        with self.torch.no_grad():
-            batch_scores = self.model(**inputs).logits[:, -1, :]
-            true_vector = batch_scores[:, self.token_true_id]
-            false_vector = batch_scores[:, self.token_false_id]
-            batch_scores = self.torch.stack([false_vector, true_vector], dim=1)
-            batch_scores = self.torch.nn.functional.log_softmax(batch_scores, dim=1)
-            scores = batch_scores[:, 1].exp().tolist()
+        scores = []
+        for batch_start in range(0, len(pairs), self.batch_size):
+            batch_pairs = pairs[batch_start:batch_start + self.batch_size]
+            try:
+                scores.extend(self._score_pairs(batch_pairs))
+            except RuntimeError as exc:
+                if len(batch_pairs) == 1 or not self._looks_like_memory_error(exc):
+                    raise
+                print("  [RERANK] Batch exceeded memory; retrying candidates one at a time")
+                for pair in batch_pairs:
+                    scores.extend(self._score_pairs([pair]))
 
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         # Apply relevance gate: only return docs the reranker says "yes" to
@@ -1573,9 +1656,13 @@ class SemanticCacheController:
     # ------------------------------------------------------------------
     # RETRIEVAL — FAISS document search + Reranker with relevance gate
     # ------------------------------------------------------------------
-    def ingest(self, docs_dir: Path, chunk_size: int = 3000, overlap: int = 200, *, reset_index: bool = True):
+    def ingest(self, docs_dir: Path, chunk_size: int | None = None, overlap: int | None = None, *, reset_index: bool = True):
         """Ingest text documents: chunk → embed → build FAISS doc index."""
         docs_dir = Path(docs_dir)
+        chunk_size = DOCUMENT_CHUNK_SIZE if chunk_size is None else int(chunk_size)
+        overlap = DOCUMENT_CHUNK_OVERLAP if overlap is None else int(overlap)
+        if chunk_size <= overlap:
+            raise ValueError(f"chunk_size must be greater than overlap: {chunk_size} <= {overlap}")
         if reset_index or self.doc_index is None:
             self.doc_index = FAISSIndex()
             self._doc_chunks = []
@@ -1686,12 +1773,25 @@ class SemanticCacheController:
             self._last_retrieval_info["reranker_returned_count"] = len(reranked)
 
             results = []
+            selected_indices = set()
             for orig_idx, score, text in reranked:
+                selected_indices.add(orig_idx)
                 results.append({
                     "text": text,
                     "score": float(score),
                     "metadata": candidate_meta[orig_idx] if orig_idx < len(candidate_meta) else {},
                 })
+            target_count = min(max(rerank_top, MIN_RERANKED_RESULTS), len(raw_results))
+            if len(results) < target_count:
+                for raw_idx, raw in enumerate(raw_results):
+                    if raw_idx in selected_indices:
+                        continue
+                    results.append(raw)
+                    if len(results) >= target_count:
+                        break
+                if len(results) > len(reranked):
+                    self._last_retrieval_info["reranker_fallback_used"] = True
+                    print(f"  [RERANK] Added FAISS backfill to keep {len(results)} evidence chunks")
             if results:
                 return results
 
@@ -1704,6 +1804,14 @@ class SemanticCacheController:
         else:
             # No reranker: return raw FAISS results
             return raw_results
+
+    def _query_requests_choice_letter(self, query: str) -> bool:
+        """Detect benchmark-style multiple-choice prompts that need a bare A-D answer."""
+        if not query:
+            return False
+        if "return only the single best answer choice letter" in query.lower():
+            return True
+        return bool(re.search(r"(?is)\bA\.\s+.+\bB\.\s+.+\bC\.\s+.+\bD\.\s+", query))
 
     def search(self, query: str, top_k: int = 20, rerank_top: int = 5,
                synthesize: bool = True, cache_read: bool = True) -> dict:
@@ -1892,20 +2000,34 @@ class SemanticCacheController:
                 "retrieval": getattr(self, "_last_retrieval_info", {}),
             }
 
-        source_text = "\n\n---\n\n".join(r["text"] for r in results[:3])
-        t_synth = time.time()
-        model = EXECUTOR_MODEL
-        response = create_llm_message(
-            model=model,
-            max_tokens=512,
-            temperature=0,
-            system=(
+        source_limit = max(1, SYNTHESIS_MAX_CHUNKS)
+        source_text = "\n\n---\n\n".join(r["text"] for r in results[:source_limit])
+        is_choice_query = self._query_requests_choice_letter(query)
+        if is_choice_query:
+            system_prompt = (
+                "You are answering a multiple-choice benchmark question using ONLY "
+                "the provided documents. The query includes choices A, B, C, and D. "
+                "Compare the choices against the retrieved evidence and return exactly "
+                "one capital letter: A, B, C, or D. If evidence is incomplete, choose "
+                "the best-supported option from the given choices. Do not explain."
+            )
+            max_tokens = MCQ_SYNTHESIS_MAX_TOKENS
+        else:
+            system_prompt = (
                 "You are a document analysis expert. Answer the query using ONLY "
                 "the provided documents. If the answer isn't in the documents, say so. "
                 "Follow any output-format instruction in the query exactly. If the query "
                 "asks for a single multiple-choice letter, return only that letter. "
                 "Otherwise, cite specific details and be precise and thorough."
-            ),
+            )
+            max_tokens = SYNTHESIS_MAX_TOKENS
+        t_synth = time.time()
+        model = EXECUTOR_MODEL
+        response = create_llm_message(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=0,
+            system=system_prompt,
             messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}]
         )
         self.metrics.record_call(model, response.usage.input_tokens, response.usage.output_tokens)

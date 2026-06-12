@@ -114,6 +114,14 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(parse_choice(generation), "C")
 
+    def test_parse_choice_does_not_capture_answer_choice_prose(self):
+        generation = (
+            "The provided documents do not contain enough information to determine the "
+            "correct answer choice based on the evidence.\n\nA"
+        )
+
+        self.assertEqual(parse_choice(generation), "A")
+
     def test_build_query_preserves_multiple_choice_fields(self):
         query = build_query(_suite_row("row_1"))
 
@@ -188,7 +196,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(openrouter.evaluator_model, "anthropic/claude-haiku-4.5")
         self.assertIsNone(local.api_key_env)
         self.assertEqual(local.executor_model, "meta-llama/Llama-3.3-70B-Instruct")
-        self.assertEqual(local.evaluator_model, "mistralai/Mistral-Small-3.2-24B-Instruct-2506")
+        self.assertEqual(local.evaluator_model, "mistralai/Mistral-Small-24B-Instruct-2501")
 
 
 if __name__ == "__main__":

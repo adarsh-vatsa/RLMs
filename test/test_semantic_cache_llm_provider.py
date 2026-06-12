@@ -163,7 +163,7 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
             scs.configure_llm_provider(
                 provider="openai_compatible",
                 executor_model="meta-llama/Llama-3.3-70B-Instruct",
-                evaluator_model="mistralai/Mistral-Small-3.2-24B-Instruct-2506",
+                evaluator_model="mistralai/Mistral-Small-24B-Instruct-2501",
                 openai_compat_base_url="http://shared:8000/v1",
                 openai_compat_executor_base_url="http://executor:8000/v1",
                 openai_compat_evaluator_base_url="http://evaluator:8001/v1",
@@ -188,7 +188,7 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertEqual(calls[1]["url"], "http://evaluator:8001/v1/chat/completions")
         self.assertEqual(calls[2]["url"], "http://shared:8000/v1/chat/completions")
         self.assertEqual(calls[0]["body"]["model"], "meta-llama/Llama-3.3-70B-Instruct")
-        self.assertEqual(calls[1]["body"]["model"], "mistralai/Mistral-Small-3.2-24B-Instruct-2506")
+        self.assertEqual(calls[1]["body"]["model"], "mistralai/Mistral-Small-24B-Instruct-2501")
 
     def test_openai_compatible_auth_header_is_added_when_key_env_is_configured(self):
         calls = []

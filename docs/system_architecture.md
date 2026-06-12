@@ -111,7 +111,8 @@ encode_documents(["The defendant was charged with..."])
 
 - **Architecture**: Generative cross-encoder using `AutoModelForCausalLM`
 - **Scoring**: Extracts `yes`/`no` token log-probabilities → `softmax → P(yes)` = relevance score
-- **Relevance gate**: Configurable threshold (default 0.5) filters irrelevant documents
+- **Relevance gate**: Configurable threshold (default 0.20) filters irrelevant documents
+- **Memory controls**: Processes candidates in bounded batches (`SEMANTIC_CACHE_RERANKER_BATCH_SIZE`, default 4), keeps prompts capped by `SEMANTIC_CACHE_RERANKER_MAX_LENGTH` (default 8192), and asks Qwen3 for only the final-position logits when supported
 - **Chat template**: Uses Qwen3's built-in reranker prompt format with `<Instruct>`, `<Query>`, `<Document>` tags
 - **Cost**: $0 (runs locally)
 - **Latency**: ~10.9s for 20 candidates on CPU (benefits significantly from GPU)
@@ -317,15 +318,15 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 1. Encode query via `encode_query()` (with instruction prefix)
 2. FAISS search for top-20 candidates (~130ms)
 3. Extract text from FAISS metadata for each candidate
-4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.5)
-5. Return top-5 reranked results with scores and metadata
-6. If FAISS produced candidates but the reranker returns zero results, fall back to the top FAISS candidates and record retrieval telemetry
+4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.20)
+5. Return top-5 reranked/backfilled results with scores and metadata
+6. If the reranker returns too few results, backfill from the FAISS ranking and record retrieval telemetry
 
-`ingest()` defaults to rebuilding the active document index for the provided directory. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
+`ingest()` defaults to rebuilding the active document index for the provided directory with 4,000-character chunks and 500-character overlap. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
 
-> **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.5 threshold ensures completely irrelevant documents (e.g., about bail conditions when asking about charges) are filtered, even if FAISS gave them a high vector similarity score.
+> **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.20 threshold keeps irrelevant documents filtered while avoiding evidence starvation on long-context benchmark chunks where reranker scores are not perfectly calibrated.
 
-> **Why fallback exists**: The reranker remains the preferred path, but a strict relevance gate can reject all long legal chunks even when FAISS found usable evidence. The fallback prevents that zero-result hard failure while keeping synthesis bounded to the selected top chunks.
+> **Why backfill exists**: The reranker remains the preferred path, but a strict relevance gate can reject or under-supply long chunks even when FAISS found usable evidence. Backfill prevents evidence starvation while keeping synthesis bounded to the selected top chunks.
 
 #### 2n. Full Search Pipeline (`search`)
 **Line 1130** · The main entry point for domain-specific clients.
@@ -468,6 +469,8 @@ The same library can serve: legal filings, financial documents, medical records,
 |----------|-------|---------|
 | `EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Local embedding model |
 | `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Local cross-encoder reranker |
+| `RERANKER_BATCH_SIZE` | 4 | Max reranker candidates per local model forward pass |
+| `RERANKER_MAX_LENGTH` | 8192 | Max reranker prompt tokens including prompt prefix/suffix |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |
