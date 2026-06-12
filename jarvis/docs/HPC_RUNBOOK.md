@@ -482,6 +482,7 @@ Start the evaluator service:
 
 ```bash
 MODULES="cuda12.8/toolkit/12.8.1" \
+EVALUATOR_PORT=8011 \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
@@ -507,8 +508,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1081229.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1081230.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1083993.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1083994.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
