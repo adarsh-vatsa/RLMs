@@ -32,6 +32,11 @@ DEFAULT_SOURCE_JSON = Path("benchmark_data/long_bench_v2/data.json")
 DEFAULT_ROW_TYPES = "original,exact,semantic"
 DEFAULT_OPENAI_COMPAT_EXECUTOR_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 DEFAULT_OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-24B-Instruct-2501"
+DEFAULT_TOP_K = 10
+DEFAULT_RERANK_TOP = 3
+DEFAULT_SYNTHESIS_MAX_CHUNKS = 3
+DEFAULT_ROW_ORDER = "source_grouped"
+DEFAULT_CACHE_SAVE_INTERVAL = 10
 VALID_CACHE_TYPES = {"exact", "semantic", "knowledge", "miss", "unknown"}
 CHOICE_LETTERS = {"A", "B", "C", "D"}
 
@@ -49,6 +54,16 @@ def _coerce_text(value: object) -> str:
 def _parse_csv_values(raw: str) -> list[str]:
     values = [part.strip() for part in (raw or "").split(",")]
     return [part for part in values if part]
+
+
+def _coerce_int(value: object, default: int = 0) -> int:
+    text = _coerce_text(value)
+    if not text:
+        return default
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return default
 
 
 def _csv_cell(value: object) -> object:
@@ -149,6 +164,30 @@ def filter_suite_rows(rows: list[dict], row_types: Sequence[str], max_rows: int 
     return selected
 
 
+def order_suite_rows(rows: list[dict], row_order: str) -> list[dict]:
+    if row_order == "input":
+        return list(rows)
+    if row_order != "source_grouped":
+        raise ValueError(f"Unsupported --row-order: {row_order}")
+
+    source_order: list[str] = []
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        source_id = _coerce_text(row.get("source_id")) or _coerce_text(row.get("case_id"))
+        if source_id not in grouped:
+            source_order.append(source_id)
+            grouped[source_id] = []
+        grouped[source_id].append(row)
+    return [row for source_id in source_order for row in grouped[source_id]]
+
+
+def estimate_context_tokens(row: dict) -> int:
+    token_count = _coerce_int(row.get("token_count"), 0)
+    if token_count > 0:
+        return token_count
+    return int(round(len(_coerce_text(row.get("context")).split()) * 1.33))
+
+
 def build_query(row: dict) -> str:
     return (
         f"Question: {row['question']}\n\n"
@@ -222,13 +261,15 @@ def resolve_cache_namespace(
     row_types: Sequence[str],
     llm_provider: str = "anthropic",
     evaluator_model: str = "",
+    synthesis_max_chunks: int = 0,
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
     digest = hashlib.sha256(
         (
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
-            f"{llm_provider}\n{executor_model}\n{evaluator_model}\n{top_k}\n{rerank_top}\n{row_type_sig}"
+            f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
+            f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -382,6 +423,11 @@ def normalize_llm_args(args: argparse.Namespace) -> argparse.Namespace:
 
 def run_longbench_benchmark(args: argparse.Namespace) -> None:
     args = normalize_llm_args(args)
+    if args.synthesis_max_chunks < 1:
+        raise ValueError("--synthesis-max-chunks must be >= 1")
+    if args.cache_save_interval < 1:
+        raise ValueError("--cache-save-interval must be >= 1")
+
     suite_csv = Path(args.suite_csv)
     source_json_path = Path(args.source_json_path)
     row_types = _parse_csv_values(args.row_types)
@@ -391,6 +437,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     contexts = load_context_by_source_id(source_json_path)
     all_rows = load_suite_rows(suite_csv, contexts)
     selected_rows = filter_suite_rows(all_rows, row_types=row_types, max_rows=args.max_rows)
+    selected_rows = order_suite_rows(selected_rows, args.row_order)
     if not selected_rows:
         raise ValueError("No LongBench-v2 rows matched the requested filters")
 
@@ -432,8 +479,13 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             row_types=row_types,
             llm_provider=args.llm_provider,
             evaluator_model=args.evaluator_model,
+            synthesis_max_chunks=args.synthesis_max_chunks,
         )
-        cache_state_root = Path(args.cache_state_root) if args.cache_state_root else Path(args.output_dir) / ARTIFACT_SUBDIR / "cache_state"
+        cache_state_root = (
+            Path(args.cache_state_root)
+            if args.cache_state_root
+            else Path(args.output_dir) / ARTIFACT_SUBDIR / "cache_state"
+        )
         cache_state_path = cache_state_root / cache_namespace
         cache_state_existed_before_reset = cache_state_path.exists()
         if args.cache_reset and cache_state_existed_before_reset:
@@ -445,7 +497,13 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     print(f"\n[LONGBENCH-V2] Run id: {run_id}")
     print(f"[LONGBENCH-V2] Rows: {len(selected_rows)}")
     print(f"[LONGBENCH-V2] Row types: {row_types}")
+    print(f"[LONGBENCH-V2] Row order: {args.row_order}")
     print(f"[LONGBENCH-V2] Mode: {args.mode}")
+    print(
+        "[LONGBENCH-V2] Retrieval config: "
+        f"top_k={args.top_k}, rerank_top={args.rerank_top}, "
+        f"synthesis_max_chunks={args.synthesis_max_chunks}"
+    )
     print(f"[LONGBENCH-V2] Output dir: {out_dir}")
     if cache_state_enabled:
         print(f"[LONGBENCH-V2] Cache state root: {cache_state_root}")
@@ -464,33 +522,72 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         openai_compat_evaluator_base_url=args.openai_compat_evaluator_base_url,
         openai_compat_api_key_env=args.openai_compat_api_key_env,
     )
+    scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
+    effective_doc_chunk_size = int(scs.DOCUMENT_CHUNK_SIZE)
+    effective_doc_chunk_overlap = int(scs.DOCUMENT_CHUNK_OVERLAP)
+    effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
     shared_embedder = scs.EmbeddingEngine()
     shared_reranker = None if args.disable_reranker else scs.Reranker()
 
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
+    context_doc_cache: dict[str, Path] = {}
+    active_source_id = ""
+    cache_load_ms = 0.0
+    cache_save_count = 0
+    cache_final_save_ms = 0.0
+    cache_controller = None
 
-    for idx, row in enumerate(selected_rows, start=1):
-        print(f"[LONGBENCH-V2] Row {idx}/{len(selected_rows)}: {row['case_id']}")
-        docs_dir = _write_context_doc(out_dir, row)
-        controller_corpus_id = cache_namespace if cache_state_enabled else f"longbench_v2_{idx}"
-        controller = scs.SemanticCacheController(
+    if cache_state_enabled:
+        cache_controller = scs.SemanticCacheController(
             metrics=scs.ExecutionMetrics(),
             embedder=shared_embedder,
             reranker=shared_reranker,
-            corpus_id=controller_corpus_id,
+            corpus_id=cache_namespace,
             corpus_domain="longbench_v2",
         )
+        if cache_state_path is not None:
+            cache_load_attempts = 1
+            t_load = time.time()
+            if cache_state_path.exists() and cache_controller.load(cache_state_path):
+                cache_load_successes = 1
+            cache_load_ms = (time.time() - t_load) * 1000.0
+            # The benchmark runner owns persistence cadence; avoid store() auto-saves.
+            cache_controller._persist_path = None
+        cache_entries_before_run = cache_controller.get_total_entries()
 
-        if cache_state_enabled and cache_state_path is not None:
-            cache_load_attempts += 1
-            if cache_state_path.exists() and controller.load(cache_state_path):
-                cache_load_successes += 1
-            loaded_entries = controller.get_total_entries()
-            if idx == 1:
-                cache_entries_before_run = loaded_entries
+    for idx, row in enumerate(selected_rows, start=1):
+        row_t0 = time.time()
+        print(f"[LONGBENCH-V2] Row {idx}/{len(selected_rows)}: {row['case_id']}")
+        source_id = _coerce_text(row.get("source_id")) or _coerce_text(row.get("case_id"))
+        context_write_ms = 0.0
+        if source_id in context_doc_cache:
+            docs_dir = context_doc_cache[source_id]
+        else:
+            t_write = time.time()
+            docs_dir = _write_context_doc(out_dir, row)
+            context_write_ms = (time.time() - t_write) * 1000.0
+            context_doc_cache[source_id] = docs_dir
 
-        controller.ingest(docs_dir)
+        if cache_state_enabled:
+            controller = cache_controller
+        else:
+            controller = scs.SemanticCacheController(
+                metrics=scs.ExecutionMetrics(),
+                embedder=shared_embedder,
+                reranker=shared_reranker,
+                corpus_id=f"longbench_v2_{idx}",
+                corpus_domain="longbench_v2",
+            )
+
+        ingest_ms = 0.0
+        ingested_chunks = 0
+        if not cache_state_enabled or source_id != active_source_id:
+            t_ingest = time.time()
+            ingested_chunks = controller.ingest(docs_dir)
+            ingest_ms = (time.time() - t_ingest) * 1000.0
+            active_source_id = source_id
+
         query = build_query(row)
         before = _snapshot_metrics(controller.metrics)
         t0 = time.time()
@@ -535,12 +632,26 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             **prediction_row,
             "mode": args.mode,
             "token_count": row.get("token_count", ""),
+            "context_chars": len(row.get("context", "")),
+            "context_token_estimate": estimate_context_tokens(row),
+            "top_k": args.top_k,
+            "rerank_top": args.rerank_top,
+            "synthesis_max_chunks": effective_synthesis_max_chunks,
+            "doc_chunk_size": effective_doc_chunk_size,
+            "doc_chunk_overlap": effective_doc_chunk_overlap,
+            "ingested_chunks": ingested_chunks,
             "expected_cache_type": row.get("expected_cache_type", ""),
             "expected_from_cache": row.get("expected_from_cache", ""),
             "from_cache": actual_from_cache,
             "cache_type": actual_cache_type,
             "answer_correct": correct,
             "latency_ms": round(latency_ms, 3),
+            "row_wall_ms": round((time.time() - row_t0) * 1000.0, 3),
+            "cache_load_ms": round(cache_load_ms, 3) if idx == 1 else 0.0,
+            "context_write_ms": round(context_write_ms, 3),
+            "ingest_ms": round(ingest_ms, 3),
+            "search_ms": round(latency_ms, 3),
+            "save_ms": 0.0,
             "delta_calls": after["calls"] - before["calls"],
             "delta_input_tokens": after["input_tokens"] - before["input_tokens"],
             "delta_output_tokens": after["output_tokens"] - before["output_tokens"],
@@ -553,9 +664,25 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         }
         bridge_rows.append(bridge_row)
 
-        if cache_state_enabled and cache_state_path is not None:
+        if (
+            cache_state_enabled
+            and cache_state_path is not None
+            and idx % args.cache_save_interval == 0
+        ):
+            t_save = time.time()
             controller.save(cache_state_path)
+            save_ms = (time.time() - t_save) * 1000.0
+            bridge_row["save_ms"] = round(save_ms, 3)
+            cache_save_count += 1
             cache_entries_after_run = controller.get_total_entries()
+        bridge_row["row_wall_ms"] = round((time.time() - row_t0) * 1000.0, 3)
+
+    if cache_state_enabled and cache_state_path is not None and cache_controller is not None:
+        t_final_save = time.time()
+        cache_controller.save(cache_state_path)
+        cache_final_save_ms = (time.time() - t_final_save) * 1000.0
+        cache_save_count += 1
+        cache_entries_after_run = cache_controller.get_total_entries()
 
     with predictions_path.open("w", encoding="utf-8") as handle:
         for row in prediction_rows:
@@ -574,6 +701,16 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     actual_route_counts = {
         route: sum(1 for row in bridge_rows if row["cache_type"] == route)
         for route in sorted(VALID_CACHE_TYPES)
+    }
+    timing_summary = {
+        "cache_load_ms": round(cache_load_ms, 3),
+        "cache_final_save_ms": round(cache_final_save_ms, 3),
+        "cache_save_count": cache_save_count,
+        "context_write_ms": round(sum(float(row.get("context_write_ms") or 0.0) for row in bridge_rows), 3),
+        "ingest_ms": round(sum(float(row.get("ingest_ms") or 0.0) for row in bridge_rows), 3),
+        "search_ms": round(sum(float(row.get("search_ms") or 0.0) for row in bridge_rows), 3),
+        "interval_save_ms": round(sum(float(row.get("save_ms") or 0.0) for row in bridge_rows), 3),
+        "row_wall_ms": round(sum(float(row.get("row_wall_ms") or 0.0) for row in bridge_rows), 3),
     }
 
     manifest = {
@@ -599,6 +736,11 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "evaluator_model": args.evaluator_model,
         "top_k": args.top_k,
         "rerank_top": args.rerank_top,
+        "synthesis_max_chunks": effective_synthesis_max_chunks,
+        "doc_chunk_size": effective_doc_chunk_size,
+        "doc_chunk_overlap": effective_doc_chunk_overlap,
+        "cache_save_interval": args.cache_save_interval,
+        "row_order": args.row_order,
         "reranker_disabled": bool(args.disable_reranker),
         "row_types_requested": row_types,
         "max_rows": args.max_rows,
@@ -608,6 +750,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "answer_accuracy": round(correct_count / len(bridge_rows), 6) if bridge_rows else 0.0,
         "actual_route_counts": actual_route_counts,
         "by_row_type": summarize_rows(bridge_rows, "row_type"),
+        "timing_summary": timing_summary,
         "artifacts": {
             "predictions": str(predictions_path),
             "bridge_rows": str(bridge_rows_path),
@@ -656,7 +799,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             f"loads={cache_load_successes}/{cache_load_attempts}, "
             f"hits={cache_hits}/{len(bridge_rows)}, "
             f"entries_before={cache_entries_before_run}, "
-            f"entries_after={cache_entries_after_run}"
+            f"entries_after={cache_entries_after_run}, "
+            f"saves={cache_save_count}"
         )
 
 
@@ -678,8 +822,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--openai-compat-executor-base-url", type=str, default=os.getenv("OPENAI_COMPAT_EXECUTOR_BASE_URL", ""))
     parser.add_argument("--openai-compat-evaluator-base-url", type=str, default=os.getenv("OPENAI_COMPAT_EVALUATOR_BASE_URL", ""))
     parser.add_argument("--openai-compat-api-key-env", type=str, default=os.getenv("OPENAI_COMPAT_API_KEY_ENV", ""))
-    parser.add_argument("--top-k", type=int, default=20)
-    parser.add_argument("--rerank-top", type=int, default=5)
+    parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
+    parser.add_argument("--rerank-top", type=int, default=DEFAULT_RERANK_TOP)
+    parser.add_argument("--synthesis-max-chunks", type=int, default=DEFAULT_SYNTHESIS_MAX_CHUNKS)
+    parser.add_argument(
+        "--row-order",
+        choices=["input", "source_grouped"],
+        default=DEFAULT_ROW_ORDER,
+        help="Row execution order. source_grouped keeps rows with the same source_id adjacent.",
+    )
+    parser.add_argument(
+        "--cache-save-interval",
+        type=int,
+        default=DEFAULT_CACHE_SAVE_INTERVAL,
+        help="Save cache state every N rows in cache mode, plus a final save. Use 1 for per-row saves.",
+    )
     parser.add_argument("--disable-reranker", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_artifacts"))
     parser.add_argument("--manifest-note", type=str, default="")

@@ -18,6 +18,7 @@ from long_bench_v2.export_csv import CSV_COLUMNS
 DEFAULT_INPUT_PATH = Path("benchmark_data/long_bench_v2/data_cache_suite.csv")
 DEFAULT_OUTPUT_PATH = Path("benchmark_data/long_bench_v2/data_cache_suite_sample.csv")
 DEFAULT_ROW_TYPES = ("original", "exact", "semantic")
+DEFAULT_SELECTION_STRATEGY = "random"
 
 
 def _read_rows(path: Path) -> list[dict]:
@@ -45,31 +46,83 @@ def parse_row_types(value: str) -> tuple[str, ...]:
     return row_types
 
 
-def sample_rows(rows: list[dict], sample_size: int, row_types: Sequence[str], seed: int) -> list[dict]:
+def _token_count(row: dict) -> int | None:
+    raw = (row.get("token_count") or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(float(raw))
+    except ValueError:
+        return None
+
+
+def sample_rows(
+    rows: list[dict],
+    sample_size: int,
+    row_types: Sequence[str],
+    seed: int,
+    max_token_count: int = 0,
+    selection_strategy: str = DEFAULT_SELECTION_STRATEGY,
+) -> list[dict]:
     if sample_size < 0:
         raise ValueError("sample_size must be non-negative")
+    if max_token_count < 0:
+        raise ValueError("max_token_count must be non-negative")
+    if selection_strategy not in {"random", "shortest"}:
+        raise ValueError("selection_strategy must be random or shortest")
 
     row_type_set = set(row_types)
     source_ids_by_type: dict[str, set[str]] = {row_type: set() for row_type in row_types}
+    rows_by_source: dict[str, list[dict]] = {}
     for row in rows:
         row_type = row.get("row_type", "")
         source_id = row.get("source_id", "")
         if row_type in row_type_set and source_id:
             source_ids_by_type[row_type].add(source_id)
+            rows_by_source.setdefault(source_id, []).append(row)
 
     missing_row_types = [row_type for row_type, source_ids in source_ids_by_type.items() if not source_ids]
     if missing_row_types:
         raise ValueError(f"Input CSV has no rows for row types: {', '.join(missing_row_types)}")
 
     eligible_source_ids = set.intersection(*source_ids_by_type.values()) if source_ids_by_type else set()
+    source_token_counts: dict[str, int] = {}
+    if max_token_count > 0 or selection_strategy == "shortest":
+        for source_id in sorted(eligible_source_ids):
+            token_counts = [
+                token_count
+                for row in rows_by_source.get(source_id, [])
+                if row.get("row_type", "") in row_type_set
+                for token_count in [_token_count(row)]
+                if token_count is not None
+            ]
+            if not token_counts:
+                eligible_source_ids.discard(source_id)
+                continue
+            source_token_counts[source_id] = max(token_counts)
+
+    if max_token_count > 0:
+        eligible_source_ids = {
+            source_id
+            for source_id in eligible_source_ids
+            if source_token_counts.get(source_id, max_token_count + 1) <= max_token_count
+        }
+
     if sample_size > len(eligible_source_ids):
         raise ValueError(
             f"Requested {sample_size} source-linked samples, but only {len(eligible_source_ids)} "
             f"source_ids have all requested row types: {', '.join(row_types)}"
         )
 
-    rng = random.Random(seed)
-    selected_source_ids = set(rng.sample(sorted(eligible_source_ids), sample_size))
+    if selection_strategy == "shortest":
+        ordered_source_ids = sorted(
+            eligible_source_ids,
+            key=lambda source_id: (source_token_counts.get(source_id, 0), source_id),
+        )
+        selected_source_ids = set(ordered_source_ids[:sample_size])
+    else:
+        rng = random.Random(seed)
+        selected_source_ids = set(rng.sample(sorted(eligible_source_ids), sample_size))
     sampled_rows = [
         row
         for row in rows
@@ -111,6 +164,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--sample-size", type=int, default=10, help="Rows to keep per row type. Default: 10")
     parser.add_argument(
+        "--max-token-count",
+        type=int,
+        default=0,
+        help="Only sample source_ids whose requested rows have token_count at or below this value. 0 disables the cap.",
+    )
+    parser.add_argument(
+        "--selection-strategy",
+        choices=["random", "shortest"],
+        default=DEFAULT_SELECTION_STRATEGY,
+        help="Choose eligible sources randomly or by shortest token_count first. Default: random.",
+    )
+    parser.add_argument(
         "--row-types",
         default=",".join(DEFAULT_ROW_TYPES),
         help="Comma-separated row types to sample together by source_id. Default: original,exact,semantic",
@@ -120,7 +185,14 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     row_types = parse_row_types(args.row_types)
     rows = _read_rows(args.input_path)
-    sampled_rows = sample_rows(rows, sample_size=args.sample_size, row_types=row_types, seed=args.seed)
+    sampled_rows = sample_rows(
+        rows,
+        sample_size=args.sample_size,
+        row_types=row_types,
+        seed=args.seed,
+        max_token_count=args.max_token_count,
+        selection_strategy=args.selection_strategy,
+    )
     _write_rows(args.output_path, sampled_rows)
     print(f"[LONGBENCH-V2] Wrote {len(sampled_rows)} rows to {args.output_path}")
     print_row_type_summary(sampled_rows)

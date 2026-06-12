@@ -379,6 +379,46 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
         self.assertEqual(sampled_by_type["original"], sampled_by_type["semantic"])
         self.assertEqual(len(sampled_by_type["original"]), 2)
 
+    def test_sample_rows_filters_by_token_count_and_can_select_shortest(self):
+        rows = []
+        token_counts = {"row_1": "300", "row_2": "100", "row_3": "200", "row_4": "900"}
+        for source_id, token_count in token_counts.items():
+            for row_type in ["original", "exact", "semantic"]:
+                rows.append({
+                    "case_id": f"{source_id}__{row_type}",
+                    "source_id": source_id,
+                    "row_type": row_type,
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": "ctx",
+                    "token_count": token_count,
+                    "expected_cache_type": row_type,
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": "Single-Document QA",
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                })
+
+        sampled = sample_rows(
+            rows,
+            sample_size=2,
+            row_types=("original", "exact", "semantic"),
+            seed=0,
+            max_token_count=300,
+            selection_strategy="shortest",
+        )
+
+        self.assertEqual({row["source_id"] for row in sampled}, {"row_2", "row_3"})
+        self.assertEqual(len(sampled), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

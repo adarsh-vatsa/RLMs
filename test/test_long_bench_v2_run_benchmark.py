@@ -4,19 +4,23 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from long_bench_v2.run_benchmark import (
     answer_correct,
+    build_arg_parser,
     build_cache_reuse_manifest,
     build_query,
     filter_suite_rows,
     load_context_by_source_id,
     load_suite_rows,
     normalize_llm_args,
+    order_suite_rows,
     parse_choice,
     resolve_cache_namespace,
+    run_longbench_benchmark,
 )
 
 
@@ -58,6 +62,108 @@ def _suite_row(source_id: str, row_type: str = "original") -> dict:
     }
 
 
+class FakeMetrics:
+    def __init__(self):
+        self.calls = 0
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.cost = 0.0
+
+    def get_totals(self):
+        return {
+            "calls": self.calls,
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "cost": self.cost,
+        }
+
+
+class FakeController:
+    instances = []
+    load_calls = []
+    save_calls = []
+    ingest_calls = []
+    search_calls = []
+
+    def __init__(self, metrics, embedder=None, reranker=None, corpus_id=None, corpus_domain="general"):
+        self.metrics = metrics
+        self.entries = 0
+        self._persist_path = None
+        FakeController.instances.append(self)
+
+    def load(self, path):
+        FakeController.load_calls.append(Path(path))
+        self.entries = 1
+        return True
+
+    def save(self, path):
+        FakeController.save_calls.append(Path(path))
+        Path(path).mkdir(parents=True, exist_ok=True)
+
+    def get_total_entries(self):
+        return self.entries
+
+    def ingest(self, docs_dir):
+        FakeController.ingest_calls.append(Path(docs_dir))
+        return 2
+
+    def search(self, query, top_k=20, rerank_top=5, synthesize=True, cache_read=True):
+        self.metrics.calls += 1
+        self.metrics.input_tokens += 10
+        self.metrics.output_tokens += 1
+        self.metrics.cost += 0.01
+        self.entries += 1
+        FakeController.search_calls.append(
+            {
+                "query": query,
+                "top_k": top_k,
+                "rerank_top": rerank_top,
+                "synthesize": synthesize,
+                "cache_read": cache_read,
+            }
+        )
+        return {
+            "answer": "A",
+            "from_cache": False,
+            "retrieval": {
+                "faiss_candidate_count": top_k,
+                "candidate_text_count": top_k,
+                "reranker_enabled": True,
+                "reranker_returned_count": rerank_top,
+                "reranker_fallback_used": False,
+            },
+        }
+
+
+class FakeScs:
+    DOCUMENT_CHUNK_SIZE = 10000
+    DOCUMENT_CHUNK_OVERLAP = 1000
+    SYNTHESIS_MAX_CHUNKS = 5
+    SemanticCacheController = FakeController
+    ExecutionMetrics = FakeMetrics
+
+    @staticmethod
+    def configure_llm_provider(**kwargs):
+        FakeScs.configure_kwargs = kwargs
+
+    @staticmethod
+    def EmbeddingEngine():
+        return object()
+
+    @staticmethod
+    def Reranker():
+        return object()
+
+
+def _reset_fake_controller():
+    FakeController.instances = []
+    FakeController.load_calls = []
+    FakeController.save_calls = []
+    FakeController.ingest_calls = []
+    FakeController.search_calls = []
+    FakeScs.SYNTHESIS_MAX_CHUNKS = 5
+
+
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
     def test_load_suite_rows_resolves_context_from_source_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -88,15 +194,57 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
 
         self.assertEqual([row["case_id"] for row in selected], ["row_1__original", "row_1__semantic"])
 
+    def test_source_grouped_order_keeps_source_rows_adjacent(self):
+        rows = [
+            _suite_row("row_1", "original"),
+            _suite_row("row_2", "original"),
+            _suite_row("row_1", "exact"),
+            _suite_row("row_2", "exact"),
+        ]
+
+        grouped = order_suite_rows(rows, "source_grouped")
+
+        self.assertEqual(
+            [row["case_id"] for row in grouped],
+            ["row_1__original", "row_1__exact", "row_2__original", "row_2__exact"],
+        )
+        self.assertEqual(order_suite_rows(rows, "input"), rows)
+
+    def test_runner_defaults_are_faster_without_changing_doc_chunk_defaults(self):
+        parser = build_arg_parser()
+        args = parser.parse_args([])
+
+        self.assertEqual(args.top_k, 10)
+        self.assertEqual(args.rerank_top, 3)
+        self.assertEqual(args.synthesis_max_chunks, 3)
+        self.assertEqual(args.row_order, "source_grouped")
+        self.assertEqual(args.cache_save_interval, 10)
+
+        import semantic_cache_system as scs
+
+        self.assertEqual(scs.DOCUMENT_CHUNK_SIZE, 10000)
+        self.assertEqual(scs.DOCUMENT_CHUNK_OVERLAP, 1000)
+
     def test_resolve_cache_namespace_is_deterministic(self):
         rows = [_suite_row("row_1", "original"), _suite_row("row_1", "exact")]
 
         first = resolve_cache_namespace("suite-sha", "source-sha", rows, "model-a", 20, 5, ["original", "exact"])
         second = resolve_cache_namespace("suite-sha", "source-sha", list(reversed(rows)), "model-a", 20, 5, ["exact", "original"])
         changed = resolve_cache_namespace("suite-sha", "source-sha", rows, "model-b", 20, 5, ["original", "exact"])
+        changed_synthesis = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            synthesis_max_chunks=3,
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
+        self.assertNotEqual(first, changed_synthesis)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -197,6 +345,81 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertIsNone(local.api_key_env)
         self.assertEqual(local.executor_model, "meta-llama/Llama-3.3-70B-Instruct")
         self.assertEqual(local.evaluator_model, "mistralai/Mistral-Small-24B-Instruct-2501")
+
+    def test_run_benchmark_uses_synthesis_override_grouping_and_cache_save_interval(self):
+        _reset_fake_controller()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            source_path = tmp / "data.json"
+            suite_path = tmp / "suite.csv"
+            output_dir = tmp / "artifacts"
+            source_path.write_text(
+                json.dumps([
+                    _source_row("row_1", "Context one"),
+                    _source_row("row_2", "Context two"),
+                ]),
+                encoding="utf-8",
+            )
+            rows = [
+                _suite_row("row_1", "original"),
+                _suite_row("row_2", "original"),
+                _suite_row("row_1", "exact"),
+            ]
+            with suite_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+                writer.writeheader()
+                writer.writerows(rows)
+
+            args = build_arg_parser().parse_args(
+                [
+                    "--suite-csv",
+                    str(suite_path),
+                    "--source-json-path",
+                    str(source_path),
+                    "--mode",
+                    "cache",
+                    "--cache-state-root",
+                    str(tmp / "cache_state"),
+                    "--cache-save-interval",
+                    "2",
+                    "--synthesis-max-chunks",
+                    "4",
+                    "--top-k",
+                    "9",
+                    "--rerank-top",
+                    "2",
+                    "--output-dir",
+                    str(output_dir),
+                ]
+            )
+
+            with patch("long_bench_v2.run_benchmark._import_semantic_cache_system", return_value=FakeScs):
+                run_longbench_benchmark(args)
+
+            run_dirs = list((output_dir / "longbench_v2").glob("20*"))
+            manifest = json.loads((run_dirs[0] / "manifest.json").read_text())
+            bridge_rows = [
+                json.loads(line)
+                for line in (run_dirs[0] / "bridge_rows.jsonl").read_text().splitlines()
+            ]
+
+        self.assertEqual(FakeScs.SYNTHESIS_MAX_CHUNKS, 4)
+        self.assertEqual(len(FakeController.instances), 1)
+        self.assertEqual(len(FakeController.load_calls), 0)
+        self.assertEqual(len(FakeController.save_calls), 2)
+        self.assertEqual(len(FakeController.ingest_calls), 2)
+        self.assertEqual([row["case_id"] for row in bridge_rows], ["row_1__original", "row_1__exact", "row_2__original"])
+        self.assertTrue(all(call["top_k"] == 9 for call in FakeController.search_calls))
+        self.assertTrue(all(call["rerank_top"] == 2 for call in FakeController.search_calls))
+        self.assertEqual(manifest["synthesis_max_chunks"], 4)
+        self.assertEqual(manifest["top_k"], 9)
+        self.assertEqual(manifest["rerank_top"], 2)
+        self.assertEqual(manifest["doc_chunk_size"], 10000)
+        self.assertEqual(manifest["doc_chunk_overlap"], 1000)
+        self.assertEqual(manifest["cache_save_interval"], 2)
+        self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
+        self.assertIn("ingest_ms", bridge_rows[0])
+        self.assertIn("search_ms", bridge_rows[0])
 
 
 if __name__ == "__main__":

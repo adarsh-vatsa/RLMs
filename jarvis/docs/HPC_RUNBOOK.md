@@ -343,21 +343,30 @@ squeue -u "$USER"
 tail -f "$PROJECT_LOG_DIR"/rlms-client-<job_id>.out
 ```
 
-Run a tiny LongBench-v2 plumbing check against the same endpoint:
+Run a tiny LongBench-v2 plumbing check against the same endpoint. The client
+command first creates a source-linked short-context sample; this is preferable to
+`--max-rows` on the full CSV because the first LongBench rows can be very large.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMALL_SMOKE_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMALL_SMOKE_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
+CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/small_smoke.csv \
+  --sample-size 1 \
+  --max-token-count 75000 \
+  --selection-strategy shortest \
+  --seed 0 && \
+uv run python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_artifacts/longbench_v2_samples/small_smoke.csv \
   --llm-provider openai_compatible \
   --executor-model Qwen/Qwen2.5-7B-Instruct \
   --evaluator-model Qwen/Qwen2.5-7B-Instruct \
   --mode cache \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
-  --max-rows 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-smoke' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -514,20 +523,27 @@ evaluator: http://<evaluator-node>:8001/v1
 
 ## 11. Run A Small Benchmark Client Job
 
-Start with a capped LongBench-v2 run:
+Start with a sampled LongBench-v2 run:
 
 ```bash
 LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
+CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
+  --sample-size 3 \
+  --max-token-count 75000 \
+  --selection-strategy shortest \
+  --seed 0 && \
+uv run python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
   --llm-provider openai_compatible \
   --mode cache \
   --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
-  --max-rows 10 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -545,10 +561,10 @@ log. They should point under `benchmark_artifacts/longbench_v2/...`.
 
 The small validation command resets only this selected cache namespace. Keep
 that reset while testing retrieval or synthesis changes; otherwise exact and
-semantic rows can reuse a bad first-write answer from an older run. Retrieval
-defaults in `semantic_cache_system.py` are intentionally biased toward more
-evidence for this LongBench-style multiple-choice check. If you need to tune
-without editing code, set:
+semantic rows can reuse a bad first-write answer from an older run. The
+LongBench-v2 runner now defaults to `--top-k 10`, `--rerank-top 3`,
+`--synthesis-max-chunks 3`, `--row-order source_grouped`, and
+`--cache-save-interval 10`. It does not change document chunking.
 
 ```bash
 SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
@@ -557,8 +573,13 @@ SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
-SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5
 SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+```
+
+Prefer the runner flags for benchmark breadth:
+
+```bash
+--top-k 10 --rerank-top 3 --synthesis-max-chunks 3
 ```
 
 ## 12. Run The Full Benchmark
