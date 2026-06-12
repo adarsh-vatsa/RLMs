@@ -568,7 +568,7 @@ export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -590,8 +590,8 @@ uv run python long_bench_v2/run_benchmark.py \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
   --top-k 10 \
-  --rerank-top 3 \
-  --synthesis-max-chunks 3 \
+  --rerank-top 5 \
+  --synthesis-max-chunks 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small' \
   bash adarsh-rlms/jarvis/run.sh submit client
