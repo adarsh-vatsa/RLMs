@@ -139,6 +139,7 @@ class FakeScs:
     DOCUMENT_CHUNK_SIZE = 10000
     DOCUMENT_CHUNK_OVERLAP = 1000
     SYNTHESIS_MAX_CHUNKS = 5
+    MCQ_PROMPT_STYLE = "strict"
     SemanticCacheController = FakeController
     ExecutionMetrics = FakeMetrics
 
@@ -172,6 +173,7 @@ def _reset_fake_controller():
     FakeController.ingest_calls = []
     FakeController.search_calls = []
     FakeScs.SYNTHESIS_MAX_CHUNKS = 5
+    FakeScs.MCQ_PROMPT_STYLE = "strict"
 
 
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
@@ -261,11 +263,22 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             openai_compatible_extra_body={"executor": {"chat_template_kwargs": {"enable_thinking": False}}},
         )
+        changed_prompt_style = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            mcq_prompt_style="strict",
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
         self.assertNotEqual(first, changed_synthesis)
         self.assertNotEqual(first, changed_extra_body)
+        self.assertNotEqual(first, changed_prompt_style)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -439,6 +452,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["rerank_top"], 2)
         self.assertEqual(manifest["doc_chunk_size"], 10000)
         self.assertEqual(manifest["doc_chunk_overlap"], 1000)
+        self.assertEqual(manifest["mcq_prompt_style"], "strict")
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
         self.assertEqual(

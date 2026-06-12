@@ -31,6 +31,7 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
     def tearDown(self):
         for name in scs.OPENAI_COMPAT_EXTRA_BODY_ENVS:
             os.environ.pop(name, None)
+        scs.MCQ_PROMPT_STYLE = "default"
         scs.configure_llm_provider(
             provider="anthropic",
             api_key_env="ANTHROPIC_API_KEY",
@@ -353,6 +354,20 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertEqual(parsed, {"hit": True, "id": "3"})
         self.assertIsNone(scs._extract_llm_json_object("<think>unfinished"))
         self.assertIsNone(scs._extract_llm_json_object("not json"))
+
+    def test_mcq_prompt_style_can_use_strict_elimination_prompt(self):
+        original_style = scs.MCQ_PROMPT_STYLE
+        try:
+            scs.MCQ_PROMPT_STYLE = "strict"
+            strict_prompt = scs._mcq_system_prompt()
+            scs.MCQ_PROMPT_STYLE = "default"
+            default_prompt = scs._mcq_system_prompt()
+        finally:
+            scs.MCQ_PROMPT_STYLE = original_style
+
+        self.assertIn("Reject choices", strict_prompt)
+        self.assertIn("overstate the evidence", strict_prompt)
+        self.assertNotEqual(strict_prompt, default_prompt)
 
     def test_sniper_fails_closed_on_malformed_or_out_of_range_json(self):
         metrics = scs.ExecutionMetrics()

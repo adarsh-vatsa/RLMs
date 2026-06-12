@@ -568,9 +568,10 @@ export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -590,8 +591,8 @@ uv run python long_bench_v2/run_benchmark.py \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
   --top-k 10 \
-  --rerank-top 5 \
-  --synthesis-max-chunks 5 \
+  --rerank-top 3 \
+  --synthesis-max-chunks 3 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -631,6 +632,7 @@ SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
 ```
@@ -639,6 +641,47 @@ Prefer the runner flags for benchmark breadth:
 
 ```bash
 --top-k 10 --rerank-top 3 --synthesis-max-chunks 3
+```
+
+Optional prompt ablation: if the comparable sampled run still misses the same
+source group, rerun the sampled CSV with the strict MCQ prompt. This keeps the
+same retrieval and model profile, but asks the executor to silently reject
+choices that are too narrow, too broad, partially supported, or overstate the
+evidence before returning a single letter.
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
+export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
+export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
+export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
+export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
+uv run python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --cache-reset \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original,exact,semantic \
+  --top-k 10 \
+  --rerank-top 3 \
+  --synthesis-max-chunks 3 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-l40s-small-strict-mcq' \
+  bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
 Optional retrieval ablation: if the comparable sampled run has unexpectedly low
@@ -661,6 +704,7 @@ export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -707,6 +751,7 @@ export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 

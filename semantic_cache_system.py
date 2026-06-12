@@ -130,6 +130,7 @@ MIN_RERANKED_RESULTS = _env_int("SEMANTIC_CACHE_MIN_RERANKED_RESULTS", 5)
 SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
+MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -486,6 +487,29 @@ def _coerce_bool(value) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "allow"}
     return bool(value)
+
+
+def _mcq_system_prompt() -> str:
+    if MCQ_PROMPT_STYLE == "strict":
+        return (
+            "You are solving a LongBench-v2 multiple-choice question using ONLY the "
+            "provided documents. The query includes choices A, B, C, and D. Silently "
+            "check each option against the documents before answering. The correct "
+            "choice must answer the exact question asked and be directly supported by "
+            "the documents. Reject choices that are only partially supported, too "
+            "narrow, too broad, overstate the evidence, add unsupported causal claims, "
+            "or are merely mentioned in the documents. If more than one option seems "
+            "plausible, choose the option best supported by the overall evidence and "
+            "the wording of the question. Return exactly one capital letter: A, B, C, "
+            "or D. Do not explain."
+        )
+    return (
+        "You are answering a multiple-choice benchmark question using ONLY "
+        "the provided documents. The query includes choices A, B, C, and D. "
+        "Compare the choices against the retrieved evidence and return exactly "
+        "one capital letter: A, B, C, or D. If evidence is incomplete, choose "
+        "the best-supported option from the given choices. Do not explain."
+    )
 
 
 def create_llm_message(**kwargs):
@@ -2108,13 +2132,7 @@ class SemanticCacheController:
         source_text = "\n\n---\n\n".join(r["text"] for r in results[:source_limit])
         is_choice_query = self._query_requests_choice_letter(query)
         if is_choice_query:
-            system_prompt = (
-                "You are answering a multiple-choice benchmark question using ONLY "
-                "the provided documents. The query includes choices A, B, C, and D. "
-                "Compare the choices against the retrieved evidence and return exactly "
-                "one capital letter: A, B, C, or D. If evidence is incomplete, choose "
-                "the best-supported option from the given choices. Do not explain."
-            )
+            system_prompt = _mcq_system_prompt()
             max_tokens = MCQ_SYNTHESIS_MAX_TOKENS
         else:
             system_prompt = (

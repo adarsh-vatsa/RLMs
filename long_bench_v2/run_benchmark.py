@@ -263,6 +263,7 @@ def resolve_cache_namespace(
     evaluator_model: str = "",
     synthesis_max_chunks: int = 0,
     openai_compatible_extra_body: dict | None = None,
+    mcq_prompt_style: str = "default",
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
@@ -272,7 +273,7 @@ def resolve_cache_namespace(
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
             f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
-            f"{extra_body_sig}"
+            f"{extra_body_sig}\n{mcq_prompt_style}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -488,6 +489,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         extra_body_config_getter = getattr(scs, "get_openai_compatible_extra_body_config", None)
         if callable(extra_body_config_getter):
             openai_compatible_extra_body_config = extra_body_config_getter(redact=True)
+    effective_mcq_prompt_style = _coerce_text(getattr(scs, "MCQ_PROMPT_STYLE", "default")) or "default"
 
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
@@ -502,6 +504,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             evaluator_model=args.evaluator_model,
             synthesis_max_chunks=args.synthesis_max_chunks,
             openai_compatible_extra_body=openai_compatible_extra_body_config,
+            mcq_prompt_style=effective_mcq_prompt_style,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -748,6 +751,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "top_k": args.top_k,
         "rerank_top": args.rerank_top,
         "synthesis_max_chunks": effective_synthesis_max_chunks,
+        "mcq_prompt_style": effective_mcq_prompt_style,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,
         "cache_save_interval": args.cache_save_interval,
