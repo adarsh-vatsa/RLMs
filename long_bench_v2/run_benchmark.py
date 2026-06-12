@@ -262,14 +262,17 @@ def resolve_cache_namespace(
     llm_provider: str = "anthropic",
     evaluator_model: str = "",
     synthesis_max_chunks: int = 0,
+    openai_compatible_extra_body: dict | None = None,
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
+    extra_body_sig = json.dumps(openai_compatible_extra_body or {}, sort_keys=True)
     digest = hashlib.sha256(
         (
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
-            f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}"
+            f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
+            f"{extra_body_sig}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -468,6 +471,24 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     suite_csv_sha256 = _sha256_file(suite_csv)
     source_json_sha256 = _sha256_file(source_json_path)
 
+    scs = _import_semantic_cache_system()
+    scs.configure_llm_provider(
+        provider=args.llm_provider,
+        api_key_env=args.api_key_env,
+        executor_model=args.executor_model,
+        evaluator_model=args.evaluator_model,
+        openrouter_base_url=args.openrouter_base_url,
+        openai_compat_base_url=args.openai_compat_base_url,
+        openai_compat_executor_base_url=args.openai_compat_executor_base_url,
+        openai_compat_evaluator_base_url=args.openai_compat_evaluator_base_url,
+        openai_compat_api_key_env=args.openai_compat_api_key_env,
+    )
+    openai_compatible_extra_body_config = {}
+    if args.llm_provider == "openai_compatible":
+        extra_body_config_getter = getattr(scs, "get_openai_compatible_extra_body_config", None)
+        if callable(extra_body_config_getter):
+            openai_compatible_extra_body_config = extra_body_config_getter(redact=True)
+
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
             suite_csv_sha256=suite_csv_sha256,
@@ -480,6 +501,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             llm_provider=args.llm_provider,
             evaluator_model=args.evaluator_model,
             synthesis_max_chunks=args.synthesis_max_chunks,
+            openai_compatible_extra_body=openai_compatible_extra_body_config,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -510,18 +532,6 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         print(f"[LONGBENCH-V2] Cache namespace : {cache_namespace}")
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
-    scs = _import_semantic_cache_system()
-    scs.configure_llm_provider(
-        provider=args.llm_provider,
-        api_key_env=args.api_key_env,
-        executor_model=args.executor_model,
-        evaluator_model=args.evaluator_model,
-        openrouter_base_url=args.openrouter_base_url,
-        openai_compat_base_url=args.openai_compat_base_url,
-        openai_compat_executor_base_url=args.openai_compat_executor_base_url,
-        openai_compat_evaluator_base_url=args.openai_compat_evaluator_base_url,
-        openai_compat_api_key_env=args.openai_compat_api_key_env,
-    )
     scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
     effective_doc_chunk_size = int(scs.DOCUMENT_CHUNK_SIZE)
     effective_doc_chunk_overlap = int(scs.DOCUMENT_CHUNK_OVERLAP)
@@ -732,6 +742,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "openai_compat_executor_base_url": args.openai_compat_executor_base_url,
         "openai_compat_evaluator_base_url": args.openai_compat_evaluator_base_url,
         "openai_compat_api_key_env": args.openai_compat_api_key_env,
+        "openai_compat_extra_body": openai_compatible_extra_body_config,
         "executor_model": args.executor_model,
         "evaluator_model": args.evaluator_model,
         "top_k": args.top_k,

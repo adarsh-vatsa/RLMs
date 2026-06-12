@@ -130,6 +130,34 @@ MIN_RERANKED_RESULTS = _env_int("SEMANTIC_CACHE_MIN_RERANKED_RESULTS", 5)
 SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
+OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
+OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
+OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
+OPENAI_COMPAT_EXTRA_BODY_ENVS = (
+    OPENAI_COMPAT_EXTRA_BODY_ENV,
+    OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV,
+    OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV,
+)
+OPENAI_COMPAT_SENSITIVE_KEYS = {
+    "access_token",
+    "api_key",
+    "apikey",
+    "auth_token",
+    "authorization",
+    "bearer",
+    "credential",
+    "credentials",
+    "hf_token",
+    "id_token",
+    "password",
+    "refresh_token",
+    "secret",
+}
+OPENAI_COMPAT_SENSITIVE_KEY_SUFFIXES = (
+    "api_key",
+    "password",
+    "secret",
+)
 
 # Anthropic pricing config (USD per 1K tokens, early 2026 estimates).
 # Centralized here so all cost math uses a single visible source of truth.
@@ -273,6 +301,83 @@ def _openai_compatible_base_url_for_model(model: str) -> str:
     return OPENAI_COMPAT_BASE_URL
 
 
+def _copy_json_like(value):
+    if isinstance(value, dict):
+        return {key: _copy_json_like(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_copy_json_like(item) for item in value]
+    return value
+
+
+def _merge_openai_compatible_extra_body(*bodies: dict | None) -> dict:
+    merged: dict = {}
+    for body in bodies:
+        if not body:
+            continue
+        for key, value in body.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = _merge_openai_compatible_extra_body(merged[key], value)
+            else:
+                merged[key] = _copy_json_like(value)
+    return merged
+
+
+def _parse_openai_compatible_extra_body_env(name: str) -> dict:
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"{name} must contain a valid JSON object: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise RuntimeError(f"{name} must contain a JSON object")
+    return parsed
+
+
+def _redact_openai_compatible_extra_body(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, item in value.items():
+            normalized_key = re.sub(r"[^a-z0-9]+", "_", str(key).lower()).strip("_")
+            if (
+                normalized_key in OPENAI_COMPAT_SENSITIVE_KEYS
+                or any(normalized_key.endswith(suffix) for suffix in OPENAI_COMPAT_SENSITIVE_KEY_SUFFIXES)
+            ):
+                redacted[key] = "[REDACTED]"
+            else:
+                redacted[key] = _redact_openai_compatible_extra_body(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_openai_compatible_extra_body(item) for item in value]
+    return value
+
+
+def get_openai_compatible_extra_body_config(*, redact: bool = False) -> dict:
+    """Return parsed OpenAI-compatible request-body env settings."""
+    common = _parse_openai_compatible_extra_body_env(OPENAI_COMPAT_EXTRA_BODY_ENV)
+    executor = _parse_openai_compatible_extra_body_env(OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV)
+    evaluator = _parse_openai_compatible_extra_body_env(OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV)
+    config = {
+        "common": common,
+        "executor": executor,
+        "evaluator": evaluator,
+        "effective_executor": _merge_openai_compatible_extra_body(common, executor),
+        "effective_evaluator": _merge_openai_compatible_extra_body(common, evaluator),
+    }
+    return _redact_openai_compatible_extra_body(config) if redact else config
+
+
+def _openai_compatible_extra_body_for_model(model: str, extra_body: dict | None = None) -> dict:
+    config = get_openai_compatible_extra_body_config(redact=False)
+    merged = _merge_openai_compatible_extra_body(config["common"])
+    if model == EXECUTOR_MODEL:
+        merged = _merge_openai_compatible_extra_body(merged, config["executor"])
+    if model == EVALUATOR_MODEL:
+        merged = _merge_openai_compatible_extra_body(merged, config["evaluator"])
+    return _merge_openai_compatible_extra_body(merged, extra_body)
+
+
 def _openai_compatible_messages_create(
     *,
     model: str,
@@ -295,8 +400,7 @@ def _openai_compatible_messages_create(
     }
     if response_format:
         payload["response_format"] = response_format
-    if extra_body:
-        payload.update(extra_body)
+    payload.update(_openai_compatible_extra_body_for_model(model, extra_body))
 
     headers = {"Content-Type": "application/json"}
     api_key_env = OPENAI_COMPAT_API_KEY_ENV or API_KEY_ENV

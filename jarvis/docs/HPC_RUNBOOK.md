@@ -352,7 +352,17 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMALL_SMOKE_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMALL_SMOKE_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
+export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
+export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
+export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
+export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+
+uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/small_smoke.csv \
   --sample-size 1 \
@@ -367,6 +377,9 @@ uv run python long_bench_v2/run_benchmark.py \
   --mode cache \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
+  --top-k 10 \
+  --rerank-top 3 \
+  --synthesis-max-chunks 3 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-smoke' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -474,6 +487,10 @@ Start the executor service:
 
 ```bash
 MODULES="cuda12.8/toolkit/12.8.1" \
+EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
+EXECUTOR_TP_SIZE=4 \
+EXECUTOR_MAX_MODEL_LEN=32768 \
+VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit executor
 ```
@@ -482,10 +499,21 @@ Start the evaluator service:
 
 ```bash
 MODULES="cuda12.8/toolkit/12.8.1" \
+EVALUATOR_MODEL=Qwen/Qwen3.5-35B-A3B \
+EVALUATOR_TP_SIZE=2 \
+EVALUATOR_MAX_MODEL_LEN=16384 \
 EVALUATOR_PORT=8011 \
+VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
+
+This Qwen profile is explicit on purpose: it does not change the repository
+defaults. `Qwen/Qwen3.6-35B-A3B` is the executor candidate, and
+`Qwen/Qwen3.5-35B-A3B` is the evaluator candidate. Both are run as text-only
+non-thinking services for the LongBench-v2 MCQ path. If the evaluator has
+serving or output-format issues, use `Qwen/Qwen3-30B-A3B-Instruct-2507` as the
+fallback evaluator with the same `EVALUATOR_MAX_MODEL_LEN`.
 
 Watch both jobs:
 
@@ -534,7 +562,19 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
+export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
+export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
+export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
+export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
+uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
   --sample-size 3 \
@@ -546,6 +586,8 @@ uv run python long_bench_v2/run_benchmark.py \
   --mode cache \
   --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
   --top-k 10 \
   --rerank-top 3 \
@@ -574,8 +616,10 @@ set directly instead of sampling through `sample_csv.py`.
 
 The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
 `--synthesis-max-chunks 3`, `--row-order source_grouped`, and
-`--cache-save-interval 10`. It does not change document chunking unless you set
-the environment variables shown below.
+`--cache-save-interval 10`. The commands above keep the semantic-cache defaults
+explicit so they are easy to change in one place. Keep
+`SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS` aligned with the runner's
+`--synthesis-max-chunks` flag.
 
 ```bash
 SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
@@ -584,7 +628,11 @@ SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
+OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
 ```
 
 Prefer the runner flags for benchmark breadth:
@@ -604,14 +652,26 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000 \
-SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0 \
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
+export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
+export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
+export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
+export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
+export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
 uv run python long_bench_v2/run_benchmark.py \
   --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
   --llm-provider openai_compatible \
   --mode cache \
   --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
   --top-k 1 \
   --rerank-top 1 \
@@ -638,11 +698,25 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='uv run python long_bench_v2/run_benchmark.py \
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
+export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
+export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
+export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
+export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
+uv run python long_bench_v2/run_benchmark.py \
   --llm-provider openai_compatible \
   --mode cache \
   --cache-reset \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
   --top-k 10 \
   --rerank-top 3 \

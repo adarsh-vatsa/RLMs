@@ -147,6 +147,16 @@ class FakeScs:
         FakeScs.configure_kwargs = kwargs
 
     @staticmethod
+    def get_openai_compatible_extra_body_config(redact=False):
+        return {
+            "common": {},
+            "executor": {"chat_template_kwargs": {"enable_thinking": False}},
+            "evaluator": {"api_key": "[REDACTED]"} if redact else {"api_key": "secret"},
+            "effective_executor": {"chat_template_kwargs": {"enable_thinking": False}},
+            "effective_evaluator": {"api_key": "[REDACTED]"} if redact else {"api_key": "secret"},
+        }
+
+    @staticmethod
     def EmbeddingEngine():
         return object()
 
@@ -241,10 +251,21 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             synthesis_max_chunks=3,
         )
+        changed_extra_body = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            openai_compatible_extra_body={"executor": {"chat_template_kwargs": {"enable_thinking": False}}},
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
         self.assertNotEqual(first, changed_synthesis)
+        self.assertNotEqual(first, changed_extra_body)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -378,6 +399,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
                     str(source_path),
                     "--mode",
                     "cache",
+                    "--llm-provider",
+                    "openai_compatible",
                     "--cache-state-root",
                     str(tmp / "cache_state"),
                     "--cache-save-interval",
@@ -418,6 +441,14 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["doc_chunk_overlap"], 1000)
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
+        self.assertEqual(
+            manifest["openai_compat_extra_body"]["effective_executor"],
+            {"chat_template_kwargs": {"enable_thinking": False}},
+        )
+        self.assertEqual(
+            manifest["openai_compat_extra_body"]["effective_evaluator"],
+            {"api_key": "[REDACTED]"},
+        )
         self.assertIn("ingest_ms", bridge_rows[0])
         self.assertIn("search_ms", bridge_rows[0])
 

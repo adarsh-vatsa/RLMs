@@ -29,6 +29,8 @@ class FakeHTTPResponse:
 
 class SemanticCacheLLMProviderTests(unittest.TestCase):
     def tearDown(self):
+        for name in scs.OPENAI_COMPAT_EXTRA_BODY_ENVS:
+            os.environ.pop(name, None)
         scs.configure_llm_provider(
             provider="anthropic",
             api_key_env="ANTHROPIC_API_KEY",
@@ -236,6 +238,112 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
 
         self.assertEqual(calls[0]["response_format"], {"type": "json_object"})
         self.assertEqual(calls[0]["seed"], 123)
+
+    def test_openai_compatible_extra_body_envs_merge_by_role(self):
+        calls = []
+
+        def fake_urlopen(request, timeout=120):
+            calls.append(json.loads(request.data.decode("utf-8")))
+            return FakeHTTPResponse({"choices": [{"message": {"content": "ok"}}]})
+
+        env = {
+            "OPENAI_COMPAT_EXTRA_BODY_JSON": json.dumps(
+                {
+                    "seed": 11,
+                    "chat_template_kwargs": {
+                        "enable_thinking": True,
+                        "keep": "common",
+                    },
+                }
+            ),
+            "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON": json.dumps(
+                {
+                    "top_k": 20,
+                    "chat_template_kwargs": {"enable_thinking": False},
+                }
+            ),
+            "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON": json.dumps(
+                {
+                    "seed": 22,
+                    "chat_template_kwargs": {"evaluator_only": True},
+                }
+            ),
+        }
+
+        with patch.dict(os.environ, env), patch(
+            "semantic_cache_system.urllib.request.urlopen",
+            fake_urlopen,
+        ):
+            scs.configure_llm_provider(
+                provider="openai_compatible",
+                executor_model="executor/model",
+                evaluator_model="evaluator/model",
+                openai_compat_base_url="http://llm-node:8000/v1",
+            )
+            scs.create_llm_message(
+                model=scs.EXECUTOR_MODEL,
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Synthesize"}],
+            )
+            scs.create_llm_message(
+                model=scs.EVALUATOR_MODEL,
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Judge"}],
+            )
+            scs.create_llm_message(
+                model="other/model",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "Fallback"}],
+            )
+
+        self.assertEqual(calls[0]["seed"], 11)
+        self.assertEqual(calls[0]["top_k"], 20)
+        self.assertEqual(
+            calls[0]["chat_template_kwargs"],
+            {"enable_thinking": False, "keep": "common"},
+        )
+        self.assertEqual(calls[1]["seed"], 22)
+        self.assertEqual(
+            calls[1]["chat_template_kwargs"],
+            {"enable_thinking": True, "keep": "common", "evaluator_only": True},
+        )
+        self.assertEqual(calls[2]["seed"], 11)
+        self.assertNotIn("top_k", calls[2])
+
+    def test_openai_compatible_extra_body_env_invalid_json_fails_closed(self):
+        def fake_urlopen(request, timeout=120):
+            self.fail("request should not be sent when extra-body JSON is invalid")
+
+        with patch.dict(os.environ, {"OPENAI_COMPAT_EXTRA_BODY_JSON": "not-json"}), patch(
+            "semantic_cache_system.urllib.request.urlopen",
+            fake_urlopen,
+        ):
+            scs.configure_llm_provider(provider="openai_compatible")
+            with self.assertRaisesRegex(RuntimeError, "OPENAI_COMPAT_EXTRA_BODY_JSON"):
+                scs.create_llm_message(
+                    model=scs.EXECUTOR_MODEL,
+                    max_tokens=10,
+                    messages=[{"role": "user", "content": "Question"}],
+                )
+
+    def test_openai_compatible_extra_body_config_redacts_manifest_secrets(self):
+        with patch.dict(
+            os.environ,
+            {
+                "OPENAI_COMPAT_EXTRA_BODY_JSON": json.dumps(
+                    {
+                        "api_key": "secret",
+                        "chat_template_kwargs": {"enable_thinking": False},
+                    }
+                ),
+                "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON": "",
+                "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON": "",
+            },
+        ):
+            config = scs.get_openai_compatible_extra_body_config(redact=True)
+
+        self.assertEqual(config["common"]["api_key"], "[REDACTED]")
+        self.assertEqual(config["common"]["chat_template_kwargs"]["enable_thinking"], False)
 
     def test_llm_json_parser_strips_thinking_blocks_and_extracts_first_object(self):
         parsed = scs._extract_llm_json_object(
