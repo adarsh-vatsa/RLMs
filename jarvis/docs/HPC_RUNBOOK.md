@@ -596,9 +596,10 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
+  --disable-reranker \
   --top-k 5 \
-  --rerank-top 3 \
-  --synthesis-max-chunks 3 \
+  --rerank-top 1 \
+  --synthesis-max-chunks 5 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-large-context' \

@@ -1,0 +1,134 @@
+{
+  "run_id": "20260613T042539Z",
+  "created_at": "2026-06-13T04:32:08.106134+00:00",
+  "started_at": "2026-06-13T04:25:39.428771+00:00",
+  "finished_at": "2026-06-13T04:32:08.106134+00:00",
+  "elapsed_seconds": 388.677,
+  "benchmark_target": "longbench_v2",
+  "suite_csv": "benchmark_artifacts/longbench_v2_samples/jarvis_small.csv",
+  "suite_csv_sha256": "52798cfcc37e427f0bb41be86a9e77e150fc557bbecb560f0a3621783f4a2d56",
+  "source_json_path": "benchmark_data/long_bench_v2/data.json",
+  "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+  "mode": "cache",
+  "llm_provider": "openai_compatible",
+  "api_key_env": null,
+  "openrouter_base_url": "https://openrouter.ai/api/v1",
+  "openai_compat_base_url": "http://127.0.0.1:8000/v1",
+  "openai_compat_executor_base_url": "http://g202.cm.cluster:8000/v1",
+  "openai_compat_evaluator_base_url": "http://g203.cm.cluster:8011/v1",
+  "openai_compat_api_key_env": "",
+  "openai_compat_extra_body": {
+    "common": {},
+    "executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    }
+  },
+  "executor_model": "Qwen/Qwen3.6-35B-A3B",
+  "evaluator_model": "Qwen/Qwen3.5-35B-A3B",
+  "top_k": 5,
+  "rerank_top": 1,
+  "synthesis_max_chunks": 5,
+  "mcq_prompt_style": "default",
+  "mcq_verify_before_cache": true,
+  "doc_chunk_size": 200000,
+  "doc_chunk_overlap": 40000,
+  "cache_save_interval": 10,
+  "row_order": "source_grouped",
+  "reranker_disabled": true,
+  "row_types_requested": [
+    "original",
+    "exact",
+    "semantic"
+  ],
+  "max_rows": 0,
+  "rows_selected": 54,
+  "row_type_counts": {
+    "exact": 18,
+    "original": 18,
+    "semantic": 18
+  },
+  "answer_correct_count": 27,
+  "answer_accuracy": 0.5,
+  "actual_route_counts": {
+    "exact": 10,
+    "knowledge": 0,
+    "miss": 34,
+    "semantic": 10,
+    "unknown": 0
+  },
+  "by_row_type": {
+    "exact": {
+      "rows": 18,
+      "answer_accuracy": 0.5,
+      "cache_hit_rate": 0.555556
+    },
+    "original": {
+      "rows": 18,
+      "answer_accuracy": 0.5,
+      "cache_hit_rate": 0.0
+    },
+    "semantic": {
+      "rows": 18,
+      "answer_accuracy": 0.5,
+      "cache_hit_rate": 0.555556
+    }
+  },
+  "timing_summary": {
+    "cache_load_ms": 0.035,
+    "cache_final_save_ms": 13.918,
+    "cache_save_count": 6,
+    "context_write_ms": 33.811,
+    "ingest_ms": 304412.261,
+    "search_ms": 77956.595,
+    "interval_save_ms": 48.212,
+    "row_wall_ms": 382469.671
+  },
+  "artifacts": {
+    "predictions": "benchmark_artifacts/longbench_v2/20260613T042539Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/longbench_v2/20260613T042539Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/longbench_v2/20260613T042539Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/longbench_v2/20260613T042539Z/official_longbench_v2_eval_report.json",
+    "mcq_failure_artifacts": "benchmark_artifacts/longbench_v2/20260613T042539Z/mcq_failure_artifacts"
+  },
+  "mcq_failure_artifact_count": 9,
+  "total_api_calls": 67,
+  "total_input_tokens": 889922,
+  "total_output_tokens": 490,
+  "total_tokens": 890412,
+  "total_estimated_cost_usd": 0.0,
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "longbench_v2__exact-original-semantic__7f987cbdf3c8a892",
+    "dataset_signature": "b9f39e185fcecebb",
+    "cache_state_root": "/home/edogu/adarsh-rlms-cache-state",
+    "cache_state_path": "/home/edogu/adarsh-rlms-cache-state/longbench_v2__exact-original-semantic__7f987cbdf3c8a892",
+    "cache_state_existed_before_reset": false,
+    "cache_state_existed_before_run": false,
+    "cache_reset_requested": true,
+    "run_start_type": "cold_start",
+    "cache_load_attempts": 1,
+    "cache_load_successes": 0,
+    "cache_entries_before_run": 0,
+    "cache_entries_after_run": 10,
+    "cache_hits": 20,
+    "cache_hit_rate": 0.37037
+  },
+  "note": "jarvis-l40s-small-large-context"
+}
