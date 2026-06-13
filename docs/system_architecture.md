@@ -344,6 +344,7 @@ search("What charges did Maxwell face?")
   │     ├─ Sonnet synthesis from top-3 sources
   │     ├─ Grounding check (free)
   │     ├─ Consensus verify ($0.0001)
+  │     ├─ Optional MCQ first-write verification before cache store
   │     ├─ store() → cache + embed + fact extract
   │     └─ Return answer with provenance
   │
@@ -471,6 +472,7 @@ The same library can serve: legal filings, financial documents, medical records,
 | `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Local cross-encoder reranker |
 | `RERANKER_BATCH_SIZE` | 4 | Max reranker candidates per local model forward pass |
 | `RERANKER_MAX_LENGTH` | 8192 | Max reranker prompt tokens including prompt prefix/suffix |
+| `SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE` | `false` | Opt-in evaluator agreement gate before caching MCQ first-write answers |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |
@@ -511,6 +513,8 @@ Every `search()` call returns:
     "from_cache": False,
     "grounding": {"grounding": "GROUNDED", "verified_facts": [...], "unverified_facts": []},
     "consensus": {"consensus": "AGREED", "divergent_facts": []},
+    "mcq_verification_status": "disabled", # disabled | agreed | disputed | unparseable | error
+    "mcq_cache_write_allowed": True,
     "relevant_facts": [                # Knowledge triples that matched
         {"subject": "Maxwell", "relation": "charged with", "object": "sex trafficking"},
     ],

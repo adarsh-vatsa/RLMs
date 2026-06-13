@@ -1,5 +1,6 @@
 import csv
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -84,6 +85,7 @@ class FakeController:
     save_calls = []
     ingest_calls = []
     search_calls = []
+    answers = []
 
     def __init__(self, metrics, embedder=None, reranker=None, corpus_id=None, corpus_domain="general"):
         self.metrics = metrics
@@ -113,6 +115,7 @@ class FakeController:
         self.metrics.output_tokens += 1
         self.metrics.cost += 0.01
         self.entries += 1
+        answer = FakeController.answers.pop(0) if FakeController.answers else "A"
         FakeController.search_calls.append(
             {
                 "query": query,
@@ -123,8 +126,14 @@ class FakeController:
             }
         )
         return {
-            "answer": "A",
+            "answer": answer,
             "from_cache": False,
+            "synthesized_source_text": "Evidence text shown to the model",
+            "mcq_verification_status": "disputed" if FakeScs.MCQ_VERIFY_BEFORE_CACHE else "disabled",
+            "mcq_executor_prediction": answer,
+            "mcq_evaluator_prediction": "B" if FakeScs.MCQ_VERIFY_BEFORE_CACHE else "",
+            "mcq_cache_write_allowed": False if FakeScs.MCQ_VERIFY_BEFORE_CACHE else True,
+            "mcq_verifier_error": "",
             "retrieval": {
                 "faiss_candidate_count": top_k,
                 "candidate_text_count": top_k,
@@ -140,6 +149,7 @@ class FakeScs:
     DOCUMENT_CHUNK_OVERLAP = 1000
     SYNTHESIS_MAX_CHUNKS = 5
     MCQ_PROMPT_STYLE = "strict"
+    MCQ_VERIFY_BEFORE_CACHE = False
     SemanticCacheController = FakeController
     ExecutionMetrics = FakeMetrics
 
@@ -172,8 +182,10 @@ def _reset_fake_controller():
     FakeController.save_calls = []
     FakeController.ingest_calls = []
     FakeController.search_calls = []
+    FakeController.answers = []
     FakeScs.SYNTHESIS_MAX_CHUNKS = 5
     FakeScs.MCQ_PROMPT_STYLE = "strict"
+    FakeScs.MCQ_VERIFY_BEFORE_CACHE = False
 
 
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
@@ -273,12 +285,23 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             mcq_prompt_style="strict",
         )
+        changed_mcq_verification = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            mcq_verify_before_cache=True,
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
         self.assertNotEqual(first, changed_synthesis)
         self.assertNotEqual(first, changed_extra_body)
         self.assertNotEqual(first, changed_prompt_style)
+        self.assertNotEqual(first, changed_mcq_verification)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -399,6 +422,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
                 _suite_row("row_2", "original"),
                 _suite_row("row_1", "exact"),
             ]
+            rows[1]["answer"] = "B"
             with suite_path.open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
                 writer.writeheader()
@@ -424,12 +448,16 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
                     "9",
                     "--rerank-top",
                     "2",
+                    "--mcq-verify-before-cache",
                     "--output-dir",
                     str(output_dir),
                 ]
             )
 
-            with patch("long_bench_v2.run_benchmark._import_semantic_cache_system", return_value=FakeScs):
+            with patch.dict(os.environ, {}, clear=False), patch(
+                "long_bench_v2.run_benchmark._import_semantic_cache_system",
+                return_value=FakeScs,
+            ):
                 run_longbench_benchmark(args)
 
             run_dirs = list((output_dir / "longbench_v2").glob("20*"))
@@ -438,6 +466,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
                 json.loads(line)
                 for line in (run_dirs[0] / "bridge_rows.jsonl").read_text().splitlines()
             ]
+            failure_artifacts = list((run_dirs[0] / "mcq_failure_artifacts").glob("*.json"))
+            failure_payload = json.loads(failure_artifacts[0].read_text())
 
         self.assertEqual(FakeScs.SYNTHESIS_MAX_CHUNKS, 4)
         self.assertEqual(len(FakeController.instances), 1)
@@ -453,8 +483,11 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["doc_chunk_size"], 10000)
         self.assertEqual(manifest["doc_chunk_overlap"], 1000)
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
+        self.assertTrue(manifest["mcq_verify_before_cache"])
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
+        self.assertEqual(manifest["mcq_failure_artifact_count"], 1)
+        self.assertIn("mcq_failure_artifacts", manifest["artifacts"])
         self.assertEqual(
             manifest["openai_compat_extra_body"]["effective_executor"],
             {"chat_template_kwargs": {"enable_thinking": False}},
@@ -465,6 +498,15 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         )
         self.assertIn("ingest_ms", bridge_rows[0])
         self.assertIn("search_ms", bridge_rows[0])
+        self.assertEqual(bridge_rows[0]["mcq_verification_status"], "disputed")
+        self.assertEqual(bridge_rows[0]["mcq_executor_prediction"], "A")
+        self.assertEqual(bridge_rows[0]["mcq_evaluator_prediction"], "B")
+        self.assertFalse(bridge_rows[0]["mcq_cache_write_allowed"])
+        self.assertEqual(len(failure_artifacts), 1)
+        self.assertEqual(failure_payload["case_id"], "row_2__original")
+        self.assertEqual(failure_payload["expected_answer"], "B")
+        self.assertEqual(failure_payload["executor_prediction"], "A")
+        self.assertEqual(failure_payload["synthesized_source_text"], "Evidence text shown to the model")
 
 
 if __name__ == "__main__":

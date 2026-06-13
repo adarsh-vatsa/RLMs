@@ -106,6 +106,13 @@ def _env_float(name: str, default: float) -> float:
         print(f"[CONFIG] Ignoring invalid {name}={value!r}; using {default}")
         return default
 
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 # ---------------------------------------------------------------------------
 # Model Config
 # ---------------------------------------------------------------------------
@@ -131,6 +138,14 @@ SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
 MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
+MCQ_VERIFY_BEFORE_CACHE = _env_bool("SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE", False)
+MCQ_VERIFICATION_FIELDS = (
+    "mcq_verification_status",
+    "mcq_executor_prediction",
+    "mcq_evaluator_prediction",
+    "mcq_cache_write_allowed",
+    "mcq_verifier_error",
+)
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -510,6 +525,33 @@ def _mcq_system_prompt() -> str:
         "one capital letter: A, B, C, or D. If evidence is incomplete, choose "
         "the best-supported option from the given choices. Do not explain."
     )
+
+
+def _parse_mcq_choice(text: str) -> str:
+    raw = str(text or "").upper()
+    if not raw:
+        return ""
+    stripped = raw.strip()
+    if stripped in {"A", "B", "C", "D"}:
+        return stripped
+
+    explicit_pattern = (
+        r"(?:FINAL\s+ANSWER|CORRECT\s+(?:ANSWER|CHOICE|OPTION)|ANSWER|CHOICE|OPTION)"
+        r"\s*(?:IS\s*:|IS|:)?\s*[\(\[]?\s*([A-D])\b\s*[\)\]]?"
+    )
+    explicit_matches = list(re.finditer(explicit_pattern, stripped))
+    if explicit_matches:
+        return explicit_matches[-1].group(1)
+
+    boundary_patterns = [
+        r"^\s*[\(\[]?\s*([A-D])\s*[\)\].:-]",
+        r"(?:^|\n)\s*[\(\[]?\s*([A-D])\s*[\)\].:-]?\s*$",
+    ]
+    for pattern in boundary_patterns:
+        match = re.search(pattern, stripped)
+        if match:
+            return match.group(1)
+    return ""
 
 
 def create_llm_message(**kwargs):
@@ -1592,7 +1634,7 @@ class SemanticCacheController:
     # STORE — Add a new entry to the cache
     # ------------------------------------------------------------------
     def store(self, query: str, context: str, result: str, model_used: str = "unknown",
-              sources: List[dict] = None):
+              sources: List[dict] = None, extra_metadata: dict = None):
         """Store a query-result pair with source provenance and knowledge extraction."""
         chunk_hash = self._get_chunk_hash(context)
         data_scope_hash = self.data_scope_hash or chunk_hash
@@ -1619,6 +1661,10 @@ class SemanticCacheController:
             "grounding_info": grounding_info,
             "data_scope_hash": data_scope_hash,
         }
+        if extra_metadata:
+            for key in MCQ_VERIFICATION_FIELDS:
+                if key in extra_metadata:
+                    entry[key] = extra_metadata[key]
         self.cache[chunk_hash].append(entry)
 
         # Knowledge extraction — decompose answer into (subj, rel, obj) triples
@@ -1727,6 +1773,74 @@ class SemanticCacheController:
             self.metrics.consensus_disputed += 1
             print(f"      [CONSENSUS] ⚠ DISPUTED — {primary_model} said {primary_facts}, {self.EVALUATOR_MODEL} said {verifier_facts}. Divergent: {divergent}")
             return {"consensus": "DISPUTED", "primary_facts": primary_facts, "verifier_facts": verifier_facts, "divergent_facts": divergent}
+
+    def verify_mcq_before_cache(self, query: str, source_text: str, executor_answer: str) -> dict:
+        """Use the evaluator to gate MCQ cache writes before first-write persistence."""
+        executor_prediction = _parse_mcq_choice(executor_answer)
+        base = {
+            "mcq_verification_status": "disabled",
+            "mcq_executor_prediction": executor_prediction,
+            "mcq_evaluator_prediction": "",
+            "mcq_cache_write_allowed": True,
+            "mcq_verifier_error": "",
+        }
+        if not MCQ_VERIFY_BEFORE_CACHE:
+            return base
+
+        if not executor_prediction:
+            return {
+                **base,
+                "mcq_verification_status": "unparseable",
+                "mcq_cache_write_allowed": False,
+                "mcq_verifier_error": "executor answer did not contain a parseable A-D choice",
+            }
+
+        try:
+            response = create_llm_message(
+                model=self.EVALUATOR_MODEL,
+                max_tokens=MCQ_SYNTHESIS_MAX_TOKENS,
+                temperature=0,
+                system=_mcq_system_prompt(),
+                messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}],
+            )
+            self.metrics.record_call(
+                self.EVALUATOR_MODEL,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+            )
+            evaluator_answer = response.content[0].text
+            evaluator_prediction = _parse_mcq_choice(evaluator_answer)
+        except Exception as e:
+            return {
+                **base,
+                "mcq_verification_status": "error",
+                "mcq_cache_write_allowed": False,
+                "mcq_verifier_error": str(e),
+            }
+
+        if not evaluator_prediction:
+            return {
+                **base,
+                "mcq_verification_status": "unparseable",
+                "mcq_evaluator_prediction": "",
+                "mcq_cache_write_allowed": False,
+                "mcq_verifier_error": "evaluator answer did not contain a parseable A-D choice",
+            }
+
+        if evaluator_prediction == executor_prediction:
+            return {
+                **base,
+                "mcq_verification_status": "agreed",
+                "mcq_evaluator_prediction": evaluator_prediction,
+                "mcq_cache_write_allowed": True,
+            }
+
+        return {
+            **base,
+            "mcq_verification_status": "disputed",
+            "mcq_evaluator_prediction": evaluator_prediction,
+            "mcq_cache_write_allowed": False,
+        }
 
     # ------------------------------------------------------------------
     # KNOWLEDGE EXTRACTION — Decompose answers into atomic triples
@@ -1965,6 +2079,7 @@ class SemanticCacheController:
                             "query": query, "answer": entry["result"],
                             "from_cache": True, "cache_type": "exact",
                             "grounding": entry.get("grounding_info", {}),
+                            **{key: entry.get(key, "") for key in MCQ_VERIFICATION_FIELDS},
                         }
 
             query_emb = None
@@ -1998,6 +2113,7 @@ class SemanticCacheController:
                             "query": query, "answer": cached["result"],
                             "from_cache": True, "cache_type": "semantic",
                             "grounding": cached.get("grounding_info", {}),
+                            **{key: cached.get(key, "") for key in MCQ_VERIFICATION_FIELDS},
                         }
 
             # Knowledge fact lookup
@@ -2106,6 +2222,7 @@ class SemanticCacheController:
                         "knowledge_verifier_trigger_reasons": trigger_reasons,
                         "knowledge_lexical_support": lexical_support,
                         "grounding": source_entry.get("grounding_info", {}),
+                        **{key: source_entry.get(key, "") for key in MCQ_VERIFICATION_FIELDS},
                     }
 
         # ── Stage 1: Retrieve relevant documents ──
@@ -2158,14 +2275,47 @@ class SemanticCacheController:
         print(f"  [SYNTH] Generated answer in {dt_synth:.0f}ms")
 
         # ── Stage 3: Verify and cache ──
-        consensus = self.consensus_verify(query, source_text, answer, model)
-        self.store(query, source_text, answer, model_used=model, sources=results)
+        mcq_verification = self.verify_mcq_before_cache(query, source_text, answer) if is_choice_query else {
+            "mcq_verification_status": "disabled",
+            "mcq_executor_prediction": "",
+            "mcq_evaluator_prediction": "",
+            "mcq_cache_write_allowed": True,
+            "mcq_verifier_error": "",
+        }
+        if is_choice_query and MCQ_VERIFY_BEFORE_CACHE:
+            consensus = {
+                "consensus": "AGREED" if mcq_verification["mcq_cache_write_allowed"] else "DISPUTED",
+                "primary_facts": [],
+                "verifier_facts": [],
+                "divergent_facts": [],
+            }
+        else:
+            consensus = self.consensus_verify(query, source_text, answer, model)
+
+        if mcq_verification["mcq_cache_write_allowed"]:
+            self.store(
+                query,
+                source_text,
+                answer,
+                model_used=model,
+                sources=results,
+                extra_metadata=mcq_verification,
+            )
+        else:
+            print(
+                "  [MCQ-VERIFY] Skipping cache write "
+                f"(status={mcq_verification['mcq_verification_status']}, "
+                f"executor={mcq_verification['mcq_executor_prediction'] or 'unparseable'}, "
+                f"evaluator={mcq_verification['mcq_evaluator_prediction'] or 'unparseable'})"
+            )
 
         return {
             "query": query, "answer": answer,
             "from_cache": False, "results": results,
             "consensus": consensus,
             "retrieval": getattr(self, "_last_retrieval_info", {}),
+            "synthesized_source_text": source_text,
+            **mcq_verification,
         }
 
     # ------------------------------------------------------------------

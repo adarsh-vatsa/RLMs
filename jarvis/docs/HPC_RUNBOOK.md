@@ -577,6 +577,7 @@ export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
+export SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -598,6 +599,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --top-k 5 \
   --rerank-top 3 \
   --synthesis-max-chunks 3 \
+  --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-large-context' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -626,7 +628,10 @@ The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
 three runner defaults for the larger-context profile, because the 54-row sample
 improved from `0.333` to `0.500` when each source was represented as one large
 retrieved chunk. Keep `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS` aligned with the
-runner's `--synthesis-max-chunks` flag.
+runner's `--synthesis-max-chunks` flag. With MCQ first-write verification
+enabled, disputed first-write answers still count using the executor output, but
+they are not cached; exact and semantic rows must rerun instead of replaying a
+known-disputed answer.
 
 ```bash
 SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000
@@ -639,6 +644,7 @@ SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
 SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
+SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
 ```
@@ -646,7 +652,7 @@ OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinki
 Prefer these runner flags for the larger-context profile:
 
 ```bash
---top-k 1 --rerank-top 1 --synthesis-max-chunks 1
+--top-k 1 --rerank-top 1 --synthesis-max-chunks 1 --mcq-verify-before-cache
 ```
 
 Optional prompt ablation: if the comparable sampled run still misses the same
@@ -670,6 +676,7 @@ export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
+export SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -685,6 +692,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --top-k 1 \
   --rerank-top 1 \
   --synthesis-max-chunks 1 \
+  --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-large-context-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -710,6 +718,7 @@ export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
+export SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -725,6 +734,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --top-k 10 \
   --rerank-top 3 \
   --synthesis-max-chunks 3 \
+  --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-efficient' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -759,6 +769,7 @@ export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
+export SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -773,6 +784,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --top-k 1 \
   --rerank-top 1 \
   --synthesis-max-chunks 1 \
+  --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-full-large-context' \
   bash adarsh-rlms/jarvis/run.sh submit client

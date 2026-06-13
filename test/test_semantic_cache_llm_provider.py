@@ -32,6 +32,7 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         for name in scs.OPENAI_COMPAT_EXTRA_BODY_ENVS:
             os.environ.pop(name, None)
         scs.MCQ_PROMPT_STYLE = "default"
+        scs.MCQ_VERIFY_BEFORE_CACHE = False
         scs.configure_llm_provider(
             provider="anthropic",
             api_key_env="ANTHROPIC_API_KEY",
@@ -368,6 +369,124 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertIn("Reject choices", strict_prompt)
         self.assertIn("overstate the evidence", strict_prompt)
         self.assertNotEqual(strict_prompt, default_prompt)
+
+    def _run_mocked_mcq_search(self, *, verify_enabled, evaluator_text="A", evaluator_error=None):
+        metrics = scs.ExecutionMetrics()
+        controller = scs.SemanticCacheController(metrics=metrics, embedder=object(), reranker=object())
+        controller.retrieve = lambda query, top_k=20, rerank_top=5: [{"text": "Evidence text"}]
+        controller._last_retrieval_info = {"faiss_candidate_count": 1}
+        controller.consensus_verify = lambda query, context, result, model: {
+            "consensus": "AGREED",
+            "divergent_facts": [],
+        }
+        stored = []
+        controller.store = lambda query, context, result, model_used="unknown", sources=None, extra_metadata=None: stored.append(result)
+
+        calls = []
+
+        def fake_message(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 2 and evaluator_error is not None:
+                raise evaluator_error
+            text = "A" if len(calls) == 1 else evaluator_text
+            return SimpleNamespace(
+                content=[SimpleNamespace(text=text)],
+                usage=SimpleNamespace(input_tokens=10, output_tokens=1),
+            )
+
+        original_verify = scs.MCQ_VERIFY_BEFORE_CACHE
+        try:
+            scs.MCQ_VERIFY_BEFORE_CACHE = verify_enabled
+            with patch("semantic_cache_system.create_llm_message", fake_message):
+                output = controller.search(
+                    "Question: Which option is correct?\n\nChoices:\nA. Alpha\nB. Beta\n\n"
+                    "Return only the single best answer choice letter: A, B, C, or D.",
+                    cache_read=False,
+                )
+        finally:
+            scs.MCQ_VERIFY_BEFORE_CACHE = original_verify
+
+        return output, stored, calls
+
+    def test_mcq_verification_disabled_preserves_cache_write(self):
+        output, stored, calls = self._run_mocked_mcq_search(verify_enabled=False)
+
+        self.assertEqual(stored, ["A"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(output["mcq_verification_status"], "disabled")
+        self.assertTrue(output["mcq_cache_write_allowed"])
+
+    def test_mcq_verification_agreement_allows_cache_write(self):
+        output, stored, calls = self._run_mocked_mcq_search(verify_enabled=True, evaluator_text="Final answer: A")
+
+        self.assertEqual(stored, ["A"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(output["mcq_verification_status"], "agreed")
+        self.assertEqual(output["mcq_executor_prediction"], "A")
+        self.assertEqual(output["mcq_evaluator_prediction"], "A")
+        self.assertTrue(output["mcq_cache_write_allowed"])
+
+    def test_mcq_verification_metadata_is_returned_on_exact_cache_hit(self):
+        controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics())
+        query = "Question: Which option is correct?"
+        controller.cache = {
+            "chunk": [
+                {
+                    "query": query,
+                    "result": "A",
+                    "grounding_info": {},
+                    "data_scope_hash": None,
+                    "mcq_verification_status": "agreed",
+                    "mcq_executor_prediction": "A",
+                    "mcq_evaluator_prediction": "A",
+                    "mcq_cache_write_allowed": True,
+                    "mcq_verifier_error": "",
+                }
+            ]
+        }
+
+        output = controller.search(query, cache_read=True)
+
+        self.assertTrue(output["from_cache"])
+        self.assertEqual(output["cache_type"], "exact")
+        self.assertEqual(output["mcq_verification_status"], "agreed")
+        self.assertEqual(output["mcq_executor_prediction"], "A")
+        self.assertEqual(output["mcq_evaluator_prediction"], "A")
+        self.assertTrue(output["mcq_cache_write_allowed"])
+
+    def test_mcq_verification_disagreement_skips_cache_write(self):
+        output, stored, calls = self._run_mocked_mcq_search(verify_enabled=True, evaluator_text="B")
+
+        self.assertEqual(stored, [])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(output["answer"], "A")
+        self.assertEqual(output["mcq_verification_status"], "disputed")
+        self.assertEqual(output["mcq_executor_prediction"], "A")
+        self.assertEqual(output["mcq_evaluator_prediction"], "B")
+        self.assertFalse(output["mcq_cache_write_allowed"])
+
+    def test_mcq_verification_unparseable_evaluator_skips_cache_write(self):
+        output, stored, calls = self._run_mocked_mcq_search(verify_enabled=True, evaluator_text="not enough evidence")
+
+        self.assertEqual(stored, [])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(output["mcq_verification_status"], "unparseable")
+        self.assertEqual(output["mcq_evaluator_prediction"], "")
+        self.assertFalse(output["mcq_cache_write_allowed"])
+        self.assertIn("parseable", output["mcq_verifier_error"])
+
+    def test_mcq_verification_error_skips_cache_write_but_returns_executor_answer(self):
+        output, stored, calls = self._run_mocked_mcq_search(
+            verify_enabled=True,
+            evaluator_error=RuntimeError("verifier down"),
+        )
+
+        self.assertEqual(stored, [])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(output["answer"], "A")
+        self.assertEqual(output["mcq_verification_status"], "error")
+        self.assertFalse(output["mcq_cache_write_allowed"])
+        self.assertIn("verifier down", output["mcq_verifier_error"])
 
     def test_sniper_fails_closed_on_malformed_or_out_of_range_json(self):
         metrics = scs.ExecutionMetrics()

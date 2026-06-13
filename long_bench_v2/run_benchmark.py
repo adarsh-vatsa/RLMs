@@ -231,6 +231,52 @@ def answer_correct(prediction: str, expected_answer: str) -> bool:
     return parse_choice(prediction) == parse_choice(expected_answer)
 
 
+def write_mcq_failure_artifact(
+    artifact_dir: Path,
+    row: dict,
+    prediction_row: dict,
+    bridge_row: dict,
+    output: dict,
+    retrieval: dict,
+) -> Path:
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    path = artifact_dir / f"{_sanitize_path_segment(row['case_id'])}.json"
+    payload = {
+        "case_id": row["case_id"],
+        "source_id": row.get("source_id", ""),
+        "row_type": row.get("row_type", ""),
+        "question": row.get("question", ""),
+        "choices": {
+            "A": row.get("choice_A", ""),
+            "B": row.get("choice_B", ""),
+            "C": row.get("choice_C", ""),
+            "D": row.get("choice_D", ""),
+        },
+        "expected_answer": row.get("answer", ""),
+        "executor_generation": prediction_row.get("generation", ""),
+        "executor_prediction": prediction_row.get("prediction", ""),
+        "mcq_verification_status": bridge_row.get("mcq_verification_status", ""),
+        "mcq_evaluator_prediction": bridge_row.get("mcq_evaluator_prediction", ""),
+        "mcq_cache_write_allowed": bridge_row.get("mcq_cache_write_allowed", ""),
+        "mcq_verifier_error": bridge_row.get("mcq_verifier_error", ""),
+        "cache_type": bridge_row.get("cache_type", ""),
+        "from_cache": bridge_row.get("from_cache", False),
+        "retrieval": {
+            "faiss_candidate_count": retrieval.get("faiss_candidate_count"),
+            "candidate_text_count": retrieval.get("candidate_text_count"),
+            "reranker_enabled": retrieval.get("reranker_enabled"),
+            "reranker_returned_count": retrieval.get("reranker_returned_count"),
+            "reranker_fallback_used": retrieval.get("reranker_fallback_used"),
+            "top_k": bridge_row.get("top_k"),
+            "rerank_top": bridge_row.get("rerank_top"),
+            "synthesis_max_chunks": bridge_row.get("synthesis_max_chunks"),
+        },
+        "synthesized_source_text": output.get("synthesized_source_text", ""),
+    }
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
+
+
 def _build_dataset_signature(rows: list[dict]) -> str:
     hasher = hashlib.sha256()
     ordered = sorted(rows, key=lambda row: (_coerce_text(row.get("row_type")), _coerce_text(row.get("case_id"))))
@@ -264,6 +310,7 @@ def resolve_cache_namespace(
     synthesis_max_chunks: int = 0,
     openai_compatible_extra_body: dict | None = None,
     mcq_prompt_style: str = "default",
+    mcq_verify_before_cache: bool = False,
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
@@ -273,7 +320,7 @@ def resolve_cache_namespace(
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
             f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
-            f"{extra_body_sig}\n{mcq_prompt_style}"
+            f"{extra_body_sig}\n{mcq_prompt_style}\n{bool(mcq_verify_before_cache)}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -472,6 +519,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     suite_csv_sha256 = _sha256_file(suite_csv)
     source_json_sha256 = _sha256_file(source_json_path)
 
+    if args.mcq_verify_before_cache:
+        os.environ["SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE"] = "1"
+
     scs = _import_semantic_cache_system()
     scs.configure_llm_provider(
         provider=args.llm_provider,
@@ -490,6 +540,11 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         if callable(extra_body_config_getter):
             openai_compatible_extra_body_config = extra_body_config_getter(redact=True)
     effective_mcq_prompt_style = _coerce_text(getattr(scs, "MCQ_PROMPT_STYLE", "default")) or "default"
+    effective_mcq_verify_before_cache = bool(
+        args.mcq_verify_before_cache or getattr(scs, "MCQ_VERIFY_BEFORE_CACHE", False)
+    )
+    if hasattr(scs, "MCQ_VERIFY_BEFORE_CACHE"):
+        scs.MCQ_VERIFY_BEFORE_CACHE = effective_mcq_verify_before_cache
 
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
@@ -505,6 +560,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             synthesis_max_chunks=args.synthesis_max_chunks,
             openai_compatible_extra_body=openai_compatible_extra_body_config,
             mcq_prompt_style=effective_mcq_prompt_style,
+            mcq_verify_before_cache=effective_mcq_verify_before_cache,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -529,6 +585,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         f"top_k={args.top_k}, rerank_top={args.rerank_top}, "
         f"synthesis_max_chunks={args.synthesis_max_chunks}"
     )
+    print(f"[LONGBENCH-V2] MCQ verify before cache: {effective_mcq_verify_before_cache}")
     print(f"[LONGBENCH-V2] Output dir: {out_dir}")
     if cache_state_enabled:
         print(f"[LONGBENCH-V2] Cache state root: {cache_state_root}")
@@ -544,6 +601,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
 
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
+    mcq_failure_artifacts_dir = out_dir / "mcq_failure_artifacts"
+    mcq_failure_artifact_count = 0
     context_doc_cache: dict[str, Path] = {}
     active_source_id = ""
     cache_load_ms = 0.0
@@ -674,8 +733,24 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "reranker_enabled": retrieval.get("reranker_enabled"),
             "reranker_returned_count": retrieval.get("reranker_returned_count"),
             "reranker_fallback_used": retrieval.get("reranker_fallback_used"),
+            "mcq_verification_status": output.get("mcq_verification_status", ""),
+            "mcq_executor_prediction": output.get("mcq_executor_prediction", ""),
+            "mcq_evaluator_prediction": output.get("mcq_evaluator_prediction", ""),
+            "mcq_cache_write_allowed": output.get("mcq_cache_write_allowed", ""),
+            "mcq_verifier_error": output.get("mcq_verifier_error", ""),
         }
         bridge_rows.append(bridge_row)
+
+        if row.get("row_type") == "original" and not correct:
+            write_mcq_failure_artifact(
+                mcq_failure_artifacts_dir,
+                row,
+                prediction_row,
+                bridge_row,
+                output,
+                retrieval,
+            )
+            mcq_failure_artifact_count += 1
 
         if (
             cache_state_enabled
@@ -752,6 +827,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "rerank_top": args.rerank_top,
         "synthesis_max_chunks": effective_synthesis_max_chunks,
         "mcq_prompt_style": effective_mcq_prompt_style,
+        "mcq_verify_before_cache": effective_mcq_verify_before_cache,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,
         "cache_save_interval": args.cache_save_interval,
@@ -771,7 +847,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "bridge_rows": str(bridge_rows_path),
             "bridge_rows_csv": str(bridge_rows_csv_path),
             "eval_report": str(report_path),
+            "mcq_failure_artifacts": str(mcq_failure_artifacts_dir),
         },
+        "mcq_failure_artifact_count": mcq_failure_artifact_count,
         "total_api_calls": totals["calls"],
         "total_input_tokens": totals["input_tokens"],
         "total_output_tokens": totals["output_tokens"],
@@ -840,6 +918,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
     parser.add_argument("--rerank-top", type=int, default=DEFAULT_RERANK_TOP)
     parser.add_argument("--synthesis-max-chunks", type=int, default=DEFAULT_SYNTHESIS_MAX_CHUNKS)
+    parser.add_argument(
+        "--mcq-verify-before-cache",
+        action="store_true",
+        help="Verify MCQ first-write answers with the evaluator before storing them in cache.",
+    )
     parser.add_argument(
         "--row-order",
         choices=["input", "source_grouped"],
