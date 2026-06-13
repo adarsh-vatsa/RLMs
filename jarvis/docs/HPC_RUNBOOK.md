@@ -578,7 +578,7 @@ export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"ena
 uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
-  --sample-size 3 \
+  --sample-size 18 \
   --selection-strategy shortest \
   --seed 0 && \
 uv run python long_bench_v2/run_benchmark.py \
