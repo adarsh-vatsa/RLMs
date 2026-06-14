@@ -61,15 +61,20 @@ def sample_rows(
     sample_size: int,
     row_types: Sequence[str],
     seed: int,
+    min_token_count: int = 0,
     max_token_count: int = 0,
     selection_strategy: str = DEFAULT_SELECTION_STRATEGY,
 ) -> list[dict]:
     if sample_size < 0:
         raise ValueError("sample_size must be non-negative")
+    if min_token_count < 0:
+        raise ValueError("min_token_count must be non-negative")
     if max_token_count < 0:
         raise ValueError("max_token_count must be non-negative")
-    if selection_strategy not in {"random", "shortest"}:
-        raise ValueError("selection_strategy must be random or shortest")
+    if max_token_count > 0 and min_token_count > max_token_count:
+        raise ValueError("min_token_count must be less than or equal to max_token_count")
+    if selection_strategy not in {"random", "shortest", "longest"}:
+        raise ValueError("selection_strategy must be random, shortest, or longest")
 
     row_type_set = set(row_types)
     source_ids_by_type: dict[str, set[str]] = {row_type: set() for row_type in row_types}
@@ -87,7 +92,7 @@ def sample_rows(
 
     eligible_source_ids = set.intersection(*source_ids_by_type.values()) if source_ids_by_type else set()
     source_token_counts: dict[str, int] = {}
-    if max_token_count > 0 or selection_strategy == "shortest":
+    if min_token_count > 0 or max_token_count > 0 or selection_strategy in {"shortest", "longest"}:
         for source_id in sorted(eligible_source_ids):
             token_counts = [
                 token_count
@@ -100,6 +105,13 @@ def sample_rows(
                 eligible_source_ids.discard(source_id)
                 continue
             source_token_counts[source_id] = max(token_counts)
+
+    if min_token_count > 0:
+        eligible_source_ids = {
+            source_id
+            for source_id in eligible_source_ids
+            if source_token_counts.get(source_id, min_token_count - 1) >= min_token_count
+        }
 
     if max_token_count > 0:
         eligible_source_ids = {
@@ -118,6 +130,12 @@ def sample_rows(
         ordered_source_ids = sorted(
             eligible_source_ids,
             key=lambda source_id: (source_token_counts.get(source_id, 0), source_id),
+        )
+        selected_source_ids = set(ordered_source_ids[:sample_size])
+    elif selection_strategy == "longest":
+        ordered_source_ids = sorted(
+            eligible_source_ids,
+            key=lambda source_id: (-source_token_counts.get(source_id, 0), source_id),
         )
         selected_source_ids = set(ordered_source_ids[:sample_size])
     else:
@@ -164,6 +182,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--sample-size", type=int, default=10, help="Rows to keep per row type. Default: 10")
     parser.add_argument(
+        "--min-token-count",
+        type=int,
+        default=0,
+        help="Only sample source_ids whose requested rows have token_count at or above this value. 0 disables the floor.",
+    )
+    parser.add_argument(
         "--max-token-count",
         type=int,
         default=0,
@@ -171,9 +195,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument(
         "--selection-strategy",
-        choices=["random", "shortest"],
+        choices=["random", "shortest", "longest"],
         default=DEFAULT_SELECTION_STRATEGY,
-        help="Choose eligible sources randomly or by shortest token_count first. Default: random.",
+        help="Choose eligible sources randomly, by shortest token_count first, or by longest token_count first. Default: random.",
     )
     parser.add_argument(
         "--row-types",
@@ -190,6 +214,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         sample_size=args.sample_size,
         row_types=row_types,
         seed=args.seed,
+        min_token_count=args.min_token_count,
         max_token_count=args.max_token_count,
         selection_strategy=args.selection_strategy,
     )

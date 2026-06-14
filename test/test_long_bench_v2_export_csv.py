@@ -379,7 +379,7 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
         self.assertEqual(sampled_by_type["original"], sampled_by_type["semantic"])
         self.assertEqual(len(sampled_by_type["original"]), 2)
 
-    def test_sample_rows_filters_by_token_count_and_can_select_shortest(self):
+    def test_sample_rows_filters_by_token_count_and_can_select_shortest_or_longest(self):
         rows = []
         token_counts = {"row_1": "300", "row_2": "100", "row_3": "200", "row_4": "900"}
         for source_id, token_count in token_counts.items():
@@ -417,6 +417,19 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
         )
 
         self.assertEqual({row["source_id"] for row in sampled}, {"row_2", "row_3"})
+        self.assertEqual(len(sampled), 6)
+
+        sampled = sample_rows(
+            rows,
+            sample_size=2,
+            row_types=("original", "exact", "semantic"),
+            seed=0,
+            min_token_count=200,
+            max_token_count=900,
+            selection_strategy="longest",
+        )
+
+        self.assertEqual({row["source_id"] for row in sampled}, {"row_1", "row_4"})
         self.assertEqual(len(sampled), 6)
 
 

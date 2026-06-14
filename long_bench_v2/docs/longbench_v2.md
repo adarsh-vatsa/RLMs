@@ -241,7 +241,7 @@ python long_bench_v2/combine_csv.py \
 
 Use `long_bench_v2/sample_csv.py` to create a smaller balanced CSV for cheap local testing. The sampler chooses shared `source_id` values, so a sample size of 10 keeps the matching 10 `original`, 10 `exact`, and 10 `semantic` rows instead of unrelated rows from each group.
 
-For quick smoke runs, prefer a short-context sample instead of `--max-rows` on the full ordered CSV. `--max-rows 10` can select the first large LongBench contexts and is not a reliable cheap workload.
+For quick smoke runs, prefer a bounded random source-linked sample instead of `--max-rows` on the full ordered CSV. `--max-rows 10` can select the first large LongBench contexts and is not a reliable cheap workload.
 
 ```bash
 python long_bench_v2/sample_csv.py \
@@ -249,17 +249,52 @@ python long_bench_v2/sample_csv.py \
   --output-path benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
   --sample-size 1 \
   --max-token-count 75000 \
-  --selection-strategy shortest \
+  --selection-strategy random \
   --seed 0
 ```
 
 Useful options:
 
 - `--sample-size N`: number of rows to keep per row type. Default: `10`.
+- `--min-token-count N`: only sample source groups at or above this `token_count`. Default: `0`, meaning no floor.
 - `--max-token-count N`: only sample source groups at or below this `token_count`. Default: `0`, meaning no cap.
-- `--selection-strategy random|shortest`: choose eligible source groups randomly or shortest-first. Default: `random`.
+- `--selection-strategy random|shortest|longest`: choose eligible source groups randomly, shortest-first, or longest-first. Default: `random`.
 - `--row-types TYPES`: comma-separated row types to sample together by `source_id`. Default: `original,exact,semantic`.
 - `--seed N`: random seed for reproducible samples. Default: `0`.
+
+For staged longer-context testing, create separate named random samples by token
+band instead of relying on `--max-rows`:
+
+```bash
+# Short bounded sample.
+python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_short_18.csv \
+  --sample-size 18 \
+  --max-token-count 15000 \
+  --selection-strategy random \
+  --seed 0
+
+# Medium context band.
+python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_medium_18.csv \
+  --sample-size 18 \
+  --min-token-count 30000 \
+  --max-token-count 60000 \
+  --selection-strategy random \
+  --seed 0
+
+# Long context band.
+python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_long_18.csv \
+  --sample-size 18 \
+  --min-token-count 120000 \
+  --max-token-count 240000 \
+  --selection-strategy random \
+  --seed 0
+```
 
 ## STEP 6 - Run Cache Experiments
 

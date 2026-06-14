@@ -366,6 +366,7 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
             scs.MCQ_PROMPT_STYLE = original_style
 
         self.assertIn("Reject choices", strict_prompt)
+        self.assertIn("satisfy every constraint", strict_prompt)
         self.assertIn("overstate the evidence", strict_prompt)
         self.assertNotEqual(strict_prompt, default_prompt)
 
