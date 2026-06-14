@@ -141,12 +141,15 @@ SYNTHESIS_CONTEXT_MAX_RETRIES = _env_int("SEMANTIC_CACHE_SYNTHESIS_CONTEXT_MAX_R
 SYNTHESIS_CONTEXT_RETRY_SHRINK = _env_float("SEMANTIC_CACHE_SYNTHESIS_CONTEXT_RETRY_SHRINK", 0.85)
 MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
 MCQ_VERIFY_BEFORE_CACHE = _env_bool("SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE", False)
+MCQ_VERIFIER_MAX_SOURCE_CHARS = max(0, _env_int("SEMANTIC_CACHE_MCQ_VERIFIER_MAX_SOURCE_CHARS", 0))
 MCQ_VERIFICATION_FIELDS = (
     "mcq_verification_status",
     "mcq_executor_prediction",
     "mcq_evaluator_prediction",
     "mcq_cache_write_allowed",
     "mcq_verifier_error",
+    "mcq_verifier_source_chars",
+    "mcq_verifier_source_truncated",
 )
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
@@ -1801,6 +1804,8 @@ class SemanticCacheController:
             "mcq_evaluator_prediction": "",
             "mcq_cache_write_allowed": True,
             "mcq_verifier_error": "",
+            "mcq_verifier_source_chars": 0,
+            "mcq_verifier_source_truncated": False,
         }
         if not MCQ_VERIFY_BEFORE_CACHE:
             return base
@@ -1813,13 +1818,24 @@ class SemanticCacheController:
                 "mcq_verifier_error": "executor answer did not contain a parseable A-D choice",
             }
 
+        verifier_source_text = source_text
+        verifier_source_truncated = False
+        if MCQ_VERIFIER_MAX_SOURCE_CHARS > 0 and len(verifier_source_text) > MCQ_VERIFIER_MAX_SOURCE_CHARS:
+            verifier_source_text = verifier_source_text[:MCQ_VERIFIER_MAX_SOURCE_CHARS].rstrip()
+            verifier_source_truncated = True
+        base = {
+            **base,
+            "mcq_verifier_source_chars": len(verifier_source_text),
+            "mcq_verifier_source_truncated": verifier_source_truncated,
+        }
+
         try:
             response = create_llm_message(
                 model=self.EVALUATOR_MODEL,
                 max_tokens=MCQ_SYNTHESIS_MAX_TOKENS,
                 temperature=0,
                 system=_mcq_system_prompt(),
-                messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}],
+                messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{verifier_source_text}"}],
             )
             self.metrics.record_call(
                 self.EVALUATOR_MODEL,

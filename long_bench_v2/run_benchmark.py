@@ -259,6 +259,8 @@ def write_mcq_failure_artifact(
         "mcq_evaluator_prediction": bridge_row.get("mcq_evaluator_prediction", ""),
         "mcq_cache_write_allowed": bridge_row.get("mcq_cache_write_allowed", ""),
         "mcq_verifier_error": bridge_row.get("mcq_verifier_error", ""),
+        "mcq_verifier_source_chars": bridge_row.get("mcq_verifier_source_chars", ""),
+        "mcq_verifier_source_truncated": bridge_row.get("mcq_verifier_source_truncated", ""),
         "cache_type": bridge_row.get("cache_type", ""),
         "from_cache": bridge_row.get("from_cache", False),
         "retrieval": {
@@ -311,6 +313,7 @@ def resolve_cache_namespace(
     openai_compatible_extra_body: dict | None = None,
     mcq_prompt_style: str = "default",
     mcq_verify_before_cache: bool = False,
+    mcq_verifier_max_source_chars: int = 0,
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
@@ -320,7 +323,8 @@ def resolve_cache_namespace(
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
             f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
-            f"{extra_body_sig}\n{mcq_prompt_style}\n{bool(mcq_verify_before_cache)}"
+            f"{extra_body_sig}\n{mcq_prompt_style}\n{bool(mcq_verify_before_cache)}\n"
+            f"{int(mcq_verifier_max_source_chars)}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -543,6 +547,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     effective_mcq_verify_before_cache = bool(
         args.mcq_verify_before_cache or getattr(scs, "MCQ_VERIFY_BEFORE_CACHE", False)
     )
+    effective_mcq_verifier_max_source_chars = int(getattr(scs, "MCQ_VERIFIER_MAX_SOURCE_CHARS", 0) or 0)
     if hasattr(scs, "MCQ_VERIFY_BEFORE_CACHE"):
         scs.MCQ_VERIFY_BEFORE_CACHE = effective_mcq_verify_before_cache
 
@@ -561,6 +566,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             openai_compatible_extra_body=openai_compatible_extra_body_config,
             mcq_prompt_style=effective_mcq_prompt_style,
             mcq_verify_before_cache=effective_mcq_verify_before_cache,
+            mcq_verifier_max_source_chars=effective_mcq_verifier_max_source_chars,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -586,6 +592,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         f"synthesis_max_chunks={args.synthesis_max_chunks}"
     )
     print(f"[LONGBENCH-V2] MCQ verify before cache: {effective_mcq_verify_before_cache}")
+    print(f"[LONGBENCH-V2] MCQ verifier max source chars: {effective_mcq_verifier_max_source_chars}")
     print(f"[LONGBENCH-V2] Output dir: {out_dir}")
     if cache_state_enabled:
         print(f"[LONGBENCH-V2] Cache state root: {cache_state_root}")
@@ -740,6 +747,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "mcq_evaluator_prediction": output.get("mcq_evaluator_prediction", ""),
             "mcq_cache_write_allowed": output.get("mcq_cache_write_allowed", ""),
             "mcq_verifier_error": output.get("mcq_verifier_error", ""),
+            "mcq_verifier_source_chars": output.get("mcq_verifier_source_chars", ""),
+            "mcq_verifier_source_truncated": output.get("mcq_verifier_source_truncated", ""),
         }
         bridge_rows.append(bridge_row)
 
@@ -830,6 +839,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "synthesis_max_chunks": effective_synthesis_max_chunks,
         "mcq_prompt_style": effective_mcq_prompt_style,
         "mcq_verify_before_cache": effective_mcq_verify_before_cache,
+        "mcq_verifier_max_source_chars": effective_mcq_verifier_max_source_chars,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,
         "cache_save_interval": args.cache_save_interval,

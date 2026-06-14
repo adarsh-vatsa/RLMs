@@ -33,6 +33,7 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
             os.environ.pop(name, None)
         scs.MCQ_PROMPT_STYLE = "default"
         scs.MCQ_VERIFY_BEFORE_CACHE = False
+        scs.MCQ_VERIFIER_MAX_SOURCE_CHARS = 0
         scs.configure_llm_provider(
             provider="anthropic",
             api_key_env="ANTHROPIC_API_KEY",
@@ -469,6 +470,35 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertEqual(output["mcq_evaluator_prediction"], "A")
         self.assertTrue(output["mcq_cache_write_allowed"])
 
+    def test_mcq_verification_caps_evaluator_source_text(self):
+        controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics(), embedder=object(), reranker=object())
+        calls = []
+
+        def fake_message(**kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                content=[SimpleNamespace(text="A")],
+                usage=SimpleNamespace(input_tokens=10, output_tokens=1),
+            )
+
+        original_verify = scs.MCQ_VERIFY_BEFORE_CACHE
+        original_cap = scs.MCQ_VERIFIER_MAX_SOURCE_CHARS
+        try:
+            scs.MCQ_VERIFY_BEFORE_CACHE = True
+            scs.MCQ_VERIFIER_MAX_SOURCE_CHARS = 12
+            with patch("semantic_cache_system.create_llm_message", fake_message):
+                output = controller.verify_mcq_before_cache("Question?", "x" * 50, "A")
+        finally:
+            scs.MCQ_VERIFY_BEFORE_CACHE = original_verify
+            scs.MCQ_VERIFIER_MAX_SOURCE_CHARS = original_cap
+
+        prompt = calls[0]["messages"][0]["content"]
+        self.assertIn("Documents:\n" + ("x" * 12), prompt)
+        self.assertNotIn("x" * 13, prompt)
+        self.assertEqual(output["mcq_verification_status"], "agreed")
+        self.assertEqual(output["mcq_verifier_source_chars"], 12)
+        self.assertTrue(output["mcq_verifier_source_truncated"])
+
     def test_mcq_verification_metadata_is_returned_on_exact_cache_hit(self):
         controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics())
         query = "Question: Which option is correct?"
@@ -484,6 +514,8 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
                     "mcq_evaluator_prediction": "A",
                     "mcq_cache_write_allowed": True,
                     "mcq_verifier_error": "",
+                    "mcq_verifier_source_chars": 123,
+                    "mcq_verifier_source_truncated": True,
                 }
             ]
         }
@@ -496,6 +528,8 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertEqual(output["mcq_executor_prediction"], "A")
         self.assertEqual(output["mcq_evaluator_prediction"], "A")
         self.assertTrue(output["mcq_cache_write_allowed"])
+        self.assertEqual(output["mcq_verifier_source_chars"], 123)
+        self.assertTrue(output["mcq_verifier_source_truncated"])
 
     def test_mcq_verification_disagreement_skips_cache_write(self):
         output, stored, calls = self._run_mocked_mcq_search(verify_enabled=True, evaluator_text="B")

@@ -134,6 +134,8 @@ class FakeController:
             "mcq_evaluator_prediction": "B" if FakeScs.MCQ_VERIFY_BEFORE_CACHE else "",
             "mcq_cache_write_allowed": False if FakeScs.MCQ_VERIFY_BEFORE_CACHE else True,
             "mcq_verifier_error": "",
+            "mcq_verifier_source_chars": FakeScs.MCQ_VERIFIER_MAX_SOURCE_CHARS,
+            "mcq_verifier_source_truncated": bool(FakeScs.MCQ_VERIFIER_MAX_SOURCE_CHARS),
             "retrieval": {
                 "faiss_candidate_count": top_k,
                 "candidate_text_count": top_k,
@@ -150,6 +152,7 @@ class FakeScs:
     SYNTHESIS_MAX_CHUNKS = 5
     MCQ_PROMPT_STYLE = "strict"
     MCQ_VERIFY_BEFORE_CACHE = False
+    MCQ_VERIFIER_MAX_SOURCE_CHARS = 0
     SemanticCacheController = FakeController
     ExecutionMetrics = FakeMetrics
 
@@ -186,6 +189,7 @@ def _reset_fake_controller():
     FakeScs.SYNTHESIS_MAX_CHUNKS = 5
     FakeScs.MCQ_PROMPT_STYLE = "strict"
     FakeScs.MCQ_VERIFY_BEFORE_CACHE = False
+    FakeScs.MCQ_VERIFIER_MAX_SOURCE_CHARS = 0
 
 
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
@@ -295,6 +299,17 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             mcq_verify_before_cache=True,
         )
+        changed_mcq_verifier_cap = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            mcq_verify_before_cache=True,
+            mcq_verifier_max_source_chars=45000,
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
@@ -302,6 +317,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertNotEqual(first, changed_extra_body)
         self.assertNotEqual(first, changed_prompt_style)
         self.assertNotEqual(first, changed_mcq_verification)
+        self.assertNotEqual(changed_mcq_verification, changed_mcq_verifier_cap)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -405,6 +421,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
 
     def test_run_benchmark_uses_synthesis_override_grouping_and_cache_save_interval(self):
         _reset_fake_controller()
+        FakeScs.MCQ_VERIFIER_MAX_SOURCE_CHARS = 45000
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             source_path = tmp / "data.json"
@@ -484,6 +501,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["doc_chunk_overlap"], 1000)
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
         self.assertTrue(manifest["mcq_verify_before_cache"])
+        self.assertEqual(manifest["mcq_verifier_max_source_chars"], 45000)
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
         self.assertEqual(manifest["mcq_failure_artifact_count"], 1)
@@ -502,10 +520,14 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["mcq_executor_prediction"], "A")
         self.assertEqual(bridge_rows[0]["mcq_evaluator_prediction"], "B")
         self.assertFalse(bridge_rows[0]["mcq_cache_write_allowed"])
+        self.assertEqual(bridge_rows[0]["mcq_verifier_source_chars"], 45000)
+        self.assertTrue(bridge_rows[0]["mcq_verifier_source_truncated"])
         self.assertEqual(len(failure_artifacts), 1)
         self.assertEqual(failure_payload["case_id"], "row_2__original")
         self.assertEqual(failure_payload["expected_answer"], "B")
         self.assertEqual(failure_payload["executor_prediction"], "A")
+        self.assertEqual(failure_payload["mcq_verifier_source_chars"], 45000)
+        self.assertTrue(failure_payload["mcq_verifier_source_truncated"])
         self.assertEqual(failure_payload["synthesized_source_text"], "Evidence text shown to the model")
 
 
