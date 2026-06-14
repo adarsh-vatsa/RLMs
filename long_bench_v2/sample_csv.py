@@ -19,6 +19,11 @@ DEFAULT_INPUT_PATH = Path("benchmark_data/long_bench_v2/data_cache_suite.csv")
 DEFAULT_OUTPUT_PATH = Path("benchmark_data/long_bench_v2/data_cache_suite_sample.csv")
 DEFAULT_ROW_TYPES = ("original", "exact", "semantic")
 DEFAULT_SELECTION_STRATEGY = "random"
+DEFAULT_TOKEN_BUCKETS = (
+    ("short", 0, 75000),
+    ("medium", 75001, 150000),
+    ("long", 150001, 300000),
+)
 
 
 def _read_rows(path: Path) -> list[dict]:
@@ -56,6 +61,42 @@ def _token_count(row: dict) -> int | None:
         return None
 
 
+def parse_token_buckets(value: str) -> tuple[tuple[str, int, int], ...]:
+    buckets: list[tuple[str, int, int]] = []
+    for raw_bucket in (value or "").split(","):
+        raw_bucket = raw_bucket.strip()
+        if not raw_bucket:
+            continue
+        parts = [part.strip() for part in raw_bucket.split(":")]
+        if len(parts) != 3:
+            raise ValueError("Token buckets must use name:min:max format")
+        name, raw_min, raw_max = parts
+        if not name:
+            raise ValueError("Token bucket names cannot be blank")
+        try:
+            min_tokens = int(raw_min)
+            max_tokens = int(raw_max)
+        except ValueError as exc:
+            raise ValueError(f"Token bucket {name!r} has non-integer bounds") from exc
+        if min_tokens < 0 or max_tokens < min_tokens:
+            raise ValueError(f"Token bucket {name!r} must satisfy 0 <= min <= max")
+        buckets.append((name, min_tokens, max_tokens))
+    if not buckets:
+        raise ValueError("At least one token bucket is required")
+    return tuple(buckets)
+
+
+def _format_token_buckets(buckets: Sequence[tuple[str, int, int]]) -> str:
+    return ",".join(f"{name}:{min_tokens}:{max_tokens}" for name, min_tokens, max_tokens in buckets)
+
+
+def _bucket_for_token_count(token_count: int, buckets: Sequence[tuple[str, int, int]]) -> str:
+    for name, min_tokens, max_tokens in buckets:
+        if min_tokens <= token_count <= max_tokens:
+            return name
+    return ""
+
+
 def sample_rows(
     rows: list[dict],
     sample_size: int,
@@ -63,13 +104,14 @@ def sample_rows(
     seed: int,
     max_token_count: int = 0,
     selection_strategy: str = DEFAULT_SELECTION_STRATEGY,
+    token_buckets: Sequence[tuple[str, int, int]] = DEFAULT_TOKEN_BUCKETS,
 ) -> list[dict]:
     if sample_size < 0:
         raise ValueError("sample_size must be non-negative")
     if max_token_count < 0:
         raise ValueError("max_token_count must be non-negative")
-    if selection_strategy not in {"random", "shortest"}:
-        raise ValueError("selection_strategy must be random or shortest")
+    if selection_strategy not in {"random", "shortest", "token_stratified"}:
+        raise ValueError("selection_strategy must be random, shortest, or token_stratified")
 
     row_type_set = set(row_types)
     source_ids_by_type: dict[str, set[str]] = {row_type: set() for row_type in row_types}
@@ -87,7 +129,7 @@ def sample_rows(
 
     eligible_source_ids = set.intersection(*source_ids_by_type.values()) if source_ids_by_type else set()
     source_token_counts: dict[str, int] = {}
-    if max_token_count > 0 or selection_strategy == "shortest":
+    if max_token_count > 0 or selection_strategy in {"shortest", "token_stratified"}:
         for source_id in sorted(eligible_source_ids):
             token_counts = [
                 token_count
@@ -114,7 +156,30 @@ def sample_rows(
             f"source_ids have all requested row types: {', '.join(row_types)}"
         )
 
-    if selection_strategy == "shortest":
+    if selection_strategy == "token_stratified":
+        buckets = tuple(token_buckets or DEFAULT_TOKEN_BUCKETS)
+        bucket_source_ids: dict[str, list[str]] = {name: [] for name, _, _ in buckets}
+        for source_id in sorted(eligible_source_ids):
+            bucket_name = _bucket_for_token_count(source_token_counts.get(source_id, -1), buckets)
+            if bucket_name:
+                bucket_source_ids[bucket_name].append(source_id)
+
+        base_count = sample_size // len(buckets)
+        remainder = sample_size % len(buckets)
+        selected_source_ids = set()
+        rng = random.Random(seed)
+        for idx, (bucket_name, min_tokens, max_tokens) in enumerate(buckets):
+            requested = base_count + (1 if idx < remainder else 0)
+            if requested == 0:
+                continue
+            available = bucket_source_ids.get(bucket_name, [])
+            if requested > len(available):
+                raise ValueError(
+                    f"Token bucket {bucket_name!r} ({min_tokens}-{max_tokens}) requested {requested} "
+                    f"source-linked samples, but only {len(available)} are eligible"
+                )
+            selected_source_ids.update(rng.sample(available, requested))
+    elif selection_strategy == "shortest":
         ordered_source_ids = sorted(
             eligible_source_ids,
             key=lambda source_id: (source_token_counts.get(source_id, 0), source_id),
@@ -140,6 +205,35 @@ def sample_rows(
         raise ValueError(f"Sample is not balanced at {sample_size} rows per type: {details}")
 
     return sampled_rows
+
+
+def print_token_bucket_summary(rows: list[dict], buckets: Sequence[tuple[str, int, int]]) -> None:
+    source_token_counts: dict[str, int] = {}
+    for row in rows:
+        source_id = row.get("source_id", "")
+        token_count = _token_count(row)
+        if source_id and token_count is not None:
+            source_token_counts[source_id] = max(token_count, source_token_counts.get(source_id, 0))
+
+    if not source_token_counts:
+        print("[LONGBENCH-V2] Token bucket summary: <no token_count values>")
+        return
+
+    bucket_values: dict[str, list[int]] = {name: [] for name, _, _ in buckets}
+    for token_count in source_token_counts.values():
+        bucket_name = _bucket_for_token_count(token_count, buckets)
+        if bucket_name:
+            bucket_values[bucket_name].append(token_count)
+
+    print("[LONGBENCH-V2] Token bucket summary:")
+    print("bucket  sources  min_tokens  max_tokens")
+    print("------  -------  ----------  ----------")
+    for name, _, _ in buckets:
+        values = bucket_values.get(name, [])
+        if values:
+            print(f"{name.ljust(6)}  {str(len(values)).rjust(7)}  {str(min(values)).rjust(10)}  {str(max(values)).rjust(10)}")
+        else:
+            print(f"{name.ljust(6)}  {str(0).rjust(7)}  {'-'.rjust(10)}  {'-'.rjust(10)}")
 
 
 def print_row_type_summary(rows: list[dict]) -> None:
@@ -171,9 +265,17 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument(
         "--selection-strategy",
-        choices=["random", "shortest"],
+        choices=["random", "shortest", "token_stratified"],
         default=DEFAULT_SELECTION_STRATEGY,
-        help="Choose eligible sources randomly or by shortest token_count first. Default: random.",
+        help="Choose eligible sources randomly, shortest-first, or stratified by token_count. Default: random.",
+    )
+    parser.add_argument(
+        "--token-buckets",
+        default=_format_token_buckets(DEFAULT_TOKEN_BUCKETS),
+        help=(
+            "Comma-separated token buckets for token_stratified sampling as name:min:max. "
+            f"Default: {_format_token_buckets(DEFAULT_TOKEN_BUCKETS)}"
+        ),
     )
     parser.add_argument(
         "--row-types",
@@ -184,6 +286,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     row_types = parse_row_types(args.row_types)
+    token_buckets = parse_token_buckets(args.token_buckets)
     rows = _read_rows(args.input_path)
     sampled_rows = sample_rows(
         rows,
@@ -192,10 +295,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         seed=args.seed,
         max_token_count=args.max_token_count,
         selection_strategy=args.selection_strategy,
+        token_buckets=token_buckets,
     )
     _write_rows(args.output_path, sampled_rows)
     print(f"[LONGBENCH-V2] Wrote {len(sampled_rows)} rows to {args.output_path}")
     print_row_type_summary(sampled_rows)
+    if args.selection_strategy == "token_stratified":
+        print_token_bucket_summary(sampled_rows, token_buckets)
 
 
 if __name__ == "__main__":

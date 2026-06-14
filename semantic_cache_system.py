@@ -106,6 +106,13 @@ def _env_float(name: str, default: float) -> float:
         print(f"[CONFIG] Ignoring invalid {name}={value!r}; using {default}")
         return default
 
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on", "allow"}
+
 # ---------------------------------------------------------------------------
 # Model Config
 # ---------------------------------------------------------------------------
@@ -131,6 +138,9 @@ SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
 MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
+MCQ_SOLVER_MODE = os.getenv("SEMANTIC_CACHE_MCQ_SOLVER_MODE", "direct").strip().lower() or "direct"
+CACHE_WRITE_POLICY = os.getenv("SEMANTIC_CACHE_CACHE_WRITE_POLICY", "always").strip().lower() or "always"
+ADAPTIVE_RERANKER = _env_bool("SEMANTIC_CACHE_ADAPTIVE_RERANKER", False)
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -489,20 +499,24 @@ def _coerce_bool(value) -> bool:
     return bool(value)
 
 
+def _strict_mcq_system_prompt() -> str:
+    return (
+        "You are solving a LongBench-v2 multiple-choice question using ONLY the "
+        "provided documents. The query includes choices A, B, C, and D. Silently "
+        "check each option against the documents before answering. The correct "
+        "choice must answer the exact question asked and be directly supported by "
+        "the documents. Reject choices that are only partially supported, too "
+        "narrow, too broad, overstate the evidence, add unsupported causal claims, "
+        "or are merely mentioned in the documents. If more than one option seems "
+        "plausible, choose the option best supported by the overall evidence and "
+        "the wording of the question. Return exactly one capital letter: A, B, C, "
+        "or D. Do not explain."
+    )
+
+
 def _mcq_system_prompt() -> str:
     if MCQ_PROMPT_STYLE == "strict":
-        return (
-            "You are solving a LongBench-v2 multiple-choice question using ONLY the "
-            "provided documents. The query includes choices A, B, C, and D. Silently "
-            "check each option against the documents before answering. The correct "
-            "choice must answer the exact question asked and be directly supported by "
-            "the documents. Reject choices that are only partially supported, too "
-            "narrow, too broad, overstate the evidence, add unsupported causal claims, "
-            "or are merely mentioned in the documents. If more than one option seems "
-            "plausible, choose the option best supported by the overall evidence and "
-            "the wording of the question. Return exactly one capital letter: A, B, C, "
-            "or D. Do not explain."
-        )
+        return _strict_mcq_system_prompt()
     return (
         "You are answering a multiple-choice benchmark question using ONLY "
         "the provided documents. The query includes choices A, B, C, and D. "
@@ -510,6 +524,64 @@ def _mcq_system_prompt() -> str:
         "one capital letter: A, B, C, or D. If evidence is incomplete, choose "
         "the best-supported option from the given choices. Do not explain."
     )
+
+
+def _normalize_choice_letter(value) -> str:
+    raw = str(value or "").strip().upper()
+    if raw in {"A", "B", "C", "D"}:
+        return raw
+    match = re.search(r"\b([A-D])\b", raw)
+    return match.group(1) if match else ""
+
+
+def _coerce_confidence(value, default: float = 0.0) -> float:
+    try:
+        confidence = float(value)
+    except (TypeError, ValueError):
+        return default
+    if math.isnan(confidence):
+        return default
+    return max(0.0, min(1.0, confidence))
+
+
+def _compact_option_evidence(options) -> dict:
+    if not isinstance(options, dict):
+        return {}
+    compact = {}
+    for key, value in options.items():
+        choice = _normalize_choice_letter(key)
+        if not choice:
+            continue
+        if isinstance(value, dict):
+            status = str(value.get("status") or value.get("support") or "").strip()
+            evidence = str(value.get("evidence") or value.get("reason") or "").strip()
+            compact[choice] = {
+                "status": status[:80],
+                "evidence": evidence[:240],
+            }
+        else:
+            compact[choice] = {"status": "", "evidence": str(value or "")[:240]}
+    return compact
+
+
+def _normalize_mcq_json(payload: dict | None, *, fallback_text: str = "") -> dict:
+    payload = payload if isinstance(payload, dict) else {}
+    choice = _normalize_choice_letter(
+        payload.get("choice")
+        or payload.get("answer")
+        or payload.get("final_choice")
+        or payload.get("final_answer")
+        or fallback_text
+    )
+    return {
+        "choice": choice,
+        "confidence": _coerce_confidence(payload.get("confidence"), 0.0),
+        "option_evidence": _compact_option_evidence(
+            payload.get("option_evidence") or payload.get("options") or payload.get("choices")
+        ),
+        "reason": str(payload.get("reason") or payload.get("rationale") or "")[:500],
+        "raw": payload,
+    }
 
 
 def create_llm_message(**kwargs):
@@ -1592,7 +1664,7 @@ class SemanticCacheController:
     # STORE — Add a new entry to the cache
     # ------------------------------------------------------------------
     def store(self, query: str, context: str, result: str, model_used: str = "unknown",
-              sources: List[dict] = None):
+              sources: List[dict] = None, answer_metadata: dict = None):
         """Store a query-result pair with source provenance and knowledge extraction."""
         chunk_hash = self._get_chunk_hash(context)
         data_scope_hash = self.data_scope_hash or chunk_hash
@@ -1618,6 +1690,7 @@ class SemanticCacheController:
             "model_used": model_used,
             "grounding_info": grounding_info,
             "data_scope_hash": data_scope_hash,
+            "answer_metadata": answer_metadata or {},
         }
         self.cache[chunk_hash].append(entry)
 
@@ -1727,6 +1800,226 @@ class SemanticCacheController:
             self.metrics.consensus_disputed += 1
             print(f"      [CONSENSUS] ⚠ DISPUTED — {primary_model} said {primary_facts}, {self.EVALUATOR_MODEL} said {verifier_facts}. Divergent: {divergent}")
             return {"consensus": "DISPUTED", "primary_facts": primary_facts, "verifier_facts": verifier_facts, "divergent_facts": divergent}
+
+    def _answer_metadata_response_fields(self, answer_metadata: dict | None) -> dict:
+        answer_metadata = answer_metadata or {}
+        return {
+            "answer_metadata": answer_metadata,
+            "verification_status": answer_metadata.get("verification_status", ""),
+            "executor_choice": answer_metadata.get("executor_choice", ""),
+            "verifier_choice": answer_metadata.get("verifier_choice", ""),
+            "adjudicator_choice": answer_metadata.get("adjudicator_choice", ""),
+            "cache_write_status": answer_metadata.get("cache_write_status", ""),
+        }
+
+    def _solve_mcq_direct(
+        self,
+        query: str,
+        source_text: str,
+        model: str,
+        *,
+        system_prompt: str | None = None,
+        verification_status: str = "DIRECT_UNVERIFIED",
+    ) -> dict:
+        t_synth = time.time()
+        response = create_llm_message(
+            model=model,
+            max_tokens=MCQ_SYNTHESIS_MAX_TOKENS,
+            temperature=0,
+            system=system_prompt or _mcq_system_prompt(),
+            messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}],
+        )
+        self.metrics.record_call(model, response.usage.input_tokens, response.usage.output_tokens)
+        raw_answer = response.content[0].text.strip()
+        choice = _normalize_choice_letter(raw_answer)
+        answer = choice or raw_answer
+        dt_synth = (time.time() - t_synth) * 1000
+        print(f"  [SYNTH] Generated direct MCQ answer in {dt_synth:.0f}ms")
+        return {
+            "answer": answer,
+            "answer_metadata": {
+                "mcq_solver_mode": "direct",
+                "verification_status": verification_status,
+                "executor_choice": choice,
+                "verifier_choice": "",
+                "adjudicator_choice": "",
+                "confidence": 0.0,
+                "executor_confidence": 0.0,
+                "verifier_confidence": 0.0,
+                "adjudicator_confidence": 0.0,
+                "option_evidence": {},
+                "raw_executor_response": raw_answer[:1000],
+            },
+        }
+
+    def _solve_mcq_with_evidence(self, query: str, source_text: str, model: str) -> dict:
+        system_prompt = (
+            "You are solving a LongBench-v2 multiple-choice question using ONLY the "
+            "provided documents. Return a JSON object with keys: choice, confidence, "
+            "option_evidence, and reason. choice must be A, B, C, or D. confidence "
+            "must be between 0 and 1. option_evidence must contain A, B, C, and D, "
+            "where each value has status and evidence. Use status values such as "
+            "supported, contradicted, insufficient, irrelevant, too_broad, or too_narrow. "
+            "Do not use markdown."
+        )
+        t_synth = time.time()
+        response = create_llm_message(
+            model=model,
+            max_tokens=max(256, MCQ_SYNTHESIS_MAX_TOKENS),
+            temperature=0,
+            system=system_prompt,
+            response_format=_json_response_format(),
+            messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}],
+        )
+        self.metrics.record_call(model, response.usage.input_tokens, response.usage.output_tokens)
+        raw_answer = response.content[0].text
+        executor = _normalize_mcq_json(_extract_llm_json_object(raw_answer), fallback_text=raw_answer)
+        dt_synth = (time.time() - t_synth) * 1000
+        print(f"  [SYNTH] Generated evidence MCQ answer in {dt_synth:.0f}ms")
+
+        if not executor["choice"]:
+            fallback = self._solve_mcq_direct(
+                query,
+                source_text,
+                model,
+                system_prompt=_strict_mcq_system_prompt(),
+                verification_status="DIRECT_PARSE_FALLBACK",
+            )
+            fallback["answer_metadata"].update({
+                "mcq_solver_mode": "evidence_adjudicated",
+                "parse_error": "executor_json_missing_choice",
+                "raw_executor_response": raw_answer[:1000],
+            })
+            return fallback
+
+        verifier = self._verify_mcq_answer(query, source_text, executor)
+        verifier_choice = verifier.get("choice", "")
+        final_choice = executor["choice"]
+        adjudicator = {}
+        if verifier_choice and verifier_choice == executor["choice"]:
+            verification_status = "VERIFIED"
+            confidence = max(executor["confidence"], verifier.get("confidence", 0.0))
+        else:
+            adjudicator = self._adjudicate_mcq_answer(query, source_text, executor, verifier)
+            if adjudicator.get("choice"):
+                final_choice = adjudicator["choice"]
+                verification_status = "ADJUDICATED"
+                confidence = adjudicator.get("confidence", 0.0)
+            else:
+                verification_status = "DISPUTED"
+                confidence = min(executor["confidence"], verifier.get("confidence", 0.0))
+
+        return {
+            "answer": final_choice,
+            "answer_metadata": {
+                "mcq_solver_mode": "evidence_adjudicated",
+                "verification_status": verification_status,
+                "executor_choice": executor["choice"],
+                "verifier_choice": verifier_choice,
+                "adjudicator_choice": adjudicator.get("choice", ""),
+                "confidence": confidence,
+                "executor_confidence": executor["confidence"],
+                "verifier_confidence": verifier.get("confidence", 0.0),
+                "adjudicator_confidence": adjudicator.get("confidence", 0.0),
+                "option_evidence": executor.get("option_evidence", {}),
+                "executor_reason": executor.get("reason", ""),
+                "verifier_reason": verifier.get("reason", ""),
+                "adjudicator_reason": adjudicator.get("reason", ""),
+            },
+        }
+
+    def _verify_mcq_answer(self, query: str, source_text: str, executor_result: dict) -> dict:
+        system_prompt = (
+            "You are independently verifying a LongBench-v2 multiple-choice answer. "
+            "Use ONLY the documents. Return JSON with keys: choice, confidence, and reason. "
+            "choice must be A, B, C, or D. Do not copy the proposed answer unless it is best supported."
+        )
+        proposed = executor_result.get("choice", "")
+        try:
+            response = create_llm_message(
+                model=self.EVALUATOR_MODEL,
+                max_tokens=256,
+                temperature=0,
+                system=system_prompt,
+                response_format=_json_response_format(),
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Query: {query}\n\nProposed answer: {proposed}\n\n"
+                        f"Executor reason: {executor_result.get('reason', '')}\n\nDocuments:\n{source_text}"
+                    ),
+                }],
+            )
+            self.metrics.record_call(
+                self.EVALUATOR_MODEL,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+            )
+            parsed = _normalize_mcq_json(_extract_llm_json_object(response.content[0].text), fallback_text=response.content[0].text)
+            parsed["raw_response"] = response.content[0].text[:1000]
+            return parsed
+        except Exception as exc:
+            print(f"      [MCQ-VERIFY] Verifier call failed: {exc}")
+            return {"choice": "", "confidence": 0.0, "reason": f"verifier_failed: {exc}"}
+
+    def _adjudicate_mcq_answer(self, query: str, source_text: str, executor_result: dict, verifier_result: dict) -> dict:
+        system_prompt = (
+            "You are adjudicating a disputed LongBench-v2 multiple-choice answer. "
+            "Use ONLY the documents and the two prior analyses. Return JSON with keys: "
+            "choice, confidence, and reason. choice must be A, B, C, or D."
+        )
+        try:
+            response = create_llm_message(
+                model=EXECUTOR_MODEL,
+                max_tokens=256,
+                temperature=0,
+                system=system_prompt,
+                response_format=_json_response_format(),
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Query: {query}\n\n"
+                        f"Executor result: {json.dumps(executor_result, ensure_ascii=False)}\n\n"
+                        f"Verifier result: {json.dumps(verifier_result, ensure_ascii=False)}\n\n"
+                        f"Documents:\n{source_text}"
+                    ),
+                }],
+            )
+            self.metrics.record_call(
+                EXECUTOR_MODEL,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+            )
+            parsed = _normalize_mcq_json(_extract_llm_json_object(response.content[0].text), fallback_text=response.content[0].text)
+            parsed["raw_response"] = response.content[0].text[:1000]
+            return parsed
+        except Exception as exc:
+            print(f"      [MCQ-ADJUDICATE] Adjudicator call failed: {exc}")
+            return {"choice": "", "confidence": 0.0, "reason": f"adjudicator_failed: {exc}"}
+
+    def _resolve_cache_write(self, is_choice_query: bool, answer_metadata: dict, consensus: dict | None) -> tuple[bool, str]:
+        policy = CACHE_WRITE_POLICY if CACHE_WRITE_POLICY in {"always", "verified"} else "always"
+        if policy == "always":
+            return True, "stored"
+
+        if is_choice_query:
+            status = str(answer_metadata.get("verification_status") or "").upper()
+            confidence = _coerce_confidence(answer_metadata.get("confidence"), 0.0)
+            if status == "VERIFIED":
+                return True, "stored_verified"
+            if status == "ADJUDICATED" and confidence >= 0.70:
+                return True, "stored_adjudicated"
+            return False, "skipped_unverified"
+
+        if (consensus or {}).get("consensus") == "DISPUTED":
+            return False, "skipped_consensus_disputed"
+        return True, "stored_verified"
+
+    def _cache_entry_read_allowed(self, entry: dict, is_choice_query: bool) -> bool:
+        if CACHE_WRITE_POLICY != "verified" or not is_choice_query:
+            return True
+        allowed, _ = self._resolve_cache_write(True, entry.get("answer_metadata") or {}, None)
+        return allowed
 
     # ------------------------------------------------------------------
     # KNOWLEDGE EXTRACTION — Decompose answers into atomic triples
@@ -1853,6 +2146,7 @@ class SemanticCacheController:
             "reranker_enabled": bool(self.reranker),
             "reranker_returned_count": 0,
             "reranker_fallback_used": False,
+            "reranker_skipped_reason": "",
         }
         if self.doc_index is None or self.doc_index.total == 0:
             print("  [RETRIEVE] No documents indexed. Run ingest() first.")
@@ -1894,6 +2188,12 @@ class SemanticCacheController:
 
         # Rerank with relevance gate
         if self.reranker and candidate_texts:
+            if ADAPTIVE_RERANKER and len(raw_results) <= max(1, rerank_top):
+                reason = "candidate_text_count_lte_rerank_top"
+                self._last_retrieval_info["reranker_skipped_reason"] = reason
+                print(f"  [RERANK] Skipped adaptive rerank ({reason})")
+                return raw_results
+
             t1 = time.time()
             reranked = self.reranker.rerank(query, candidate_texts, top_k=rerank_top)
             dt_rerank = (time.time() - t1) * 1000
@@ -1931,6 +2231,10 @@ class SemanticCacheController:
             return fallback
         else:
             # No reranker: return raw FAISS results
+            if not self.reranker:
+                self._last_retrieval_info["reranker_skipped_reason"] = "disabled"
+            elif not candidate_texts:
+                self._last_retrieval_info["reranker_skipped_reason"] = "no_candidate_texts"
             return raw_results
 
     def _query_requests_choice_letter(self, query: str) -> bool:
@@ -1948,6 +2252,7 @@ class SemanticCacheController:
         This is the main entry point for domain-specific clients.
         """
         t_start = time.time()
+        is_choice_query = self._query_requests_choice_letter(query)
 
         # ── Stage 0: Cache check (Dragnet + Sniper) ──
         # For retrieval-based search, we use a global cache (not hash-bucketed)
@@ -1958,6 +2263,7 @@ class SemanticCacheController:
                     if (
                         entry["query"].lower().strip() == query.lower().strip()
                         and self._entry_matches_active_scope(entry)
+                        and self._cache_entry_read_allowed(entry, is_choice_query)
                     ):
                         self.metrics.exact_hits += 1
                         print(f"  [CACHE] ✓ Exact Match — free retrieval")
@@ -1965,6 +2271,7 @@ class SemanticCacheController:
                             "query": query, "answer": entry["result"],
                             "from_cache": True, "cache_type": "exact",
                             "grounding": entry.get("grounding_info", {}),
+                            **self._answer_metadata_response_fields(entry.get("answer_metadata")),
                         }
 
             query_emb = None
@@ -1981,7 +2288,11 @@ class SemanticCacheController:
                 for score, meta in strong:
                     ci = meta["cache_idx"]
                     entry = self._find_cache_entry_by_flat_idx(ci)
-                    if entry and self._entry_matches_active_scope(entry):
+                    if (
+                        entry
+                        and self._entry_matches_active_scope(entry)
+                        and self._cache_entry_read_allowed(entry, is_choice_query)
+                    ):
                         candidate_entries.append(entry)
                         candidate_scores.append(score)
 
@@ -1998,6 +2309,7 @@ class SemanticCacheController:
                             "query": query, "answer": cached["result"],
                             "from_cache": True, "cache_type": "semantic",
                             "grounding": cached.get("grounding_info", {}),
+                            **self._answer_metadata_response_fields(cached.get("answer_metadata")),
                         }
 
             # Knowledge fact lookup
@@ -2011,7 +2323,11 @@ class SemanticCacheController:
                 for score, meta in fact_results:
                     fact = self.knowledge[meta["fact_idx"]]
                     source_entry_for_fact = self._find_cache_entry_by_flat_idx(fact.get("source_cache_idx", -1))
-                    if source_entry_for_fact and self._entry_matches_active_scope(source_entry_for_fact):
+                    if (
+                        source_entry_for_fact
+                        and self._entry_matches_active_scope(source_entry_for_fact)
+                        and self._cache_entry_read_allowed(source_entry_for_fact, is_choice_query)
+                    ):
                         scoped_fact_hits.append((score, meta, fact, source_entry_for_fact))
                 strong_facts = [hit for hit in scoped_fact_hits if hit[0] >= self.KNOWLEDGE_MIN_SCORE]
 
@@ -2106,6 +2422,7 @@ class SemanticCacheController:
                         "knowledge_verifier_trigger_reasons": trigger_reasons,
                         "knowledge_lexical_support": lexical_support,
                         "grounding": source_entry.get("grounding_info", {}),
+                        **self._answer_metadata_response_fields(source_entry.get("answer_metadata")),
                     }
 
         # ── Stage 1: Retrieve relevant documents ──
@@ -2130,10 +2447,20 @@ class SemanticCacheController:
 
         source_limit = max(1, SYNTHESIS_MAX_CHUNKS)
         source_text = "\n\n---\n\n".join(r["text"] for r in results[:source_limit])
-        is_choice_query = self._query_requests_choice_letter(query)
+        model = EXECUTOR_MODEL
+        answer_metadata = {}
         if is_choice_query:
-            system_prompt = _mcq_system_prompt()
-            max_tokens = MCQ_SYNTHESIS_MAX_TOKENS
+            solver_mode = MCQ_SOLVER_MODE if MCQ_SOLVER_MODE in {"direct", "evidence_adjudicated"} else "direct"
+            if solver_mode == "evidence_adjudicated":
+                solved = self._solve_mcq_with_evidence(query, source_text, model)
+                answer = solved["answer"]
+                answer_metadata = solved.get("answer_metadata", {})
+                consensus = {"consensus": answer_metadata.get("verification_status", "")}
+            else:
+                solved = self._solve_mcq_direct(query, source_text, model)
+                answer = solved["answer"]
+                answer_metadata = solved.get("answer_metadata", {})
+                consensus = self.consensus_verify(query, source_text, answer, model)
         else:
             system_prompt = (
                 "You are a document analysis expert. Answer the query using ONLY "
@@ -2143,29 +2470,34 @@ class SemanticCacheController:
                 "Otherwise, cite specific details and be precise and thorough."
             )
             max_tokens = SYNTHESIS_MAX_TOKENS
-        t_synth = time.time()
-        model = EXECUTOR_MODEL
-        response = create_llm_message(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=0,
-            system=system_prompt,
-            messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}]
-        )
-        self.metrics.record_call(model, response.usage.input_tokens, response.usage.output_tokens)
-        answer = response.content[0].text
-        dt_synth = (time.time() - t_synth) * 1000
-        print(f"  [SYNTH] Generated answer in {dt_synth:.0f}ms")
+            t_synth = time.time()
+            response = create_llm_message(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=0,
+                system=system_prompt,
+                messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}]
+            )
+            self.metrics.record_call(model, response.usage.input_tokens, response.usage.output_tokens)
+            answer = response.content[0].text
+            dt_synth = (time.time() - t_synth) * 1000
+            print(f"  [SYNTH] Generated answer in {dt_synth:.0f}ms")
+            consensus = self.consensus_verify(query, source_text, answer, model)
 
         # ── Stage 3: Verify and cache ──
-        consensus = self.consensus_verify(query, source_text, answer, model)
-        self.store(query, source_text, answer, model_used=model, sources=results)
+        should_store, cache_write_status = self._resolve_cache_write(is_choice_query, answer_metadata, consensus)
+        answer_metadata["cache_write_status"] = cache_write_status
+        if should_store:
+            self.store(query, source_text, answer, model_used=model, sources=results, answer_metadata=answer_metadata)
+        else:
+            print(f"  [CACHE] Skipped write ({cache_write_status})")
 
         return {
             "query": query, "answer": answer,
             "from_cache": False, "results": results,
             "consensus": consensus,
             "retrieval": getattr(self, "_last_retrieval_info", {}),
+            **self._answer_metadata_response_fields(answer_metadata),
         }
 
     # ------------------------------------------------------------------

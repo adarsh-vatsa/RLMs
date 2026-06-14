@@ -559,8 +559,9 @@ evaluator: http://<evaluator-node>:8001/v1
 Start with a sampled LongBench-v2 run to verify the services, cache reuse, and
 scoring path before submitting a larger job. This uses the same retrieval/cache
 profile as the full benchmark below; the only intentional difference is that
-`sample_csv.py` selects 18 short source-linked samples first, producing 54 rows
-across the original, exact, and semantic variants.
+`sample_csv.py` selects 18 source-linked samples split evenly across short,
+medium, and bounded-long token buckets, producing 54 rows across the original,
+exact, and semantic variants.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -576,7 +577,10 @@ export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
-export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
+export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
+export SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated
+export SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified
+export SEMANTIC_CACHE_ADAPTIVE_RERANKER=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -584,7 +588,8 @@ uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
   --sample-size 18 \
-  --selection-strategy shortest \
+  --selection-strategy token_stratified \
+  --token-buckets short:0:75000,medium:75001:150000,long:150001:300000 \
   --seed 0 && \
 uv run python long_bench_v2/run_benchmark.py \
   --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
@@ -598,8 +603,11 @@ uv run python long_bench_v2/run_benchmark.py \
   --top-k 5 \
   --rerank-top 3 \
   --synthesis-max-chunks 3 \
+  --mcq-solver-mode evidence_adjudicated \
+  --cache-write-policy verified \
+  --adaptive-reranker \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-small-large-context' \
+  --manifest-note jarvis-l40s-token-stratified-evidence-gated' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -616,9 +624,10 @@ log. They should point under `benchmark_artifacts/longbench_v2/...`.
 The small validation command resets only this selected cache namespace. Keep
 that reset while testing retrieval or synthesis changes; otherwise exact and
 semantic rows can reuse a bad first-write answer from an older run.
-`--selection-strategy shortest` keeps this sanity check cheap without imposing a
-benchmark-wide token cap. The full benchmark below should run the intended row
-set directly instead of sampling through `sample_csv.py`.
+`--selection-strategy token_stratified` avoids overfitting accuracy work to short
+contexts while excluding the `>300000` token very-long bucket. The full benchmark
+below should run the intended row set directly instead of sampling through
+`sample_csv.py`.
 
 The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
 `--synthesis-max-chunks 3`, `--row-order source_grouped`, and
@@ -638,7 +647,10 @@ SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
 SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
-SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
+SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
+SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated
+SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified
+SEMANTIC_CACHE_ADAPTIVE_RERANKER=1
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
 ```
@@ -649,11 +661,10 @@ Prefer these runner flags for the larger-context profile:
 --top-k 1 --rerank-top 1 --synthesis-max-chunks 1
 ```
 
-Optional prompt ablation: if the comparable sampled run still misses the same
-source group, rerun the sampled CSV with the strict MCQ prompt. This keeps the
-same retrieval and model profile, but asks the executor to silently reject
-choices that are too narrow, too broad, partially supported, or overstate the
-evidence before returning a single letter.
+Optional direct-solver ablation: if the comparable sampled run is too slow,
+rerun the sampled CSV with direct strict MCQ solving while keeping the same
+sample, model pair, and cache reset. This measures the accuracy/cost tradeoff
+from verifier/adjudicator calls.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -670,6 +681,9 @@ export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
+export SEMANTIC_CACHE_MCQ_SOLVER_MODE=direct
+export SEMANTIC_CACHE_CACHE_WRITE_POLICY=always
+export SEMANTIC_CACHE_ADAPTIVE_RERANKER=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -685,8 +699,11 @@ uv run python long_bench_v2/run_benchmark.py \
   --top-k 1 \
   --rerank-top 1 \
   --synthesis-max-chunks 1 \
+  --mcq-solver-mode direct \
+  --cache-write-policy always \
+  --adaptive-reranker \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-small-large-context-strict-mcq' \
+  --manifest-note jarvis-l40s-token-stratified-direct-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 

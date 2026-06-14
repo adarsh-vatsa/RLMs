@@ -82,13 +82,14 @@ def make_controller():
     )
 
 
-def make_entry(query, result, scope=None):
+def make_entry(query, result, scope=None, answer_metadata=None):
     entry = {
         "query": query,
         "result": result,
         "embedding": np.array([1.0, 0.0], dtype="float32"),
         "source_context": result,
         "grounding_info": {},
+        "answer_metadata": answer_metadata or {},
     }
     if scope is not None:
         entry["data_scope_hash"] = scope
@@ -96,6 +97,14 @@ def make_entry(query, result, scope=None):
 
 
 class DataScopedSearchCacheTests(unittest.TestCase):
+    def setUp(self):
+        self._cache_write_policy = scs.CACHE_WRITE_POLICY
+        self._adaptive_reranker = scs.ADAPTIVE_RERANKER
+
+    def tearDown(self):
+        scs.CACHE_WRITE_POLICY = self._cache_write_policy
+        scs.ADAPTIVE_RERANKER = self._adaptive_reranker
+
     def test_exact_hits_are_limited_to_active_data_scope(self):
         query = "same question"
         controller = make_controller()
@@ -114,6 +123,35 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         result = controller.search(query)
         self.assertFalse(result["from_cache"])
         self.assertEqual(result["answer"], "No relevant documents found.")
+
+    def test_verified_policy_skips_unverified_mcq_cache_hits(self):
+        query = "Question: Pick one.\n\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta"
+        scs.CACHE_WRITE_POLICY = "verified"
+        controller = make_controller()
+        controller.cache = {
+            "chunk-a": [make_entry(query, "A", "scope-a", {"verification_status": "DIRECT_UNVERIFIED"})],
+        }
+        controller.data_scope_hash = "scope-a"
+
+        result = controller.search(query)
+
+        self.assertFalse(result["from_cache"])
+        self.assertEqual(result["answer"], "No relevant documents found.")
+
+    def test_verified_policy_allows_verified_mcq_cache_hits(self):
+        query = "Question: Pick one.\n\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta"
+        scs.CACHE_WRITE_POLICY = "verified"
+        controller = make_controller()
+        controller.cache = {
+            "chunk-a": [make_entry(query, "B", "scope-a", {"verification_status": "VERIFIED", "executor_choice": "B"})],
+        }
+        controller.data_scope_hash = "scope-a"
+
+        result = controller.search(query)
+
+        self.assertTrue(result["from_cache"])
+        self.assertEqual(result["answer"], "B")
+        self.assertEqual(result["verification_status"], "VERIFIED")
 
     def test_legacy_unscoped_entries_are_skipped_when_scope_is_active(self):
         query = "same question"
@@ -225,6 +263,23 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(controller._last_retrieval_info["faiss_candidate_count"], 2)
         self.assertEqual(controller._last_retrieval_info["reranker_returned_count"], 1)
         self.assertTrue(controller._last_retrieval_info["reranker_fallback_used"])
+
+    def test_adaptive_reranker_skips_non_competitive_candidate_sets(self):
+        scs.ADAPTIVE_RERANKER = True
+        controller = make_controller()
+        meta = {"filename": "contract.txt", "chunk_index": 0}
+        controller.doc_index = FakeSearchIndex([(0.91, meta)])
+        controller._doc_chunks = ["The contract is governed by New York law."]
+        controller.reranker = FakeReranker([(0, 0.99, "The contract is governed by New York law.")])
+
+        results = controller.retrieve("What law governs the contract?", top_k=5, rerank_top=3)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(controller.reranker.calls, [])
+        self.assertEqual(
+            controller._last_retrieval_info["reranker_skipped_reason"],
+            "candidate_text_count_lte_rerank_top",
+        )
 
 
 if __name__ == "__main__":

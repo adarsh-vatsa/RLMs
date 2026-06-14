@@ -264,6 +264,12 @@ def resolve_cache_namespace(
     synthesis_max_chunks: int = 0,
     openai_compatible_extra_body: dict | None = None,
     mcq_prompt_style: str = "default",
+    mcq_solver_mode: str = "direct",
+    cache_write_policy: str = "always",
+    adaptive_reranker: bool = False,
+    reranker_disabled: bool = False,
+    doc_chunk_size: int = 0,
+    doc_chunk_overlap: int = 0,
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
@@ -273,7 +279,9 @@ def resolve_cache_namespace(
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
             f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
-            f"{extra_body_sig}\n{mcq_prompt_style}"
+            f"{extra_body_sig}\n{mcq_prompt_style}\n{mcq_solver_mode}\n"
+            f"{cache_write_policy}\n{adaptive_reranker}\n{reranker_disabled}\n"
+            f"{doc_chunk_size}\n{doc_chunk_overlap}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -490,6 +498,19 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         if callable(extra_body_config_getter):
             openai_compatible_extra_body_config = extra_body_config_getter(redact=True)
     effective_mcq_prompt_style = _coerce_text(getattr(scs, "MCQ_PROMPT_STYLE", "default")) or "default"
+    if args.mcq_solver_mode:
+        scs.MCQ_SOLVER_MODE = args.mcq_solver_mode
+    if args.cache_write_policy:
+        scs.CACHE_WRITE_POLICY = args.cache_write_policy
+    if args.adaptive_reranker:
+        scs.ADAPTIVE_RERANKER = True
+    scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
+    effective_mcq_solver_mode = _coerce_text(getattr(scs, "MCQ_SOLVER_MODE", "direct")) or "direct"
+    effective_cache_write_policy = _coerce_text(getattr(scs, "CACHE_WRITE_POLICY", "always")) or "always"
+    effective_adaptive_reranker = bool(getattr(scs, "ADAPTIVE_RERANKER", False))
+    effective_doc_chunk_size = int(scs.DOCUMENT_CHUNK_SIZE)
+    effective_doc_chunk_overlap = int(scs.DOCUMENT_CHUNK_OVERLAP)
+    effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
 
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
@@ -505,6 +526,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             synthesis_max_chunks=args.synthesis_max_chunks,
             openai_compatible_extra_body=openai_compatible_extra_body_config,
             mcq_prompt_style=effective_mcq_prompt_style,
+            mcq_solver_mode=effective_mcq_solver_mode,
+            cache_write_policy=effective_cache_write_policy,
+            adaptive_reranker=effective_adaptive_reranker,
+            reranker_disabled=bool(args.disable_reranker),
+            doc_chunk_size=effective_doc_chunk_size,
+            doc_chunk_overlap=effective_doc_chunk_overlap,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -535,10 +562,6 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         print(f"[LONGBENCH-V2] Cache namespace : {cache_namespace}")
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
-    scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
-    effective_doc_chunk_size = int(scs.DOCUMENT_CHUNK_SIZE)
-    effective_doc_chunk_overlap = int(scs.DOCUMENT_CHUNK_OVERLAP)
-    effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
     shared_embedder = scs.EmbeddingEngine()
     shared_reranker = None if args.disable_reranker else scs.Reranker()
 
@@ -669,11 +692,17 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "delta_input_tokens": after["input_tokens"] - before["input_tokens"],
             "delta_output_tokens": after["output_tokens"] - before["output_tokens"],
             "delta_cost_usd": round(after["cost"] - before["cost"], 8),
+            "verification_status": output.get("verification_status", ""),
+            "executor_choice": output.get("executor_choice", ""),
+            "verifier_choice": output.get("verifier_choice", ""),
+            "adjudicator_choice": output.get("adjudicator_choice", ""),
+            "cache_write_status": output.get("cache_write_status", ""),
             "faiss_candidate_count": retrieval.get("faiss_candidate_count"),
             "candidate_text_count": retrieval.get("candidate_text_count"),
             "reranker_enabled": retrieval.get("reranker_enabled"),
             "reranker_returned_count": retrieval.get("reranker_returned_count"),
             "reranker_fallback_used": retrieval.get("reranker_fallback_used"),
+            "reranker_skipped_reason": retrieval.get("reranker_skipped_reason"),
         }
         bridge_rows.append(bridge_row)
 
@@ -752,6 +781,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "rerank_top": args.rerank_top,
         "synthesis_max_chunks": effective_synthesis_max_chunks,
         "mcq_prompt_style": effective_mcq_prompt_style,
+        "mcq_solver_mode": effective_mcq_solver_mode,
+        "cache_write_policy": effective_cache_write_policy,
+        "adaptive_reranker": effective_adaptive_reranker,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,
         "cache_save_interval": args.cache_save_interval,
@@ -840,6 +872,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--top-k", type=int, default=DEFAULT_TOP_K)
     parser.add_argument("--rerank-top", type=int, default=DEFAULT_RERANK_TOP)
     parser.add_argument("--synthesis-max-chunks", type=int, default=DEFAULT_SYNTHESIS_MAX_CHUNKS)
+    parser.add_argument("--mcq-solver-mode", choices=["direct", "evidence_adjudicated"], default=None)
+    parser.add_argument("--cache-write-policy", choices=["always", "verified"], default=None)
+    parser.add_argument("--adaptive-reranker", action="store_true")
     parser.add_argument(
         "--row-order",
         choices=["input", "source_grouped"],

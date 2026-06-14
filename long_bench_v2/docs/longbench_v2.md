@@ -241,15 +241,15 @@ python long_bench_v2/combine_csv.py \
 
 Use `long_bench_v2/sample_csv.py` to create a smaller balanced CSV for cheap local testing. The sampler chooses shared `source_id` values, so a sample size of 10 keeps the matching 10 `original`, 10 `exact`, and 10 `semantic` rows instead of unrelated rows from each group.
 
-For quick smoke runs, prefer a short-context sample instead of `--max-rows` on the full ordered CSV. `--max-rows 10` can select the first large LongBench contexts and is not a reliable cheap workload.
+For quick plumbing smoke runs, prefer a short-context sample instead of `--max-rows` on the full ordered CSV. `--max-rows 10` can select the first large LongBench contexts and is not a reliable cheap workload. For accuracy work, use `token_stratified` so the sample includes short, medium, and bounded-long source contexts.
 
 ```bash
 python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
-  --sample-size 1 \
-  --max-token-count 75000 \
-  --selection-strategy shortest \
+  --sample-size 18 \
+  --selection-strategy token_stratified \
+  --token-buckets short:0:75000,medium:75001:150000,long:150001:300000 \
   --seed 0
 ```
 
@@ -257,7 +257,8 @@ Useful options:
 
 - `--sample-size N`: number of rows to keep per row type. Default: `10`.
 - `--max-token-count N`: only sample source groups at or below this `token_count`. Default: `0`, meaning no cap.
-- `--selection-strategy random|shortest`: choose eligible source groups randomly or shortest-first. Default: `random`.
+- `--selection-strategy random|shortest|token_stratified`: choose eligible source groups randomly, shortest-first, or evenly across token buckets. Default: `random`.
+- `--token-buckets SPEC`: comma-separated `name:min:max` buckets for `token_stratified`. Default: `short:0:75000,medium:75001:150000,long:150001:300000`.
 - `--row-types TYPES`: comma-separated row types to sample together by `source_id`. Default: `original,exact,semantic`.
 - `--seed N`: random seed for reproducible samples. Default: `0`.
 
@@ -288,6 +289,22 @@ python long_bench_v2/run_benchmark.py \
   --cache-reset \
   --output-dir benchmark_artifacts \
   --manifest-note "LongBench-v2 cold-start cache"
+```
+
+Accuracy-profile cache run with evidence adjudication and verified writes:
+
+```bash
+SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict \
+python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite_sample.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --mode cache \
+  --cache-reset \
+  --mcq-solver-mode evidence_adjudicated \
+  --cache-write-policy verified \
+  --adaptive-reranker \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 evidence-gated accuracy profile"
 ```
 
 Warm-start cache, same suite/settings and no reset:
@@ -335,6 +352,9 @@ Useful options:
 - `--top-k N`: FAISS retrieval candidates. Default: `10`.
 - `--rerank-top N`: reranked chunks kept for synthesis. Default: `3`.
 - `--synthesis-max-chunks N`: retrieved chunks passed into answer synthesis. Default: `3` for this runner.
+- `--mcq-solver-mode direct|evidence_adjudicated`: choose direct single-letter MCQ synthesis or option-evidence solving with verifier/adjudication.
+- `--cache-write-policy always|verified`: store all generated answers, or store only verified/high-confidence adjudicated answers.
+- `--adaptive-reranker`: skip reranking when the FAISS candidate set has no real candidate competition.
 - `--row-order input|source_grouped`: execution order. Default: `source_grouped`, so rows with the same `source_id` run adjacent to reduce repeated ingest work.
 - `--cache-save-interval N`: save cache state every N rows in cache mode, plus a final save. Default: `10`; use `1` for per-row saves.
 - `--disable-reranker`: skip the reranker and use FAISS candidates directly.

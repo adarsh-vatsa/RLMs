@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from long_bench_v2.export_csv import CSV_COLUMNS, _context_id, _estimated_token_count, export_csv, load_rows
 from long_bench_v2.combine_csv import combine_csv
-from long_bench_v2.sample_csv import sample_rows
+from long_bench_v2.sample_csv import parse_token_buckets, sample_rows
 
 
 def _row(row_id: str, context: str = "Context text") -> dict:
@@ -418,6 +418,111 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
 
         self.assertEqual({row["source_id"] for row in sampled}, {"row_2", "row_3"})
         self.assertEqual(len(sampled), 6)
+
+    def test_sample_rows_can_select_token_stratified_source_groups(self):
+        rows = []
+        token_counts = {
+            "short_1": "50",
+            "short_2": "80",
+            "medium_1": "150",
+            "medium_2": "180",
+            "long_1": "250",
+            "long_2": "280",
+            "xlong_1": "500",
+        }
+        for source_id, token_count in token_counts.items():
+            for row_type in ["original", "exact", "semantic"]:
+                rows.append({
+                    "case_id": f"{source_id}__{row_type}",
+                    "source_id": source_id,
+                    "row_type": row_type,
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": "ctx",
+                    "token_count": token_count,
+                    "expected_cache_type": row_type,
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": "Single-Document QA",
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                })
+        buckets = parse_token_buckets("short:0:100,medium:101:200,long:201:300")
+
+        first = sample_rows(
+            rows,
+            sample_size=6,
+            row_types=("original", "exact", "semantic"),
+            seed=11,
+            selection_strategy="token_stratified",
+            token_buckets=buckets,
+        )
+        second = sample_rows(
+            rows,
+            sample_size=6,
+            row_types=("original", "exact", "semantic"),
+            seed=11,
+            selection_strategy="token_stratified",
+            token_buckets=buckets,
+        )
+
+        self.assertEqual([row["case_id"] for row in first], [row["case_id"] for row in second])
+        selected_sources = {row["source_id"] for row in first}
+        self.assertEqual(selected_sources, {"short_1", "short_2", "medium_1", "medium_2", "long_1", "long_2"})
+        self.assertNotIn("xlong_1", selected_sources)
+        self.assertEqual(len(first), 18)
+
+    def test_sample_rows_token_stratified_fails_when_bucket_is_underfilled(self):
+        rows = []
+        token_counts = {
+            "short_1": "50",
+            "medium_1": "150",
+            "medium_2": "175",
+            "medium_3": "190",
+            "long_1": "250",
+            "long_2": "275",
+        }
+        for source_id, token_count in token_counts.items():
+            for row_type in ["original", "exact", "semantic"]:
+                rows.append({
+                    "case_id": f"{source_id}__{row_type}",
+                    "source_id": source_id,
+                    "row_type": row_type,
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": "ctx",
+                    "token_count": token_count,
+                    "expected_cache_type": row_type,
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": "Single-Document QA",
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                })
+
+        with self.assertRaisesRegex(ValueError, "Token bucket 'short'"):
+            sample_rows(
+                rows,
+                sample_size=6,
+                row_types=("original", "exact", "semantic"),
+                seed=0,
+                selection_strategy="token_stratified",
+                token_buckets=parse_token_buckets("short:0:100,medium:101:200,long:201:300"),
+            )
 
 
 if __name__ == "__main__":

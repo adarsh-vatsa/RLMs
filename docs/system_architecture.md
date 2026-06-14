@@ -54,9 +54,9 @@ Note: LLM Sniper runs on the semantic branch. The knowledge branch currently use
 │                    ↓                                             │
 │              Qwen3-Reranker (relevance gate, top-5)              │
 │                    ↓                                             │
-│              Sonnet Synthesis (grounded answer)                  │
+│              Synthesis or MCQ evidence adjudication              │
 │                    ↓                                             │
-│              Grounding Check → Consensus Verify → Cache Store    │
+│              Grounding/verification → Policy-gated Cache Store   │
 │                    ↓                                             │
 │              Knowledge Extraction → Fact FAISS Index             │
 └──────────────────────────────────────────────────────────────────┘
@@ -318,7 +318,7 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 1. Encode query via `encode_query()` (with instruction prefix)
 2. FAISS search for top-20 candidates (~130ms)
 3. Extract text from FAISS metadata for each candidate
-4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.20)
+4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.20), unless adaptive reranking skips non-competitive candidate sets
 5. Return top-5 reranked/backfilled results with scores and metadata
 6. If the reranker returns too few results, backfill from the FAISS ranking and record retrieval telemetry
 
@@ -327,6 +327,10 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 > **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.20 threshold keeps irrelevant documents filtered while avoiding evidence starvation on long-context benchmark chunks where reranker scores are not perfectly calibrated.
 
 > **Why backfill exists**: The reranker remains the preferred path, but a strict relevance gate can reject or under-supply long chunks even when FAISS found usable evidence. Backfill prevents evidence starvation while keeping synthesis bounded to the selected top chunks.
+
+#### 2n. MCQ Evidence Adjudication (`search`)
+
+LongBench-v2 multiple-choice queries can opt into `SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated`. In this mode the executor emits option-level evidence and a final A-D choice, the evaluator independently verifies the choice, and a final adjudicator runs only on disagreement. With `SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified`, disputed or unverified first-write answers are returned but not cached for later exact/semantic hits.
 
 #### 2n. Full Search Pipeline (`search`)
 **Line 1130** · The main entry point for domain-specific clients.
@@ -471,6 +475,9 @@ The same library can serve: legal filings, financial documents, medical records,
 | `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Local cross-encoder reranker |
 | `RERANKER_BATCH_SIZE` | 4 | Max reranker candidates per local model forward pass |
 | `RERANKER_MAX_LENGTH` | 8192 | Max reranker prompt tokens including prompt prefix/suffix |
+| `ADAPTIVE_RERANKER` | false | Skip reranking when FAISS returns no real candidate competition |
+| `MCQ_SOLVER_MODE` | `direct` | Direct MCQ answering or evidence-adjudicated MCQ solving |
+| `CACHE_WRITE_POLICY` | `always` | Store all answers or only verified/adjudicated answers |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |

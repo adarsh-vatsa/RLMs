@@ -131,7 +131,13 @@ class FakeController:
                 "reranker_enabled": True,
                 "reranker_returned_count": rerank_top,
                 "reranker_fallback_used": False,
+                "reranker_skipped_reason": "candidate_text_count_lte_rerank_top",
             },
+            "verification_status": "VERIFIED",
+            "executor_choice": "A",
+            "verifier_choice": "A",
+            "adjudicator_choice": "",
+            "cache_write_status": "stored_verified",
         }
 
 
@@ -140,6 +146,9 @@ class FakeScs:
     DOCUMENT_CHUNK_OVERLAP = 1000
     SYNTHESIS_MAX_CHUNKS = 5
     MCQ_PROMPT_STYLE = "strict"
+    MCQ_SOLVER_MODE = "direct"
+    CACHE_WRITE_POLICY = "always"
+    ADAPTIVE_RERANKER = False
     SemanticCacheController = FakeController
     ExecutionMetrics = FakeMetrics
 
@@ -174,6 +183,9 @@ def _reset_fake_controller():
     FakeController.search_calls = []
     FakeScs.SYNTHESIS_MAX_CHUNKS = 5
     FakeScs.MCQ_PROMPT_STYLE = "strict"
+    FakeScs.MCQ_SOLVER_MODE = "direct"
+    FakeScs.CACHE_WRITE_POLICY = "always"
+    FakeScs.ADAPTIVE_RERANKER = False
 
 
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
@@ -273,12 +285,68 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             mcq_prompt_style="strict",
         )
+        changed_solver_mode = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            mcq_solver_mode="evidence_adjudicated",
+        )
+        changed_write_policy = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            cache_write_policy="verified",
+        )
+        changed_adaptive = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            adaptive_reranker=True,
+        )
+        changed_disabled = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            reranker_disabled=True,
+        )
+        changed_chunk_profile = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            doc_chunk_size=200000,
+            doc_chunk_overlap=40000,
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
         self.assertNotEqual(first, changed_synthesis)
         self.assertNotEqual(first, changed_extra_body)
         self.assertNotEqual(first, changed_prompt_style)
+        self.assertNotEqual(first, changed_solver_mode)
+        self.assertNotEqual(first, changed_write_policy)
+        self.assertNotEqual(first, changed_adaptive)
+        self.assertNotEqual(first, changed_disabled)
+        self.assertNotEqual(first, changed_chunk_profile)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -424,6 +492,11 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
                     "9",
                     "--rerank-top",
                     "2",
+                    "--mcq-solver-mode",
+                    "evidence_adjudicated",
+                    "--cache-write-policy",
+                    "verified",
+                    "--adaptive-reranker",
                     "--output-dir",
                     str(output_dir),
                 ]
@@ -440,6 +513,9 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ]
 
         self.assertEqual(FakeScs.SYNTHESIS_MAX_CHUNKS, 4)
+        self.assertEqual(FakeScs.MCQ_SOLVER_MODE, "evidence_adjudicated")
+        self.assertEqual(FakeScs.CACHE_WRITE_POLICY, "verified")
+        self.assertTrue(FakeScs.ADAPTIVE_RERANKER)
         self.assertEqual(len(FakeController.instances), 1)
         self.assertEqual(len(FakeController.load_calls), 0)
         self.assertEqual(len(FakeController.save_calls), 2)
@@ -453,6 +529,9 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["doc_chunk_size"], 10000)
         self.assertEqual(manifest["doc_chunk_overlap"], 1000)
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
+        self.assertEqual(manifest["mcq_solver_mode"], "evidence_adjudicated")
+        self.assertEqual(manifest["cache_write_policy"], "verified")
+        self.assertTrue(manifest["adaptive_reranker"])
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
         self.assertEqual(
@@ -465,6 +544,11 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         )
         self.assertIn("ingest_ms", bridge_rows[0])
         self.assertIn("search_ms", bridge_rows[0])
+        self.assertEqual(bridge_rows[0]["verification_status"], "VERIFIED")
+        self.assertEqual(bridge_rows[0]["executor_choice"], "A")
+        self.assertEqual(bridge_rows[0]["verifier_choice"], "A")
+        self.assertEqual(bridge_rows[0]["cache_write_status"], "stored_verified")
+        self.assertEqual(bridge_rows[0]["reranker_skipped_reason"], "candidate_text_count_lte_rerank_top")
 
 
 if __name__ == "__main__":
