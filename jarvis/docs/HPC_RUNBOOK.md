@@ -540,8 +540,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1084094.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1084095.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1084668.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1084669.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -602,7 +602,6 @@ uv run python long_bench_v2/run_benchmark.py \
   --manifest-note jarvis-l40s-small-large-context' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
-
 
 Monitor:
 

@@ -1,0 +1,3277 @@
+import socket
+from IO.IOStream import *
+from Constants import *
+
+class RawClient:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.knock = Knock(method='socket', host=host, port=port)
+        self.io_stream = self.knock.knock()
+
+    def send(self, data, is_byte = False):
+        print(f"Sending: {data[:100]}")
+        self.io_stream.send(data, is_byte = is_byte)
+
+    def recv(self, is_byte = False):
+        data = self.io_stream.receive(is_byte=is_byte)
+        print(f"Received: {data[:100]}")
+        return data
+
+    def close(self):
+        self.io_stream.close()
+
+if __name__ == "__main__":
+    client = RawClient(MASTER_IP, MASTER_CLIENT_PORT)
+    while True:
+        data = input()
+        client.send(data)
+        response = client.recv()
+        print(response)
+        if data == "quit":
+            break
+    client.close()
+
+    client2 = RawClient(SLAVE_IP_PORT["pi1"]["ip"], SLAVE_IP_PORT["pi1"]["port"])
+    while True:
+        data = input()
+        client2.send(data)
+        response = client2.recv()
+        print(response)
+        if data == "quit":
+            break
+    client2.close()
+
+
+import socket
+import threading
+import time
+from DirectoryTree.DirectoryTree import DirectoryTree
+from User.User import User
+from Protocol.MCThread import MCThread
+from Protocol.MSThread import MSThread
+from IO.IOStream import Answer, IOStream
+from Scheduler.Scheduler import Scheduler
+from Constants import *
+
+class MasterServer:
+
+    def __init__(self, ip = "localhost", client_port = 9999, slave_port = 9998):
+
+        self.client_answer = Answer(method = 'socket', host = ip, port = client_port)
+        self.clients = []
+
+        self.slave_answer = Answer(method = 'socket', host = ip, port = slave_port)
+        self.slaves = []
+
+        self.directory_tree = DirectoryTree.load_tree("Data/tree.json")
+        self.users = User.load_users("Data/users.json")
+        self.scheduler = Scheduler(chunk_size = CHUNK_SIZE, n_backups = N_BACKUPS)
+    
+    def master_client_start(self):
+        while True:
+            try:
+                iostream = self.client_answer.accept()
+                client_thread = MCThread(iostream, self.directory_tree, self.users, self.scheduler)
+                self.clients.append(client_thread)
+                client_thread.start()
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"MasterServer: Error: {e}")
+                break
+    
+    def master_slave_start(self):
+        while True:
+            try:
+                iostream = self.slave_answer.accept()
+                slave_thread = MSThread(self.scheduler, iostream)
+                self.slaves.append(slave_thread)
+                slave_thread.start()
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"MasterServer: Error: {e}")
+                break
+    
+    def stop(self):
+        self.client_answer.close()
+        self.directory_tree.save_tree("Data/tree.json")
+        User.save_users(self.users, "Data/users.json")
+    
+if __name__ == "__main__":
+    master_server = MasterServer(MASTER_IP, MASTER_CLIENT_PORT, MASTER_SLAVE_PORT)
+    try:
+        threading.Thread(target = master_server.master_client_start, daemon = True).start()
+        threading.Thread(target = master_server.master_slave_start, daemon = True).start()
+        while True:
+            time.sleep(1)
+            pass
+    except KeyboardInterrupt:
+        master_server.stop()
+
+
+import tkinter as tk
+from tkinter import messagebox, simpledialog, ttk, filedialog
+import os
+from PIL import Image, ImageTk  # 导入PIL
+from IO.IOStream import *
+from Constants import *
+import struct
+import time
+import threading
+
+class RawClient:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self.knock = Knock(method='socket', host=host, port=port)
+        self.io_stream = self.knock.knock()
+
+    def send(self, data, is_byte = False):
+        print(f"Sending: {data[:100]}")
+        self.io_stream.send(data, is_byte = is_byte)
+
+    def recv(self, is_byte = False):
+        data = self.io_stream.receive(is_byte=is_byte)
+        print(f"Received: {data[:100]}")
+        return data
+
+    def close(self):
+        self.io_stream.close()
+
+
+class Cloud_GUI(RawClient):
+    def __init__(self):
+        self.window = tk.Tk()
+        self.window.title('云盘客户端')
+        self.window.geometry('800x600')
+        self.window.resizable(0, 0)
+        self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+        try:
+            self.client2m = RawClient(MASTER_IP, MASTER_CLIENT_PORT)
+        except Exception as e:
+            messagebox.showinfo("Error", 'could not connect to master server')
+            exit(1)
+
+        self.style = ttk.Style()
+        self.style.theme_use('clam')
+
+        self.is_login_frame = False
+        self.is_main_frame = False
+
+        self.selected_file = None
+        # 加载并缩放文件夹图标
+        self.folder_icon_image = Image.open("Icons/folder_icon.png")
+        self.folder_icon_image = self.folder_icon_image.resize((25, 25), Image.Resampling.LANCZOS)
+        self.folder_icon = ImageTk.PhotoImage(self.folder_icon_image)
+        self.file_icon_image = Image.open("Icons/file_icon.png")
+        self.file_icon_image = self.file_icon_image.resize((25, 25), Image.Resampling.LANCZOS)
+        self.file_icon = ImageTk.PhotoImage(self.file_icon_image)
+
+    def create_login(self):
+        self.is_login_frame = True
+        self.login_frame = ttk.Frame(self.window, width=800, height=600)
+        self.login_frame.pack()
+
+        ttk.Label(self.login_frame, text='用户名：').place(x=200, y=200)
+        ttk.Label(self.login_frame, text='密码：').place(x=200, y=250)
+
+        self.username_entry = ttk.Entry(self.login_frame)
+        self.username_entry.place(x=300, y=200)
+        self.password_entry = ttk.Entry(self.login_frame, show='*')
+        self.password_entry.place(x=300, y=250)
+
+        login_button = ttk.Button(self.login_frame, text='登录', command=self.login)
+        login_button.place(x=300, y=300)
+
+    def login(self):
+        if self.is_login_frame:
+            username = self.username_entry.get()
+            password = self.password_entry.get()
+        self.client2m.send('user' + ' ' + username)
+        usr_response = self.client2m.recv()
+        self.client2m.send('pass' + ' ' + password)
+        pwd_response = self.client2m.recv()
+        if usr_response.startswith('331') and pwd_response.startswith('230'):
+            if not self.is_main_frame:
+                self.create_main()
+            if self.is_login_frame:
+                self.login_frame.destroy()
+                self.is_login_frame = False
+        else:
+            messagebox.showinfo("Error", usr_response + '\n' + pwd_response)
+
+    def on_closing(self):
+        if messagebox.askokcancel("退出", "确定要退出吗？"):
+            try:
+                self.client2m.knock.socket.settimeout(2)
+                self.client2m.send('quit')
+                quit_response = self.client2m.recv()
+                if not quit_response.startswith('221'):
+                    messagebox.showinfo("Error", 'the Master server is not responding')  
+            except Exception as e:
+                print(e)
+            finally:
+                self.client2m.close()
+                self.window.destroy()
+
+    def create_main(self):
+        self.is_main_frame = True
+        self.main_frame = ttk.Frame(self.window, width=800, height=600)
+        self.main_frame.pack()
+
+        self.canvas = tk.Canvas(self.main_frame, width=800, height=450, bg='white')
+        self.canvas.place(x=0, y=100)
+
+        self.scrollbar = ttk.Scrollbar(self.main_frame, orient="vertical", command=self.canvas.yview)
+        self.scrollbar.place(x=780, y=100, height=450)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.inner_frame = ttk.Frame(self.canvas)
+        self.canvas.create_window((0, 0), window=self.inner_frame, anchor='nw')
+
+        self.refresh_button = ttk.Button(self.main_frame, text='刷新', command=self.refresh)
+        self.refresh_button.place(x=50, y=50)
+        self.upload_button = ttk.Button(self.main_frame, text='上传', command=self.upload)
+        self.upload_button.place(x=150, y=50)
+        self.download_button = ttk.Button(self.main_frame, text='下载', command=self.download)
+        self.download_button.place(x=250, y=50)
+        self.delete_button = ttk.Button(self.main_frame, text='删除', command=self.delete)
+        self.delete_button.place(x=350, y=50)
+        self.create_folder_button = ttk.Button(self.main_frame, text='新建文件夹', command=self.create_folder)
+        self.create_folder_button.place(x=450, y=50)
+
+        self.inner_frame.bind("<Configure>", self.on_frame_configure)
+
+        self.refresh()
+
+    def on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def refresh_file_ls(self, file_list):
+        for widget in self.inner_frame.winfo_children():
+                widget.destroy()
+        for file in file_list:
+            if file == '':
+                continue
+
+            if file == self.selected_file:
+                frame = ttk.Frame(self.inner_frame, borderwidth=5, relief="solid")
+            else:
+                frame = ttk.Frame(self.inner_frame, borderwidth=1, relief="solid")
+            frame.pack(fill="x", expand=True, padx=10, pady=5)
+            
+            if ".." in file:
+                icon_label = tk.Label(frame)
+            elif "." in file:
+                icon_label = tk.Label(frame, image=self.file_icon)
+            else:
+                icon_label = tk.Label(frame, image=self.folder_icon)
+            icon_label.pack(side="left")
+
+            text_label = tk.Label(frame, text=file, font=('Arial', 16), anchor='w',width=60, height=1)
+            text_label.pack(side="left", fill="x", expand=True)
+
+            text_label.bind('<Double-Button-1>', lambda e, f=file: self.open_folder(f))
+            icon_label.bind('<Button-1>', lambda e, f=file, fl=file_list: self.select_file(f, fl))
+
+    def refresh(self):
+        self.client2m.send('ls')
+        ls_response = self.client2m.recv().split('\n')
+        if ls_response[0].startswith('200'):
+            ls_response[0] = '..'
+            file_list = ls_response
+        
+            self.refresh_file_ls(file_list)
+
+        else:
+            messagebox.showinfo("Error", ls_response)
+
+    def select_file(self, file, file_list):
+        self.selected_file = file
+        self.refresh_file_ls(file_list)
+
+
+    def open_folder(self, folder_name):
+        self.client2m.send('cd' + ' ' + folder_name)
+        cd_response = self.client2m.recv()
+        if cd_response.startswith('250'):
+            self.refresh()
+        else:
+            messagebox.showinfo("Error", cd_response)
+
+    def select_pi(self, chunk):
+        pi = self.pi_from_chunk_string(chunk)
+        is_pi1_connected = False
+        is_pi2_connected = False
+        is_pi3_connected = False
+        if pi == 'pi1' :
+            if is_pi1_connected == False:
+                try:
+                    client2pi1 = RawClient(SLAVE_IP_PORT["pi1"]["ip"], SLAVE_IP_PORT["pi1"]["port"])
+                    client2pi1.send('hello')
+                    hello_response = client2pi1.recv()
+                    if not hello_response.startswith('200'):
+                        messagebox.showinfo("HELLO Error", hello_response)
+                        return
+                    is_pi1_connected = True
+                except Exception as e:
+                    messagebox.showinfo("Error", 'PI1 Error')
+                    return None
+
+            return client2pi1
+
+        elif pi == 'pi2':
+            if is_pi2_connected == False:
+                try:
+                    client2pi2 = RawClient(SLAVE_IP_PORT["pi2"]["ip"], SLAVE_IP_PORT["pi2"]["port"])
+                    client2pi2.send('hello')
+                    hello_response = client2pi2.recv()
+                    if not hello_response.startswith('200'):
+                        messagebox.showinfo("HELLO Error", hello_response)
+                        return
+                    is_pi2_connected = True
+                except Exception as e:
+                    messagebox.showinfo("Error", 'PI1 Error')
+                    return None
+                
+            return client2pi2
+        
+        elif pi == 'pi3' :
+            if is_pi3_connected == False:
+                try:
+                    client2pi3 = RawClient(SLAVE_IP_PORT["pi3"]["ip"], SLAVE_IP_PORT["pi3"]["port"])
+                    client2pi3.send('hello')
+                    hello_response = client2pi3.recv()
+                    if not hello_response.startswith('200'):
+                        messagebox.showinfo("HELLO Error", hello_response)
+                        return
+                    is_pi3_connected = True
+                except Exception as e:
+                    messagebox.showinfo("Error", 'PI1 Error')
+                    return None
+            return client2pi3
+
+        else:
+            messagebox.showinfo("Error", 'PI Error')
+            return None
+
+
+    def pi_from_chunk_string(self, string):
+        string = string[1:-1]
+        parts = string.split(', ')
+        return parts[0]
+    
+    def progress_bar(self, progress_name='upload'):
+        # 创建进度窗口
+        progress_window = tk.Toplevel(self.window)
+        progress_window.title(progress_name)
+        progress_window.geometry('400x150')
+        progress_var = tk.DoubleVar()
+
+        progress_bar = ttk.Progressbar(progress_window, variable=progress_var, maximum=300)
+        progress_bar.pack(pady=20, padx=20)
+
+        progress_label = tk.Label(progress_window, text=f"{progress_name}ing...")
+        progress_label.pack(pady=10)
+
+        return progress_var, progress_window
+    
+    def upload(self):
+        # 打开本机文件选择对话框
+        file_path = filedialog.askopenfilename()
+        if not file_path:
+            return
+        # 异步上传
+        threading.Thread(target=self.upload_file, args=(file_path,)).start()
+    
+    def upload_file(self, file_path):
+        # 获取文件大小
+        file_size = os.path.getsize(file_path)
+        file_name = os.path.basename(file_path)
+        file_name = file_name.replace(' ', '_')
+        stor_chunk_list = []
+        self.client2m.send('stor' + ' ' + file_name  + ' ' + str(file_size))
+        stor_response = ""
+        while True:
+            stor_res = self.client2m.recv()
+            stor_response += stor_res
+            if stor_res.endswith('.*.'):
+                break
+        stor_response = stor_response.split('\n')
+        if not stor_response[0].startswith('200'):
+            messagebox.showinfo("Error", stor_response)
+            return
+        stor_chunk_list = stor_response[2:-1]
+        # 与从机建立连接
+        time.sleep(1)    
+        # 上传文件
+        progress_var, progress_window = self.progress_bar('upload')
+        progress_var.set(0)  # 进度条初始化为 0
+        with open(file_path, 'rb') as f:
+            upload_size = 0
+            for i, chunk in enumerate(stor_chunk_list): 
+                client2s = self.select_pi(chunk)
+                if not client2s:
+                    return
+                client2s.send('stor' + ' ' + chunk)
+                stor_response = client2s.recv()
+                if not stor_response.startswith('300'):
+                    messagebox.showinfo("STOR Error", stor_response)
+                    return
+                data = f.read(CHUNK_SIZE)
+                header = struct.pack('!I', len(data))
+                client2s.send(header, is_byte=True)
+                client2s.send(data, is_byte=True)
+                data_response = client2s.recv()
+                if not data_response.startswith('200'):
+                    messagebox.showinfo("UPLOAD Error", data_response)
+                    return
+                # 更新进度条
+                upload_size = upload_size + len(data)
+                progress_var.set((upload_size / file_size) * 100)
+                progress_window.update_idletasks()
+        # 上传完成后关闭进度窗口
+        progress_window.destroy()  
+        client2s.send('quit')
+        quit_response = client2s.recv()
+        if not quit_response.startswith('221'):
+            messagebox.showinfo("CS QUIT Error", quit_response)
+            return
+        client2s.close()
+        
+        self.refresh()
+
+    def download(self):
+        selected_file = self.selected_file
+        if not selected_file:
+            messagebox.showinfo("Error", '请选择文件')
+            return
+        # 打开本地文件存储对话框
+        local_file = filedialog.asksaveasfilename(initialfile=selected_file)
+        if not local_file:
+            return
+        # 异步下载
+        threading.Thread(target=self.download_file, args=(local_file,selected_file)).start()
+
+    def download_file(self, local_file, selected_file):
+        retr_chunk_list = []
+        self.client2m.send('retr' + ' ' + selected_file)
+        retr_response = ""
+        while True:
+            retr_res = self.client2m.recv()
+            retr_response += retr_res
+            if retr_res.endswith('.*.'):
+                break
+            elif not retr_res:
+                break
+        if not retr_response.startswith('200'):
+            messagebox.showinfo("Error", retr_response)
+            return
+        retr_chunk_list = retr_response.split('\n')[2:-1]
+        # 创建进度窗口
+        progress_var, progress_window = self.progress_bar('download')
+        progress_var.set(0)  # 进度条初始化为 0
+        # 下载文件
+        with open(local_file, 'wb') as f:
+            download_size = 0
+            for chunk in retr_chunk_list:
+                client2s = self.select_pi(chunk)
+                if not client2s:
+                    return
+                client2s.send('retr' + ' ' + chunk)
+                header = client2s.recv(is_byte=True)
+                code= struct.unpack('!4s', header[:4])[0]
+                if code != b'200 ':
+                    messagebox.showinfo("Error", header.decode(encoding='utf-8'))
+                    return
+                length = struct.unpack('!I', header[4:8])[0]
+                data = b''
+                while len(data) < length:
+                    data += client2s.recv(is_byte=True)
+                    # 更新进度条
+                    download_size = download_size + 1024
+                    progress_var.set((download_size / (len(retr_chunk_list)*CHUNK_SIZE)) * 100)
+                    progress_window.update_idletasks()
+                f.write(data)
+        # 上传完成后关闭进度窗口
+        progress_window.destroy() 
+                
+        client2s.send('quit')
+        quit_response = client2s.recv()
+        if not quit_response.startswith('221'):
+            messagebox.showinfo("Error", quit_response)
+            return
+        client2s.close()
+        self.refresh()
+        
+
+    def delete(self):
+        selected_file = self.selected_file
+        if not selected_file:
+            messagebox.showinfo("Error", '请选择文件')
+            return
+        if messagebox.askokcancel("删除文件", "确定要删除文件吗？"):
+            if "." not in selected_file:
+                self.client2m.send('rmdir' + ' ' + selected_file)
+            else:
+                self.client2m.send('del' + ' ' + selected_file)
+                
+            dele_response = self.client2m.recv()
+            if dele_response.startswith('200'):
+                self.refresh()
+            else:
+                messagebox.showinfo("Error", dele_response)
+        pass
+
+    def create_folder(self):
+        folder_name = simpledialog.askstring('新建文件夹', '请输入文件夹名字')
+        if not folder_name:
+            return
+        folder_name = folder_name.replace(' ', '_')
+        self.client2m.send('mkdir' + ' ' + folder_name)
+        mkdir_response = self.client2m.recv()
+        if mkdir_response.startswith('257'):
+            self.refresh()
+        else:
+            messagebox.showinfo("Error", mkdir_response)
+
+if __name__ == '__main__':
+    cloud_gui = Cloud_GUI()
+    cloud_gui.create_login()
+    cloud_gui.window.mainloop()
+
+
+import tkinter as tk
+from tkinter import ttk
+
+root = tk.Tk()
+
+# 创建一个Treeview组件
+tree = ttk.Treeview(root)
+
+# 加载图标
+file_icon = tk.PhotoImage(file='file_icon.png')  # 你的文件图标路径
+
+# 添加带有图标的文件
+for i in range(10):
+    tree.insert('', 'end', text='File {}'.format(i), image=file_icon)
+
+tree.pack()
+
+root.mainloop()
+
+Client & Master: 
+C: USER alpt
+S: 331 Password required for alpt.
+C: PASS 12345
+S: 230 User alpt logged in.
+C: PWD
+S: 257 "/home/alpt" is the current directory.
+C: LIST
+S: 150 Here comes the directory listing.
+S: File1
+S: File2
+S: File3
+S: 226 Directory send OK.
+C: RETR File1
+S: 150 Transferring chunk handles.
+S: chunk1 10 7580d90c
+S: chunk2 11 dccf7e3e
+S: 226 Transfer complete.
+C: QUIT
+S: 221 Goodbye.
+
+Client & Slave:
+C: HELO
+S: 250 Hello, slave.
+C: chunk1 10 7580d90c
+S: 150 Transferring chunk data.
+S: 226 Transfer complete.
+C: chunk2 11 dccf7e3e
+S: 150 Transferring chunk data.
+S: 226 Transfer complete.
+C: QUIT
+S: 221 Goodbye.
+
+
+
+from DirectoryTree.DirectoryTree import DirectoryTree
+from DirectoryTree.ChunkHandle import ChunkHandle
+from User.User import User
+from Scheduler.Scheduler import Scheduler
+from Scheduler.SlaveStates import SlaveStates
+from ChunkRefs.ChunkRefs import ChunkRefs
+
+if __name__ == "__main__":
+
+    # Test DirectoryTree
+    tree = DirectoryTree()
+    users = User.load_users("Data/users.json")
+    print(users[0].privilege)
+    tree.initialize_tree(users)
+    tree.save_tree("Data/tree.json")
+
+    # chstr = input()
+    # ChunkHandle.from_string(chstr)
+    # print(ChunkHandle.validate_string(chstr))
+
+    # tree = DirectoryTree.load_tree("Data/tree.json")
+    # tree.print_tree()
+    # node = tree.get_node("/home/alpt")
+    # print(node)
+    # home = tree.get_node("/home")
+    # print(home)
+    # print(node == home.get_child("alpt"))
+    # print(home.list_children())
+    # root = tree.get_node("/")
+    # print(root)
+    # print(root.list_children())
+
+    # # Test Scheduler
+    # scheduler = Scheduler(10, 2)
+    # scheduler.add_pi("pi1")
+    # scheduler.add_pi("pi2")
+    # scheduler.add_pi("pi3")
+    # scheduler.set_capacity("pi1", 100)
+    # scheduler.set_capacity("pi2", 100)
+    # scheduler.set_capacity("pi3", 100)
+
+    # print(scheduler.allocate_chunks(10, "/home/file1.txt"))
+    # scheduler._print_states()
+    # print(scheduler.allocate_chunks(60, "/home/file2.txt"))
+    # scheduler._print_states()
+    # print(scheduler.allocate_chunks(70, "/home/file3.txt"))
+    # scheduler._print_states()
+    # print(scheduler.allocate_chunks(40, "/home/file4.txt"))
+    # scheduler._print_states()
+
+    # Test ChunkRefs
+    # chunk_refs = ChunkRefs()
+    # chunk_1 = ChunkHandle("pi1", "chunk1", "fingerprint", 10)
+    # chunk_refs.add_chunk(chunk_1)
+    # chunk_refs.save("VirtualDisk/pi1/chunk_refs.json")
+
+
+import threading
+import socket
+import random
+from IO.IOStream import Knock, Answer, IOStream
+from Protocol.SCThread import SCThread
+from DirectoryTree.ChunkHandle import ChunkHandle
+from ChunkRefs.ChunkRefs import ChunkRefs
+from Constants import *
+
+class Slave:
+
+    def __init__(self, 
+                 slave_ip = "localhost", 
+                 master_ip = "localhost",
+                 master_port = 9998, 
+                 client_port = 9997,
+                 heartbeat_port = 8887,
+                 name = "pi1", 
+                 path = ".",
+                 disk_space = 1000):
+        
+        self.name = name
+        print("ip: " + master_ip + ", port " + str(master_port))
+        self.master_knock = Knock(method = 'socket', host = master_ip, port = master_port)
+        self.master_io = self.master_knock.knock()
+        self.msg_running = True
+        self.ping_running = True
+        self.msg_thread = threading.Thread(target = self.slave_start, daemon=True)
+        self.heartbeat_thread = threading.Thread(target = self.heartbeat_start, daemon=True)
+        self.client_thread = threading.Thread(target = self.handle_client, daemon=True)
+
+        self.client_answer = Answer(method = 'socket', host = slave_ip, port = client_port)
+        self.clients = []
+
+        self.capicity = 0
+        self.virtual_disk_space = disk_space
+
+        self.chunk_refs = ChunkRefs()
+        self.chunk_path = path
+
+        self.heartbeat_answer = Answer(method = 'socket', host = slave_ip, port = heartbeat_port)
+
+        print(f"Slave: {self.name} started")
+    
+    def start(self):
+        self.chunk_refs = ChunkRefs.load(os.path.join(self.chunk_path, "chunk_refs.json"))
+        self.msg_thread.start()
+        self.heartbeat_thread.start()
+        self.client_thread.start()
+
+    def slave_start(self):
+        while self.msg_running:
+            try:
+                data = self.master_io.receive().lower()
+                print("Recv")
+                if data.startswith("allocate"):
+                    while self.msg_running:
+                        if data.strip().endswith(".*."):
+                            print("breaking")
+                            break
+                        data += self.master_io.receive().lower()
+                        print("while loop")
+                print(f"Slave: Received: {data}")
+                if data.startswith("request"):
+                    self.capicity = self.get_disk_space()
+                    response = f"PI_NAME:{self.name} CAPACITY:{self.capicity}"
+                elif data.startswith("allocate"):
+                    print("allocating")
+                    self.allocate(data)
+                    response = "ACK"
+                elif data.startswith("deallocate"):
+                    self.deallocate(data)
+                    response = "ACK"
+                else:
+                    response = "400 Bad Recv"
+                print(f"Slave: Sending: {response}")
+                self.master_io.send(response)
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"Slave-Master: Error: {e}")
+                import traceback
+                traceback.print_exc()
+                break
+    
+    def heartbeat_start(self):
+        while self.ping_running:
+            try:
+                heartbeat_io = self.heartbeat_answer.accept()
+                print(f"Slave-Heartbeat: Master connected")
+                break
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"Slave-Heartbeat: Error: {e}")
+                import traceback
+                traceback.print_exc()
+                break
+
+        while self.ping_running:
+            try:
+                data = heartbeat_io.receive().lower()
+                r = random.random()
+                if r < 0.1:
+                    print(f"Slave-Heartbeat: Received: {data}")
+                if data.startswith("heartbeat"):
+                    response = " ".join(["alive", self.name, str(self.virtual_disk_space)])
+                else:
+                    response = "Heartbeat Response: 400 Bad Recv"
+                heartbeat_io.send(response)
+                if r < 0.1:
+                    print(f"Slave-Heartbeat: Sending: {response}")
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"Slave-Heartbeat: Error: {e}")
+                import traceback
+                traceback.print_exc()
+                break
+
+    
+    def handle_client(self):
+        while True:
+            try:
+                io_stream = self.client_answer.accept()
+                print(f"Slave: Client connected")
+                thread = SCThread(io_stream, self.chunk_path, self.chunk_refs)
+                thread.start()
+                self.clients.append(thread)
+            except socket.timeout:
+                continue
+            except Exception as e:
+                print(f"Slave: Error: {e}")
+                import traceback
+                traceback.print_exc()
+                break
+        
+    def allocate(self, data: str):
+        chunks = data.split('\n')[1:-1]
+        for chunk in chunks:
+            parts = chunk.split(" -> ")
+            chunk = parts[0]    
+            chunk = ChunkHandle.from_string(chunk.strip())
+            self.virtual_disk_space -= chunk.size
+            self.chunk_refs.add_chunk(chunk)
+            if len(parts) > 1:
+                backups = parts[1].split(" | ")
+                for backup in backups:
+                    backup = ChunkHandle.from_string(backup.strip())
+                    self.chunk_refs.add_backup(chunk, backup)
+                    print(f"Slave: {chunk} -> {backup}")
+
+            print(f"Slave: Allocated: {chunk}")
+        # self.master_io.send("ACK")
+    
+    def deallocate(self, data: str):
+
+        chunks = data.split('\n')[1:-1]
+        for chunk in chunks:
+            chunk = ChunkHandle.from_string(chunk.strip())
+
+            # Remove chunk from disk
+            if self.chunk_refs.get_filled(chunk.name):
+                os.remove(os.path.join(self.chunk_path, chunk.name))
+
+            self.chunk_refs.remove_chunk(chunk)
+            self.virtual_disk_space += chunk.size
+            print(f"Slave: Deallocated: {chunk}")
+        # self.master_io.send("ACK")
+    
+    def get_disk_space(self):
+        return self.virtual_disk_space
+    
+    def stop(self):
+
+        self.chunk_refs.save(os.path.join(self.chunk_path, "chunk_refs.json"))
+        print("Slave: Saving chunk_refs.json")
+        self.msg_running = False
+        self.ping_running = False
+        print("Slave: Stopping...")
+        self.master_io.close()
+        self.client_answer.close()
+        print("Slave: Stopped")
+
+
+if __name__ == "__main__":
+    import sys, os
+    name = sys.argv[1]
+    slave = Slave(name=name,
+                  master_ip=MASTER_IP, 
+                  slave_ip=SLAVE_IP_PORT[name]["ip"],
+                  master_port=MASTER_SLAVE_PORT, 
+                  client_port=SLAVE_IP_PORT[name]["port"],
+                  heartbeat_port=SLAVE_IP_PORT[name]["heartbeat"],
+                  path=DISK[name]["path"],
+                  disk_space=DISK[name]["capacity"])
+    import time
+    try:
+        slave.start()
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("Slave: Stopping...")
+        slave.stop()
+
+
+
+
+CHUNK_SIZE = 1024 * 1024 * 4
+N_BACKUPS = 2
+HEARTBEAT_INTERVAL = 5
+ALLOCATE_TIMEOUT = 10
+
+# MASTER_IP = "localhost"
+# SLAVE_IP_PORT = {
+#     "pi1": {
+#         "ip": "localhost",
+#         "port": 9997
+#     },
+#     "pi2": {
+#         "ip": "localhost",
+#         "port": 9997
+#     },
+#     "pi3": {
+#         "ip": "localhost",
+#         "port": 9997
+#     }
+# }
+# DISK = {
+#     "pi1": {
+#         "path": "VirtualDisk/pi1",
+#         "capacity": 100000000
+#     },
+#     "pi2": {
+#         "path": "VirtualDisk/pi2",
+#         "capacity": 100000000
+#     },
+#     "pi3": {
+#         "path": "VirtualDisk/pi3",
+#         "capacity": 100000000
+#     }
+# }
+
+MASTER_IP = "10.0.0.1"
+SLAVE_IP_PORT = {
+    "pi1": {
+        "ip": "10.0.0.2",
+        "port": 9997,
+        "heartbeat": 8887
+    },
+    "pi2": {
+        "ip": "10.0.0.3",
+        "port": 9996,
+        "heartbeat": 8886
+    },
+    "pi3": {
+        "ip": "10.0.0.4",
+        "port": 9995,
+        "heartbeat": 8885
+    }
+}
+DISK = {
+    "pi1": {
+        "path": "file",
+        "capacity": 100000000
+    },
+    "pi2": {
+        "path": "file",
+        "capacity": 100000000
+    },
+    "pi3": {
+        "path": "file",
+        "capacity": 100000000
+    }
+}
+
+MASTER_CLIENT_PORT = 9999
+MASTER_SLAVE_PORT = 9998
+
+
+
+
+
+class Client2Master:
+    def __init__(self, user, password):
+        self.user = user
+        self.password = password
+        self.c2m_log = open("cliet2master_log.txt", "a")
+        self.c2m_log.write(f"User: {self.user}\n")
+
+    # Function to print the record to the user_log.txt file
+    def print_record(self, message: str, print2console: bool = True):
+        self.c2m_log.write(message+"\n")
+        if print2console:
+            print(message)
+
+    # Function to login to the server
+    def login(self):
+        # send the username
+        self.print_record(f"USER {self.user}")
+        received_331 = input().split()
+        if received_331[0] != "331":
+            self.print_record("Error: 331 not received", False)
+            return False
+        self.print_record(received_331, False)
+
+        # send the password
+        self.print_record(f"PASS {self.password}")
+        received_230 = input().split()
+        if received_230[0] != "230":
+            self.print_record("Error: 230 not received", False)
+            return False
+        self.print_record(received_230, False)
+        return True
+    
+    # Function to execute the orders
+    def commands(self, order: str):
+        order_ls = order.split()
+        if len(order_ls) == 0:
+            self.print_record("Invalid order", False)
+            return False
+        elif len(order_ls) == 1:
+            order = order.lower()
+        else:
+            order = order_ls[0].lower() + " " + order_ls[1]
+        # check the directory
+        if order == "pwd":
+            self.print_record("PWD")
+            received_257 = input().split()
+            if received_257[0] != "257":
+                self.print_record("Error: 257 not received", False)
+                return False
+            self.print_record(received_257, False)
+            pwd = received_257[1]
+        
+        # list the files
+        elif order == "list":
+            self.print_record("LIST")
+            received_150 = input().split()
+            if received_150[0] != "150":
+                self.print_record("Error: 150 not received", False)
+                return False
+            self.print_record(received_150, False)
+            # print the files
+            while True:
+                received = input()
+                self.print_record(received, False)
+                if received == ".*.":
+                    break
+            received_226 = input().split()
+            if received_226[0] != "226":
+                self.print_record("Error: 226 not received", False)
+                return False
+            self.print_record(received_226, False)
+
+        # quit the server
+        elif order == "quit":
+            self.print_record("QUIT")
+            received_221 = input().split()
+            if received_221[0] != "221":
+                self.print_record("Error: 221 not received", False)
+                return False
+            self.print_record(received_221, False)
+
+        # retrieve the file
+        elif order[:4] == "retr":
+            self.print_record(f"RETR {order[5:]}")
+            received_150 = input().split()
+            if received_150[0] != "150":
+                self.print_record("Error: 150 not received", False)
+                return False
+            self.print_record(received_150, False)
+            chunk_block = []
+            while True:
+                received_chunk = input()
+                if received_chunk == ".*.":
+                    break
+                chunk_block.append(received_chunk)
+
+
+
+        else:
+            self.print_record("Invalid order", False)
+            return False
+
+
+
+
+
+
+class Client2Slave:
+    # TODO  connect to the slave raspberry pi
+    def __init__(self, slave):
+        self.slave = slave
+        self.c2s_log = open("client2slave_log.txt", "a")
+        self.c2s_log.write(f"slave: {self.slave}\n")
+        pass
+    # Function to print the record to the user_log.txt file
+    def print_record(self, message: str, print2console: bool = True):
+        self.c2s_log.write(message+"\n")
+        if print2console:
+            print(message)
+    
+    def retrieve(self, recieved_chunk: list):
+        self.print_record("HELO")
+        received_250 = input().split()
+        if received_250[0] != "250":
+            self.print_record("Error: 250 not received", False)
+            return False
+        self.print_record(received_250, False)
+
+        for chunk in recieved_chunk:
+            self.print_record(chunk)
+            file_block = input()
+            received_226 = input().split()
+            if received_226[0] != "226":
+                self.print_record("Error: 226 not received", False)
+                return False
+            self.print_record(received_226, False)
+
+
+    
+
+
+
+
+class Client_Master():
+    def __init__(self, user, password):
+        self.user = user
+        self.password = password
+
+    def login(self):
+        username = input("Enter username: ")
+        
+
+import json
+
+class User:
+
+    USER = "user"
+    ROOT = "root"
+
+    def __init__(self, 
+                 name,
+                 encrypted_password,
+                 groups = [],
+                 privilege = USER):
+        
+        self.name = name
+        self.encrypted_password = encrypted_password
+        self.groups = groups
+
+        assert privilege in [User.USER, User.ROOT], "Invalid privilage"
+        self.privilege = privilege
+    
+    def __repr__(self):
+        return self.name
+    
+    def __eq__(self, other):
+        return self.name == other.name and self.encrypted_password == other.encrypted_password
+    
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "encrypted_password": self.encrypted_password,
+            "groups": self.groups,
+            "privilage": self.privilege
+        }
+    
+    @staticmethod
+    def from_dict(dict):
+        if dict is None:
+            return None
+        return User(dict["name"],
+                    dict["encrypted_password"],
+                    dict["groups"],
+                    dict["privilage"])
+    
+
+    @staticmethod
+    def exists(users, name):
+        for user in users:
+            if user.name == name:
+                return True
+        return False
+    
+    @staticmethod
+    def verify_user(users, name, encrypted_password):
+        for user in users:
+            if user.name == name:
+                if user.encrypted_password == encrypted_password:
+                    return None, user
+                return "Incorrect password", None
+        return "User not found", None
+    
+    @staticmethod
+    def get_root(users):
+        for user in users:
+            if user.privilege == User.ROOT:
+                return user
+        return None
+    
+    @staticmethod
+    def save_users(users, path):
+        with open(path, "w") as file:
+            json.dump([user.to_dict() for user in users], file, indent=4)
+        print("User: saved to", path)
+    
+    @staticmethod
+    def load_users(path):
+        users = []
+        with open(path, "r") as file:
+            data = json.load(file)
+        for user in data:
+            users.append(User.from_dict(user))
+        return users
+
+
+if __name__ == "__main__":
+
+    from Cipher import MD5Cipher
+    try:
+        admin = User(name='admin',
+                    encrypted_password=MD5Cipher.encrypt('admin'),
+                    groups=['admin'],
+                    privilege=User.ROOT)
+        lmx = User(name='lmx',
+                encrypted_password=MD5Cipher.encrypt('lmx'),
+                groups=['thu', 'lmx'],
+                privilege=User.USER)
+        alpt = User(name='alpt',
+                    encrypted_password=MD5Cipher.encrypt('alpt'),
+                    groups=['thu', 'alpt'],
+                    privilege=User.USER)
+        users = [admin, lmx, alpt]
+    except AssertionError as e:
+        print(e)
+
+    User.save_users(users, "Data/users.json")
+    users = User.load_users("Data/users.json")
+    print(users)
+
+
+
+
+import hashlib
+
+class MD5Cipher:
+
+    @staticmethod
+    def encrypt(message):
+        return hashlib.md5(message.encode()).hexdigest()
+
+
+
+
+[
+    {
+        "name": "admin",
+        "encrypted_password": "21232f297a57a5a743894a0e4a801fc3",
+        "groups": [
+            "admin"
+        ],
+        "privilage": "root"
+    },
+    {
+        "name": "lmx",
+        "encrypted_password": "dcc77169f507c60b9e778c37a2738560",
+        "groups": [
+            "thu",
+            "lmx"
+        ],
+        "privilage": "user"
+    },
+    {
+        "name": "alpt",
+        "encrypted_password": "e52c76f6020163485b219f353846b982",
+        "groups": [
+            "thu",
+            "alpt"
+        ],
+        "privilage": "user"
+    }
+]
+
+{
+    "name": "/",
+    "owner": {
+        "name": "admin",
+        "encrypted_password": "21232f297a57a5a743894a0e4a801fc3",
+        "groups": [
+            "admin"
+        ],
+        "privilage": "root"
+    },
+    "permission": "drwxr-xr--",
+    "children": [
+        {
+            "name": "home",
+            "owner": {
+                "name": "admin",
+                "encrypted_password": "21232f297a57a5a743894a0e4a801fc3",
+                "groups": [
+                    "admin"
+                ],
+                "privilage": "root"
+            },
+            "permission": "drwxr-xr--",
+            "children": [
+                {
+                    "name": "admin",
+                    "owner": {
+                        "name": "admin",
+                        "encrypted_password": "21232f297a57a5a743894a0e4a801fc3",
+                        "groups": [
+                            "admin"
+                        ],
+                        "privilage": "root"
+                    },
+                    "permission": "drwxr-xr--",
+                    "children": []
+                },
+                {
+                    "name": "lmx",
+                    "owner": {
+                        "name": "lmx",
+                        "encrypted_password": "dcc77169f507c60b9e778c37a2738560",
+                        "groups": [
+                            "thu",
+                            "lmx"
+                        ],
+                        "privilage": "user"
+                    },
+                    "permission": "drwxr-xr--",
+                    "children": []
+                },
+                {
+                    "name": "alpt",
+                    "owner": {
+                        "name": "alpt",
+                        "encrypted_password": "e52c76f6020163485b219f353846b982",
+                        "groups": [
+                            "thu",
+                            "alpt"
+                        ],
+                        "privilage": "user"
+                    },
+                    "permission": "drwxr-xr--",
+                    "children": []
+                }
+            ]
+        }
+    ]
+}
+
+
+admin
+21232f297a57a5a743894a0e4a801fc3
+admin
+lmx
+dcc77169f507c60b9e778c37a2738560
+thu lmx
+alpt
+e52c76f6020163485b219f353846b982
+thu alpt
+
+
+
+import threading
+import struct
+import os
+from IO.IOStream import Knock, Answer, IOStream
+from ChunkRefs.ChunkRefs import ChunkRefs
+from DirectoryTree.ChunkHandle import ChunkHandle
+from RawClient import RawClient
+from Constants import *
+
+class SCThread(threading.Thread):
+
+    def __init__(self, 
+                 io_stream: IOStream,
+                 chunk_path: str,
+                 chunk_refs: ChunkRefs):
+        threading.Thread.__init__(self)
+        self.io_stream = io_stream
+        self.chunk_path = chunk_path
+        self.chunk_refs = chunk_refs
+        self.state = "init"
+
+        self.chunk_handle = None
+        self.bytes_received = b""
+        self.invalid_count = 0
+
+        print(f"SCThread: {self.name} started")
+    
+    def run(self):
+        while True:
+            try:
+                if self.state == "stor":
+                    header = self.io_stream.receive(is_byte = True)
+                    file_size = struct.unpack("!I", header)[0]
+                    print(f"SCThread: File size: {file_size}")
+                    data = b""
+                    while len(data) < file_size:
+                        data += self.io_stream.receive(is_byte = True)
+                    print(f"SCThread: Received: {data[:10]}...")
+                else:
+                    data = self.io_stream.receive()
+                    print(f"SCThread: Received: {data}")
+
+                response = self.process(data)
+
+                if response:
+                    if isinstance(response, bytes):
+                        print(f"SCThread: Sending: {response[:10]}...")
+                    else:
+                        print(f"SCThread: Sending: {response}")
+                    self.io_stream.send(response, is_byte = isinstance(response, bytes))
+                else:
+                    self.io_stream.send("500 Empty response")
+                if response == "221 Goodbye":
+                    break
+
+                if response == "501 Invalid Command":
+                    if self.invalid_count >= 3:
+                        self.io_stream.send("221 Goodbye")
+                        break
+                    else:
+                        self.invalid_count += 1
+                else:
+                    self.invalid_count = 0
+
+            except Exception as e:
+                print(f"SCThread: Error: {e}")
+                self.io_stream.send("500 Internal Error")
+
+                import traceback
+                traceback.print_exc()
+                break
+        
+        self.io_stream.close()
+
+    def process(self, data):
+
+        if isinstance(data, str) and data.startswith("quit"):
+            response = "221 Goodbye"
+
+        elif self.state == "stor":
+            if isinstance(data, str):
+                data = data.encode("utf-8")
+            response = self.ftp_bytes(data)
+
+        else:
+            if isinstance(data, bytes):
+                data = data.decode("utf-8")
+            if data.startswith("hello"):
+                response = self.ftp_hello()
+            elif data.startswith("stor"):
+                ch = data[5:]
+                if not ChunkHandle.validate_string(ch):
+                    return "503 Invalid Chunk Handle Syntax"
+                response = self.ftp_store(ch)
+            elif data.startswith("retr"):
+                ch = data[5:]
+                if not ChunkHandle.validate_string(ch):
+                    return "503 Invalid Chunk Handle Syntax"
+                response = self.ftp_retrieve(ch)
+            else:
+                response = "501 Invalid Command"
+        
+        return response
+
+    def ftp_hello(self):
+        response = "200 Hello"
+        self.state = "hello"
+        return response
+    
+    def ftp_store(self, chunk_handle: str):
+        if self.state != "hello":
+            return "503 Bad Sequence"
+        
+        self.chunk_handle = ChunkHandle.from_string(chunk_handle.strip())
+
+        if self.chunk_handle.name in self.chunk_refs.chunk_refs:
+            if self.chunk_handle == self.chunk_refs.chunk_refs[self.chunk_handle.name]["chunk_handle"]:
+                self.state = "stor"
+                self.bytes_received = b""
+                response = "300 Waiting for data"
+            else:
+                response = "503 Chunk Handle Mismatch"
+        else:
+            response = "503 Chunk Handle Not Allocated"
+
+        return response
+    
+    def ftp_bytes(self, data: bytes):
+
+        self.bytes_received = data
+
+        response = "200 Stored" if len(self.bytes_received) <= self.chunk_handle.size else "201 Truncated"
+        with open(os.path.join(self.chunk_path, self.chunk_handle.name), "wb") as f:
+            self.bytes_received = self.bytes_received[:self.chunk_handle.size]
+            f.write(self.bytes_received)
+        
+        self.state = "hello"
+        self.chunk_refs.set_filled(self.chunk_handle)
+
+        # if a chunk has backups, spawn a thread as a FakeClient to stor backups
+        for backup in self.chunk_refs.get_backups(self.chunk_handle):
+            fake_client_thread = threading.Thread(target=self.fake_client, args=(self.chunk_handle, backup))
+            fake_client_thread.start()
+            fake_client_thread.join()
+        
+        return response
+
+    def fake_client(self, chunk_handle: ChunkHandle, backup: ChunkHandle):
+        location = backup.location
+        rc = RawClient(SLAVE_IP_PORT[location]["ip"], SLAVE_IP_PORT[location]["port"])
+        rc.send("hello")
+        if rc.recv() == "200 Hello":
+            rc.send(f"stor {backup.to_string()}")
+            if rc.recv() == "300 Waiting for data":
+                rc.send(struct.pack("!I", len(self.bytes_received)), is_byte=True)
+                rc.send(self.bytes_received, is_byte=True)
+                if rc.recv().startswith("2"):
+                    rc.send("quit")
+                    if rc.recv() == "221 Goodbye":
+                        print(f"SCThread: Backup {backup} stored")
+                        rc.close()
+                        return
+
+        print(f"SCThread: Backup {backup} failed")
+        rc.close()
+    
+    def ftp_retrieve(self, chunk_handle: str) -> bytes:
+
+        if self.state != "hello":
+            return b"503 Bad Sequence"
+
+        chunk_handle = ChunkHandle.from_string(chunk_handle)
+        if chunk_handle.name not in self.chunk_refs.chunk_refs:
+            print('scthread:', chunk_handle.name, self.chunk_refs.chunk_refs)
+            return b"503 Chunk Handle Not Allocated"
+        elif chunk_handle != self.chunk_refs.chunk_refs[chunk_handle.name]["chunk_handle"]:
+            return b"503 Chunk Handle Mismatch"
+        elif not self.chunk_refs.get_filled(chunk_handle.name):
+            return b"204 Empty Chunk"
+        
+        with open(os.path.join(self.chunk_path, chunk_handle.name), "rb") as f:
+            data = f.read()
+        
+        code = b"200 "
+        header = struct.pack("!4sI", code, len(data))
+        self.io_stream.send(header, is_byte = True)
+        print(f"SCThread: Sending: {header}")
+
+        return data
+
+
+
+
+
+
+import threading
+import socket
+import time
+import random
+from Scheduler.SlaveStates import SlaveStates, PiState
+from Scheduler.Scheduler import Scheduler
+from IO.IOStream import IOStream, Knock
+from Constants import *
+
+class MSThread(threading.Thread):
+
+    def __init__(self, scheduler: Scheduler, io_stream: IOStream):
+        threading.Thread.__init__(self)
+
+        self.scheduler = scheduler
+        self.io_stream = io_stream
+        self.pi_name = None
+        self.running = True
+        self.debug = True
+    
+    def debug_print(self, message: str):
+        if self.debug:
+            print(message)
+    
+    def run(self):
+        try:
+            self.io_stream.send("Request")
+            self.debug_print(f"MSThread {self.getName()}: Request sent")
+            data = self.io_stream.receive()
+            self.process_recv(data)
+            self.debug_print(f"MSThread: data: {data}")
+            while self.running:
+                message = self.scheduler.get_message_slave(self.pi_name)
+                data_send = self.process_send(message)
+                self.debug_print(f"MSThread: send: {data_send}")
+                self.io_stream.send(data_send)
+                response = self.io_stream.receive()
+                self.debug_print(f"MSThread: response: {response}")
+                message = self.process_recv(response)
+                if message:
+                    self.scheduler.put_message_slave(self.pi_name, message)
+
+        except Exception as e:
+            print(f"MSThread: Error: {e}")
+            # Print Backtrace
+            import traceback
+            traceback.print_exc()
+        
+        self.io_stream.close()
+    
+    def process_recv(self, data: str) -> str:
+        
+        # PI_NAME:pi_name CAPACITY:capacity
+        if data.startswith("PI_NAME:"):
+            self.pi_name = data.split(" ")[0].split(":")[1]
+            self.scheduler.add_pi(self.pi_name)
+            self.scheduler.set_capacity(self.pi_name, int(data.split(" ")[1].split(":")[1]))
+            threading.Thread(target = self.heartbeat, daemon = True).start()
+            if self.debug:
+                self.scheduler._print_state()
+            return None
+        elif data == "ACK":
+            return "ACK"
+
+        return "400 Bad Recv"
+    
+    def heartbeat(self):
+        heartbeat_io = Knock(method = 'socket', host = SLAVE_IP_PORT[self.pi_name]['ip'], port = SLAVE_IP_PORT[self.pi_name]['heartbeat'], timeout = HEARTBEAT_INTERVAL).knock()
+        while self.running:
+            try:
+                heartbeat_io.send("Heartbeat")
+                r = random.random()
+                if r < 0.1:
+                    print(f"Heartbeat to {self.pi_name}")
+                response = heartbeat_io.receive().lower()
+                if response.startswith("alive"):
+                    if r < 0.1:
+                        print(f"Heartbeat to {self.pi_name}: {response}")
+                    capacity = int(response.split(" ")[2])
+                    self.scheduler.set_capacity(self.pi_name, capacity)
+                else:
+                    print(f"Heartbeat to {self.pi_name}: {response}")
+                    self.scheduler.remove_pi(self.pi_name)
+                    heartbeat_io.close()
+                    self.running = False
+                    break
+                time.sleep(HEARTBEAT_INTERVAL)
+            except socket.timeout:
+                print(f"Heartbeat: Timeout")
+                self.scheduler.remove_pi(self.pi_name)
+                heartbeat_io.close()
+                self.running = False
+                break
+            except Exception as e:
+                print(f"Heartbeat: Error: {e}")
+                # Print Backtrace
+                import traceback
+                traceback.print_exc()
+
+    
+    def process_send(self, message: str) -> str:
+        # message:
+        # allocate: pi_name, chunks
+        # deallocate: pi_name, chunks
+
+        if message.lower().startswith("allocate"):
+            response = message + ".*."
+        elif message.lower().startswith("deallocate"):
+            response = message + ".*."
+        else:
+            response = "BAD MESSAGE"
+        
+        return response
+
+
+
+import threading
+from User.User import User
+from DirectoryTree.DirectoryTree import DirectoryTree
+from DirectoryTree.ChunkTable import ChunkTable
+from DirectoryTree.Node import FileNode, DirectoryNode
+from DirectoryTree.ChunkHandle import ChunkHandle
+from User.Cipher import MD5Cipher
+from IO.IOStream import IOStream
+from Scheduler.Scheduler import Scheduler
+
+class MCThread(threading.Thread):
+        
+    def __init__(self,
+                io_stream: IOStream,
+                directory_tree: DirectoryTree,
+                users: list, 
+                scheduler: Scheduler):
+        threading.Thread.__init__(self)
+        self.io_stream = io_stream
+
+        self.directory_tree = directory_tree
+        self.users = users
+        self.scheduler = scheduler
+
+        self.state = "init"
+
+        self.user_name = None
+        self.user = None
+        self.node = None
+    
+    def run(self):
+        while True:
+            try:
+                data = self.io_stream.receive()
+                print(f"MCThread: Received data: {data}")
+                response = self.process_data(data)
+                self.io_stream.send(response)
+                print(f"MCThread: Sent data: {response}")
+                if response == "221 Goodbye":
+                    break
+            except Exception as e:
+                print(f"MCThread: Error: {e}")
+                import traceback
+                traceback.print_exc()
+                self.io_stream.send("500 Internal server error")
+                break
+
+        self.stop()
+    
+    def stop(self):
+        self.io_stream.close()
+    
+    def process_data(self, data: str):
+
+        args = data.split(" ")
+
+        if data.startswith("user"):
+            if len(args) < 2:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_user(args[1])
+        elif data.startswith("pass"):
+            if len(args) < 2:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_password(MD5Cipher.encrypt(args[1]))
+        elif data.startswith("quit"):
+            response = self.ftp_quit()
+        elif data.startswith("pwd"):
+            response = self.ftp_pwd()
+        elif data.startswith("ls"):
+            if len(args) < 2:
+                response = self.ftp_list()
+            else:
+                response = self.ftp_list(args[1])
+        elif data.startswith("cd"):
+            if len(args) < 2:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_cd(args[1])
+        elif data.startswith("mkdir"):
+            if len(args) < 2:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_mkdir(args[1])
+        elif data.startswith("retr"):
+            if len(args) < 2:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_retr(args[1])
+        elif data.startswith("stor"):
+            if len(args) < 3:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_stor(args[1], int(args[2]))
+        elif data.startswith("del"):
+            if len(args) < 2:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_delete(args[1])
+        elif data.startswith("rmdir"):
+            if len(args) < 2:
+                return "501 Syntax error in parameters or arguments"
+            response = self.ftp_rmdir(args[1])
+        elif data.startswith("ll"):
+            if len(args) < 2:
+                response = self.ftp_listl()
+            else:
+                response = self.ftp_listl(args[1])
+        else:
+            response = "500 Syntax error, command unrecognized"
+        
+        return response
+            
+    def ftp_user(self, user_name):
+        if not User.exists(self.users, user_name):
+            return "430 User not found"
+        self.state = "user"
+        self.user_name = user_name
+        return "331 Password required for " + user_name
+    
+    def ftp_password(self, password):
+        if self.state != "user":
+            return "503 Bad sequence of commands"
+        error, user = User.verify_user(self.users, self.user_name, password)
+        if error is None:
+            self.user = user
+            self.state = "password"
+            self.node = self.directory_tree.get_home(self.user)
+            return "230 User logged in"
+        return "530 Login incorrect"
+    
+    def ftp_quit(self):
+        return "221 Goodbye"
+    
+    def ftp_pwd(self):
+        if self.state != "password":
+            return "530 Not logged in"
+        return "257 " + self.directory_tree.get_path(self.node)
+    
+    def ftp_list(self, path = None):
+        if self.state != "password":
+            return "530 Not logged in"
+        print(f"ftp_list: path: {path}")
+        node = self.node if path is None else self.directory_tree.get_node(path)
+        if node is None:
+            return "550 Failed to list directory"
+        if not isinstance(node, DirectoryNode):
+            return "550 Not a directory"
+        print(f"ftp_list: node: {node}")
+        # check permission
+        if not node.verify_permission(self.user, "read"):
+            return "550 Permission denied"
+        children = node.list_children()
+        return "200 \n" + "\n".join(children)
+    
+    def ftp_cd(self, path):
+        if self.state != "password":
+            return "530 Not logged in"
+        node = self.directory_tree.get_node(path, node = self.node)
+        if node is None:
+            return "550 Failed to change directory"
+        if not isinstance(node, DirectoryNode):
+            return "550 Not a directory"
+        if not node.verify_permission(self.user, "execute"):
+            return "550 Permission denied"
+        self.node = node
+        return "250 Directory changed to " + self.directory_tree.get_path(self.node)
+    
+    def ftp_mkdir(self, path):
+
+        if self.state != "password":
+            return "530 Not logged in"
+        node = self.directory_tree.get_node(path, node = self.node)
+        if node is not None:
+            return "550 Directory already exists"
+        parent = self.directory_tree.get_node(path, node = self.node, get_parent = True)
+        if not parent.verify_permission(self.user, "write"):
+            return "550 Permission denied"
+
+        absolute_path = self.directory_tree.get_path(parent) + "/" + path.split("/")[-1]
+        print(f"ftp_mkdir: absolute_path: {absolute_path}")
+        self.directory_tree.add_directory(absolute_path, self.user, "drwxr-xr--")
+
+        return "257 Directory created"
+    
+    def ftp_retr(self, path):
+        if self.state != "password":
+            return "530 Not logged in"
+        node = self.directory_tree.get_node(path, node = self.node)
+        if node is None:
+            return "550 File not found"
+        if not isinstance(node, FileNode):
+            return "550 Not a file"
+        if not node.verify_permission(self.user, "read"):
+            return "550 Permission denied"
+        
+        print(f"ftp_retr: chunk_table:\n {node.chunk_table}")
+        chunk_table = self.scheduler.select_backup(node.chunk_table)
+        
+        response_builder = "200 \n"
+        response_builder += str(chunk_table)
+        response_builder += ".*."
+        return response_builder
+    
+    def ftp_stor(self, path, size):
+        if self.state != "password":
+            return "530 Not logged in"
+        node = self.directory_tree.get_node(path, node = self.node)
+        if node is not None:
+            return "550 File already exists"
+        parent = self.directory_tree.get_node(path, node = self.node, get_parent = True)
+        if not parent.verify_permission(self.user, "write"):
+            return "550 Permission denied"
+        absolute_path = self.directory_tree.get_path(parent) + "/" + path.split("/")[-1]
+        chunks = self.scheduler.allocate_chunks(size, absolute_path)
+        if chunks is None:
+            return "550 Allocation Error"
+        print(f"ftp_stor: absolute_path: {absolute_path}")
+
+        chunk_table = ChunkTable.from_dict(chunks)
+        self.directory_tree.add_file(absolute_path, self.user, "-rwxr-xr--", chunk_table, 10)
+        print(f"ftp_stor: chunk_table:\n {chunk_table}")
+        master_table = self.scheduler.select_backup(chunk_table)
+        ok = self.scheduler.allocate_request(chunk_table, master_table)
+
+        if not ok:
+            return "250 Pi no response"
+
+        if master_table is None:
+            return "550 Backup Error"
+        
+        response_builder = "200 \n"
+        response_builder += str(master_table)
+        response_builder += ".*."
+        return response_builder
+    
+    def _allocate_chunks(self, size):
+        n_chunks = size // 10
+        chunks = []
+        for i in range(n_chunks):
+            chunk = ChunkHandle("pi1", "chunk" + str(i), "fingerprint", 10)
+            chunks.append(chunk)
+        if size % 10 != 0:
+            chunk = ChunkHandle("pi1", "chunk" + str(n_chunks), "fingerprint", size % 10)
+            chunks.append(chunk)
+        return chunks
+    
+    def _deallocate_chunks(self, node):
+        if isinstance(node, FileNode):
+            return self.scheduler.deallocate_request(node.chunk_table)
+            # for chunk in node.chunks:
+            #     # print(f"Deallocating chunk: {str(chunk)}")
+            #     self.scheduler.deallocate_request(chunk)
+        elif isinstance(node, DirectoryNode):
+            for child in node.children:
+                return self._deallocate_chunks(child)
+        
+
+    def ftp_delete(self, path):
+        if self.state != "password":
+            return "530 Not logged in"
+        node = self.directory_tree.get_node(path, node = self.node)
+        if node is None:
+            return "550 File not found"
+        if not isinstance(node, FileNode):
+            return "550 Not a file"
+        if not node.verify_permission(self.user, "write"):
+            return "550 Permission denied"
+
+        ok = self._deallocate_chunks(node)
+
+        absolute_path = self.directory_tree.get_path(node)
+        self.directory_tree.remove(absolute_path)
+
+        if not ok:
+            return "250 Warning: Pi no response"
+
+        return "200 File deleted"
+
+    
+    def ftp_rmdir(self, path):
+        if self.state != "password":
+            return "530 Not logged in"
+        node = self.directory_tree.get_node(path, node = self.node)
+        if node is None:
+            return "550 Directory not found"
+        if not isinstance(node, DirectoryNode):
+            return "550 Not a directory"
+        if not node.verify_permission(self.user, "write"):
+            return "550 Permission denied"
+
+        ok = self._deallocate_chunks(node)
+
+        absolute_path = self.directory_tree.get_path(node)
+        self.directory_tree.remove(absolute_path)
+
+        if not ok:
+            return "250 Warning: Pi no response"
+
+        return "200 Directory deleted"
+
+    def ftp_listl(self, path = None):
+        if self.state != "password":
+            return "530 Not logged in"
+        node = self.node if path is None else self.directory_tree.get_node(path, node = self.node)
+        if node is None:
+            return "550 Failed to list directory"
+        if not isinstance(node, DirectoryNode):
+            return "550 Not a directory"
+        if not node.verify_permission(self.user, "read"):
+            return "550 Permission denied"
+        childrens = node.list_children_details()
+        builder = "200 \n"
+        for child in childrens:
+            builder += child["name"] + " " + child["owner"]["name"] + " " + child["permission"]
+            if child["permission"][0] == "-":
+                builder += " " + str(child["size"])
+            builder += "\n"
+        
+        return builder
+    
+
+
+
+from Scheduler.SlaveStates import SlaveStates
+from DirectoryTree.ChunkHandle import ChunkHandle
+from DirectoryTree.ChunkTable import ChunkTable
+from Constants import *
+import threading
+import random
+
+class Scheduler:
+
+    def __init__(self, 
+                 chunk_size: int = CHUNK_SIZE,
+                 n_backups: int = N_BACKUPS):
+        self.lock = threading.Lock()
+        self.slave_states = SlaveStates()
+        self.chunk_size = chunk_size
+        self.n_backups = n_backups
+        self.debug = True
+    
+    def debug_print(self, message: str):
+        if self.debug:
+            print(message)
+
+    def get_message_client(self, pi_name: str, timeout = None):
+        message = self.slave_states.get_message_client(pi_name, timeout = timeout)
+        return message
+    
+    def put_message_client(self, pi_name: str, message: str):
+        self.slave_states.put_message_client(pi_name, message)
+    
+    def get_message_slave(self, pi_name: str):
+        message = self.slave_states.get_message_slave(pi_name)
+        return message
+
+    def put_message_slave(self, pi_name: str, message: str):
+        self.slave_states.put_message_slave(pi_name, message)
+    
+    def add_pi(self, pi_name: str):
+        self.lock.acquire()
+        self.slave_states.add_state(pi_name)
+        self.lock.release()
+    
+    def remove_pi(self, pi_name: str):
+        self.lock.acquire()
+        self.slave_states.remove_state(pi_name)
+        self.lock.release()
+    
+    def set_capacity(self, pi_name: str, capacity: int):
+        self.lock.acquire()
+        self.slave_states.set_capacity(pi_name, capacity)
+        self.lock.release()
+    
+    def _reduce_capacity(self, pi_name: str, size: int):
+        self.slave_states.reduce_capacity(pi_name, size)
+    
+    def allocate_chunks(self, size: int, file_path: str) -> dict:
+
+        if size <= 0:
+            return None
+        n_chunks = size // self.chunk_size + (1 if size % self.chunk_size != 0 else 0)
+        allocated = set()
+        exclude_pi_names = set()
+        chunk_handles = dict()
+        self.lock.acquire()
+        for i in range(self.n_backups):
+            capacities = self.slave_states.get_capacities(exclude_pi_names = allocated)
+            n_empty_chunks = [(capicity[0], capicity[1] // self.chunk_size) for capicity in capacities]
+            total_empty_chunks = sum([chunk[1] for chunk in n_empty_chunks])
+            self.debug_print(f"total_empty_chunks: {total_empty_chunks}, n_chunks: {n_chunks}")
+            if total_empty_chunks < n_chunks:
+                capacities = self.slave_states.get_capacities(exclude_pi_names = exclude_pi_names)
+                n_empty_chunks = [(capicity[0], capicity[1] // self.chunk_size) for capicity in capacities]
+                total_empty_chunks = sum([chunk[1] for chunk in n_empty_chunks])
+                self.debug_print(f" total_empty_chunks: {total_empty_chunks}, n_chunks: {n_chunks}")
+                if total_empty_chunks < n_chunks:
+                    self.lock.release()
+                    return chunk_handles
+            
+            chunk_handles[i] = []
+
+            # sort n_empty_chunks by capacity
+            n_empty_chunks.sort(key = lambda x: x[1], reverse = True)
+            exclude_pi_names.add(n_empty_chunks[0][0])
+
+            # allocate chunks
+            cnt_allocated = 0
+            pi_list = []
+            for pi_name, n_empty_chunk in n_empty_chunks:
+                if cnt_allocated + n_empty_chunk >= n_chunks:
+                    pi_list.append((pi_name, n_chunks - cnt_allocated))
+                    cnt_allocated = n_chunks
+                    break
+                else:
+                    pi_list.append((pi_name, n_empty_chunk))
+                    cnt_allocated += n_empty_chunk
+
+            self.debug_print(f"pi_list: {pi_list}")
+            
+            chunk_cnt = 0
+            file_path = file_path.replace("/", "_")
+            for pi_name, n_chunk in pi_list:
+                for _ in range(n_chunk):
+                    chunk_handle = ChunkHandle(
+                        location=pi_name,
+                        name=f"{file_path}_chunk{chunk_cnt}",
+                        fingerprint=str(hex(hash(random.random()))),
+                        size=self.chunk_size
+                    )
+                    chunk_handles[i].append(chunk_handle)
+                    chunk_cnt += 1
+                    self._reduce_capacity(pi_name, self.chunk_size)
+                allocated.add(pi_name)
+
+        self.lock.release()
+        return chunk_handles
+    
+    def _print_state(self):
+        print(str(self.slave_states))
+    
+    def allocate_request(self, chunk_handles: ChunkTable, master: ChunkTable = None):
+        self.lock.acquire()
+        # message_builder = "ALLOCATE:\n"
+        message_builder = dict()
+
+        # master
+        for backup, chunks in master.get_items():
+            for j, chunk in enumerate(chunks):
+                pi_name = chunk.location
+                # message_builder += f"{chunk}\n"
+                if pi_name not in message_builder:
+                    message_builder[pi_name] = "ALLOCATE:\n"
+                message_builder[pi_name] += f"{chunk} -> "
+                for i in range(self.n_backups):
+                    if i in chunk_handles and i != backup:
+                        message_builder[pi_name] += f"{chunk_handles[i][j]} | "
+                message_builder[pi_name] = message_builder[pi_name][:-3] + "\n"
+
+        # others
+        for i in range(self.n_backups):
+            if i in chunk_handles and i not in master:
+                for j in range(len(chunk_handles[i])):
+                    pi_name = chunk_handles[i][j].location
+                    # message_builder += f"{chunk_handles[i][j]}\n"
+                    if pi_name not in message_builder:
+                        message_builder[pi_name] = "ALLOCATE:\n"
+                    message_builder[pi_name] += f"{chunk_handles[i][j]}\n"
+
+        # self.put_message_client(pi_name, message_builder)
+        for pi_name, message in message_builder.items():
+            self.put_message_client(pi_name, message)
+        
+            try:
+                response = self.get_message_client(pi_name, timeout = ALLOCATE_TIMEOUT)
+                if response != "ACK":
+                    raise Exception("Response is not ACK: " + response)
+            except Exception as e:
+                print(f"ACK not received: {e}")
+                self.lock.release()
+                return False
+
+        self.lock.release()
+        return True
+    
+    def deallocate_request(self, chunk_handles: dict):
+        self.lock.acquire()
+        message_builder = dict()
+        for i in range(self.n_backups):
+            if i in chunk_handles:
+                for j in range(len(chunk_handles[i])):
+                    pi_name = chunk_handles[i][j].location
+                    if pi_name not in message_builder:
+                        message_builder[pi_name] = "DEALLOCATE:\n"
+                    message_builder[pi_name] += f"{chunk_handles[i][j]}\n"
+        
+        for pi_name, message in message_builder.items():
+            self.put_message_client(pi_name, message)
+        
+            try:
+                response = self.get_message_client(pi_name, timeout = ALLOCATE_TIMEOUT)
+                if response != "ACK":
+                    raise Exception("Response is not ACK" + response)
+            except Exception as e:
+                print(f"ACK not received: {e}")
+                self.lock.release()
+                return False
+
+        self.lock.release()
+        return True
+                    
+    def select_backup(self, chunk_table: ChunkTable):
+
+        online_pi_names = self.slave_states.get_pi_names()
+        print(f"online_pi_names: {online_pi_names}")
+        for backup, chunks in chunk_table.get_items():
+            if any([chunk.location not in online_pi_names for chunk in chunks]):
+                continue
+            return ChunkTable.from_dict({backup: chunks})
+        
+        return None
+
+
+
+import queue
+
+class PiState:
+
+    def __init__(self, pi_name: str):
+        self.pi_name = pi_name
+        self.capacity = None
+        self.message_queue_c2s = queue.Queue()
+        self.message_queue_s2c = queue.Queue()
+
+class SlaveStates:
+
+    def __init__(self):
+        self.states = []
+
+    def add_state(self, pi_name: str):
+        if pi_name not in self.get_pi_names():
+            self.states.append(PiState(pi_name))
+    
+    def get_state(self, pi_name: str) -> PiState:
+        for state in self.states:
+            if state.pi_name == pi_name:
+                return state
+        return None
+    
+    def get_message_client(self, pi_name: str, timeout = None):
+        state = self.get_state(pi_name)
+        if state is not None:
+            return state.message_queue_s2c.get(timeout = timeout)
+        return None
+    
+    def put_message_client(self, pi_name: str, message: str):
+        state = self.get_state(pi_name)
+        if state is not None:
+            # Clear s2c queue
+            while not state.message_queue_s2c.empty():
+                state.message_queue_s2c.get()
+
+            state.message_queue_c2s.put(message)
+        
+    def get_message_slave(self, pi_name: str):
+        state = self.get_state(pi_name)
+        if state is not None:
+            return state.message_queue_c2s.get()
+        return None
+    
+    def put_message_slave(self, pi_name: str, message: str):
+        state = self.get_state(pi_name)
+        if state is not None:
+            state.message_queue_s2c.put(message)
+
+    def set_capacity(self, pi_name: str, capacity: int):
+        state = self.get_state(pi_name)
+        if state is not None:
+            state.capacity = capacity
+        else:
+            print(f"SlaveStates: set_capacity: {pi_name} not found")
+    
+    def reduce_capacity(self, pi_name: str, size: int):
+        state = self.get_state(pi_name)
+        if state is not None:
+            state.capacity -= size
+        else:
+            print(f"SlaveStates: reduce_capacity: {pi_name} not found")
+    
+    def get_capacity(self, pi_name: str):
+        state = self.get_state(pi_name)
+        if state is not None:
+            return state.capacity
+        return None
+
+    def get_pi_names(self):
+        return [state.pi_name for state in self.states]
+
+    def remove_state(self, pi_name: str):
+        for state in self.states:
+            if state.pi_name == pi_name:
+                self.states.remove(state)
+                print(f"SlaveStates: remove_state: {pi_name}")
+                print(self)
+                return
+    
+    def __str__(self):
+        return "\n".join([f"{state.pi_name}: {state.capacity}" for state in self.states])
+    
+    def get_capacities(self, exclude_pi_names: set):
+        return [(state.pi_name, state.capacity) for state in self.states if state.pi_name not in exclude_pi_names]
+    
+
+
+from DirectoryTree.ChunkHandle import ChunkHandle
+import json
+import threading
+
+class ChunkRefs:
+
+    def __init__(self):
+
+        self.lock = threading.Lock()
+        self.chunk_refs = {}
+    
+    def add_chunk(self, chunk_handle: ChunkHandle):
+        with self.lock:
+            self.chunk_refs[chunk_handle.name] = {
+                "chunk_handle": chunk_handle,
+                "filled": False,
+                "backup": []
+            }
+    
+    def remove_chunk(self, chunk_handle: ChunkHandle):
+        with self.lock:
+            del self.chunk_refs[chunk_handle.name]
+    
+    def set_filled(self, chunk_handle: ChunkHandle):
+        with self.lock:
+            self.chunk_refs[chunk_handle.name]["filled"] = True
+    
+    def get_filled(self, chunk_name: str):
+        with self.lock:
+            if chunk_name in self.chunk_refs:
+                return self.chunk_refs[chunk_name]["filled"]
+            else:
+                return False
+    
+    def add_backup(self, chunk_handle: ChunkHandle, backup: ChunkHandle):
+        with self.lock:
+            self.chunk_refs[chunk_handle.name]["backup"].append(backup)
+    
+    def get_backups(self, chunk_handle: ChunkHandle):
+        with self.lock:
+            return self.chunk_refs[chunk_handle.name]["backup"]
+    
+    def to_dict(self):
+        with self.lock:
+            chunk_refs_dict = {}
+            for chunk_name, chunk_ref in self.chunk_refs.items():
+                chunk_refs_dict[chunk_name] = {
+                    "chunk_handle": chunk_ref["chunk_handle"].to_string(),
+                    "filled": chunk_ref["filled"],
+                    "backup": [backup.to_string() for backup in chunk_ref["backup"]]
+                }
+        return chunk_refs_dict
+    
+    @staticmethod
+    def from_dict(chunk_refs_dict):
+        chunk_refs = ChunkRefs()
+        for chunk_name, chunk_ref in chunk_refs_dict.items():
+            chunk_refs.chunk_refs[chunk_name] = {
+                "chunk_handle": ChunkHandle.from_string(chunk_ref["chunk_handle"]),
+                "filled": chunk_ref["filled"],
+                "backup": [ChunkHandle.from_string(backup) for backup in chunk_ref["backup"]]
+            }
+        return chunk_refs
+    
+    def save(self, filename):
+        with open(filename, "w") as f:
+            json.dump(self.to_dict(), f)
+    
+    @staticmethod
+    def load(filename):
+        with open(filename, "r") as f:
+            chunk_refs_dict = json.load(f)
+        return ChunkRefs.from_dict(chunk_refs_dict)
+        
+
+import threading
+import queue
+import time
+
+def producer(q):
+    for i in range(5):
+        q.put(i)
+        print(f'Produced {i}')
+        time.sleep(1)
+
+def consumer(q):
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(f'Consumed {item}')
+        q.task_done()
+
+q = queue.Queue()
+t1 = threading.Thread(target=producer, args=(q,))
+t2 = threading.Thread(target=consumer, args=(q,))
+
+t1.start()
+t2.start()
+
+t1.join()
+q.put(None)  # 通知消费者线程结束
+t2.join()
+
+
+import struct
+
+string = b"200 "
+integer = 1024
+bytes = struct.pack("!4sI", string, integer)
+print(bytes)
+string, integer = struct.unpack("!4sI", bytes)
+print(string, integer)
+print(type(string), type(integer))
+
+print(b'200 ' == b'200 ')
+
+
+
+string1 = "allocate: 1 -> 2 | 3"
+string2 = "allocate: 1 -> "
+string3 = "allocate: 1"
+
+for string in [string1, string2, string3]:
+    print(string.split(" -> "))
+    print(string.split(" -> ")[1].split(" | ") if len(string.split(" -> ")) > 1 else None)
+    print(string.split(" -> ")[1].split(" | ")[0] if len(string.split(" -> ")) > 1 else None)
+
+
+
+import socket
+
+# FIXME: A nicer implementation compared to 'if-elif-else' would be polymorphism. But that's too much for this project.
+# NOTE: packet IO only supports 'socket' method.
+
+class Knock:
+    
+    def __init__(self,
+                 method = 'socket',
+                 **kwargs):
+        
+        self.method = method
+        if method == 'socket':
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.connect((kwargs['host'], kwargs['port']))
+            print(f"Knock: Connected to {kwargs['host']}:{kwargs['port']}")
+            self.timeout = kwargs.get('timeout', None)
+        elif method == 'zeromq':
+            pass
+        elif method == 'nanomq':
+            pass
+    
+    def knock(self):
+        if self.method == 'socket':
+            return IOStream(method = 'socket', socket = self.socket, timeout = self.timeout)
+        elif self.method == 'zeromq':
+            raise NotImplementedError()
+        elif self.method == 'nanomq':
+            raise NotImplementedError()
+    
+    def close(self):
+        if self.method == 'socket':
+            pass
+        elif self.method == 'zeromq':
+            pass
+        elif self.method == 'nanomq':
+            pass
+        
+
+class Answer:
+
+    def __init__(self,
+                 method = 'socket',
+                 **kwargs):
+        
+        self.method = method
+
+        if method == 'socket':
+            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.socket.bind((kwargs['host'], kwargs['port']))
+            self.socket.settimeout(1)
+            self.socket.listen(5)
+            self.timeout = kwargs.get('timeout', None)
+            print(f"Answer: Listening on {kwargs['host']}:{kwargs['port']}")
+        elif method == 'zeromq':
+            pass
+        elif method == 'nanomq':
+            pass
+    
+    def accept(self): # throws socket.timeout
+        if self.method == 'socket':
+            client, address = self.socket.accept()
+            print(f"Answer: Connection from {address} has been established!")
+            return IOStream(method = 'socket', socket = client, timeout = self.timeout)
+    
+    def close(self):
+        if self.method == 'socket':
+            self.socket.close()
+        elif self.method == 'zeromq':
+            pass
+        elif self.method == 'nanomq':
+            pass
+
+class IOStream:
+    
+    def __init__(self, 
+                 method = 'stdio', 
+                 **kwargs):
+        
+        self.input_stream = InputStream(method, **kwargs)
+        self.output_stream = OutputStream(method, **kwargs)
+    
+    def send(self, data, is_byte = False):
+        self.output_stream.send(data, is_byte)
+    
+    def receive(self, is_byte = False):
+        return self.input_stream.receive(is_byte)
+    
+    def close(self):
+        self.input_stream.close()
+        self.output_stream.close()
+
+class OutputStream:
+    
+    def __init__(self,
+                method = 'socket',
+                **kwargs):
+            
+        # FIXME: A nicer implementation would be polymorphism
+        self.method = method
+        if self.method == 'stdio':
+            pass
+        elif self.method == 'socket':
+            self.socket = kwargs['socket']
+        elif self.method == 'zeromq':
+            pass
+        elif self.method == 'nanomq':
+            pass
+    
+    def send(self, data, is_byte = False):
+        if self.method == 'stdio':
+            print(data)
+        elif self.method == 'socket':
+            if is_byte:
+                self.socket.send(data)
+            else:
+                self.socket.send(data.encode("utf-8"))
+        elif self.method == 'zeromq':
+            raise NotImplementedError()
+        elif self.method == 'nanomq':
+            print(data)
+    
+    def close(self):
+
+        if self.method == 'stdio':
+            pass
+        elif self.method == 'socket':
+            self.socket.close()
+        elif self.method == 'zeromq':
+            raise NotImplementedError()
+        elif self.method == 'nanomq':
+            pass
+
+
+class InputStream:
+
+    def __init__(self, 
+                 method = 'stdio', 
+                 **kwargs):
+        
+        self.method = method
+        if self.method == 'stdio':
+            pass
+        elif self.method == 'socket':
+            self.socket = kwargs['socket']
+            self.timeout = kwargs.get('timeout', None)
+        elif self.method == 'zeromq':
+            pass
+        elif self.method == 'nanomq':
+            pass
+    
+    def receive(self, is_byte = False):
+        if self.method == 'stdio':
+            data = input()
+        elif self.method == 'socket':
+            if self.timeout:
+                self.socket.settimeout(self.timeout)
+            if is_byte:
+                data = self.socket.recv(1024)
+            else:
+                data = self.socket.recv(1024).decode("utf-8")
+        elif self.method == 'zeromq':
+            raise NotImplementedError()
+        elif self.method == 'nanomq':
+            data = input()
+        
+        return data
+    
+    def close(self):
+        if self.method == 'stdio':
+            pass
+        elif self.method == 'socket':
+            self.socket.close()
+        elif self.method == 'zeromq':
+            raise NotImplementedError()
+        elif self.method == 'nanomq':
+            pass
+
+
+
+import socket
+import struct
+import os
+
+class TCPClient:
+    # 初始化客户端TCP连接
+    def __init__(self, host='101.200.241.54', port=54325):  # 101.200.241.54
+        self.host = host
+        self.port = port
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((self.host, self.port))
+
+    # 与服务端建立连接并收发数据
+    def send_recieve_data(self, data_type, file_path):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
+            print(f"Attempting to connect to {self.host}:{self.port}")
+            client_socket.connect((self.host, self.port))
+            # 发送数据
+            self.send_data(client_socket, data_type, file_path)
+            # 接受服务器端返回的数据
+            data_type, data = self.recive_data(client_socket)
+            return data_type, data
+    # 将文件转换为字节流并发送给服务端
+    def send_data(self,client_socket, data_type, file_path):
+        data_type_encoded = data_type.encode('ascii')
+        data_type_length = len(data_type_encoded)
+        file_size = os.path.getsize(file_path)
+        header = struct.pack('!II', data_type_length, file_size)
+        client_socket.sendall(header)
+        client_socket.sendall(data_type_encoded)
+        with open(file_path, 'rb') as file:
+            while True:
+                chunk = file.read(1024)
+                if not chunk:
+                    break
+                client_socket.sendall(chunk)
+
+    # 接受服务端返回的字节流
+    def recive_data(self, client_socket):
+        header = client_socket.recv(8)
+        data_type_length, data_size = struct.unpack('!II', header)
+        data_type = client_socket.recv(data_type_length).decode('ascii')
+        data = b''
+        while True:
+            packet = client_socket.recv(data_size)
+            data += packet
+            if len(data) == data_size:
+                break
+        return data_type, data
+
+    # 将接受的字节流保存为文件
+    def save_response(self, response, file_path):
+        with open(file_path, 'wb') as file:
+            file.write(response)
+        print(f"Received response and saved as {file_path}")
+
+if __name__ == "__main__":
+    client = TCPClient()
+    while True:
+        input_type =  input("Enter 'text' or 'image' or 'audio' or 'music' or 'video': ") 
+        if input_type == 'text':
+            data_type = 'text'
+            file_path = 'FTP.txt'
+        elif input_type == 'image':
+            data_type = 'image'
+            file_path = 'image.png'
+        elif input_type == 'audio':
+            data_type = 'audio'
+            file_path = 'output_0.wav'
+        elif input_type == 'music':
+            data_type = 'music'
+            file_path = 'music.mp3'
+        elif input_type == 'video':
+            data_type = 'video'
+            file_path = 'movie_003.mp4'
+        else:
+            print("Unsupported data type")
+            continue
+        data_type, data = client.send_recieve_data(data_type, file_path)
+        backed = {'text':'.txt', 'image':'.png', 'audio':'.wav', 'music':'.mp3', 'video':'.mp4'}
+        client.save_response(data, f'response_{data_type}{backed[data_type]}')
+
+
+Client & Master: 
+C: USER alpt
+S: 331 Password required for alpt.
+C: PASS 12345
+S: 230 User alpt logged in.
+C: PWD
+S: 257 "/home/alpt" is the current directory.
+C: LIST
+S: 150 Here comes the directory listing.
+S: File1
+S: File2
+S: File3
+S: .*.
+S: 226 Directory send OK.
+C: RETR File1
+S: 150 Transferring chunk handles.
+S: chunk1 10 7580d90c
+S: chunk2 11 dccf7e3e
+S: .*.
+S: 226 Transfer complete.
+C: QUIT
+S: 221 Goodbye.
+
+Client & Slave:
+C: HELO
+S: 250 Hello, slave.
+C: chunk1 10 7580d90c
+S: 150 Transferring chunk data.
+S: 226 Transfer complete.
+C: chunk2 11 dccf7e3e
+S: 150 Transferring chunk data.
+S: 226 Transfer complete.
+C: QUIT
+S: 221 Goodbye.
+
+
+import socket
+import struct
+import threading
+
+class TCPServer:
+    # 初始化TCP连接的IP地址和端口号
+    def __init__(self, host='127.0.0.1', port=54321):
+        self.host = host
+        self.port = port
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # 启动TCP服务
+    def start(self):
+        self.server_socket.bind((self.host, self.port))
+        self.server_socket.listen()
+        print(f"Server listening on {self.host}:{self.port}")
+        # 循环监听客户端连接
+        while True:
+            conn, addr = self.server_socket.accept()
+            threading.Thread(target=self.handle_client, args=(conn, addr)).start()
+    # 处理客户端请求
+    def handle_client(self, conn, addr):
+        print(f"Connected by {addr}")
+        with conn:
+            try:
+                # 接收客户端请求
+                data_type, data = self.recieve_data(conn)
+                print(f'have recieved data {data_type} {len(data)}...')
+                print(f"begin to return response...")
+                # 处理请求并返回响应
+                res_data_type, res_data = self.handle_data(data_type, data)
+                # 发送响应
+                self.send_data(conn, res_data_type, res_data)
+            except Exception as e:
+                print(f"Error: {e}")
+                exit(1)
+    # 接收客户端发送的字节流
+    def recieve_data(self, conn):
+        header = conn.recv(8)
+        data_type_length, file_size = struct.unpack('!II', header)
+        data_type = conn.recv(data_type_length).decode('ascii')
+        data = b''
+        while True:
+            packet = conn.recv(1024)
+            data += packet
+            # print(file_size, data_type, packet)
+            if len(data) == file_size:
+                break
+        return data_type, data
+    # 发送字节流给客户端
+    def send_data(self, conn, res_data_type, res_data):
+        data_type_encoded = res_data_type.encode('ascii')
+        data_type_length = len(data_type_encoded)
+        file_size = len(res_data)
+        header = struct.pack('!II', data_type_length, file_size)
+        conn.sendall(header)
+        conn.sendall(data_type_encoded)
+        sent_size = 0
+        while sent_size < file_size:
+            chunk = res_data[sent_size:sent_size+1024]
+            sent_size += len(chunk)
+            conn.sendall(chunk)
+
+
+    # 对用户发过来的数据进行处理
+    # NOTE : 这里只是一个简单的例子，模型的处理逻辑应该在这里
+    def handle_data(self, data_type, data):
+        if data_type == 'text':
+            return data_type, data.upper()
+        elif data_type in ['image', 'audio', 'video']:
+            return data_type, data
+        else:
+            return data_type, b'Unsupported data type'
+
+if __name__ == "__main__":
+    server = TCPServer()
+    server.start()
+
+
+
+from DirectoryTree.ChunkHandle import ChunkHandle
+
+class ChunkTable:
+
+    def __init__(self):
+        self.chunks = {}
+    
+    def __contains__(self, backup):
+        return backup in self.chunks
+    
+    # iterate over all backups
+    def __iter__(self):
+        for backup in self.chunks:
+            yield self.chunks[backup]
+    
+    def __getitem__(self, backup):
+        return self.chunks[backup]
+    
+    def get_items(self):
+        for backup in self.chunks:
+            yield backup, self.chunks[backup]
+    
+    def get_size(self):
+        if len(self.chunks) == 0:
+            return 0
+        # Assume all backups have the same number of chunks
+        first_backup = list(self.chunks.keys())[0]
+        return sum([chunk.size for chunk in self.chunks[first_backup]])
+    
+    def get_occupied(self):
+        if len(self.chunks) == 0:
+            return 0
+        # Assume all backups have the same number of chunks, and all chunks have the same size
+        return len(self.chunks) * len(self.chunks[list(self.chunks.keys())[0]]) * self.chunks[list(self.chunks.keys())[0]][0].size
+    
+    def __str__(self) -> str:
+
+        builder = ""
+        for backup in self.chunks:
+            builder += f"Backup {backup}:\n"
+            for chunk in self.chunks[backup]:
+                builder += f"{chunk}\n"
+            
+        return builder
+
+    def to_dict(self, dtype = str):
+        chunks_dict = {}
+        for backup in self.chunks:
+            if dtype == ChunkHandle:
+                chunks_dict[backup] = self.chunks[backup]
+            else:
+                chunks_dict[backup] = [chunk.to_string() for chunk in self.chunks[backup]]
+        return chunks_dict
+    
+    @staticmethod
+    def from_dict(dict):
+        chunk_table = ChunkTable()
+        for backup in dict:
+            chunk_table.chunks[backup] = [ChunkHandle.from_string(chunk) if isinstance(chunk, str) else chunk for chunk in dict[backup]]
+        return chunk_table
+
+
+
+class ChunkHandle:
+
+    def __init__(self, location, name, fingerprint, size):
+        self.location = location
+        self.name = name
+        self.fingerprint = fingerprint
+        self.size = size
+    
+    def __str__(self):
+        return self.to_string()
+
+    def __repr__(self): 
+        return self.to_string()
+    
+    def __eq__(self, other: 'ChunkHandle'):
+        return self.to_string() == other.to_string()
+    
+    def to_string(self):
+        return '(' + self.location + ', ' + self.name + ', ' + self.fingerprint + ', ' + str(self.size) + ')'
+    
+    @staticmethod
+    def from_string(string):
+        string = string[1:-1]
+        parts = string.split(', ')
+        return ChunkHandle(parts[0], parts[1], parts[2], int(parts[3]))
+    
+    @staticmethod
+    def validate_string(string):
+        try:
+            ChunkHandle.from_string(string)
+            return True
+        except:
+            return False
+
+
+import json
+from User.User import User
+from DirectoryTree.Node import DirectoryNode, FileNode
+from DirectoryTree.Permission import Permission
+from DirectoryTree.ChunkHandle import ChunkHandle
+from DirectoryTree.ChunkTable import ChunkTable
+
+class DirectoryTree:
+
+    def __init__(self):
+        self.root = DirectoryNode("/")
+        self.root.add_child(DirectoryNode("home"))
+    
+    def initialize_tree(self, users):
+        self.root.set_owner(User.get_root(users))
+        self.root.set_permission("drwxr-xr--")
+        self.root.get_child("home").set_permission("drwxr-xr--")
+        self.root.get_child("home").set_owner(User.get_root(users))
+        for user in users:
+            self.add_directory("/home/" + user.name, user, "drwxr-xr--")
+    
+    def _draw_tree(self, node, indent = 0):
+        string = ""
+        if indent > 0:
+            string += " " * (indent - 4) + "L" + "---"
+        print(string + str(node))
+        for child in node.children:
+            self._draw_tree(child, indent + 4)
+    
+    def print_tree(self):
+        self._draw_tree(self.root)
+
+    @staticmethod
+    def parse_path(path):
+        # path = "/a/b/c"
+        # returns ["a", "b", "c"]
+        return path.split("/")
+    
+    def get_path(self, node):
+        # node = node at path "/a/b/c"
+        # returns "/a/b/c"
+        current = node
+        path = ""
+        while current is not self.root:
+            path = "/" + current.name + path
+            current = current.parent
+        return path
+    
+    def get_node(self, path: str, node: DirectoryNode = None, 
+                 get_parent: bool = False):
+        # path = "/a/b/c"
+        # returns node at path "/a/b/c"
+
+        if not path:
+            return node
+
+        # Absolute path
+        if path[0] == "/":
+            current = self.root
+            if path == "/":
+                return current
+            path = path[1:]
+            path_parts = self.parse_path(path)
+            if get_parent:
+                path_parts = path_parts[:-1]
+            for name in path_parts:
+                current = current.get_child(name)
+                if current is None:
+                    return None
+        else:
+            # Relative path
+            current = node
+            if path == "":
+                return current
+            path_parts = self.parse_path(path)
+            if get_parent:
+                path_parts = path_parts[:-1]
+            for name in path_parts:
+                if name == "..":
+                    current = current.parent
+                    if current is None:
+                        return None
+                elif name == ".":
+                    pass
+                else:
+                    current = current.get_child(name)
+                    if current is None:
+                        return None
+
+        return current
+    
+    def get_home(self, user: User):
+        # user = user node
+        # returns home directory node of user
+        return self.get_node("/home/" + user.name)
+    
+    def add_file(self, 
+                 path: str,         # Assume path is absolute 
+                 owner: str, 
+                 permission: str,
+                 chunks: ChunkTable, 
+                 chunk_size: int):
+        # path = "/a/b/c"
+        # chunks = [ChunkHandle("a", "a", "a", 1), ChunkHandle("b", "b", "b", 2)]
+        # chunk_size = 3
+        # adds file node at path "/a/b/c"
+        current = self.root
+        for name in self.parse_path(path)[1:-1]:
+            if current.get_child(name) is None:
+                current.add_child(DirectoryNode(name, owner))
+            current = current.get_child(name)
+        file_node = FileNode(path.split("/")[-1], owner, chunk_size)
+        file_node.set_permission(permission)
+        file_node.set_chunks(chunks)
+        current.add_child(file_node)
+
+        return file_node
+    
+    def add_directory(self, 
+                      path: str, 
+                      owner: str, 
+                      permission: str):
+        # path = "/a/b/c"
+        # adds directory node at path "/a/b/c"
+        current = self.root
+        for name in self.parse_path(path)[1:]:
+            print(f"name: {name}")
+            if current.get_child(name) is None:
+                print(current.name)
+                directory_node = DirectoryNode(name, owner)
+                directory_node.set_permission(permission)
+                current.add_child(directory_node)
+                print(f"add directory: {directory_node.name}")
+            current = current.get_child(name)
+
+        return current
+    
+    def remove(self, 
+               path: str):
+        # path = "/a/b/c"
+        # removes node at path "/a/b/c"
+        current = self.root
+        for name in self.parse_path(path)[1:]:
+            if current.get_child(name) is None:
+                return False
+            current = current.get_child(name)
+
+        current.parent.remove_child(current)
+        return True
+    
+    def to_dict(self):
+        return self.root.to_dict()
+    
+    @staticmethod
+    def from_dict(dict):
+        if "chunks" in dict:
+            return FileNode.from_dict(dict)
+        return DirectoryNode.from_dict(dict)
+    
+    @staticmethod
+    def load_tree(path):
+        with open(path, "r") as file:
+            data = json.load(file)
+        tree = DirectoryTree()
+        tree.root = DirectoryTree.from_dict(data)
+        return tree
+    
+    def save_tree(self, path):
+        with open(path, "w") as file:
+            json.dump(self.to_dict(), file, indent=4)
+        print("DirectoryTree: saved to", path)
+
+# if __name__ == "__main__":
+#     tree = DiretoryTree()
+#     User.load_users("Data/users.txt")
+#     tree.initialize_tree()
+#     tree.save_tree("Data/tree.json")
+#     tree2 = DiretoryTree()
+#     tree2.load_tree("Data/tree.json")
+#     print(tree2.to_dict())
+
+
+
+import threading
+from DirectoryTree.ChunkHandle import ChunkHandle
+from DirectoryTree.ChunkTable import ChunkTable
+from DirectoryTree.Permission import Permission
+from User.User import User
+
+class Node:
+    
+    def __init__(self, 
+                 name: str,
+                 owner: User = None, 
+                 parent: 'DirectoryNode' = None):
+
+        self.name = name
+        self.owner = owner
+        self.permission = Permission()
+        self.parent = parent
+        self.lock = threading.Lock()
+    
+    def __str__(self):
+        return self.name
+    
+    def permission_string(self) -> str:
+        raise NotImplementedError("CB: subclass must implement __str__ method")
+    
+    def set_owner(self, owner: User):
+        with self.lock:
+            self.owner = owner
+    
+    def set_permission(self, permission_string: str):
+        with self.lock:
+            self.permission.set_permission(permission_string)
+    
+    def verify_permission(self, user: User, operation = None):
+        return self.permission.verify_permission(owner = self.owner, user = user, operation = operation)
+    
+    def get_size(self):
+        raise NotImplementedError("CB: subclass must implement get_size method")
+    
+    def to_dict(self):
+        raise NotImplementedError("CB: subclass must implement to_string method")
+
+    @staticmethod
+    def from_dict(dict):
+        raise NotImplementedError("CB: subclass must implement from_string method")
+
+
+class FileNode(Node):
+
+    def __init__(self, name, owner = None, chunk_size = 1024):
+        super().__init__(name, owner)
+        self.chunk_table = ChunkTable()
+        self.chunk_size = chunk_size
+        self.size = 0
+        self.occupied = 0
+
+    def permission_string(self):
+        return "-" + str(self.permission)
+    
+    # def add_chunk(self, chunk):
+    #     assert isinstance(chunk, ChunkHandle), "chunk must be of type ChunkHandle"
+    #     assert chunk.size <= self.chunk_size, "chunk size must be less than or equal to chunk_size"
+    #     self.chunks.append(chunk)
+    #     self.size += chunk.size
+    #     self.occupied += self.chunk_size
+
+    def set_chunks(self, chunks: ChunkTable | dict):
+        with self.lock:
+            if isinstance(chunks, dict):
+                self.chunk_table = ChunkTable.from_dict(chunks)
+            else:
+                self.chunk_table = chunks
+            self.size = self.chunk_table.get_size()
+            self.occupied = self.chunk_table.get_occupied()
+    
+    def get_size(self):
+        return self.size
+    
+    def get_chunks(self):
+        return self.chunk_table
+    
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "owner": self.owner.to_dict() if self.owner is not None else None,
+            "permission": "-" + str(self.permission),
+            "chunks": self.chunk_table.to_dict(),
+            "chunk_size": self.chunk_size,
+            "size": self.size,
+            "occupied": self.occupied
+        }
+    
+    @staticmethod
+    def from_dict(dict):
+        name = dict["name"]
+        owner = User.from_dict(dict["owner"])
+        file_node = FileNode(name, owner, dict["chunk_size"])
+        file_node.set_permission(dict["permission"])
+        file_node.set_chunks(dict["chunks"])
+        file_node.size = dict["size"]
+        file_node.occupied = dict["occupied"]
+        return file_node
+
+class DirectoryNode(Node):
+
+    def __init__(self, name, owner = None):
+        super().__init__(name, owner)
+        self.children = []
+    
+    def permission_string(self):
+        return "d" + str(self.permission)
+    
+    def list_children(self) -> list[str]:
+        return [child.name for child in self.children]
+    
+    def list_children_details(self) -> list[dict]:
+        return [child.to_dict() for child in self.children]
+    
+    def add_child(self, child):
+        assert isinstance(child, Node), "child must be of type CB"
+        with self.lock:
+            self.children.append(child)
+            child.parent = self
+    
+    def get_child(self, name) -> Node:
+        for child in self.children:
+            if child.name == name:
+                return child
+        return None
+    
+    def remove_child(self, child):
+        with self.lock:
+            self.children.remove(child)
+    
+    def get_size(self):
+        size = 0
+        for child in self.children:
+            size += child.get_size()
+        return size
+    
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "owner": self.owner.to_dict() if self.owner is not None else None,
+            "permission": "d" + str(self.permission),
+            "children": [child.to_dict() for child in self.children]
+        }
+    
+    @staticmethod
+    def from_dict(dict):
+        name = dict["name"]
+        owner = User.from_dict(dict["owner"])
+        directory_node = DirectoryNode(name, owner)
+        directory_node.set_permission(dict["permission"])
+        for child in dict["children"]:
+            child_cls = FileNode if "chunks" in child else DirectoryNode
+            directory_node.add_child(child_cls.from_dict(child))
+        return directory_node
+
+                
+if __name__ == "__main__":
+    
+    pass
+
+
+
+
+
+from User.User import User
+
+class Permission:
+
+    OWNER = "owner"
+    GROUP = "group"
+    OTHERS = "others"
+    READ = "read"
+    WRITE = "write"
+    EXECUTE = "execute"
+
+    def __init__(self):
+    
+        self.permission = {
+            "owner": {
+                "read": True, 
+                "write": True, 
+                "execute": True
+            },
+            "group": {
+                "read": False, 
+                "write": False,
+                "execute": False
+            },
+            "others": {
+                "read": False,
+                "write": False,
+                "execute": False
+            }
+        }
+    
+    def set_permission(self, permission_string):
+        permission_string = permission_string[1:]
+        for i, user_type in enumerate([Permission.OWNER, Permission.GROUP, Permission.OTHERS]):
+            self.permission[user_type][Permission.READ] = permission_string[i * 3] == "r"
+            self.permission[user_type][Permission.WRITE] = permission_string[i * 3 + 1] == "w"
+            self.permission[user_type][Permission.EXECUTE] = permission_string[i * 3 + 2] == "x"
+    
+    def get_permission(self, user_type, permission_type):
+        return self.permission[user_type][permission_type]
+
+    def verify_permission(self, owner: User, user: User, operation: str = None) -> bool:
+
+        if user.privilege == User.ROOT:
+            return True
+        
+        if owner is None:
+            return False
+        
+        if operation.lower() in ["read", "r"]:
+            operation = Permission.READ
+        elif operation.lower() in ["write", "w"]:
+            operation = Permission.WRITE
+        elif operation.lower() in ["execute", "x"]:
+            operation = Permission.EXECUTE
+
+        if owner == user:
+            return self.permission[Permission.OWNER][operation]
+        elif any([group in owner.groups for group in user.groups]):
+            return self.permission[Permission.GROUP][operation]
+        else:
+            return self.permission[Permission.OTHERS][operation]
+    
+    def __str__(self):
+        
+        # example: rwxr-xr--
+        owner = self.permission["owner"]
+        group = self.permission["group"]
+        others = self.permission["others"]
+        format = ""
+        for permission in [owner, group, others]:
+            format += "r" if permission["read"] else "-"
+            format += "w" if permission["write"] else "-"
+            format += "x" if permission["execute"] else "-"
+        
+        return format
