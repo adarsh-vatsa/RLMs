@@ -416,6 +416,49 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertEqual(output["mcq_verification_status"], "disabled")
         self.assertTrue(output["mcq_cache_write_allowed"])
 
+    def test_synthesis_retries_with_smaller_context_on_context_length_error(self):
+        metrics = scs.ExecutionMetrics()
+        controller = scs.SemanticCacheController(metrics=metrics, embedder=object(), reranker=object())
+        controller.retrieve = lambda query, top_k=20, rerank_top=5: [{"text": "x" * 10000}]
+        controller._last_retrieval_info = {"faiss_candidate_count": 1}
+        controller.consensus_verify = lambda query, context, result, model: {
+            "consensus": "AGREED",
+            "divergent_facts": [],
+        }
+        stored = []
+        controller.store = lambda query, context, result, model_used="unknown", sources=None, extra_metadata=None: stored.append(context)
+        calls = []
+
+        def fake_message(**kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                raise RuntimeError(
+                    "OpenAI-compatible HTTP 400: "
+                    "{\"error\":{\"message\":\"This model's maximum context length is 65536 tokens. "
+                    "However, you requested 16 output tokens and your prompt contains at least 65521 "
+                    "input tokens, for a total of at least 65537 tokens. Please reduce the length of "
+                    "the input prompt or the number of requested output tokens. "
+                    "(parameter=input_tokens, value=65521)\"}}"
+                )
+            return SimpleNamespace(
+                content=[SimpleNamespace(text="A")],
+                usage=SimpleNamespace(input_tokens=9, output_tokens=1),
+            )
+
+        with patch("semantic_cache_system.create_llm_message", fake_message):
+            output = controller.search(
+                "Question: Which option is correct?\n\nChoices:\nA. Alpha\nB. Beta\n\n"
+                "Return only the single best answer choice letter: A, B, C, or D.",
+                cache_read=False,
+            )
+
+        first_prompt = calls[0]["messages"][0]["content"]
+        second_prompt = calls[1]["messages"][0]["content"]
+        self.assertEqual(output["answer"], "A")
+        self.assertEqual(output["synthesis_context_retry_count"], 1)
+        self.assertLess(len(second_prompt), len(first_prompt))
+        self.assertEqual(stored, [output["synthesized_source_text"]])
+
     def test_mcq_verification_agreement_allows_cache_write(self):
         output, stored, calls = self._run_mocked_mcq_search(verify_enabled=True, evaluator_text="Final answer: A")
 

@@ -237,8 +237,8 @@ Override these only when the benchmark needs it and the service has enough KV
 cache headroom:
 
 ```bash
-EXECUTOR_MAX_MODEL_LEN=65536 bash adarsh-rlms/jarvis/run.sh submit executor
-EVALUATOR_MAX_MODEL_LEN=32768 bash adarsh-rlms/jarvis/run.sh submit evaluator
+EXECUTOR_MAX_MODEL_LEN=131072 bash adarsh-rlms/jarvis/run.sh submit executor
+EVALUATOR_MAX_MODEL_LEN=65536 bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
 The shared vLLM defaults are:

@@ -489,7 +489,7 @@ Start the executor service:
 MODULES="cuda12.8/toolkit/12.8.1" \
 EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
 EXECUTOR_TP_SIZE=4 \
-EXECUTOR_MAX_MODEL_LEN=65536 \
+EXECUTOR_MAX_MODEL_LEN=131072 \
 VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit executor
@@ -501,7 +501,7 @@ Start the evaluator service:
 MODULES="cuda12.8/toolkit/12.8.1" \
 EVALUATOR_MODEL=Qwen/Qwen3.5-35B-A3B \
 EVALUATOR_TP_SIZE=2 \
-EVALUATOR_MAX_MODEL_LEN=16384 \
+EVALUATOR_MAX_MODEL_LEN=65536 \
 EVALUATOR_PORT=8011 \
 VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
@@ -515,9 +515,13 @@ non-thinking services for the LongBench-v2 MCQ path. If the evaluator has
 serving or output-format issues, use `Qwen/Qwen3-30B-A3B-Instruct-2507` as the
 fallback evaluator with the same `EVALUATOR_MAX_MODEL_LEN`.
 
-The executor uses `EXECUTOR_MAX_MODEL_LEN=65536` for the larger-context
-retrieval profile below. Keep the evaluator at `16384`; evaluator calls are
-short semantic-equivalence and routing checks, not full synthesis prompts.
+The executor uses `EXECUTOR_MAX_MODEL_LEN=131072` for the larger-context
+retrieval profile below. The evaluator uses `EVALUATOR_MAX_MODEL_LEN=65536`
+because MCQ first-write verification receives the same synthesized source text
+that the executor answered from. If the evaluator cannot serve this context
+length, lower the evaluator limit only for runs without
+`--mcq-verify-before-cache`, or expect verifier context failures to skip cache
+writes.
 
 Watch both jobs:
 
@@ -577,7 +581,7 @@ export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=4
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=16
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
 export SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -631,8 +635,11 @@ The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
 `--cache-save-interval 10`. The commands above intentionally disable the
 reranker and use FAISS breadth with smaller chunks, so more distributed source
 context reaches the executor without paying reranker cost. The `45000 x 4`
-profile leaves more headroom under `EXECUTOR_MAX_MODEL_LEN=65536` than the
-previous `50000 x 4` attempt that hit a vLLM context-limit error. Keep
+profile is intended for the `EXECUTOR_MAX_MODEL_LEN=131072` service above; the
+earlier `65536` service hit vLLM context-limit errors on this broader-context
+profile. The benchmark client also retries context-limit synthesis failures by
+shrinking the source text before retrying, so one oversized row should not abort
+the run. Keep
 `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS` aligned with the runner's
 `--synthesis-max-chunks` flag. With MCQ first-write verification enabled,
 disputed first-write answers still count using the executor output, but they are
@@ -648,7 +655,7 @@ SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=4
 SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=16
+SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
 SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
@@ -680,7 +687,7 @@ export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=4
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=16
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -753,13 +760,13 @@ Use the same service URLs and run the intended row set directly:
 
 This command exercises the cache/retrieval benchmark over the full CSV. It is
 not a direct "send every full LongBench context to the model" run. The executor
-service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=65536`, and the client
+service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=131072`, and the client
 uses `SEMANTIC_CACHE_DOC_CHUNK_SIZE=45000` with up to four synthesized FAISS
-chunks. This disables the reranker, increases the amount of source context sent
-to the executor, and keeps each synthesis prompt below the executor context
-budget with a safety margin. The full LongBench-v2 suite still contains rows
-above this context budget, so this is a broader-context cache run, not a
-whole-context baseline.
+chunks. This disables the reranker and increases the amount of source context
+sent to the executor. The benchmark client shrinks and retries any synthesis
+prompt that still crosses the active vLLM context budget. The full
+LongBench-v2 suite still contains rows above this context budget, so this is a
+broader-context cache run, not a whole-context baseline.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -774,7 +781,7 @@ export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=4
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=16
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
 export SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"

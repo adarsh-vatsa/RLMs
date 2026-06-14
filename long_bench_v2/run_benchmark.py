@@ -733,6 +733,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "reranker_enabled": retrieval.get("reranker_enabled"),
             "reranker_returned_count": retrieval.get("reranker_returned_count"),
             "reranker_fallback_used": retrieval.get("reranker_fallback_used"),
+            "synthesis_context_retry_count": output.get("synthesis_context_retry_count", 0),
+            "synthesis_source_chars": output.get("synthesis_source_chars", ""),
             "mcq_verification_status": output.get("mcq_verification_status", ""),
             "mcq_executor_prediction": output.get("mcq_executor_prediction", ""),
             "mcq_evaluator_prediction": output.get("mcq_evaluator_prediction", ""),

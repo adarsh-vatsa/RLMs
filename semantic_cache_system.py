@@ -137,6 +137,8 @@ MIN_RERANKED_RESULTS = _env_int("SEMANTIC_CACHE_MIN_RERANKED_RESULTS", 5)
 SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
+SYNTHESIS_CONTEXT_MAX_RETRIES = _env_int("SEMANTIC_CACHE_SYNTHESIS_CONTEXT_MAX_RETRIES", 3)
+SYNTHESIS_CONTEXT_RETRY_SHRINK = _env_float("SEMANTIC_CACHE_SYNTHESIS_CONTEXT_RETRY_SHRINK", 0.85)
 MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
 MCQ_VERIFY_BEFORE_CACHE = _env_bool("SEMANTIC_CACHE_MCQ_VERIFY_BEFORE_CACHE", False)
 MCQ_VERIFICATION_FIELDS = (
@@ -552,6 +554,22 @@ def _parse_mcq_choice(text: str) -> str:
         if match:
             return match.group(1)
     return ""
+
+
+def _is_context_length_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        ("maximum context length" in message or "context length" in message or "input too long" in message)
+        and ("input_tokens" in message or "reduce the length" in message or "requested" in message)
+    )
+
+
+def _shrink_text_for_context_retry(text: str) -> str:
+    shrink = min(max(float(SYNTHESIS_CONTEXT_RETRY_SHRINK), 0.10), 0.95)
+    target_chars = int(len(text) * shrink)
+    if target_chars >= len(text):
+        target_chars = max(0, len(text) - 1000)
+    return text[:target_chars].rstrip()
 
 
 def create_llm_message(**kwargs):
@@ -2262,13 +2280,32 @@ class SemanticCacheController:
             max_tokens = SYNTHESIS_MAX_TOKENS
         t_synth = time.time()
         model = EXECUTOR_MODEL
-        response = create_llm_message(
-            model=model,
-            max_tokens=max_tokens,
-            temperature=0,
-            system=system_prompt,
-            messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}]
-        )
+        synthesis_context_retry_count = 0
+        while True:
+            try:
+                response = create_llm_message(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=0,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}]
+                )
+                break
+            except RuntimeError as e:
+                if (
+                    not _is_context_length_error(e)
+                    or synthesis_context_retry_count >= SYNTHESIS_CONTEXT_MAX_RETRIES
+                    or len(source_text) < 1000
+                ):
+                    raise
+                previous_chars = len(source_text)
+                source_text = _shrink_text_for_context_retry(source_text)
+                synthesis_context_retry_count += 1
+                print(
+                    "  [SYNTH] Context too long; "
+                    f"shrinking source text from {previous_chars} to {len(source_text)} chars "
+                    f"and retrying ({synthesis_context_retry_count}/{SYNTHESIS_CONTEXT_MAX_RETRIES})"
+                )
         self.metrics.record_call(model, response.usage.input_tokens, response.usage.output_tokens)
         answer = response.content[0].text
         dt_synth = (time.time() - t_synth) * 1000
@@ -2315,6 +2352,8 @@ class SemanticCacheController:
             "consensus": consensus,
             "retrieval": getattr(self, "_last_retrieval_info", {}),
             "synthesized_source_text": source_text,
+            "synthesis_context_retry_count": synthesis_context_retry_count,
+            "synthesis_source_chars": len(source_text),
             **mcq_verification,
         }
 
