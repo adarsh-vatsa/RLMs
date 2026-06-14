@@ -1,0 +1,2000 @@
+DynamiCrafter: Animating Open-domain Images with Video Diffusion Priors
+Abstract
+Animating a still image offers an engaging visual experi-
+ence. Traditional image animation techniques mainly focus
+on animating natural scenes with stochastic dynamics (e.g.
+clouds and fluid) or domain-specific motions (e.g. human
+hair or body motions), and thus limits their applicability
+to more general visual content. To overcome this limita-
+tion, we explore the synthesis of dynamic content for open-
+domain images, converting them into animated videos. The
+key idea is to utilize the motion prior of text-to-video dif-
+fusion models by incorporating the image into the genera-
+tive process as guidance. Given an image, we first project
+it into a text-aligned rich context representation space us-
+ing a query transformer, which facilitates the video model
+to digest the image content in a compatible fashion. How-
+ever, some visual details still struggle to be preserved in the
+resultant videos. To supplement with more precise image
+information, we further feed the full image to the diffusion
+model by concatenating it with the initial noises. Experi-
+mental results show that our proposed method can produce
+visually convincing and more logical & natural motions, as
+well as higher conformity to the input image. Comparative
+evaluation demonstrates the notable superiority of our ap-
+proach over existing competitors.
+1. Introduction
+Image animation has been a longstanding challenge in the
+fields of computer vision, with the goal of converting still
+images into video counterparts that display natural dynam-
+ics while preserving the original appearance of the images.
+Traditional heuristic approaches primarily concentrate on
+synthesizing stochastic and oscillating motions [40, 42] or
+customizing for specific object categories [31, 37]. How-
+ever, the strong assumptions imposed on these methods
+limit their applicability in general scenarios, such as ani-
+mating open-domain images. Recently, text-to-video (T2V)
+* Corresponding Authors.
+generative models have achieved remarkable success in cre-
+ating diverse and vivid videos from textual prompts. This
+inspires us to investigate the potential of leveraging such
+powerful video generation capabilities for image animation.
+Our key idea is to govern the video generation process
+of T2V diffusion models by incorporating a conditional im-
+age. However, achieving the goal of image animation is still
+non-trivial, as it requires both visual context understanding
+(essential for creating dynamics) and detail preservation.
+Recent studies on multi-modal controllable video diffusion
+models, such as VideoComposer [77] and I2VGen-XL [12],
+have made preliminary attempts to enable video generation
+with visual guidance from an image. Unfortunately, both
+are incompetent for image animation due to their less com-
+prehensive image injection mechanisms, which results in ei-
+ther abrupt temporal changes or low visual conformity to
+the input image (see Figure 4). To address this challenge,
+we propose a dual-stream image injection paradigm, com-
+prised of text-aligned context representation and visual de-
+tail guidance, which ensures that the video diffusion model
+synthesizes detail-preserved dynamic content in a comple-
+mentary manner. We call this approach DynamiCrafter.
+Given an image, we first project it into the text-aligned
+rich context representation space through a specially de-
+signed context learning network. Specifically, it consists
+of a pre-trained CLIP image encoder to extract text-aligned
+image features and a learnable query transformer to fur-
+ther promote its adaptation to the diffusion models. The
+rich context features are used by the model via cross at-
+tention layers, which will then be combined with the text-
+conditioned features through gated fusion. In some extend,
+the learned context representation trades visual details with
+text alignment which helps facilitate semantic understand-
+ing of image context so that reasonable and vivid dynamics
+could be synthesized. To supplement more precise visual
+details, we further feed the full image to the diffusion model
+by concatenating it with the initial noise. This dual-stream
+injection paradigm guarantees both plausible dynamic con-
+tent and visual conformity to the input image.
+Extensive experiments are conducted to evaluate our
+1
+arXiv:2310.12190v2  [cs.CV]  27 Nov 2023
+
+
+proposed method, which demonstrates notable superior-
+ity over existing competitors and even comparable perfor-
+mance with the latest commercial demos (like Gen-2 [11]
+and PikaLabs [13]). Furthermore, we offer discussion and
+analysis on some insightful designs for diffusion model
+based image animation, such as the roles of different visual
+injection streams, the utility of text prompts and their poten-
+tial for dynamics control, which may inspire follow-ups to
+push forward this line of technique. Besides of image ani-
+mation, DynamiCrafter can be easily adapted to support ap-
+plications like storytelling video generation, looping video
+generation, and generative frame interpolation. Our contri-
+butions are summarized as follows:
+• We introduce an innovative approach for animating
+open-domain images by leveraging video diffusion prior,
+significantly outperforming contemporary competitors.
+• We conduct a comprehensive analysis on the conditional
+space of text-to-video diffusion models and propose a
+dual-stream image injection paradigm to achieve the chal-
+lenging goal of image animation.
+• We pioneer the study of text-based motion control for
+open-domain image animation and demonstrate the proof
+of concept through preliminary experiments.
+2. Related Work
+2.1. Image Animation
+Generating animation from still images is a heavily stud-
+ied research area.
+Early physical simulation-based ap-
+proaches [10, 36] focus on simulating the motion of specific
+objects, resulting in low generalizability due to the indepen-
+dent modeling of each object category. To produce more re-
+alistic motion, reference-based methods [9, 37, 51, 55, 63–
+65, 79] transfer motion or appearance information from ref-
+erence signals, such as videos, to the synthesis process.
+Although they demonstrate better temporal coherence, the
+need for additional guidances limits their practical applica-
+tion. Additionally, a stream of works based on GAN [26, 38,
+60] can generate frames by perturbing initial latents or per-
+forming random walk in the latent vector space. However,
+the generated motion is not plausible since the animated
+frames are just a visualization of the possible appearance
+space without temporal awareness. Recently, (learned) mo-
+tion prior-based methods [16, 31, 34, 46, 49, 81, 82, 96] an-
+imate still images through explicit or implicit image-based
+rendering with estimated motion field or geometry priors.
+Similarly, video prediction [2, 18, 32, 33, 41, 74, 84, 86, 92]
+predicts future video frames starting from single images by
+learning spatio-temporal priors from video data.
+Although existing approaches has achieved impressive
+performance, they primarily focus on animating motions
+in curated domains, particularly stochastic [5, 10, 14, 16,
+36, 40, 51, 87] and oscillating [42] motion. Furthermore,
+the animated objects are limited to specific categories, e.g.,
+fluid [31, 31, 45, 51], natural scenes [9, 36, 42, 60, 84], hu-
+man hair [82], portraits [21, 78, 79], and bodies [4, 6, 37,
+65, 79, 81]. In contrast, our work proposes a generic frame-
+work for animating open-domain images with a wide range
+of content and styles, which is extremely challenging due to
+the overwhelming complexity and vast diversity.
+2.2. Video Diffusion Models
+Diffusion models (DMs) [28, 67] have recently shown un-
+precedented generative power in text-to-image (T2I) gener-
+ation [24, 50, 57–59, 95]. To replicate this success to video
+generation, the first video diffusion model (VDM) [30] is
+proposed to model low-resolution videos using a space-
+time factorized U-Net in pixel space. Imagen-Video [29]
+presents effective cascaded DMs with v-prediction for gen-
+erating high-definition videos.
+To reduce training costs,
+subsequent studies [7, 23, 76, 80, 97] are engaged in trans-
+ferring T2I to text-to-video (T2V) [20, 43, 66, 91], and
+learning VDMs in latent or hybrid-pixel-latent space.
+Although these models can generate high-quality videos,
+they only accept text prompts as the sole semantic guidance,
+which can be vague and may not accurately reflect users’ in-
+tention. Similar to adding controls in T2I [48, 61, 88, 93],
+introducing control signals in T2V, such as structure [17,
+83], pose [44, 94], and Canny edge [39], has been increas-
+ingly receiving much attention. However, visual conditions
+in VDMs [71, 89], such as RGB images, remain under-
+explored.
+Most recently and concurrently, image condi-
+tion is examined in Seer [22], VideoComposer [77], and
+I2VGen-XL [12] for (text-)image-to-video synthesis. How-
+ever, they either focus on the curated domain, i.e., indoor
+objects [22], or fail to generate temporally coherent frames
+and realistic motions [77] and preserve visual details of the
+input image [12] due to insufficient context understanding
+and loss of information of the input image. Moreover, re-
+cent proprietary T2V models [47, 66, 73, 90] have been
+demonstrated to be extensible to image-to-video synthesis.
+However, their results rarely adhere to the input image and
+suffers from the unrealistic temporal variation issue. Our
+approach is built upon text-conditioned VDMs to leverage
+their rich dynamic prior for animating open-domain images,
+by incorporating tailored designs for better semantic under-
+standing and conformity to the input image.
+3. Method
+Given a still image, we aim at animating it to produce a
+short video clip, that inherits all the visual content from
+the image and exhibits an implicitly suggested and natu-
+ral dynamics. Note that the still image can appear in the
+arbitrary location of the resultant frame sequence. Techni-
+cally, such challenge can be formulated as a special kind of
+image-conditioned video generation that highly requires vi-
+sual conformity. We tackle this synthesis task by utilizing
+the generative priors of pre-trained video diffusion models.
+2
+
+
+Context 
+cross-attn
+Text 
+cross-attn
+Tanh
+gating
+FFN
+Self-attn
+Spatial dual-attn
+transformer
+ℰ
+Diffusion
+𝐳0
+𝐳𝑡
+𝜇𝜃(𝐳𝑡, 𝑡)
+Random 
+selection
+Dual-stream image injection
+ℰ
+Repeat
+CLIP image encoder
+Text
+CLIP text encoder
+Embedding layer
+FPS
+Denoising U-Net
+𝐱𝑚
+𝐱
+Frozen weights
+Conv Resblock
+𝐳0
+𝒟
+Cross-attn
+FFN
+× 𝑁
+ො
+𝐱
+𝒫
+𝒩
+Learnable
+context queries
+VAE Enc./Dec.
+Conditions
+𝒩
+Gaussian noise
+Query transformer
+𝐅in
+𝐅ctx
+𝐅txt
+𝐅out
+Figure 1. Flowchart of the proposed DynamiCrafter. During training, we randomly select a video frame as the image condition of the
+denoising process through the proposed dual-stream image injection mechanism to inherit visual details and digest the input image in a
+context-aware manner. During inference, our model can generate animation clips from noise conditioned on the input still image.
+3.1. Preliminary: Video Diffusion Models
+Diffusion models [28, 68] are generative models that define
+a forward diffusion process to convert data x0 ∼pdata(x)
+into Gaussian noises xT ∼N(0, I) and learn to reverse
+this process by denoising. The forward process q(xt|x0, t)
+contains T timesteps, which gradually adds noise to the data
+sample x0 to yield xt through a parameterization trick. The
+denoising process pθ(xt−1|xt, t) obtains less noisy data
+xt−1 from the noisy input xt through a denoising network
+ϵθ (xt, t), which is supervised by the objective:
+min
+θ
+Et,x∼pdata,ϵ∼N (0,I)∥ϵ −ϵθ (xt, t) ∥2
+2,
+(1)
+where ϵ is the sampled ground truth noise and θ indicates the
+learnable network parameters. Once the model is trained,
+we can obtain denoised data x0 from a random noise xT
+through iteratively denoising.
+For video generation tasks, Latent Diffusion Models
+(LDMs) [29] are commonly used to reduce the computation
+complexity. In this paper, our study is conducted based on
+an open-source video LDM VideoCrafter [8]. Given a video
+x ∈RL×3×H×W , we first encode it into a latent represen-
+tation z = E(x), z ∈RL×C×h×w frame-by-frame. Then,
+both the forward diffusion process zt = p(z0, t) and back-
+ward denoising process zt = pθ(zt−1, c, t) are performed
+in this latent space, where c denotes possible denoising con-
+ditions like text prompt. Accordingly, the generated videos
+are obtained through the decoder ˆ
+x = D(z).
+3.2. Image Dynamics from Video Diffusion Priors
+An open-domain text-to-video diffusion model is assumed
+to have diverse dynamic visual content modeled condition-
+ing on text descriptions. To animate a still image with the
+T2V generative priors, the visual information should be in-
+jected into the video generation process in a comprehensive
+manner. On the one hand, the image should be digested by
+the T2V model for context understanding, which is impor-
+tant for dynamics synthesis. On the other, the visual details
+should be preserved in the generated videos. Based on this
+insight, we propose a dual-stream conditional image injec-
+tion paradigm, consisting of text-aligned context represen-
+tation and visual detail guidance. The overview diagram is
+illustrated in Figure 1.
+Text-aligned context representation.
+To guide video
+generation with image context, we propose to project the
+image into a text-aligned embedding space, so that the
+video model can utilize the image information in a com-
+patible fashion. Since the text embedding is constructed
+with pre-trained CLIP [56] text encoder, we employ the im-
+age encoder counterpart to extract image feature from the
+input image. Although the global semantic token fcls from
+the CLIP image encoder is well-aligned with image cap-
+tions, it mainly represents the visual content at the semantic
+level and fails to capture the image’s full extent. To ex-
+tract more complete information, we use the full visual to-
+kens Fvis = {f i}K
+i=1 from the last layer of the CLIP image
+ViT [15], which demonstrated high-fidelity in conditional
+image generation works [61, 88]. To promote the alignment
+with text embedding, in other words, to obtain a context rep-
+resentation that can be interpreted by the denoising U-Net,
+we utilize a learnable lightweight model P to translate Fvis
+into the final context representation Fctx = P(Fvis). We
+employ the query transformer architecture [1, 35] in multi-
+modal fusion studies as P, which comprises N stacked
+layers of cross-attention and feed-forward networks (FFN),
+and is adept at cross-modal representation learning via the
+cross-attention mechanism.
+Subsequently, the text embedding Ftxt and context em-
+bedding Fctx are employed to interact with the U-Net inter-
+3
+
+
+0.6
+0.7
+0.8
+0.9
+1
+1
+2
+3
+4
+5
+6
+7
+8
+9 10 11 12 13 14 15 16
+Input layers
+Middle layer
+Output layers
+U-Net layer number
+Input
+𝜆
+1
+0.9
+0.8
+0.7
+0.6
+Original learned 𝜆
+𝜆↑ in inter. layers
+𝜆↓ in inter. layers
+Figure 2. Visualization of the learned λ across U-Net layers (left),
+and visual comparisons when manually adjusting λ (right).
+mediate features Fin through the dual cross-attention layers:
+Fout = Softmax(QK⊤
+txt
+√
+d
+)Vtxt + λ · Softmax(QK⊤
+ctx
+√
+d
+)Vctx,
+(2)
+where Q = FinWQ, Ktxt = FtxtWK, Vtxt = FtxtWV,
+and Kctx = FctxW′
+K, Vctx = FctxW′
+V accordingly. In par-
+ticular, λ denotes the coefficient that fuses text-conditioned
+and image-conditioned features, which is achieved through
+tanh gating and adaptively learnable for each layers. This
+design aims to facilitate the model’s ability to absorb image
+conditions in a layer-dependent manner. As the interme-
+diate layers of the U-Net are more associated with object
+shapes or poses, and the two-end layers are more linked to
+appearance [75], we expect that the image features will pri-
+marily influence the videos’ appearance while exerting rel-
+atively less impact on the shape.
+Observations and analysis of λ.
+Figure 2 (left) illustrates
+the learned coefficients across different layers, indicating
+that the image information has a more significant impact
+on the two-end layers w.r.t. the intermediate layers. To ex-
+plore further, we manually alter λ in the intermediate layers.
+As depicted in Figure 2 (right), increasing λ leads to sup-
+pressed cross-frame movements, while decreasing λ poses
+challenges in preserving the object’s shape. This observa-
+tion not only align with our expectations, but also suggests
+that in image-conditioned diffusion models, rich-context in-
+formation influences certain intermediate layers (e.g., layers
+7-9) of the U-Net, enabling the model to maintain object
+shape similar to the input in the presence of motions.
+Visual detail guidance (VDG).
+The rich-informative
+context representation enables the video diffusion model to
+produce videos that closely resemble the input image. How-
+ever, as shown in Figure 3, minor discrepancies may still
+occur. This is mainly due to the pre-trained CLIP image
+encoder’s limited capability to fully preserve input image
+information, as it is designed to align visual and language
+features. To enhance visual conformity, we propose provid-
+ing the video model with additional visual details from the
+image. Specifically, we concatenate the conditional image
+with per-frame initial noise and feed them to the denoising
+U-Net as a form of guidance. Therefore, in our proposed
+dual-stream image injection paradigm, the video diffusion
+Input
+“A girl with 
+short blue and 
+pink hair”
+Rich context
++VDG
+Input
+“A brown bear
+walking in a 
+zoo enclosure”
+w/ text
+w/o text
+Figure 3. (Left) Comparison of animations produced using rich
+context representation solely, and additionally visual detail guid-
+ance (VDG). (Right) Impact of text with context representation.
+model integrates both global context and local details from
+the input image in a complementary fashion.
+Discussion.
+(i) Why are text prompts necessary when a
+more informative context representation is provided? Al-
+though we construct a text-aligned context representation,
+it carries more extensive information than text embedding,
+which may overburden the T2V model to digest them prop-
+erly, e.g., causing shape distortion. Additional text prompts
+can offer a native global context that enables the model
+to efficiently utilize image information.
+Figure 3 (right)
+demonstrates how incorporating text can address the issue
+of shape distortion in the bear’s head. Furthermore, as a still
+image typically contains multiple potential dynamic varia-
+tions, text prompts can effectively guide the generation of
+dynamic content tailored to user preferences (see Sec. 5).
+(ii) Why is a rich context representation necessary when the
+visual guidance provides the complete image? As previ-
+ously mentioned, the pre-trained T2V model comprises a
+semantic control space (text embedding) and a complemen-
+tary random space (initial noise). While the random space
+effectively integrates low-level information, concatenating
+the noise of each frame with a fixed image induces spatial
+misalignment potentially, which may misguide the model
+in uncontrollable directions. Regarding this, the precise vi-
+sual context supplied by the image embedding can assist in
+the reliable utilization of visual details. The corresponding
+ablation study is presented in Sec. 4.4.
+3.3. Training Paradigm
+The conditional image is integrated through two comple-
+mentary streams, which play roles in context control and
+detail guidance, respectively. To modulate them in a co-
+operative manner, we device a dedicated training strategy
+consisting of three stages, i.e., (i) training the image con-
+text representation network P, (ii) adapting P to the T2V
+model, and (iii) joint fine-tuning with VDG.
+Specifically, to offer the image information to the T2V
+model in a compatible fashion, we propose to train a con-
+text representation network P to extract text-aligned visual
+information from the input image. Considering the fact that
+P takes numerous optimization steps to converge, we pro-
+pose to train it based on a lightweight T2I model instead of
+4
+
+
+a T2V model, allowing it to focus on image context learn-
+ing, and then adapt it to the T2V model by jointly training
+P and spatial layers (in contrast to temporal layers) of the
+T2V model. After establishing a compatible context con-
+ditioning branch for T2V, we concatenate the input image
+with per-frame noise for joint fine-tuning to enhance visual
+conformity. Here we only fine-tune P and the VDM’s spa-
+tial layers to avoid disrupting the pre-trained T2V model’s
+temporal prior knowledge with dense image concatenation,
+which could lead to significant performance degradation
+and contradict our original intention. Additionally, we ran-
+domly select a video frame as the image condition based on
+two considerations: (i) to prevent the network from learn-
+ing a shortcut that maps the concatenated image to a frame
+in the specific location, and (ii) to force the context repre-
+sentation to be more flexible to avoid offering the over-rigid
+information for a specific frame, i.e., the objective in the
+context learning based on T2I.
+4. Experiment
+4.1. Implementation Details
+Our development is based on the open-source T2V model
+VideoCrafter [8] (@256 × 256 resolution) and T2I model
+Stable-Diffusion-v2.1 (SD) [58]. We firstly train P and the
+newly injected image cross-attention layers based on SD,
+with 1000K steps on the learning rate 1 × 10−4 and valid
+mini-batch size 64. Then we replace SD with VideoCrafter
+and further fine-tune P and spatial layers with 30K steps
+for adaptation, and additional 100K steps with image con-
+catenation on the learning rate 5 × 10−5 and valid mini-
+batch size 64. Our DynamiCrafter was trained on WebVid-
+10M [3] dataset by sampling 16 frames with dynamic FPS
+at the resolution of 256 × 256 in a batch. At inference, we
+adopt DDIM sampler [69] with multi-condition classifier-
+free guidance [27].
+Specifically, similar to video edit-
+ing [17], we introduce two guidance scales simg and stxt to
+text-conditioned image animation, which can be adjusted to
+trade off the impact of two control signals:
+ˆ
+ϵθ (zt, cimg, ctxt) = ϵθ (zt, ∅, ∅)
++ simg(ϵθ (zt, cimg, ∅) −ϵθ (zt, ∅, ∅))
++ stxt(ϵθ (zt, cimg, ctxt) −ϵθ (zt, cimg, ∅)).
+4.2. Quantitative Evaluation
+Metrics and datasets.
+To evaluate the quality and tem-
+poral coherence of synthesized videos in both the spatial
+and temporal domains, we report Fr´
+echet Video Distance
+(FVD) [72] as well as Kernel Video Distance (KVD) [72].
+Following [7, 97], we evaluate the zero-shot generation per-
+formance of all the methods on UCF-101 [70] and MSR-
+VTT [85]. To further investigate the perceptual conformity
+between the input image and the animation results, we in-
+troduce Perceptual Input Conformity (PIC), which is com-
+Table 1.
+Quantitative comparisons with state-of-the-art open-
+domain image-to-video generation methods on UCF-101 and
+MSR-VTT for the zero-shot setting.
+Method
+UCF-101
+MSR-VTT
+FVD ↓KVD ↓PIC ↑FVD ↓KVD ↓PIC ↑
+VideoComposer 576.81
+65.56
+0.5269 377.29
+26.34
+0.4460
+I2VGen-XL
+571.11
+58.59
+0.5313 289.10
+14.70
+0.5352
+Ours
+429.23
+62.47
+0.6078 234.66
+13.74
+0.5803
+puted by 1
+L
+P
+l(1 −D(xin, xl)), where xin, xl, L are the in-
+put image, video frames, and video length, respectively, and
+we adopt the perceptual distance metric DreamSim [19] as
+the distance function D(·, ·). We evaluate each error metric
+at the resolution of 256 × 256 with 16 frames.
+As open-domain image animation is a nascent area of
+computer vision, there are limited publicly available re-
+search works for comparison.
+We evaluate our method
+against VideoComposer [77] and I2VGen-XL [12], with the
+quantitative results presented in Table 1. According to the
+results, our proposed method significantly outperforms pre-
+vious approaches in all evaluation metrics, except for KVD
+on UCF-101, thanks to the effective dual-stream image in-
+jection design for fully exploiting the video diffusion prior.
+4.3. Qualitative Evaluation
+In addition to the aforementioned approaches, we include
+two more proprietary commercial products, i.e., PikaL-
+abs [13] and Gen-2 [11], for qualitative comparison. Note
+that the results we accessed on Nov. 1st, 2023 might differ
+from the current product version due to rapid version iter-
+ations. Figure 4 presents the visual comparison of image
+animation results with various content and styles. Among
+all compared methods, our approach generates temporally
+coherent videos that adhere to the input image condition.
+In contrast, VideoComposer struggles to produce consistent
+video frames, as subsequent frames tend to deviate from
+the initial frame due to inadequate semantic understand-
+ing of the input image. I2VGen-XL can generate videos
+that semantically resemble the input images but fails to
+preserve intricate local visual details and produce aesthet-
+ically appealing results. As commercial products, PikaL-
+abs and Gen-2 can produce appealing high-resolution and
+long-duration videos. However, Gen-2 suffers from sudden
+content changes (the ‘Windmill’ case) and content drifting
+issues (‘The Beatles’ and ‘Girl’ cases). PikaLabs tends to
+generate still videos with less dynamic and exhibits blur-
+riness when attempting to produce larger dynamics (‘The
+Beatles’ case). It is worth noting that our method allows
+dynamic control through text prompts while other methods
+suffers from neglecting the text modality (e.g., talking in the
+‘Girl’ case). More videos are provided in the Supplement.
+User study.
+We conduct a user study to evaluate the per-
+ceptual quality of the generated images. The participants
+5
+
+
+Ours
+Ours
+Vid.Composer I2VGen-XL
+“Some 
+people 
+walks on a 
+road with 
+pedestrian 
+crossing”
+“A girl 
+talking”
+“A tiger”
+Input
+Input
+PikaLabs
+Gen-2
+Vid.Composer I2VGen-XL
+PikaLabs
+Gen-2
+Windmill
+The Beatles
+“An anime 
+scene with 
+windmills 
+standing 
+tall in a 
+field and 
+blue sky”
+Girl
+Tiger
+Anime
+Complex
+Landscape
+Album
+Complex
+Human
+Generated
+Text-motion
+Animal
+Painting
+Figure 4. Visual comparisons of image animation results from VideoComposer, I2VGen-XL, PikaLabs, Gen-2, and our DynamiCrafter.
+Table 2. User study statistics of the preference rate for Motion
+Quality (M.Q.) & Temporal Coherence (T.C.), and selection rate
+for visual conformity to the input image (I.C.=Input Conformity).
+Property
+Proprietary
+Open-source
+PikaLabs Gen-2 VideoComposer I2VGen-XL
+Ours
+M.Q. ↑
+28.60% 22.91%
+2.09%
+7.56%
+38.84%
+T.C. ↑
+32.09% 26.05%
+2.21%
+6.51%
+33.14%
+I.C. ↑
+79.07% 64.77%
+18.14%
+15.00%
+79.88%
+are asked to choose the best result in terms of motion
+quality and temporal coherence, and to select the results
+with good visual conformity to the input image for each
+case. The statistics from 49 participants’ responses are pre-
+sented in Table 2. Our method demonstrates significant su-
+periority over other open-source methods. Moreover, our
+method achieves comparable performance in terms of tem-
+poral coherence and input conformity compared to commer-
+cial products, while exhibiting superior motion quality.
+4.4. Ablation Studies
+Dual-stream image injection.
+To investigate the roles of
+each image conditioning stream, we examine two variants:
+6
+
+
+Table 3. Ablation study on the dual-stream image injection and
+training paradigm.
+Metric
+Ours
+Dual-stream image injection
+Training paradigm
+w/o ctx w/o VDG w/o λ OursG Ft. ent. 1st frame
+FVD ↓234.66 372.80
+159.24
+241.38 286.84 364.11
+309.23
+PIC ↑
+0.5803 0.4916
+0.6945
+0.5708 0.5717 0.5564
+0.5673
+“A camel in a 
+zoo enclosure”
+Input
+Ours
+w/o ctx
+OursG
+w/o 
+w/o VDG
+Figure 5. Visual comparisons of different variants of our method.
+i). Ours w/o ctx, by removing the context conditioning
+stream, ii). Ours w/o VDG, by removing the visual de-
+tail guidance stream. Table 3 presents a quantitative com-
+parison between our full method and these variants. The
+performance of ‘w/o ctx’ declines significantly due to its
+inability to semantically comprehend the input image with-
+out injection of rich-context representation, leading to tem-
+poral inconsistencies in the generated videos (see the 2nd
+row in Figure 5). Although removing the VDG (w/o VDG)
+can yield better FVD scores, it causes severe shape distor-
+tions and exhibits limited motion magnitude, as the remain-
+ing context condition can only provide semantic-level im-
+age information. Moreover, while it achieves a higher PIC
+score, it fails to capture all the visual details of the input
+image, as evidenced by the 3rd row in Figure 5.
+We then study several key designs in the context repre-
+sentation stream: adaptive gating λ and full visual tokens
+in CLIP image encoder. Eliminating the adaptive gating λ
+(w/o λ) leads to a slight decrease in model performance.
+This is because, without considering the nature of the de-
+noising U-Net layers, context information cannot be adap-
+tively integrated into the T2V model, resulting in shaky gen-
+erated videos and unnatural motions (see the 4th row in Fig-
+ure 5). On the other hand, using a strategy (OursG) like
+I2VGen-XL that utilizes a single CLIP global token may
+generate results that are only semantically similar to the in-
+“A man hiking in 
+the mountains 
+with a backpack”
+Input
+One-stage
+Our adaption
+Figure 6. Visual comparisons of the context conditioning stream
+learned in one-stage and our two-stage adaption strategy.
+“A girl with 
+short blue and 
+pink hair 
+speaking”
+Input
+Ours
+Fine-tuning ent. 1st frame cond.
+Figure 7. Visual comparisons of different training paradigms.
+put due to the absence of full image extent. In contrast, our
+full method effectively leverages the video diffusion prior
+for image animation with natural motion, coherent frames,
+and visual conformity to the input image.
+Training paradigm.
+We further examine the specialized
+training paradigm to ensure the model works as expecta-
+tion. We firstly construct a baseline by training the con-
+text representation network P based on the pre-trained T2V
+and keeping other settings unchanged. As illustrated in Fig-
+ure 6, this baseline (one-stage) converges at a significantly
+slow pace, resulting in only coarse-grained context condi-
+tioning with the same optimization steps. This may poten-
+tially make it challenging for the T2V model to harmonize
+the dual-stream conditions after incorporating the VDG.
+After obtaining a compatible context conditioning
+stream P, we further incorporate image concatenation with
+per-frame noise to enhance visual conformity by jointly
+fine-tuning P and spatial layers of the T2V model. We
+construct a baseline by fine-tuning the entire T2V model,
+and the quantitative comparison in Table 3 (Ft. ent.) shows
+that this baseline results in an unstable model that is prone
+to collapse, disrupting the temporal prior. Additionally, to
+study the effectiveness of our random selection conditioning
+strategy, we train a baseline (1st frame cond.) that consis-
+tently uses the first video frame as the conditional image.
+Table 3 reveals its inferior performance in terms of both
+FVD and PIC, which can be attributed to the “content sud-
+den change” effect observed in the generated videos (Fig-
+ure 7 (bottom)). We hypothesize that the model may dis-
+7
+
+
+Camera move.
+Caption-video
+alignment
+Graphics / CGI
+Dynamic conf.
+Dynamic wording
+Category
+GPT4
+Filtering
+Caption-
+video dataset
+Caption
+Video
+Filtered&
+Labelled dataset
+Human 
+validation
+Figure 8. Illustration of dataset filtering and annotation process.
+“Man waving hands”
+Input
+“Man clapping”
+“Man waving hands”
+“Man clapping”
+DynamiCrafter
+DynamiCrafterDCP
+Gen-2
+PikaLabs
+Figure 9. Visual comparisons of image animation results from
+different methods with motion control using text.
+cover a suboptimal shortcut for mapping the concatenated
+image to the first frame while neglecting other frames.
+5. Discussions on Motion Control using Text
+Since images are typically associated with multiple poten-
+tial dynamics in its context, text can complementarily guide
+the generation of dynamic content tailored to user prefer-
+ence. However, captions in existing large-scale datasets of-
+ten consist of a combination of a large number of scene de-
+scriptive words and less dynamic/motion descriptions, po-
+tentially causing the model to overlook dynamics/motions
+during learning. For image animation, the scene description
+is already included in the image condition, while the mo-
+tion description should be treated as text condition to train
+the model in a decoupled manner, providing the model with
+stronger text-based control over dynamics.
+Dataset construction.
+To enable the decoupled training,
+we construct a dataset by filtering and re-annotating the We-
+bVid10M dataset, as illustrated in Figure 8. The constructed
+dataset contains captions with purer dynamic wording, such
+as “Man doing push-ups.”, and categories, e.g., human.
+We then train a model DynamiCraterDCP using the
+dataset and validate its effectiveness with 40 image-prompt
+testing cases featuring human figures with ambiguous po-
+tential actions, and prompts describing various motions
+1.“A disheartened bear sat 
+by the lake, hanging its head.”
+2.“He is meeting a girl and 
+introducing himself.“
+3.“He chatted happily 
+with that girl by the lake.“
+4.“Before leaving, the girl 
+told him to be positive.”
+Looping video
+Gen. interp.
+Story
+Figure 10. Applications of our DynamiCrafter. □: input images.
+(e.g., “Man waving hands” and “Man clapping”). We mea-
+sure the average CLIP similarity (CLIP-SIM) between the
+prompt and video results, and DynamiCraterDCP improves
+the performance from 0.17 to 0.19 in terms of CLIP-SIM
+score. The visual comparison in Figure 9 shows that Gen-
+2 and PikaLabs cannot support motion control using text,
+while our DynamiCrafter reflects the text prompt and is fur-
+ther enhanced in DynamiCrafterDCP with the proposed de-
+coupled training. More details are in the Supplement.
+6. Applications
+DynamiCrafter can be easily adapted to support additional
+applications. i). Storytelling with shots. First, we uti-
+lize ChatGPT (equipped with DALL-E 3 [62]) to generate a
+story script and corresponding shots (images). And then
+storytelling videos can be generated by animating those
+shots with story scripts using DynamiCrafter, as displayed
+in Figure 10 (top). ii). Looping video generation. With
+minor modifications, our framework can be adapted to fa-
+cilitate the generation of looping videos. Specifically, we
+provide both x1 and xL as visual detail guidance and leave
+other frames as empty during training. During inference,
+we set both of them as the input image. Additionally, we
+experiment with building this application on top of a higher-
+resolution (320×512) version of VideoCrafter. The looping
+video result is shown in Figure 10 (middle). iii). Genera-
+tive frame interpolation. Furthermore, the modified model
+enables generative frame interpolation by set the input im-
+ages x1 and xL differently, as shown in Figure 10 (bottom).
+7. Conclusion
+In this study, we introduced DynamiCrafter, an effective
+framework for animating open-domain images by lever-
+aging pre-trained video diffusion priors with the pro-
+posed dual-stream image injection mechanism and dedi-
+cated training paradigm.
+Our experimental results high-
+light the effectiveness and superiority of our approach com-
+pared to existing methods. Furthermore, we explored text-
+based dynamic control for image animation with the con-
+structed dataset. Lastly, we demonstrated the versatility of
+our framework across various applications and scenarios.
+8
+
+
+References
+[1] Anas Awadalla, Irena Gao, Josh Gardner, Jack Hessel, Yusuf
+Hanafy, Wanrong Zhu, Kalyani Marathe, Yonatan Bitton,
+Samir Gadre, Shiori Sagawa, et al. Openflamingo: An open-
+source framework for training large autoregressive vision-
+language models. arXiv preprint arXiv:2308.01390, 2023.
+3
+[2] Mohammad Babaeizadeh, Chelsea Finn, Dumitru Erhan,
+Roy Campbell, and Sergey Levine.
+Stochastic variational
+video prediction. In ICLR, 2018. 2
+[3] Max Bain, Arsha Nagrani, G¨
+ul Varol, and Andrew Zisser-
+man. Frozen in time: A joint video and image encoder for
+end-to-end retrieval. In ICCV, 2021. 5
+[4] Hugo Bertiche, Niloy J Mitra, Kuldeep Kulkarni, Chun-
+Hao P Huang, Tuanfeng Y Wang, Meysam Madadi, Sergio
+Escalera, and Duygu Ceylan. Blowing in the wind: Cyclenet
+for human cinemagraphs from still images. In CVPR, 2023.
+2
+[5] Andreas Blattmann, Timo Milbich, Michael Dorkenwald,
+and Bj¨
+orn Ommer. ipoke: Poking a still image for controlled
+stochastic video synthesis. In ICCV, 2021. 2
+[6] Andreas Blattmann, Timo Milbich, Michael Dorkenwald,
+and Bjorn Ommer. Understanding object dynamics for in-
+teractive image-to-video synthesis. In CVPR, 2021. 2
+[7] Andreas Blattmann, Robin Rombach, Huan Ling, Tim Dock-
+horn, Seung Wook Kim, Sanja Fidler, and Karsten Kreis.
+Align your latents: High-resolution video synthesis with la-
+tent diffusion models. In CVPR, 2023. 2, 5, 12, 13
+[8] Haoxin Chen, Menghan Xia, Yingqing He, Yong Zhang,
+Xiaodong Cun, Shaoshu Yang, Jinbo Xing, Yaofang Liu,
+Qifeng Chen, Xintao Wang, et al.
+Videocrafter1: Open
+diffusion models for high-quality video generation. arXiv
+preprint arXiv:2310.19512, 2023. 3, 5, 12
+[9] Chia-Chi Cheng, Hung-Yu Chen, and Wei-Chen Chiu. Time
+flies: Animating a still image with time-lapse video as refer-
+ence. In CVPR, 2020. 2
+[10] Yung-Yu Chuang, Dan B Goldman, Ke Colin Zheng, Brian
+Curless, David H Salesin, and Richard Szeliski.
+Animat-
+ing pictures with stochastic motion textures. In ACM SIG-
+GRAPH, 2005. 2
+[11] Gen-2 contributors.
+Gen-2.
+Gen-2. Accessed Nov. 1,
+2023 [Online] https://research.runwayml.com/
+gen2, . 2, 5, 13
+[12] I2VGen-XL contributors. I2vgen-xl. Accessed October 15,
+2023 [Online] https://modelscope.cn/models/
+damo/Image-to-Video/summary, . 1, 2, 5, 13
+[13] PikaLabs contributors. Pikalabs. PikaLabs. Accessed Nov.
+1, 2023 [Online] https://www.pika.art/, . 2, 5, 13
+[14] Michael Dorkenwald, Timo Milbich, Andreas Blattmann,
+Robin Rombach, Konstantinos G Derpanis, and Bjorn Om-
+mer. Stochastic image-to-video synthesis using cinns. In
+CVPR, 2021. 2
+[15] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, et al. An image is worth 16x16 words: Trans-
+formers for image recognition at scale. In ICLR, 2020. 3
+[16] Yuki Endo, Yoshihiro Kanamori, and Shigeru Kuriyama. An-
+imating landscape: self-supervised learning of decoupled
+motion and appearance for single-image video synthesis.
+ACM TOG, 38(6):1–19, 2019. 2
+[17] Patrick Esser,
+Johnathan Chiu,
+Parmida Atighehchian,
+Jonathan Granskog, and Anastasis Germanidis.
+Structure
+and content-guided video synthesis with diffusion models.
+In ICCV, 2023. 2, 5
+[18] Jean-Yves Franceschi, Edouard Delasalles, Micka¨
+el Chen,
+Sylvain Lamprier, and Patrick Gallinari. Stochastic latent
+residual video prediction. In ICML, 2020. 2
+[19] Stephanie Fu, Netanel Tamir, Shobhita Sundaram, Lucy
+Chai, Richard Zhang, Tali Dekel, and Phillip Isola. Dream-
+sim: Learning new dimensions of human visual similarity
+using synthetic data. In NeurIPS, 2023. 5
+[20] Songwei Ge, Seungjun Nah, Guilin Liu, Tyler Poon, Andrew
+Tao, Bryan Catanzaro, David Jacobs, Jia-Bin Huang, Ming-
+Yu Liu, and Yogesh Balaji. Preserve your own correlation:
+A noise prior for video diffusion models. In ICCV, 2023. 2
+[21] Jiahao Geng, Tianjia Shao, Youyi Zheng, Yanlin Weng, and
+Kun Zhou. Warp-guided gans for single-photo facial anima-
+tion. ACM TOG, 37(6):1–12, 2018. 2
+[22] Xianfan Gu, Chuan Wen, Jiaming Song, and Yang Gao. Seer:
+Language instructed video prediction with latent diffusion
+models. arXiv preprint arXiv:2303.14897, 2023. 2
+[23] Yingqing He, Tianyu Yang, Yong Zhang, Ying Shan, and
+Qifeng Chen. Latent video diffusion models for high-fidelity
+video generation with arbitrary lengths.
+arXiv preprint
+arXiv:2211.13221, 2022. 2
+[24] Yingqing He, Shaoshu Yang, Haoxin Chen, Xiaodong Cun,
+Menghan Xia, Yong Zhang, Xintao Wang, Ran He, Qifeng
+Chen, and Ying Shan.
+Scalecrafter: Tuning-free higher-
+resolution visual generation with diffusion models.
+arXiv
+preprint arXiv:2310.07702, 2023. 2
+[25] Dan Hendrycks and Kevin Gimpel.
+Gaussian error linear
+units (gelus). arXiv preprint arXiv:1606.08415, 2016. 12
+[26] Tobias Hinz, Matthew Fisher, Oliver Wang, and Stefan
+Wermter.
+Improved techniques for training single-image
+gans. In WACV, 2021. 2
+[27] Jonathan Ho and Tim Salimans.
+Classifier-free diffusion
+guidance. arXiv preprint arXiv:2207.12598, 2022. 5, 15
+[28] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu-
+sion probabilistic models. In NeurIPS, 2020. 2, 3
+[29] Jonathan Ho, William Chan, Chitwan Saharia, Jay Whang,
+Ruiqi Gao, Alexey Gritsenko, Diederik P Kingma, Ben
+Poole, Mohammad Norouzi, David J Fleet, et al. Imagen
+video: High definition video generation with diffusion mod-
+els. arXiv preprint arXiv:2210.02303, 2022. 2, 3
+[30] Jonathan Ho, Tim Salimans, Alexey Gritsenko, William
+Chan, Mohammad Norouzi, and David J Fleet. Video dif-
+fusion models. In NeurIPS, 2022. 2
+[31] Aleksander Holynski, Brian L Curless, Steven M Seitz, and
+Richard Szeliski. Animating pictures with eulerian motion
+fields. In CVPR, 2021. 1, 2
+[32] Tobias H¨
+oppe, Arash Mehrjou, Stefan Bauer, Didrik Nielsen,
+and Andrea Dittadi. Diffusion models for video prediction
+and infilling. TMLR, 2022. 2
+9
+
+
+[33] Xiaotao Hu, Zhewei Huang, Ailin Huang, Jun Xu, and
+Shuchang Zhou. A dynamic multi-scale voxel flow network
+for video prediction. In CVPR, 2023. 2
+[34] Yaosi Hu, Chong Luo, and Zhenzhong Chen.
+Make it
+move: controllable image-to-video generation with text de-
+scriptions. In CVPR, 2022. 2
+[35] Andrew Jaegle, Felix Gimeno, Andy Brock, Oriol Vinyals,
+Andrew Zisserman, and Joao Carreira. Perceiver: General
+perception with iterative attention. In ICML, 2021. 3
+[36] Wei-Cih Jhou and Wen-Huang Cheng. Animating still land-
+scape photographs through cloud motion creation.
+IEEE
+TMM, 18(1):4–13, 2015. 2
+[37] Johanna Karras, Aleksander Holynski, Ting-Chun Wang,
+and Ira Kemelmacher-Shlizerman.
+Dreampose: Fashion
+image-to-video synthesis via stable diffusion. arXiv preprint
+arXiv:2304.06025, 2023. 1, 2
+[38] Tero Karras, Samuli Laine, Miika Aittala, Janne Hellsten,
+Jaakko Lehtinen, and Timo Aila. Analyzing and improving
+the image quality of stylegan. In CVPR, 2020. 2
+[39] Levon Khachatryan, Andranik Movsisyan, Vahram Tade-
+vosyan,
+Roberto
+Henschel,
+Zhangyang
+Wang,
+Shant
+Navasardyan, and Humphrey Shi. Text2video-zero: Text-to-
+image diffusion models are zero-shot video generators. arXiv
+preprint arXiv:2303.13439, 2023. 2
+[40] Alex X Lee, Richard Zhang, Frederik Ebert, Pieter Abbeel,
+Chelsea Finn, and Sergey Levine.
+Stochastic adversarial
+video prediction. arXiv preprint arXiv:1804.01523, 2018.
+1, 2
+[41] Yijun Li, Chen Fang, Jimei Yang, Zhaowen Wang, Xin
+Lu, and Ming-Hsuan Yang. Flow-grounded spatial-temporal
+video prediction from still images. In ECCV, 2018. 2
+[42] Zhengqi Li, Richard Tucker, Noah Snavely, and Aleksander
+Holynski.
+Generative image dynamics.
+arXiv preprint
+arXiv:2309.07906, 2023. 1, 2
+[43] Zhengxiong Luo, Dayou Chen, Yingya Zhang, Yan Huang,
+Liang Wang, Yujun Shen, Deli Zhao, Jingren Zhou, and Tie-
+niu Tan.
+Videofusion: Decomposed diffusion models for
+high-quality video generation. In CVPR, 2023. 2
+[44] Yue Ma, Yingqing He, Xiaodong Cun, Xintao Wang, Ying
+Shan, Xiu Li, and Qifeng Chen.
+Follow your pose:
+Pose-guided text-to-video generation using pose-free videos.
+arXiv preprint arXiv:2304.01186, 2023. 2
+[45] Aniruddha Mahapatra and Kuldeep Kulkarni. Controllable
+animation of fluid elements in still images. In CVPR, 2022.
+2
+[46] Arun Mallya, Ting-Chun Wang, and Ming-Yu Liu. Implicit
+warping for animation with image sets. In NeurIPS, 2022. 2
+[47] Eyal Molad, Eliahu Horwitz, Dani Valevski, Alex Rav
+Acha, Yossi Matias, Yael Pritch, Yaniv Leviathan, and Yedid
+Hoshen. Dreamix: Video diffusion models are general video
+editors. arXiv preprint arXiv:2302.01329, 2023. 2
+[48] Chong Mou, Xintao Wang, Liangbin Xie, Jian Zhang, Zhon-
+gang Qi, Ying Shan, and Xiaohu Qie. T2i-adapter: Learning
+adapters to dig out more controllable ability for text-to-image
+diffusion models. arXiv preprint arXiv:2302.08453, 2023. 2
+[49] Haomiao Ni, Changhao Shi, Kai Li, Sharon X Huang, and
+Martin Renqiang Min. Conditional image-to-video genera-
+tion with latent flow diffusion models. In CVPR, 2023. 2
+[50] Alexander Quinn Nichol, Prafulla Dhariwal, Aditya Ramesh,
+Pranav Shyam,
+Pamela Mishkin,
+Bob Mcgrew,
+Ilya
+Sutskever, and Mark Chen.
+Glide: Towards photorealis-
+tic image generation and editing with text-guided diffusion
+models. In ICML, 2022. 2
+[51] Makoto Okabe, Ken Anjyo, Takeo Igarashi, and Hans-Peter
+Seidel. Animating pictures of fluid using video examples. In
+CGF, pages 677–686, 2009. 2
+[52] OpenAI. Gpt-4 technical report, 2023. 13
+[53] Junting Pan, Keqiang Sun, Yuying Ge, Hao Li, Haodong
+Duan, Xiaoshi Wu, Renrui Zhang, Aojun Zhou, Zipeng Qin,
+Yi Wang, et al. Journeydb: A benchmark for generative im-
+age understanding. arXiv preprint arXiv:2307.00716, 2023.
+20
+[54] Jordi Pont-Tuset, Federico Perazzi, Sergi Caelles, Pablo Ar-
+bel´
+aez, Alexander Sorkine-Hornung, and Luc Van Gool.
+The 2017 davis challenge on video object segmentation.
+arXiv:1704.00675, 2017. 20
+[55] Ekta Prashnani, Maneli Noorkami, Daniel Vaquero, and
+Pradeep Sen. A phase-based approach for animating images
+using video examples. In CGF, pages 303–311, 2017. 2
+[56] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learn-
+ing transferable visual models from natural language super-
+vision. In ICML, 2021. 3
+[57] Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu,
+and Mark Chen. Hierarchical text-conditional image gen-
+eration with clip latents. arXiv preprint arXiv:2204.06125,
+2022. 2
+[58] Robin Rombach, Andreas Blattmann, Dominik Lorenz,
+Patrick Esser, and Bj¨
+orn Ommer. High-resolution image syn-
+thesis with latent diffusion models. In CVPR, 2022. 5
+[59] Chitwan Saharia, William Chan, Saurabh Saxena, Lala
+Li, Jay Whang, Emily L Denton, Kamyar Ghasemipour,
+Raphael Gontijo Lopes, Burcu Karagol Ayan, Tim Salimans,
+et al. Photorealistic text-to-image diffusion models with deep
+language understanding. NeurIPS, 2022. 2
+[60] Tamar Rott Shaham, Tali Dekel, and Tomer Michaeli. Sin-
+gan: Learning a generative model from a single natural im-
+age. In ICCV, 2019. 2
+[61] Jing Shi, Wei Xiong, Zhe Lin, and Hyun Joon Jung. Instant-
+booth: Personalized text-to-image generation without test-
+time finetuning. arXiv preprint arXiv:2304.03411, 2023. 2,
+3
+[62] Zhan Shi, Xu Zhou, Xipeng Qiu, and Xiaodan Zhu.
+Im-
+proving image captioning with better use of captions. arXiv
+preprint arXiv:2006.11807, 2020. 8
+[63] Aliaksandr Siarohin, St´
+ephane Lathuili`
+ere, Sergey Tulyakov,
+Elisa Ricci, and Nicu Sebe. Animating arbitrary objects via
+deep motion transfer. In CVPR, 2019. 2
+[64] Aliaksandr Siarohin, St´
+ephane Lathuili`
+ere, Sergey Tulyakov,
+Elisa Ricci, and Nicu Sebe. First order motion model for
+image animation. In NeurIPS, 2019.
+[65] Aliaksandr Siarohin, Oliver J Woodford, Jian Ren, Menglei
+Chai, and Sergey Tulyakov. Motion representations for ar-
+ticulated animation. In CVPR, 2021. 2
+10
+
+
+[66] Uriel Singer, Adam Polyak, Thomas Hayes, Xi Yin, Jie An,
+Songyang Zhang, Qiyuan Hu, Harry Yang, Oron Ashual,
+Oran Gafni, et al. Make-a-video: Text-to-video generation
+without text-video data. In ICLR, 2023. 2
+[67] Jascha Sohl-Dickstein, Eric Weiss, Niru Maheswaranathan,
+and Surya Ganguli.
+Deep unsupervised learning using
+nonequilibrium thermodynamics. In ICML, 2015. 2
+[68] Jascha
+Sohl-Dickstein,
+Eric
+A.
+Weiss,
+Niru
+Mah-
+eswaranathan, and Surya Ganguli.
+Deep unsupervised
+learning using nonequilibrium thermodynamics. In ICML,
+2015. 3
+[69] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denois-
+ing diffusion implicit models. In ICLR, 2021. 5
+[70] Khurram Soomro, Amir Roshan Zamir, and Mubarak Shah.
+Ucf101: A dataset of 101 human actions classes from videos
+in the wild. arXiv preprint arXiv:1212.0402, 2012. 5, 13
+[71] Zineng Tang, Ziyi Yang, Chenguang Zhu, Michael Zeng, and
+Mohit Bansal. Any-to-any generation via composable diffu-
+sion. In NeurIPS, 2023. 2
+[72] Thomas Unterthiner, Sjoerd van Steenkiste, Karol Kurach,
+Rapha¨
+el Marinier, Marcin Michalski, and Sylvain Gelly.
+Fvd: A new metric for video generation. In ICLR workshop,
+2019. 5, 13
+[73] Ruben Villegas, Mohammad Babaeizadeh, Pieter-Jan Kin-
+dermans, Hernan Moraldo, Han Zhang, Mohammad Taghi
+Saffar, Santiago Castro, Julius Kunze, and Dumitru Erhan.
+Phenaki: Variable length video generation from open domain
+textual description. In ICLR, 2023. 2
+[74] Vikram Voleti, Alexia Jolicoeur-Martineau, and Chris Pal.
+Mcvd-masked conditional video diffusion for prediction,
+generation, and interpolation. In NeurIPS, 2022. 2
+[75] Andrey Voynov, Qinghao Chu, Daniel Cohen-Or, and Kfir
+Aberman.
+p+: Extended textual conditioning in text-to-
+image generation. arXiv preprint arXiv:2303.09522, 2023.
+4
+[76] Jiuniu Wang, Hangjie Yuan, Dayou Chen, Yingya Zhang,
+Xiang Wang, and Shiwei Zhang. Modelscope text-to-video
+technical report. arXiv preprint arXiv:2308.06571, 2023. 2
+[77] Xiang Wang, Hangjie Yuan, Shiwei Zhang, Dayou Chen,
+Jiuniu Wang, Yingya Zhang, Yujun Shen, Deli Zhao,
+and Jingren Zhou.
+Videocomposer: Compositional video
+synthesis with motion controllability.
+arXiv preprint
+arXiv:2306.02018, 2023. 1, 2, 5, 13
+[78] Yaohui Wang, Piotr Bilinski, Francois Bremond, and Antitza
+Dantcheva. Imaginator: Conditional spatio-temporal gan for
+video generation. In WACV, 2020. 2
+[79] Yaohui Wang, Di Yang, Francois Bremond, and Antitza
+Dantcheva. Latent image animator: Learning to animate im-
+ages via latent space navigation. In ICLR, 2021. 2
+[80] Yaohui Wang, Xinyuan Chen, Xin Ma, Shangchen Zhou,
+Ziqi Huang, Yi Wang, Ceyuan Yang, Yinan He, Jiashuo
+Yu, Peiqing Yang, et al. Lavie: High-quality video gener-
+ation with cascaded latent diffusion models. arXiv preprint
+arXiv:2309.15103, 2023. 2
+[81] Chung-Yi Weng, Brian Curless, and Ira Kemelmacher-
+Shlizerman. Photo wake-up: 3d character animation from
+a single photo. In CVPR, 2019. 2
+[82] Wenpeng Xiao, Wentao Liu, Yitong Wang, Bernard Ghanem,
+and Bing Li. Automatic animation of hair blowing in still
+portrait photos. In ICCV, 2023. 2
+[83] Jinbo Xing, Menghan Xia, Yuxin Liu, Yuechen Zhang, Yong
+Zhang, Yingqing He, Hanyuan Liu, Haoxin Chen, Xiaodong
+Cun, Xintao Wang, et al.
+Make-your-video: Customized
+video generation using textual and structural guidance. arXiv
+preprint arXiv:2306.00943, 2023. 2
+[84] Wei Xiong, Wenhan Luo, Lin Ma, Wei Liu, and Jiebo Luo.
+Learning to generate time-lapse videos using multi-stage dy-
+namic generative adversarial networks. In CVPR, 2018. 2
+[85] Jun Xu, Tao Mei, Ting Yao, and Yong Rui. Msr-vtt: A large
+video description dataset for bridging video and language. In
+CVPR, 2016. 5, 13
+[86] Tianfan Xue, Jiajun Wu, Katherine Bouman, and Bill Free-
+man. Visual dynamics: Probabilistic future frame synthesis
+via cross convolutional networks. In NeurIPS, 2016. 2
+[87] Tianfan Xue,
+Jiajun Wu,
+Katherine L Bouman,
+and
+William T Freeman.
+Visual dynamics: Stochastic future
+generation via layered cross convolutional networks. IEEE
+TPAMI, 41(9):2236–2250, 2018. 2
+[88] Hu Ye, Jun Zhang, Sibo Liu, Xiao Han, and Wei Yang. Ip-
+adapter: Text compatible image prompt adapter for text-to-
+image diffusion models. arXiv preprint arXiv:2308.06721,
+2023. 2, 3
+[89] Shengming Yin, Chenfei Wu, Jian Liang, Jie Shi, Houqiang
+Li, Gong Ming, and Nan Duan. Dragnuwa: Fine-grained
+control in video generation by integrating text, image, and
+trajectory. arXiv preprint arXiv:2308.08089, 2023. 2
+[90] Lijun Yu, Yong Cheng, Kihyuk Sohn, Jos´
+e Lezama, Han
+Zhang, Huiwen Chang, Alexander G Hauptmann, Ming-
+Hsuan Yang, Yuan Hao, Irfan Essa, et al. Magvit: Masked
+generative video transformer. In CVPR, 2023. 2
+[91] David Junhao Zhang, Jay Zhangjie Wu, Jia-Wei Liu,
+Rui Zhao, Lingmin Ran, Yuchao Gu, Difei Gao, and
+Mike Zheng Shou. Show-1: Marrying pixel and latent dif-
+fusion models for text-to-video generation. arXiv preprint
+arXiv:2309.15818, 2023. 2
+[92] Jiangning Zhang, Chao Xu, Liang Liu, Mengmeng Wang,
+Xia Wu, Yong Liu, and Yunliang Jiang. Dtvnet: Dynamic
+time-lapse video generation via single still image. In ECCV,
+2020. 2
+[93] Lvmin Zhang, Anyi Rao, and Maneesh Agrawala. Adding
+conditional control to text-to-image diffusion models.
+In
+ICCV, 2023. 2
+[94] Yabo Zhang, Yuxiang Wei, Dongsheng Jiang, Xiaopeng
+Zhang, Wangmeng Zuo, and Qi Tian.
+Controlvideo:
+Training-free controllable text-to-video generation.
+arXiv
+preprint arXiv:2305.13077, 2023. 2
+[95] Yuechen Zhang, Jinbo Xing, Eric Lo, and Jiaya Jia. Real-
+world image variation by aligning diffusion inversion chain.
+arXiv preprint arXiv:2305.18729, 2023. 2
+[96] Jian Zhao and Hui Zhang. Thin-plate spline motion model
+for image animation. In CVPR, 2022. 2
+[97] Daquan Zhou, Weimin Wang, Hanshu Yan, Weiwei Lv,
+Yizhe Zhu, and Jiashi Feng. Magicvideo: Efficient video
+generation with latent diffusion models.
+arXiv preprint
+arXiv:2211.11018, 2022. 2, 5
+11
+
+
+DynamiCrafter: Animating Open-domain Images with Video Diffusion Priors
+Supplementary Material
+Contents
+A
+. Implementation Details
+12
+A.1
+. Network Architecture
+. . . . . . . . . . . .
+12
+A.2
+. Hyper-parameters . . . . . . . . . . . . . . .
+12
+A.3
+. Training . . . . . . . . . . . . . . . . . . . .
+12
+B
+. Additional Evaluation Details
+13
+B.1. Dataset and metric . . . . . . . . . . . . . .
+13
+B.2. Baselines . . . . . . . . . . . . . . . . . . .
+13
+C
+. User Study
+13
+D
+. Details of Constructed Dataset
+13
+D.1
+. Dataset construction details
+. . . . . . . . .
+13
+D.2
+. Statistics of the dataset . . . . . . . . . . . .
+15
+D.3
+. Human validation on the dataset . . . . . . .
+15
+D.4
+. DynamiCrafterDCP . . . . . . . . . . . . . .
+15
+E
+. Other Controls
+15
+E.1. FPS Control
+. . . . . . . . . . . . . . . . .
+15
+E.2. Multi-condition Classifier Free Guidance . .
+15
+F. Limitations
+17
+G
+. More Qualitative Results
+20
+Please check our project page https://doubiiu.
+github.io/projects/DynamiCrafter for video
+results.
+A. Implementation Details
+A.1. Network Architecture
+Our DynamiCrafter is built upon VideoCrafter, a latent
+VDM-based text-to-video (2TV) generation model, so we
+recommend that readers refer to VideoCrafter [8] for more
+details of the T2V backbone. It is worth noting that our
+approach of leveraging the video diffusion prior for image
+animation can theoretically be applied to any other T2V
+diffusion models that incorporate a cross-attention text-
+conditioning mechanism. To improve the reproducibility
+of our method, we provide a more detailed description of
+the network architecture for the FPS embedding layer and
+context query transformer. As depicted in Figure 11 (left),
+the FPS condition is embedded via Sinusoidal and several
+Fully-Connected (FC) layers activated by SiLU [25], which
+is then added to the timestep embedding femb. In Figure 11
+(right), the context query transformer first projects the con-
+catenation of frame-wise context queries and CLIP tokens
+Timestep 
+embedding
+Context 
+Representation
+CLIP all-patch tokens
+Query 
+transformer
+Cross-Attn
+FFN
+c
+𝐊, 𝐕
+𝐐
+Reshape
+× 𝑁
+Reshape
+FPS
+Sinusoidal
+Timestep
+Sinusoidal
+𝑡
+𝑓𝑝𝑠
+FC
+SiLU
+FC
+FC
+SiLU
+FC
+𝐟emb
+Context queries
+c Concatenation
+Addition
+Figure 11. Network architecture of the FPS embedding layer (left)
+and query transformer for context representation learning (right).
+into keys and values, while projecting context queries solely
+into queries. The cross-attention results are subsequently
+computed using the keys, values, and queries, and projected
+via a Feed-forward layer. The final frame-wise context rep-
+resentation is then employed through the spatial dual-attn
+transformer in the denoising U-Net, as illustrated in Figure
+1 and Equation 2 in the main paper.
+A.2. Hyper-parameters
+Following [7], all architecture parameter details, diffu-
+sion process details, as well as training hyper-parameters
+are provided in Table 5, which should be mostly self-
+explanatory. Here we give some additional description for
+some parameters:
+• Input channels (Architecture): The number of input ten-
+sor channels for the denoising U-Net, which is twice the
+channel number of zt due to the channel-wise concatena-
+tion of visual detail guidance.
+• CA ctx sequence length (Dual-CA Conditioning): The to-
+ken length of the context representations for each frame.
+A.3. Training
+Since we concatenate the conditional image latent with
+noisy latents in the channel dimension (i.e., visual detail
+guidance in Section 3.2 of the main paper), we add addi-
+tional input channels to the first convoluional layer.
+All
+available weights of the video diffusion model are initial-
+ized from the pre-trained checkpoints, and weights that
+operate on the newly added input channels are initialized
+to zero.
+We utilize only eight NVIDIA V100 GPUs to
+fine-tune the T2V model that is relatively resource-friendly
+in the context of developing an image-to-video diffusion
+model. As mentioned in Section 4.1 of the main paper, we
+fine-tune the T2V model using WebVid10M, primarily con-
+sists of real-world videos. Despite this, the model demon-
+12
+
+
+Table 4. Summary of open-domain (text-)image-to-video generation methods.
+∗The resolution is obtained by inputting a square-sized
+image into these methods.
+Method
+Open-source
+Verison (Date)
+Resolution∗
+Duration
+FPS
+Text input
+Description (visual condition injection)
+VideoComposer
+✓
+23.06.29
+256 × 256
+2s
+8
+✓
+The encoded image information is injected via
+frame-wise concatenation with the noisy latent.
+I2VGen-XL
+✓
+23.10.30
+256 × 448
+3s
+8
+✗
+Image information is injected by cross-attention via
+the global token from CLIP image encoder.
+PikaLabs
+✗
+23.11.01
+768 × 768
+3s
+24
+✓
+Unknown
+Gen-2
+✗
+23.11.01
+896 × 896
+4s
+24
+✓
+Unknown
+strates strong generalizability when animating images that
+are even outside its domain, such as anime or paintings.
+B. Additional Evaluation Details
+B.1. Dataset and metric
+To evaluate the quality and temporal coherence of synthe-
+sized videos in both the spatial and temporal domains, we
+report Fr´
+echet Video Distance (FVD) [72] as well as Ker-
+nel Video Distance (KVD) [72], which evaluate video qual-
+ity by measuring the feature-level similarity between syn-
+thesized and real videos based on the Fr´
+echet distance and
+kernel methods, respectively. Specifically, they are com-
+puted by comparing 2048 model samples with samples from
+evaluation datasets, where we adopt commonly used UCF-
+101 [70] and MSR-VTT [85] for benchmarking. For UCF-
+101, we directly use UCF class names [7] as text condition-
+ing, while for MSR-VTT, we utilize accompanied captions
+of each video from the dataset. We evaluate each error met-
+ric at the resolution of 256 × 256 with 16 frames.
+B.2. Baselines
+In the emerging field of open-domain image animation,
+there are limited baselines available for comparison.
+In
+this study, We evaluate our method against two open-source
+research works, i.e., VideoComposer [77] and I2VGen-
+XL [12], and two proprietary commercial products, i.e.,
+PikaLabs [13] and Gen-2 [11], which are summarized in Ta-
+ble 4. Note that we employ the image-to-video (first-stage)
+generation of I2VGen-XL for the evaluation experiment, as
+its refinement stage (text-to-video) primarily functions as a
+super-resolution process, with the dynamics and temporal
+coherence already determined by the first stage.
+C. User Study
+The designed user study interface is shown in Figure 16.
+We collect 20 image cases with a wide range of content and
+styles from the Internet and create corresponding captions.
+We then generate the image animation results by either ex-
+ecuting the official code [12, 77] or accessing the online
+demo interface [11, 13]. For the user study, we use these
+video results produced by shuffled methods based on the
+same input still image (and text prompt, if applicable). In
+addition, we conceal the lower watermark region and stan-
+dardize the all the produced results by first setting FPS=8,
+and then trimming the videos to two seconds at the same
+resolution level (256×448 for I2VGen-XL, while 256×256
+for other methods). This process ensures a fair comparison
+by eliminating the potential impact of engineering tricks.
+The user study is expected to be completed with 5–10
+minutes (20 cases × 3 sub-questions × 5–10 seconds for
+each judgement).
+To remove the impact of random se-
+lection, we filter out those comparison results completed
+within three minutes. For each participant, the user study
+interface shows 20 video comparisons, and the participant
+is instructed to evaluate the videos for three times, i.e an-
+swering the following questions respectively: (i) “Which
+one has the best motion/dynamic quality?”; (ii) “Which one
+has the best temporal coherence?”; (iii) “Which results con-
+form to the input image?”. Finally, we received 49 valid
+responses from the participants.
+D. Details of Constructed Dataset
+D.1. Dataset construction details
+As depicted in Figure 8 of the main paper, we first filter
+out data with large camera movement, poor caption-video
+alignment, and Graphics/CGI content. We then feed cap-
+tions to GPT4 [52] (temperature=0.2, frequency penalty=0)
+to generate the following:
+dynamic confidence, which
+represents the level of confidence that the caption de-
+scribes a dynamic scene, dynamic wording, such as
+“man doing push-ups”, and the category of this dy-
+namic scene. The used dialog instructions are as follows:
+User:
+You are an expert assistant. There some caption-
+video pairs in the dataset, and you can only access the cap-
+tions. You need to check if the caption describes the scene
+dynamics in the video, for example some actions of humans
+and animals, etc. Please output the following: 1. Dynamic
+confidence. Output how confident you feel that it is de-
+scribing a dynamic scene, from 0 to 100. 0 means low-
+est confidence and 100 means the highest confidence. 2.
+Dynamic wording. Output the subject followed by actions
+13
+
+
+Table 5. Hyperparameters for our DynamiCrater.
+Hyperparameter
+DynamiCrafter
+Spatial Layers
+Architecture
+LDM
+✓
+f
+8
+z-shape
+32 × 32 × 4
+Channels
+320
+Depth
+2
+Channel multiplier
+1,2,4,4
+Attention resolutions
+64,32,16
+Head channels
+64
+Input channels
+8
+Output channels
+4
+Dual-CA Conditioning
+Embedding dimension
+1024
+CA resolutions
+64,32,16
+CA txt sequence length
+77
+CA ctx sequence length
+16
+FPS Conditioning
+Embedding dimension
+1280
+FPS sampling range
+5–30
+Concat Conditioning
+Embedding dimension
+4
+Index of video frame
+Random
+Extension in temporal dim.
+Repeat
+Temporal Layers
+Architecture
+Transformer depth
+1
+Attention resolutions
+64,32,16
+Head channels
+64
+Positional encoding
+✗
+Temporal conv layer num
+4
+Temporal kernel size
+3,1,1
+Training
+Parameterization
+ε
+Learnable para.
+Spatial layers
+P with ctx CA
+# train steps
+100K
+Learning rate
+5 × 10−5
+Batch size per GPU
+8
+# GPUs
+8
+GPU-type
+V100-32GB
+Sequence length
+16
+Diffusion Setup
+Diffusion steps
+1000
+Noise schedule
+Linear
+β0
+0.00085
+βT
+0.0120
+Sampling Parameters
+Sampler
+DDIM
+Steps
+50
+η
+1.0
+Guidance scale stxt
+7.5
+Guidance scale simg
+7.5
+(a)
+(c)
+30%
+45%
+60%
+75%
+90%
+0
+20
+40
+60
+80
+100
+Confidence threshold
+Accuracy
+(b)
+(d)
+70%
+80%
+90%
+100%
+none
+human nature machine animal
+others
+Category
+Accuracy
+Category
+Dyn. wording
+Figure 12. Statistics of the dataset and human validation results.
+and corresponding objects, for example “man playing foot-
+ball”. It must be compact. Output “none” when the cap-
+tion does not describe any scene dynamics. 3. Dynamic
+source category.
+Classify the dynamics, the categories
+are human, animal, nature, machine, others, and
+none.
+none is used when the corresponding dynamic
+wording is none. nature indicates those dynamics related
+to natural phenomena, while machine corresponds those
+movements related to vehicles and technical devices.
+The
+input
+is
+in
+the
+format
+of
+“<question
+index>%%<caption>”, The output must be in the format
+of
+“<question
+index>%%<confidence>%%<dynamic
+wording> %%<dynamic source category>”.
+Here are
+some examples:
+Input:
+[“1%%Woman in gym working out”, “2%%4k
+corporate shot of a business woman working on computer
+eating funny banana”, “3%%Rainy clouds sailing above a
+city”, “4%%View of the great salt lake”, “5%%Old house
+with a ghost in the forest at night or abandoned haunted hor-
+ror house in fog.”]
+Output:
+[“1%%80%%woman working out%%human”,
+“2%%80%%business
+woman
+working
+on
+com-
+puter,
+eating
+banana%%human”,
+“3%%50%%Rainy
+clouds
+sailing%%nature”,
+“4%%5%%none%%none”,
+“5%%10%%none%%none”].
+Input captions are in an array: [caption1, caption2, . . .].
+System:
+Answer for every caption in the array and reply
+with an array of all completions.
+Here are some sampled inputs and outputs (w/o index):
+Input:
+[“Young man in bathrobe brushing his teeth in
+front of the window.”, “Summer green maple tree swing-
+ing in the wind.”, “Ripe rambutan fruits on a street market.
+sri lanka.”]
+Output:
+[“70%%man
+brushing
+teeth%%human”,
+“50%%maple
+tree
+swinging%%nature”,
+“5%%none%%none”]
+14
+
+
+Windmill
+Boat
+High FPS
+Low FPS
+High FPS
+Low FPS
+Figure 13. Visual comparisons of image animation results pro-
+duced by our DynamiCrafter with FPS control.
+D.2. Statistics of the dataset
+The constructed dataset contains around 2.6 million
+caption-video pairs, with the corresponding statistics and
+dynamic confidence for each category shown in Fig-
+ure 12 (a) and (b), respectively.
+We exclude cer-
+tain combinations of classes, such as ‘animal&human’,
+‘human&machine’, ‘animal&machine’ due to their
+small proportions. To support potential research on mo-
+tions and dynamics, we will make the annotations of the
+constructed dataset publicly available.
+D.3. Human validation on the dataset
+We also validate GPT4’s responses through human judge-
+ment on randomly sampled 1K respones. We ask volun-
+teers to determine if the original video caption describes
+a dynamic scene and if the dynamic wording and cate-
+gory generated by GPT4 are accurate. In Figure 12 (c),
+we plot an accuracy-threshold curve by adjusting the confi-
+dence threshold and calculating the accuracy based on hu-
+man judgments of dynamic scenes. We observe that dy-
+namic confidence=40 serves as a sweet spot in aligning
+with human judgement. The accuracy of dynamic wording
+and category for each category are shown in Figure 12 (d).
+The validation results indicate that GPT4’s responses gen-
+erally align with human judgments, making them reliable
+for dataset annotation.
+D.4. DynamiCrafterDCP
+Finally, we initialize DynamiCraterDCP using an interme-
+diate checkpoint (60K iterations) from DynamiCrafter, and
+then continue to train it with another 40K iterations using
+human category data in the constructed dataset with dy-
+namic wording as text prompts. The baseline model is our
+Statue 
+𝑠txt = 7.5
+𝑠img = 7.5
+“A statue 
+of two 
+men with 
+wings are 
+dancing”
+𝑠txt = 1.2
+𝑠img = 7.5
+𝑠txt = 7.5
+𝑠img = 1.2
+Input
+Figure 14. Visual comparisons of image animation results pro-
+duced by various combinations of simg and stxt.
+“Girl rubbing her eyes”
+“Moving clouds in an 
+anime scene”
+Input
+“Old man walking 
+with his wife”
+Generated video frames
+Figure 15. Failure cases of the challenging input condition in terms
+of semantic understanding (top), specific motion control with text
+(middle) and face distortion (bottom).
+DynamiCrafter, trained for 100K iterations. In addition, we
+maintain all other settings identical for fair comparison. As
+mentioned in Section 5 of the main paper, we use CLIP-SIM
+to evaluate the performance of DynamiCrafterDCP, consid-
+ering that CLIP is an open-domain text-image representa-
+tion learner and is capable of associating the dynamics in
+the image with the appropriate dynamic wording.
+E. Other Controls
+E.1. FPS Control
+Since our model is also conditioned on FPS and trained
+with dynamic FPS, i.e. 5–30, it is capable of generating im-
+age animations with varying motion magnitudes, as demon-
+strated in Figure 13, where we show the results with ‘low
+FPS’ and ‘high FPS’ for simplicity.
+E.2. Multi-condition Classifier Free Guidance
+During inference, we adopt DDIM with multi-condition
+classifier guidance [27] and can adjust the introduced two
+guidance scales simg and stxt to trade off the impact of two
+15
+
+
+Figure 16. Designed user study interface. Each participant is required to evaluate 20 video comparisons and respond to three corresponding
+sub-questions for each comparison. Only one video is shown here due to the page limit.
+control signals, as mentioned in Section 4.1 of the main pa-
+per. Specifically, it will affect how strongly the generated
+samples correspond with the input image and how strongly
+they correspond with the text prompt.
+Here we present
+the visual comparisons in Figure 14. In most cases, set-
+ting simg = stxt = 7.5 works well, as the generated ani-
+16
+
+
+Ours
+Ours
+Vid.Composer I2VGen-XL
+“A man
+raising
+hands”
+“A car 
+driving 
+down a 
+road with 
+smoke 
+coming 
+out of it”
+“An 
+astronaut 
+playing 
+guitar in 
+space, 
+cartoon 
+style”
+Input
+Input
+PikaLabs
+Gen-2
+Vid.Composer I2VGen-XL
+PikaLabs
+Gen-2
+Bird
+Astronaut
+“A bird on 
+the tree 
+branch”
+Car
+Guitar
+Figure 17. Visual comparisons of image animation results from VideoComposer, I2VGen-XL, PikaLabs, Gen-2, and our DynamiCrafter.
+mations can well adhere to the input image and reflect the
+text prompt, as shown in Figure 14(top). By decreasing stxt,
+the animation results tend to ignore the text condition, e.g.,
+“dancing”, as shown in Figure 14(middle). Conversely, if
+simg is reduced, the results may not conform to the input im-
+age but well reflect the text prompt (see Figure 14(bottom)).
+This multi-condition classifier guidance offers greater flex-
+ibility based on user requirements.
+F. Limitations
+Our approach is limited in several ways. Firstly, if the in-
+put image condition cannot be semantically understood, our
+model might struggle to produce convincing videos. Sec-
+ondly, although we construct a dataset to improve motion
+control with text, which still lacks precise motion descrip-
+tions, rendering the inability to generate specific motions.
+Additionally, we adopt the LatentVDM pre-trained at low
+resolutions and with short durations due to limited compu-
+17
+
+
+“bear playing guitar happily, snowing”
+“boy walking on the street”
+“girl talking and blinking”
+“cowboy riding a bull over a fence”
+“zoom-in, a landscape, springtime”
+“two people dancing”
+Input
+Figure 18. Gallery of our image animation results.
+18
+
+
+“man riding a motocycle down the street”
+“man playing piano”
+“cat dancing”
+“a robot walking”
+“horse running in a field“
+“A burger, fries, and a soda from a fast food restaurant.”
+Input
+Figure 19. Gallery of our image animation results.
+19
+
+
+tational resources, resulting in inheriting its slight flickering
+artifacts in high-frequency regions (see supplemental video
+results) and human face distortion issues, which are tech-
+nically caused by the frame-wise VAE decoding. Thus the
+resultant frame quality of our method (such as resolution
+and fidelity) and video length may limit practical applica-
+tions. Consequently, our method may not be ready for prod-
+uct (in contrast to commercial products like PikaLabs and
+Gen-2). Figure 15 shows the examples of the mentioned
+failure cases. We leave these directions as future works.
+G. More Qualitative Results
+More qualitative comparisons.
+In addition to Figure 4 in
+the main paper, we provide more qualitative comparisons in
+Figure 17. Consistent with the observations in the main pa-
+per, VideoComposer struggles to produce coherence video
+frames and tends to be misled by the text prompt. I2VGen-
+XL fails to preserve the local visual details of the input im-
+age and can only generate animations that semantically re-
+semble the input. PikaLabs tends to generate still videos or
+videos with limited dynamics. Gen-2 may incorrectly in-
+terpret the given image, rendering unreasonable results and
+temporal inconsistency (as seen in the ‘Bird’ and ‘Guitar’
+cases). Moreover, these baseline methods have difficulty
+considering the text prompt for motion control (e.g., raising
+hands in the ‘Astronaut’ case). In contrast, our approach
+can produce image animations with natural dynamics, bet-
+ter adherence to the input image, and motion control guided
+by the text prompt.
+Gallery of our results.
+We show more image anima-
+tion results produced by our method in Figure 18 and Fig-
+ure 19. We collect those input images from the Internet,
+DAVIS [54], and JourneyDB [53].
+Video
+results.
+We
+provide
+the
+video
+result
+at
+https : / / doubiiu . github . io / projects /
+DynamiCrafter.
+It contains the following parts: i).
+Showcases produced by our method, ii).
+Comparisons
+with baseline methods, iii). Motion control using text, iv).
+Applications, v). Other controls, vi). Ablation study, and
+vii). Limitations.
+20
