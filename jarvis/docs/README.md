@@ -237,7 +237,7 @@ Override these only when the benchmark needs it and the service has enough KV
 cache headroom:
 
 ```bash
-EXECUTOR_MAX_MODEL_LEN=120000 bash adarsh-rlms/jarvis/run.sh submit executor
+EXECUTOR_MAX_MODEL_LEN=100000 bash adarsh-rlms/jarvis/run.sh submit executor
 EVALUATOR_MAX_MODEL_LEN=32000 bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 

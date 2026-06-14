@@ -487,14 +487,14 @@ Start the executor service:
 
 ```bash
 MODULES="cuda12.8/toolkit/12.8.1" \
-EXECUTOR_PARTITION=gpu-h100sxm \
-EXECUTOR_GRES=gpu:2 \
+EXECUTOR_PARTITION=gpu-l40s \
+EXECUTOR_GRES=gpu:l40s:4 \
 EXECUTOR_CPUS_PER_TASK=32 \
 EXECUTOR_MEM=220G \
 EXECUTOR_TIME=24:00:00 \
 EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
-EXECUTOR_TP_SIZE=2 \
-EXECUTOR_MAX_MODEL_LEN=120000 \
+EXECUTOR_TP_SIZE=4 \
+EXECUTOR_MAX_MODEL_LEN=100000 \
 VLLM_GPU_MEMORY_UTILIZATION=0.90 \
 VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
@@ -527,18 +527,15 @@ non-thinking services for the LongBench-v2 MCQ path. If the evaluator has
 serving or output-format issues, use `Qwen/Qwen3-30B-A3B-Instruct-2507` as the
 fallback evaluator with the same `EVALUATOR_MAX_MODEL_LEN`.
 
-The executor uses a shared-node H100SXM profile: 2 GPUs, 32 CPU cores, and
-`EXECUTOR_MAX_MODEL_LEN=120000`. This leaves the other half of a 4-GPU H100SXM
-node schedulable for other jobs. The evaluator stays on L40S with
+The executor uses the 4-GPU `gpu-l40s` profile with
+`EXECUTOR_MAX_MODEL_LEN=100000`. The evaluator also stays on L40S with
 `EVALUATOR_MAX_MODEL_LEN=32000`; it verifies a bounded source excerpt and does
-not need to consume H100 capacity.
+not need a larger context window.
 
-If the shared H100SXM executor starts cleanly and the sampled run still needs
-more context, try the high-context escalation profile later: `EXECUTOR_GRES=gpu:4`,
-`EXECUTOR_CPUS_PER_TASK=64`, `EXECUTOR_MEM=480G`, `EXECUTOR_TP_SIZE=4`,
-`EXECUTOR_MAX_MODEL_LEN=160000`, and `VLLM_GPU_MEMORY_UTILIZATION=0.95`. Do not
-jump straight to `256000` until the service has proven stable at `160000` and
-`200000`.
+When H100SXM capacity is available, the executor can be escalated later with
+`EXECUTOR_PARTITION=gpu-h100sxm`, `EXECUTOR_GRES=gpu:2`,
+`EXECUTOR_TP_SIZE=2`, and `EXECUTOR_MAX_MODEL_LEN=120000`. Do not make that the
+default while the H100 queue is full.
 
 Watch both jobs:
 
@@ -626,7 +623,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --synthesis-max-chunks 4 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-h100-shared-medium-faiss-context' \
+  --manifest-note jarvis-l40s-medium-faiss-context' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -653,7 +650,7 @@ The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
 `--cache-save-interval 10`. The commands above intentionally disable the
 reranker and set `--top-k` equal to `--synthesis-max-chunks`, so every retrieved
 FAISS chunk is sent to the executor. The `75000 x 4` profile is intended for
-the shared H100 `EXECUTOR_MAX_MODEL_LEN=120000` service above. The benchmark
+the L40S `EXECUTOR_MAX_MODEL_LEN=100000` service above. The benchmark
 client also retries context-limit synthesis failures by shrinking the source
 text before retrying, so one oversized row should not abort the run. Keep
 `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS` aligned with the runner's
@@ -728,7 +725,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --synthesis-max-chunks 4 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-h100-shared-medium-faiss-context-strict-mcq' \
+  --manifest-note jarvis-l40s-medium-faiss-context-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -771,7 +768,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --synthesis-max-chunks 3 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-h100-medium-efficient' \
+  --manifest-note jarvis-l40s-medium-efficient' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -781,7 +778,7 @@ Use the same service URLs and run the intended row set directly:
 
 This command exercises the cache/retrieval benchmark over the full CSV. It is
 not a direct "send every full LongBench context to the model" run. The executor
-service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=120000`, and the client
+service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=100000`, and the client
 uses `SEMANTIC_CACHE_DOC_CHUNK_SIZE=75000` with up to four synthesized FAISS
 chunks. This disables the reranker and increases the amount of source context
 sent to the executor. The benchmark client shrinks and retries any synthesis
@@ -823,7 +820,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --synthesis-max-chunks 4 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-h100-shared-full-faiss-context' \
+  --manifest-note jarvis-l40s-full-faiss-context' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
