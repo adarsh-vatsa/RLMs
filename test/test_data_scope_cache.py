@@ -50,6 +50,12 @@ class FakeSearchIndex:
     def total(self):
         return len(self.results) or len(self.added)
 
+    @property
+    def metadata(self):
+        if self.added:
+            return self.added
+        return [meta for _, meta in self.results]
+
     def search(self, query_embedding, top_k=20):
         return self.results[:top_k]
 
@@ -280,6 +286,99 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             controller._last_retrieval_info["reranker_skipped_reason"],
             "candidate_text_count_lte_rerank_top",
         )
+
+    def test_ingest_adds_hierarchical_chunk_metadata(self):
+        controller = make_controller()
+        with tempfile.TemporaryDirectory() as tmp:
+            docs = Path(tmp)
+            (docs / "contract.txt").write_text("A" * 120 + "B" * 120 + "C" * 120, encoding="utf-8")
+            with patch.object(scs, "FAISSIndex", FakeSearchIndex):
+                controller.ingest(docs, chunk_size=120, overlap=0)
+
+        self.assertEqual(len(controller.doc_index.added), 3)
+        first = controller.doc_index.added[0]
+        second = controller.doc_index.added[1]
+        self.assertEqual(first["source_chunk_index"], 0)
+        self.assertEqual(first["char_start"], 0)
+        self.assertEqual(first["char_end"], 120)
+        self.assertEqual(first["chunk_key"], "contract.txt:0")
+        self.assertEqual(first["next_chunk_key"], "contract.txt:1")
+        self.assertEqual(second["previous_chunk_key"], "contract.txt:0")
+        self.assertGreater(first["token_estimate"], 0)
+
+    def test_hierarchical_retrieval_expands_neighbor_windows_and_dedupes(self):
+        controller = make_controller()
+        metas = [
+            {"filename": "contract.txt", "chunk_index": 0, "global_chunk_index": 0, "source_chunk_index": 0, "token_estimate": 3},
+            {"filename": "contract.txt", "chunk_index": 1, "global_chunk_index": 1, "source_chunk_index": 1, "token_estimate": 3},
+            {"filename": "contract.txt", "chunk_index": 2, "global_chunk_index": 2, "source_chunk_index": 2, "token_estimate": 3},
+        ]
+        controller.doc_index = FakeSearchIndex([(0.92, metas[1]), (0.91, metas[1])])
+        controller.doc_index.added = metas
+        controller._doc_chunks = ["before evidence", "main evidence", "after evidence"]
+
+        original_parent = scs.PARENT_WINDOW_CHUNKS
+        original_neighbor = scs.NEIGHBOR_WINDOW
+        try:
+            scs.PARENT_WINDOW_CHUNKS = 3
+            scs.NEIGHBOR_WINDOW = 1
+            results = controller.retrieve_hierarchical("Where is the evidence?", top_k=2, rerank_top=1)
+        finally:
+            scs.PARENT_WINDOW_CHUNKS = original_parent
+            scs.NEIGHBOR_WINDOW = original_neighbor
+
+        self.assertEqual(len(results), 1)
+        self.assertIn("before evidence", results[0]["text"])
+        self.assertIn("main evidence", results[0]["text"])
+        self.assertIn("after evidence", results[0]["text"])
+        self.assertEqual(results[0]["hit_count"], 2)
+        self.assertEqual(controller._last_retrieval_info["retrieval_strategy"], "hierarchical")
+        self.assertEqual(controller._last_retrieval_info["expanded_window_count"], 1)
+
+    def test_prompt_packer_truncates_oversized_evidence_under_budget(self):
+        controller = make_controller()
+        original_budget = scs.PROMPT_MAX_INPUT_TOKENS
+        original_chunks = scs.SYNTHESIS_MAX_CHUNKS
+        try:
+            scs.PROMPT_MAX_INPUT_TOKENS = 80
+            scs.SYNTHESIS_MAX_CHUNKS = 2
+            source_text, packed, info = controller._pack_evidence_for_prompt(
+                "Question?",
+                [{"text": "x" * 1000, "metadata": {"token_estimate": 250}}],
+                system_prompt="System",
+                output_reserve_tokens=10,
+            )
+        finally:
+            scs.PROMPT_MAX_INPUT_TOKENS = original_budget
+            scs.SYNTHESIS_MAX_CHUNKS = original_chunks
+
+        self.assertTrue(source_text)
+        self.assertEqual(len(packed), 1)
+        self.assertEqual(info["truncation_reason"], "evidence_window_truncated")
+        self.assertLessEqual(
+            info["packed_evidence_token_estimate"],
+            info["prompt_available_evidence_tokens"],
+        )
+
+    def test_option_aware_retrieval_runs_query_for_each_choice(self):
+        controller = make_controller()
+        meta = {"filename": "contract.txt", "chunk_index": 0, "global_chunk_index": 0, "source_chunk_index": 0}
+        controller.doc_index = FakeSearchIndex([(0.91, meta)])
+        controller.doc_index.added = [meta]
+        controller._doc_chunks = ["Alpha is supported."]
+        query = "Which option is correct?\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta"
+
+        original_option_aware = scs.MCQ_OPTION_AWARE_RETRIEVAL
+        try:
+            scs.MCQ_OPTION_AWARE_RETRIEVAL = True
+            results = controller.retrieve_hierarchical(query, top_k=1, rerank_top=1, is_choice_query=True)
+        finally:
+            scs.MCQ_OPTION_AWARE_RETRIEVAL = original_option_aware
+
+        self.assertEqual(controller._last_retrieval_info["retrieval_query_count"], 5)
+        self.assertTrue(controller._last_retrieval_info["mcq_option_aware_retrieval"])
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["hit_count"], 5)
 
 
 if __name__ == "__main__":

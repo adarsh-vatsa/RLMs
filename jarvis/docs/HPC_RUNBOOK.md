@@ -559,21 +559,28 @@ evaluator: http://<evaluator-node>:8001/v1
 Start with a sampled LongBench-v2 run to verify the services, cache reuse, and
 scoring path before submitting a larger job. This uses the same retrieval/cache
 profile as the full benchmark below; the only intentional difference is that
-`sample_csv.py` selects 18 source-linked samples randomly with a fixed seed,
-producing 54 rows across the original, exact, and semantic variants.
+`sample_csv.py` selects 18 source-linked samples randomly with a fixed seed and
+excludes sources above 300k tokens, producing 54 rows across the original, exact,
+and semantic variants.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=100000
-export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=10000
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
+export SEMANTIC_CACHE_RETRIEVAL_STRATEGY=hierarchical
+export SEMANTIC_CACHE_PARENT_WINDOW_CHUNKS=3
+export SEMANTIC_CACHE_NEIGHBOR_WINDOW=1
+export SEMANTIC_CACHE_PROMPT_MAX_INPUT_TOKENS=60000
+export SEMANTIC_CACHE_MCQ_OPTION_AWARE_RETRIEVAL=1
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=6
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=256
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated
+export SEMANTIC_CACHE_MCQ_VERIFIER_MODE=conditional
 export SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -583,6 +590,7 @@ uv run python long_bench_v2/sample_csv.py \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
   --sample-size 18 \
   --selection-strategy random \
+  --max-token-count 300000 \
   --seed 0 && \
 uv run python long_bench_v2/run_benchmark.py \
   --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
@@ -593,14 +601,20 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
-  --top-k 3 \
+  --top-k 10 \
   --rerank-top 1 \
-  --synthesis-max-chunks 3 \
+  --synthesis-max-chunks 6 \
+  --retrieval-strategy hierarchical \
+  --parent-window-chunks 3 \
+  --neighbor-window 1 \
+  --prompt-max-input-tokens 60000 \
+  --mcq-option-aware-retrieval \
   --mcq-solver-mode evidence_adjudicated \
+  --mcq-verifier-mode conditional \
   --cache-write-policy verified \
   --disable-reranker \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-random-no-reranker-evidence-gated' \
+  --manifest-note jarvis-l40s-random-hierarchical-no-reranker-evidence-gated' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -612,11 +626,11 @@ printed in the log; they should point under
 Keep `--cache-reset` while testing retrieval or synthesis changes; otherwise
 exact and semantic rows can reuse a bad first-write answer from an older run.
 This profile intentionally uses `--selection-strategy random`,
-`--disable-reranker`, `--top-k 1`, `--synthesis-max-chunks 1`,
-`SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000`, and zero overlap so each answer is based
-on one large FAISS-selected chunk. The random sample can include very-long
-sources; if the client hits context limits, switch the sampler back to bounded
-`token_stratified`.
+`--max-token-count 300000`, hierarchical retrieval, option-aware MCQ retrieval,
+`--disable-reranker`, `--top-k 10`, and `--synthesis-max-chunks 6`. Documents
+are indexed as smaller `10000/1000` retrieval chunks, hits expand to neighboring
+three-chunk windows, and the prompt packer keeps the final executor request under
+the 60k-token input budget.
 
 ## 12. Run The Full Benchmark
 
@@ -625,27 +639,30 @@ Use the same service URLs and run the intended row set directly:
 This command exercises the cache/retrieval benchmark over the full CSV. It is
 not a direct "send every full LongBench context to the model" run. The executor
 service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=65536`, and the client
-uses `SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000` with one synthesized chunk. That
-lets the executor see substantially more source context than the efficient
-`10000/1000` retrieval profile, while still capping each synthesis prompt to one
-large retrieved chunk. `SEMANTIC_CACHE_DOC_CHUNK_SIZE` is a character budget, not
-a tokenizer count, so this profile is intentionally "large chunk / one chunk /
-zero overlap" rather than whole-source prompting. The full LongBench-v2 suite
-contains rows well above this chunk/context budget, so this is a larger-context
-cache run, not a whole-context baseline.
+uses hierarchical retrieval over `10000/1000` retrieval chunks. FAISS finds local
+evidence, the planner expands hits to neighboring three-chunk windows, and the
+prompt packer includes ranked windows until it reaches the 60k-token input
+budget. The full LongBench-v2 suite contains rows well above this budget, so
+this is a long-context retrieval/cache run, not a whole-context baseline.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000
-export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
+export SEMANTIC_CACHE_RETRIEVAL_STRATEGY=hierarchical
+export SEMANTIC_CACHE_PARENT_WINDOW_CHUNKS=3
+export SEMANTIC_CACHE_NEIGHBOR_WINDOW=1
+export SEMANTIC_CACHE_PROMPT_MAX_INPUT_TOKENS=60000
+export SEMANTIC_CACHE_MCQ_OPTION_AWARE_RETRIEVAL=1
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=6
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=256
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated
+export SEMANTIC_CACHE_MCQ_VERIFIER_MODE=conditional
 export SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -658,14 +675,20 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
-  --top-k 1 \
+  --top-k 10 \
   --rerank-top 1 \
-  --synthesis-max-chunks 1 \
+  --synthesis-max-chunks 6 \
+  --retrieval-strategy hierarchical \
+  --parent-window-chunks 3 \
+  --neighbor-window 1 \
+  --prompt-max-input-tokens 60000 \
+  --mcq-option-aware-retrieval \
   --mcq-solver-mode evidence_adjudicated \
+  --mcq-verifier-mode conditional \
   --cache-write-policy verified \
   --disable-reranker \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-full-large-context-no-reranker-evidence-gated' \
+  --manifest-note jarvis-l40s-full-hierarchical-no-reranker-evidence-gated' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 

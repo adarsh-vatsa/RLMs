@@ -50,11 +50,13 @@ Note: LLM Sniper runs on the semantic branch. The knowledge branch currently use
 │           │     ├─ Knowledge hit: scoped fact FAISS + gate        │
 │           │     ├─ HIT  → Serve cached answer (with provenance)  │
 │           │     └─ MISS ↓                                        │
-│           └──→ FAISS Dragnet (top-20, ~130ms on CPU)             │
+│           └──→ FAISS Dragnet (+ MCQ option-aware queries)        │
 │                    ↓                                             │
-│              Qwen3-Reranker (relevance gate, top-5)              │
+│              Optional Reranker, then neighbor-window expansion   │
 │                    ↓                                             │
-│              Synthesis or MCQ evidence adjudication              │
+│              Prompt-budget packing under configured input limit  │
+│                    ↓                                             │
+│              Synthesis or conditional MCQ evidence adjudication  │
 │                    ↓                                             │
 │              Grounding/verification → Policy-gated Cache Store   │
 │                    ↓                                             │
@@ -307,22 +309,22 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 **Line 1036** · Chunks documents → embeds → builds FAISS doc index.
 
 - Reads `.txt` files from a directory
-- Chunks into ~3000-character pieces with 200-character overlap at sentence boundaries
+- Chunks by `SEMANTIC_CACHE_DOC_CHUNK_SIZE` / `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP`
 - Encodes all chunks via `encode_documents()` (Qwen3, no instruction prefix)
-- Builds `doc_index` (FAISS) with per-chunk metadata (filename, chunk_index, text, etc.)
+- Builds `doc_index` (FAISS) with filename, global chunk index, source-local chunk index, char span, token estimate, and neighbor keys
 - Persists via `save_doc_index()` which writes `index.faiss`, `metadata.json`, `chunks.json`, and `corpus_config.json`
 
-#### 2m. Document Retrieval with Reranker (`retrieve`)
-**Line 1077** · FAISS dragnet → Qwen3-Reranker relevance gate.
+#### 2m. Hierarchical Document Retrieval (`search`)
+**Line 1077** · FAISS dragnet → neighbor expansion → prompt-budget packing.
 
 1. Encode query via `encode_query()` (with instruction prefix)
-2. FAISS search for top-20 candidates (~130ms)
-3. Extract text from FAISS metadata for each candidate
-4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.20), unless adaptive reranking skips non-competitive candidate sets
-5. Return top-5 reranked/backfilled results with scores and metadata
-6. If the reranker returns too few results, backfill from the FAISS ranking and record retrieval telemetry
+2. For MCQ prompts, optionally add one local retrieval query per A-D option
+3. FAISS search each retrieval query and dedupe chunk hits
+4. Optionally rerank candidates; Jarvis accuracy profiles can keep reranking disabled
+5. Expand each hit to same-file neighboring chunks using `SEMANTIC_CACHE_PARENT_WINDOW_CHUNKS` and `SEMANTIC_CACHE_NEIGHBOR_WINDOW`
+6. Rank expanded windows and pack evidence under `SEMANTIC_CACHE_PROMPT_MAX_INPUT_TOKENS` before calling the executor
 
-`ingest()` defaults to rebuilding the active document index for the provided directory with 4,000-character chunks and 500-character overlap. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
+`SEMANTIC_CACHE_RETRIEVAL_STRATEGY=hierarchical` is the default. Use `flat` to restore the older behavior where `retrieve()` returns top chunks directly. `ingest()` defaults to rebuilding the active document index for the provided directory. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
 
 > **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.20 threshold keeps irrelevant documents filtered while avoiding evidence starvation on long-context benchmark chunks where reranker scores are not perfectly calibrated.
 
@@ -330,7 +332,7 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 
 #### 2n. MCQ Evidence Adjudication (`search`)
 
-LongBench-v2 multiple-choice queries can opt into `SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated`. In this mode the executor emits option-level evidence and a final A-D choice, the evaluator independently verifies the choice, and a final adjudicator runs only on disagreement. With `SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified`, disputed or unverified first-write answers are returned but not cached for later exact/semantic hits.
+LongBench-v2 multiple-choice queries can opt into `SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated`. In this mode the executor emits option-level evidence and a final A-D choice. `SEMANTIC_CACHE_MCQ_VERIFIER_MODE=conditional` verifies only weak, malformed, or low-confidence executor outputs; `always` preserves full verifier/adjudicator behavior, and `off` keeps executor-only answers. With `SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified`, disputed or weak first-write answers are returned but not cached for later exact/semantic hits.
 
 #### 2n. Full Search Pipeline (`search`)
 **Line 1130** · The main entry point for domain-specific clients.
@@ -344,10 +346,11 @@ search("What charges did Maxwell face?")
   │     └─ Knowledge fact lookup + data_scope_hash gate (free, FAISS)
   │
   ├─► Cache MISS:
-  │     ├─ retrieve() → FAISS + Reranker (top-5)
-  │     ├─ Sonnet synthesis from top-3 sources
+  │     ├─ Hierarchical retrieval → FAISS candidates + expanded windows
+  │     ├─ Prompt packer → evidence windows under input-token budget
+  │     ├─ Sonnet/Qwen synthesis from packed evidence
   │     ├─ Grounding check (free)
-  │     ├─ Consensus verify ($0.0001)
+  │     ├─ Consensus or conditional MCQ verification
   │     ├─ store() → cache + embed + fact extract
   │     └─ Return answer with provenance
   │

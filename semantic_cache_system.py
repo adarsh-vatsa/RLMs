@@ -141,6 +141,12 @@ MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip
 MCQ_SOLVER_MODE = os.getenv("SEMANTIC_CACHE_MCQ_SOLVER_MODE", "direct").strip().lower() or "direct"
 CACHE_WRITE_POLICY = os.getenv("SEMANTIC_CACHE_CACHE_WRITE_POLICY", "always").strip().lower() or "always"
 ADAPTIVE_RERANKER = _env_bool("SEMANTIC_CACHE_ADAPTIVE_RERANKER", False)
+RETRIEVAL_STRATEGY = os.getenv("SEMANTIC_CACHE_RETRIEVAL_STRATEGY", "hierarchical").strip().lower() or "hierarchical"
+PARENT_WINDOW_CHUNKS = _env_int("SEMANTIC_CACHE_PARENT_WINDOW_CHUNKS", 3)
+NEIGHBOR_WINDOW = _env_int("SEMANTIC_CACHE_NEIGHBOR_WINDOW", 1)
+PROMPT_MAX_INPUT_TOKENS = _env_int("SEMANTIC_CACHE_PROMPT_MAX_INPUT_TOKENS", 60000)
+MCQ_OPTION_AWARE_RETRIEVAL = _env_bool("SEMANTIC_CACHE_MCQ_OPTION_AWARE_RETRIEVAL", True)
+MCQ_VERIFIER_MODE = os.getenv("SEMANTIC_CACHE_MCQ_VERIFIER_MODE", "conditional").strip().lower() or "conditional"
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -526,6 +532,18 @@ def _mcq_system_prompt() -> str:
     )
 
 
+def _mcq_evidence_system_prompt() -> str:
+    return (
+        "You are solving a LongBench-v2 multiple-choice question using ONLY the "
+        "provided documents. Return a JSON object with keys: choice, confidence, "
+        "option_evidence, and reason. choice must be A, B, C, or D. confidence "
+        "must be between 0 and 1. option_evidence must contain A, B, C, and D, "
+        "where each value has status and evidence. Use status values such as "
+        "supported, contradicted, insufficient, irrelevant, too_broad, or too_narrow. "
+        "Do not use markdown."
+    )
+
+
 def _normalize_choice_letter(value) -> str:
     raw = str(value or "").strip().upper()
     if raw in {"A", "B", "C", "D"}:
@@ -582,6 +600,28 @@ def _normalize_mcq_json(payload: dict | None, *, fallback_text: str = "") -> dic
         "reason": str(payload.get("reason") or payload.get("rationale") or "")[:500],
         "raw": payload,
     }
+
+
+def _extract_mcq_options(query: str) -> dict:
+    options: dict[str, str] = {}
+    if not query:
+        return options
+    pattern = re.compile(r"(?is)(?:^|\n)\s*([A-D])\.\s*(.*?)(?=(?:\n\s*[A-D]\.\s*)|\Z)")
+    for match in pattern.finditer(query):
+        choice = _normalize_choice_letter(match.group(1))
+        text = re.sub(r"\s+", " ", match.group(2).strip())
+        if choice and text:
+            options[choice] = text
+    return options
+
+
+def _question_without_mcq_options(query: str) -> str:
+    if not query:
+        return ""
+    match = re.search(r"(?is)(?:^|\n)\s*A\.\s+", query)
+    if not match:
+        return query.strip()
+    return query[:match.start()].strip()
 
 
 def create_llm_message(**kwargs):
@@ -1394,7 +1434,93 @@ class SemanticCacheController:
     # ------------------------------------------------------------------
     def _estimate_tokens(self, text: str) -> int:
         """Rough token estimate: ~4 characters per token for English text."""
-        return len(text) // 4
+        return max(1, len(text) // 4) if text else 0
+
+    def _estimate_prompt_tokens(self, text: str) -> int:
+        if not text:
+            return 0
+        tokenizer = getattr(getattr(self, "embedder", None), "tokenizer", None)
+        if tokenizer is not None:
+            try:
+                return len(tokenizer.encode(text, add_special_tokens=False))
+            except Exception:
+                pass
+        return self._estimate_tokens(text)
+
+    def _truncate_to_token_budget(self, text: str, token_budget: int) -> str:
+        if token_budget <= 0 or not text:
+            return ""
+        if self._estimate_prompt_tokens(text) <= token_budget:
+            return text
+        char_budget = max(1, token_budget * 4)
+        truncated = text[:char_budget]
+        while truncated and self._estimate_prompt_tokens(truncated) > token_budget:
+            truncated = truncated[: max(1, int(len(truncated) * 0.85))]
+        return truncated.rstrip()
+
+    def _pack_evidence_for_prompt(
+        self,
+        query: str,
+        results: list[dict],
+        *,
+        system_prompt: str,
+        output_reserve_tokens: int,
+    ) -> tuple[str, list[dict], dict]:
+        source_limit = max(1, SYNTHESIS_MAX_CHUNKS)
+        prompt_budget = max(1, PROMPT_MAX_INPUT_TOKENS)
+        output_reserve = max(0, int(output_reserve_tokens or 0))
+        overhead = f"{system_prompt}\n\nQuery: {query}\n\nDocuments:\n"
+        overhead_tokens = self._estimate_prompt_tokens(overhead)
+        available = prompt_budget - overhead_tokens - output_reserve
+        info = {
+            "prompt_budget_tokens": prompt_budget,
+            "prompt_output_reserve_tokens": output_reserve,
+            "prompt_overhead_token_estimate": overhead_tokens,
+            "prompt_available_evidence_tokens": max(0, available),
+            "packed_evidence_token_estimate": 0,
+            "packed_evidence_count": 0,
+            "truncation_reason": "",
+        }
+        if available <= 0:
+            info["truncation_reason"] = "prompt_overhead_exceeds_budget"
+            return "", [], info
+
+        packed_texts = []
+        packed_results = []
+        used = 0
+        for result in results[:source_limit]:
+            text = result.get("text", "")
+            if not text:
+                continue
+            separator_tokens = self._estimate_prompt_tokens("\n\n---\n\n") if packed_texts else 0
+            remaining = available - used - separator_tokens
+            if remaining <= 0:
+                info["truncation_reason"] = info["truncation_reason"] or "evidence_budget_exhausted"
+                break
+            token_estimate = int((result.get("metadata") or {}).get("token_estimate") or self._estimate_prompt_tokens(text))
+            was_truncated = False
+            if token_estimate > remaining:
+                truncated = self._truncate_to_token_budget(text, remaining)
+                if not truncated:
+                    info["truncation_reason"] = info["truncation_reason"] or "evidence_budget_exhausted"
+                    break
+                text = truncated
+                token_estimate = self._estimate_prompt_tokens(text)
+                was_truncated = True
+                info["truncation_reason"] = "evidence_window_truncated"
+            packed_texts.append(text)
+            packed = dict(result)
+            packed["text"] = text
+            packed_meta = dict(packed.get("metadata") or {})
+            packed_meta["packed_token_estimate"] = token_estimate
+            packed_meta["packed_truncated"] = was_truncated
+            packed["metadata"] = packed_meta
+            packed_results.append(packed)
+            used += separator_tokens + token_estimate
+
+        info["packed_evidence_token_estimate"] = used
+        info["packed_evidence_count"] = len(packed_results)
+        return "\n\n---\n\n".join(packed_texts), packed_results, info
 
     def _grounding_check(self, result: str, source_context: str) -> dict:
         """
@@ -1853,19 +1979,11 @@ class SemanticCacheController:
         }
 
     def _solve_mcq_with_evidence(self, query: str, source_text: str, model: str) -> dict:
-        system_prompt = (
-            "You are solving a LongBench-v2 multiple-choice question using ONLY the "
-            "provided documents. Return a JSON object with keys: choice, confidence, "
-            "option_evidence, and reason. choice must be A, B, C, or D. confidence "
-            "must be between 0 and 1. option_evidence must contain A, B, C, and D, "
-            "where each value has status and evidence. Use status values such as "
-            "supported, contradicted, insufficient, irrelevant, too_broad, or too_narrow. "
-            "Do not use markdown."
-        )
+        system_prompt = _mcq_evidence_system_prompt()
         t_synth = time.time()
         response = create_llm_message(
             model=model,
-            max_tokens=max(256, MCQ_SYNTHESIS_MAX_TOKENS),
+            max_tokens=MCQ_SYNTHESIS_MAX_TOKENS,
             temperature=0,
             system=system_prompt,
             response_format=_json_response_format(),
@@ -1890,8 +2008,72 @@ class SemanticCacheController:
                 "parse_error": "executor_json_missing_choice",
                 "raw_executor_response": raw_answer[:1000],
             })
+            if self._mcq_verifier_mode() != "off" and fallback["answer_metadata"].get("executor_choice"):
+                executor = {
+                    "choice": fallback["answer_metadata"].get("executor_choice", ""),
+                    "confidence": 0.0,
+                    "reason": "executor_json_missing_choice",
+                    "option_evidence": {},
+                }
+                return self._finalize_verified_mcq_answer(query, source_text, executor, raw_answer[:1000])
             return fallback
 
+        if not self._mcq_should_verify(executor):
+            return {
+                "answer": executor["choice"],
+                "answer_metadata": {
+                    "mcq_solver_mode": "evidence_adjudicated",
+                    "verification_status": "EXECUTOR_CONFIDENT",
+                    "executor_choice": executor["choice"],
+                    "verifier_choice": "",
+                    "adjudicator_choice": "",
+                    "confidence": executor["confidence"],
+                    "executor_confidence": executor["confidence"],
+                    "verifier_confidence": 0.0,
+                    "adjudicator_confidence": 0.0,
+                    "option_evidence": executor.get("option_evidence", {}),
+                    "executor_reason": executor.get("reason", ""),
+                    "verifier_reason": "",
+                    "adjudicator_reason": "",
+                    "mcq_verifier_mode": self._mcq_verifier_mode(),
+                },
+            }
+
+        return self._finalize_verified_mcq_answer(query, source_text, executor, raw_answer[:1000])
+
+    def _mcq_verifier_mode(self) -> str:
+        return MCQ_VERIFIER_MODE if MCQ_VERIFIER_MODE in {"conditional", "always", "off"} else "conditional"
+
+    def _mcq_option_evidence_complete(self, option_evidence: dict) -> bool:
+        if not isinstance(option_evidence, dict):
+            return False
+        for choice in ("A", "B", "C", "D"):
+            evidence = option_evidence.get(choice)
+            if not isinstance(evidence, dict):
+                return False
+            status = str(evidence.get("status") or "").strip()
+            support = str(evidence.get("evidence") or "").strip()
+            if not status or not support:
+                return False
+        return True
+
+    def _mcq_should_verify(self, executor: dict) -> bool:
+        mode = self._mcq_verifier_mode()
+        if mode == "always":
+            return True
+        if mode == "off":
+            return False
+        confidence = _coerce_confidence(executor.get("confidence"), 0.0)
+        if confidence < 0.75:
+            return True
+        option_evidence = executor.get("option_evidence", {})
+        if not self._mcq_option_evidence_complete(option_evidence):
+            return True
+        chosen = option_evidence.get(executor.get("choice", ""), {})
+        chosen_status = str((chosen or {}).get("status") or "").strip().lower()
+        return chosen_status in {"", "insufficient", "irrelevant", "contradicted", "unsupported"}
+
+    def _finalize_verified_mcq_answer(self, query: str, source_text: str, executor: dict, raw_executor_response: str = "") -> dict:
         verifier = self._verify_mcq_answer(query, source_text, executor)
         verifier_choice = verifier.get("choice", "")
         final_choice = executor["choice"]
@@ -1925,6 +2107,8 @@ class SemanticCacheController:
                 "executor_reason": executor.get("reason", ""),
                 "verifier_reason": verifier.get("reason", ""),
                 "adjudicator_reason": adjudicator.get("reason", ""),
+                "mcq_verifier_mode": self._mcq_verifier_mode(),
+                "raw_executor_response": raw_executor_response[:1000],
             },
         }
 
@@ -1938,7 +2122,7 @@ class SemanticCacheController:
         try:
             response = create_llm_message(
                 model=self.EVALUATOR_MODEL,
-                max_tokens=256,
+                max_tokens=MCQ_SYNTHESIS_MAX_TOKENS,
                 temperature=0,
                 system=system_prompt,
                 response_format=_json_response_format(),
@@ -1971,7 +2155,7 @@ class SemanticCacheController:
         try:
             response = create_llm_message(
                 model=EXECUTOR_MODEL,
-                max_tokens=256,
+                max_tokens=MCQ_SYNTHESIS_MAX_TOKENS,
                 temperature=0,
                 system=system_prompt,
                 response_format=_json_response_format(),
@@ -2009,6 +2193,12 @@ class SemanticCacheController:
                 return True, "stored_verified"
             if status == "ADJUDICATED" and confidence >= 0.70:
                 return True, "stored_adjudicated"
+            if (
+                status == "EXECUTOR_CONFIDENT"
+                and confidence >= 0.75
+                and self._mcq_option_evidence_complete(answer_metadata.get("option_evidence", {}))
+            ):
+                return True, "stored_executor_confident"
             return False, "skipped_unverified"
 
         if (consensus or {}).get("consensus") == "DISPUTED":
@@ -2099,24 +2289,48 @@ class SemanticCacheController:
         all_chunks = []
         all_meta = []
         chunk_offset = len(self._doc_chunks) if hasattr(self, '_doc_chunks') else 0
+        existing_file_counts: dict[str, int] = {}
+        if not reset_index and self.doc_index is not None:
+            for meta in getattr(self.doc_index, "metadata", []) or []:
+                filename = meta.get("filename", "")
+                if not filename:
+                    continue
+                source_idx = meta.get("source_chunk_index")
+                try:
+                    existing_file_counts[filename] = max(existing_file_counts.get(filename, 0), int(source_idx) + 1)
+                except (TypeError, ValueError):
+                    existing_file_counts[filename] = existing_file_counts.get(filename, 0) + 1
 
         for f in txt_files:
             text = f.read_text(encoding="utf-8", errors="ignore").strip()
             if not text:
                 continue
             # Chunk the document
+            source_chunk_index = existing_file_counts.get(f.name, 0)
             for i in range(0, len(text), chunk_size - overlap):
                 chunk = text[i:i + chunk_size]
                 if len(chunk) < 50:
                     continue
+                global_chunk_index = chunk_offset + len(all_chunks)
+                char_end = min(i + len(chunk), len(text))
+                chunk_key = f"{f.name}:{source_chunk_index}"
                 meta = {
                     "filename": f.name,
-                    "chunk_index": chunk_offset + len(all_chunks),
+                    "chunk_index": global_chunk_index,
+                    "global_chunk_index": global_chunk_index,
+                    "source_chunk_index": source_chunk_index,
                     "char_start": i,
+                    "char_end": char_end,
+                    "token_estimate": self._estimate_tokens(chunk),
+                    "chunk_key": chunk_key,
+                    "previous_chunk_key": f"{f.name}:{source_chunk_index - 1}" if source_chunk_index > 0 else "",
+                    "next_chunk_key": f"{f.name}:{source_chunk_index + 1}",
+                    "parent_window_id": f"{f.name}:{source_chunk_index // max(1, PARENT_WINDOW_CHUNKS)}",
                     "data_scope_hash": self.data_scope_hash,
                 }
                 all_chunks.append(chunk)
                 all_meta.append(meta)
+                source_chunk_index += 1
 
         if not all_chunks:
             print("  [INGEST] No chunks large enough to index")
@@ -2135,18 +2349,362 @@ class SemanticCacheController:
             self._doc_chunks.extend(all_chunks)
         return len(all_chunks)
 
-    def retrieve(self, query: str, top_k: int = 20, rerank_top: int = 5) -> List[dict]:
-        """
-        Retrieve relevant document chunks: FAISS dragnet → Reranker (with relevance gate).
-        Returns list of {text, score, metadata}.
-        """
+    def _doc_entry_sequence(self) -> list[dict]:
+        chunks = list(getattr(self, "_doc_chunks", []) or [])
+        metadata = list(getattr(self.doc_index, "metadata", []) or []) if self.doc_index else []
+        entries = []
+        per_file_counts: dict[str, int] = {}
+        for idx, text in enumerate(chunks):
+            meta = dict(metadata[idx]) if idx < len(metadata) else {}
+            filename = str(meta.get("filename") or "")
+            if not filename:
+                filename = "__document__"
+            source_idx = meta.get("source_chunk_index")
+            try:
+                source_idx = int(source_idx)
+            except (TypeError, ValueError):
+                source_idx = per_file_counts.get(filename, 0)
+            per_file_counts[filename] = max(per_file_counts.get(filename, 0), source_idx + 1)
+            meta.setdefault("filename", filename)
+            meta.setdefault("chunk_index", idx)
+            meta.setdefault("global_chunk_index", idx)
+            meta["source_chunk_index"] = source_idx
+            meta.setdefault("char_start", 0)
+            meta.setdefault("char_end", len(text))
+            meta.setdefault("token_estimate", self._estimate_tokens(text))
+            meta.setdefault("chunk_key", f"{filename}:{source_idx}")
+            entries.append({"text": text, "metadata": meta})
+        return entries
+
+    def _doc_entry_lookup(self) -> dict[tuple[str, int], dict]:
+        lookup = {}
+        for entry in self._doc_entry_sequence():
+            meta = entry["metadata"]
+            lookup[(str(meta.get("filename") or ""), int(meta.get("source_chunk_index") or 0))] = entry
+        return lookup
+
+    def _resolve_doc_text(self, meta: dict, fallback_index: int = 0) -> str:
+        text = meta.get("text") if isinstance(meta, dict) else ""
+        if text:
+            return text
+        chunks = getattr(self, "_doc_chunks", []) or []
+        if not chunks:
+            return ""
+        candidates = [
+            meta.get("global_chunk_index") if isinstance(meta, dict) else None,
+            meta.get("chunk_index") if isinstance(meta, dict) else None,
+            fallback_index,
+        ]
+        for candidate in candidates:
+            try:
+                idx = int(candidate)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= idx < len(chunks):
+                return chunks[idx]
+        return ""
+
+    def _raw_faiss_retrieve(self, query: str, top_k: int, *, query_label: str = "query", option_label: str = "") -> tuple[list[dict], int]:
+        if self.doc_index is None or self.doc_index.total == 0:
+            return [], 0
+        query_emb = self.embedder.encode_query(query)
+        faiss_results = self.doc_index.search(query_emb, top_k=top_k)
+        raw_results = []
+        for i, (score, meta) in enumerate(faiss_results):
+            meta = dict(meta or {})
+            text = self._resolve_doc_text(meta, i)
+            if not text:
+                continue
+            source_idx = meta.get("source_chunk_index")
+            try:
+                source_idx = int(source_idx)
+            except (TypeError, ValueError):
+                source_idx = int(meta.get("chunk_index") or i)
+            meta.setdefault("source_chunk_index", source_idx)
+            meta.setdefault("global_chunk_index", meta.get("chunk_index", i))
+            meta.setdefault("token_estimate", self._estimate_tokens(text))
+            raw_results.append({
+                "text": text,
+                "score": float(score),
+                "metadata": meta,
+                "retrieval_query_labels": [query_label],
+                "option_labels": [option_label] if option_label else [],
+                "hit_count": 1,
+            })
+        return raw_results, len(faiss_results)
+
+    def _dedupe_retrieval_results(self, results: list[dict]) -> list[dict]:
+        deduped: dict[tuple[str, int], dict] = {}
+        for result in results:
+            meta = dict(result.get("metadata") or {})
+            filename = str(meta.get("filename") or "")
+            try:
+                source_idx = int(meta.get("source_chunk_index"))
+            except (TypeError, ValueError):
+                try:
+                    source_idx = int(meta.get("chunk_index"))
+                except (TypeError, ValueError):
+                    source_idx = len(deduped)
+            key = (filename, source_idx)
+            existing = deduped.get(key)
+            if existing is None:
+                result = dict(result)
+                result["metadata"] = meta
+                result["retrieval_query_labels"] = set(result.get("retrieval_query_labels") or [])
+                result["option_labels"] = set(label for label in result.get("option_labels") or [] if label)
+                result["hit_count"] = int(result.get("hit_count") or 1)
+                deduped[key] = result
+                continue
+            existing["score"] = max(float(existing.get("score", 0.0)), float(result.get("score", 0.0)))
+            existing["hit_count"] = int(existing.get("hit_count") or 0) + int(result.get("hit_count") or 1)
+            existing["retrieval_query_labels"].update(result.get("retrieval_query_labels") or [])
+            existing["option_labels"].update(label for label in result.get("option_labels") or [] if label)
+        output = []
+        for result in deduped.values():
+            result["retrieval_query_labels"] = sorted(result.get("retrieval_query_labels") or [])
+            result["option_labels"] = sorted(result.get("option_labels") or [])
+            output.append(result)
+        output.sort(
+            key=lambda item: (
+                -float(item.get("score", 0.0)),
+                -int(item.get("hit_count") or 0),
+                str((item.get("metadata") or {}).get("filename") or ""),
+                int((item.get("metadata") or {}).get("source_chunk_index") or 0),
+            )
+        )
+        return output
+
+    def _build_retrieval_queries(self, query: str, is_choice_query: bool) -> list[tuple[str, str, str]]:
+        queries = [("query", query, "")]
+        if not (is_choice_query and MCQ_OPTION_AWARE_RETRIEVAL):
+            return queries
+        options = _extract_mcq_options(query)
+        if len(options) < 4:
+            return queries
+        base_question = _question_without_mcq_options(query) or query
+        for choice in ("A", "B", "C", "D"):
+            option_text = options.get(choice, "")
+            if option_text:
+                queries.append((f"option_{choice}", f"{base_question}\nOption {choice}: {option_text}", choice))
+        return queries
+
+    def _expand_retrieval_windows(self, results: list[dict]) -> list[dict]:
+        lookup = self._doc_entry_lookup()
+        if not lookup:
+            return results
+        target_size = max(1, PARENT_WINDOW_CHUNKS)
+        neighbor = max(0, NEIGHBOR_WINDOW)
+        windows = []
+        for result in results:
+            meta = result.get("metadata") or {}
+            filename = str(meta.get("filename") or "")
+            try:
+                center = int(meta.get("source_chunk_index"))
+            except (TypeError, ValueError):
+                try:
+                    center = int(meta.get("chunk_index"))
+                except (TypeError, ValueError):
+                    windows.append(result)
+                    continue
+
+            start = center - neighbor
+            end = center + neighbor
+            while (end - start + 1) < target_size:
+                if (start - 1, end + 1) == (start, end):
+                    break
+                if start > 0:
+                    start -= 1
+                else:
+                    end += 1
+                if (filename, end) not in lookup and (filename, start) not in lookup:
+                    break
+            start = max(0, start)
+            while (filename, end) not in lookup and end > center:
+                end -= 1
+            while (filename, start) not in lookup and start < center:
+                start += 1
+            chunk_entries = [
+                lookup[(filename, idx)]
+                for idx in range(start, end + 1)
+                if (filename, idx) in lookup
+            ]
+            if not chunk_entries:
+                windows.append(result)
+                continue
+            text = "\n\n".join(entry["text"] for entry in chunk_entries)
+            window_meta = {
+                "filename": filename,
+                "chunk_index": (chunk_entries[0]["metadata"].get("chunk_index")),
+                "global_chunk_index": (chunk_entries[0]["metadata"].get("global_chunk_index")),
+                "source_chunk_index": start,
+                "window_start_chunk": start,
+                "window_end_chunk": end,
+                "window_chunk_count": len(chunk_entries),
+                "char_start": chunk_entries[0]["metadata"].get("char_start", 0),
+                "char_end": chunk_entries[-1]["metadata"].get("char_end", len(text)),
+                "token_estimate": sum(int(entry["metadata"].get("token_estimate") or self._estimate_tokens(entry["text"])) for entry in chunk_entries),
+                "data_scope_hash": meta.get("data_scope_hash", self.data_scope_hash),
+            }
+            windows.append({
+                "text": text,
+                "score": float(result.get("score", 0.0)),
+                "metadata": window_meta,
+                "hit_count": int(result.get("hit_count") or 1),
+                "retrieval_query_labels": list(result.get("retrieval_query_labels") or []),
+                "option_labels": list(result.get("option_labels") or []),
+            })
+
+        merged: list[dict] = []
+        for window in sorted(
+            windows,
+            key=lambda item: (
+                str((item.get("metadata") or {}).get("filename") or ""),
+                int((item.get("metadata") or {}).get("window_start_chunk", (item.get("metadata") or {}).get("source_chunk_index") or 0)),
+                -float(item.get("score", 0.0)),
+            ),
+        ):
+            meta = window.get("metadata") or {}
+            filename = str(meta.get("filename") or "")
+            start = int(meta.get("window_start_chunk", meta.get("source_chunk_index", 0)) or 0)
+            end = int(meta.get("window_end_chunk", start) or start)
+            last = merged[-1] if merged else None
+            if last:
+                last_meta = last.get("metadata") or {}
+                last_filename = str(last_meta.get("filename") or "")
+                last_end = int(last_meta.get("window_end_chunk", last_meta.get("source_chunk_index", 0)) or 0)
+                if filename == last_filename and start <= last_end + 1:
+                    combined_start = int(last_meta.get("window_start_chunk", last_meta.get("source_chunk_index", 0)) or 0)
+                    combined_end = max(last_end, end)
+                    chunk_entries = [
+                        lookup[(filename, idx)]
+                        for idx in range(combined_start, combined_end + 1)
+                        if (filename, idx) in lookup
+                    ]
+                    last["text"] = "\n\n".join(entry["text"] for entry in chunk_entries)
+                    last["score"] = max(float(last.get("score", 0.0)), float(window.get("score", 0.0)))
+                    last["hit_count"] = int(last.get("hit_count") or 0) + int(window.get("hit_count") or 0)
+                    last["retrieval_query_labels"] = sorted(set(last.get("retrieval_query_labels") or []) | set(window.get("retrieval_query_labels") or []))
+                    last["option_labels"] = sorted(set(last.get("option_labels") or []) | set(window.get("option_labels") or []))
+                    last_meta["window_start_chunk"] = combined_start
+                    last_meta["window_end_chunk"] = combined_end
+                    last_meta["window_chunk_count"] = len(chunk_entries)
+                    last_meta["char_end"] = chunk_entries[-1]["metadata"].get("char_end", len(last["text"])) if chunk_entries else last_meta.get("char_end", 0)
+                    last_meta["token_estimate"] = sum(int(entry["metadata"].get("token_estimate") or self._estimate_tokens(entry["text"])) for entry in chunk_entries)
+                    continue
+            merged.append(window)
+
+        merged.sort(
+            key=lambda item: (
+                -float(item.get("score", 0.0)),
+                -int(item.get("hit_count") or 0),
+                -len(item.get("option_labels") or []),
+                str((item.get("metadata") or {}).get("filename") or ""),
+                int((item.get("metadata") or {}).get("window_start_chunk", 0) or 0),
+            )
+        )
+        return merged
+
+    def retrieve_hierarchical(self, query: str, top_k: int = 20, rerank_top: int = 5, *, is_choice_query: bool = False) -> list[dict]:
         self._last_retrieval_info = {
+            "retrieval_strategy": "hierarchical",
             "faiss_candidate_count": 0,
             "candidate_text_count": 0,
             "reranker_enabled": bool(self.reranker),
             "reranker_returned_count": 0,
             "reranker_fallback_used": False,
             "reranker_skipped_reason": "",
+            "retrieval_query_count": 0,
+            "expanded_window_count": 0,
+            "mcq_option_aware_retrieval": bool(is_choice_query and MCQ_OPTION_AWARE_RETRIEVAL),
+        }
+        if self.doc_index is None or self.doc_index.total == 0:
+            print("  [RETRIEVE] No documents indexed. Run ingest() first.")
+            return []
+
+        t0 = time.time()
+        retrieval_queries = self._build_retrieval_queries(query, is_choice_query)
+        candidates = []
+        faiss_count = 0
+        for query_label, retrieval_query, option_label in retrieval_queries:
+            raw, count = self._raw_faiss_retrieve(
+                retrieval_query,
+                top_k=top_k,
+                query_label=query_label,
+                option_label=option_label,
+            )
+            candidates.extend(raw)
+            faiss_count += count
+        dt_faiss = (time.time() - t0) * 1000
+        self._last_retrieval_info["retrieval_query_count"] = len(retrieval_queries)
+        self._last_retrieval_info["faiss_candidate_count"] = faiss_count
+
+        candidates = self._dedupe_retrieval_results(candidates)
+        self._last_retrieval_info["candidate_text_count"] = len(candidates)
+        print(
+            f"  [DRAGNET] Retrieved {len(candidates)} unique candidates "
+            f"from {len(retrieval_queries)} queries in {dt_faiss:.0f}ms"
+        )
+        if not candidates:
+            return []
+
+        if self.reranker:
+            if ADAPTIVE_RERANKER and len(candidates) <= max(1, rerank_top):
+                reason = "candidate_text_count_lte_rerank_top"
+                self._last_retrieval_info["reranker_skipped_reason"] = reason
+                print(f"  [RERANK] Skipped adaptive rerank ({reason})")
+            else:
+                t1 = time.time()
+                reranked = self.reranker.rerank(query, [candidate["text"] for candidate in candidates], top_k=rerank_top)
+                dt_rerank = (time.time() - t1) * 1000
+                print(f"  [RERANK] Narrowed to {len(reranked)} relevant results in {dt_rerank:.0f}ms")
+                self._last_retrieval_info["reranker_returned_count"] = len(reranked)
+                selected_indices = set()
+                ranked = []
+                for orig_idx, score, text in reranked:
+                    selected_indices.add(orig_idx)
+                    if orig_idx < len(candidates):
+                        item = dict(candidates[orig_idx])
+                        item["score"] = float(score)
+                        item["text"] = text
+                        ranked.append(item)
+                target_count = min(max(rerank_top, MIN_RERANKED_RESULTS), len(candidates))
+                if len(ranked) < target_count:
+                    for raw_idx, raw in enumerate(candidates):
+                        if raw_idx in selected_indices:
+                            continue
+                        ranked.append(raw)
+                        if len(ranked) >= target_count:
+                            break
+                    if len(ranked) > len(reranked):
+                        self._last_retrieval_info["reranker_fallback_used"] = True
+                if ranked:
+                    candidates = ranked
+                else:
+                    self._last_retrieval_info["reranker_fallback_used"] = True
+                    candidates = candidates[:rerank_top]
+        else:
+            self._last_retrieval_info["reranker_skipped_reason"] = "disabled"
+
+        windows = self._expand_retrieval_windows(candidates)
+        self._last_retrieval_info["expanded_window_count"] = len(windows)
+        return windows
+
+    def retrieve(self, query: str, top_k: int = 20, rerank_top: int = 5) -> List[dict]:
+        """
+        Retrieve relevant document chunks: FAISS dragnet → Reranker (with relevance gate).
+        Returns list of {text, score, metadata}.
+        """
+        self._last_retrieval_info = {
+            "retrieval_strategy": "flat",
+            "faiss_candidate_count": 0,
+            "candidate_text_count": 0,
+            "reranker_enabled": bool(self.reranker),
+            "reranker_returned_count": 0,
+            "reranker_fallback_used": False,
+            "reranker_skipped_reason": "",
+            "retrieval_query_count": 1,
+            "expanded_window_count": 0,
+            "mcq_option_aware_retrieval": False,
         }
         if self.doc_index is None or self.doc_index.total == 0:
             print("  [RETRIEVE] No documents indexed. Run ingest() first.")
@@ -2427,7 +2985,16 @@ class SemanticCacheController:
 
         # ── Stage 1: Retrieve relevant documents ──
         self.metrics.cache_misses += 1
-        results = self.retrieve(query, top_k=top_k, rerank_top=rerank_top)
+        retrieval_strategy = RETRIEVAL_STRATEGY if RETRIEVAL_STRATEGY in {"hierarchical", "flat"} else "hierarchical"
+        if retrieval_strategy == "flat":
+            results = self.retrieve(query, top_k=top_k, rerank_top=rerank_top)
+        else:
+            results = self.retrieve_hierarchical(
+                query,
+                top_k=top_k,
+                rerank_top=rerank_top,
+                is_choice_query=is_choice_query,
+            )
         if not results:
             return {
                 "query": query,
@@ -2445,12 +3012,27 @@ class SemanticCacheController:
                 "retrieval": getattr(self, "_last_retrieval_info", {}),
             }
 
-        source_limit = max(1, SYNTHESIS_MAX_CHUNKS)
-        source_text = "\n\n---\n\n".join(r["text"] for r in results[:source_limit])
         model = EXECUTOR_MODEL
         answer_metadata = {}
         if is_choice_query:
             solver_mode = MCQ_SOLVER_MODE if MCQ_SOLVER_MODE in {"direct", "evidence_adjudicated"} else "direct"
+            system_prompt_for_budget = _mcq_evidence_system_prompt() if solver_mode == "evidence_adjudicated" else _mcq_system_prompt()
+            max_tokens = MCQ_SYNTHESIS_MAX_TOKENS
+            source_text, packed_results, pack_info = self._pack_evidence_for_prompt(
+                query,
+                results,
+                system_prompt=system_prompt_for_budget,
+                output_reserve_tokens=max_tokens,
+            )
+            self._last_retrieval_info.update(pack_info)
+            if not source_text:
+                return {
+                    "query": query,
+                    "answer": "Prompt budget is too small for the retrieved evidence.",
+                    "from_cache": False,
+                    "results": [],
+                    "retrieval": getattr(self, "_last_retrieval_info", {}),
+                }
             if solver_mode == "evidence_adjudicated":
                 solved = self._solve_mcq_with_evidence(query, source_text, model)
                 answer = solved["answer"]
@@ -2470,6 +3052,21 @@ class SemanticCacheController:
                 "Otherwise, cite specific details and be precise and thorough."
             )
             max_tokens = SYNTHESIS_MAX_TOKENS
+            source_text, packed_results, pack_info = self._pack_evidence_for_prompt(
+                query,
+                results,
+                system_prompt=system_prompt,
+                output_reserve_tokens=max_tokens,
+            )
+            self._last_retrieval_info.update(pack_info)
+            if not source_text:
+                return {
+                    "query": query,
+                    "answer": "Prompt budget is too small for the retrieved evidence.",
+                    "from_cache": False,
+                    "results": [],
+                    "retrieval": getattr(self, "_last_retrieval_info", {}),
+                }
             t_synth = time.time()
             response = create_llm_message(
                 model=model,
@@ -2488,13 +3085,13 @@ class SemanticCacheController:
         should_store, cache_write_status = self._resolve_cache_write(is_choice_query, answer_metadata, consensus)
         answer_metadata["cache_write_status"] = cache_write_status
         if should_store:
-            self.store(query, source_text, answer, model_used=model, sources=results, answer_metadata=answer_metadata)
+            self.store(query, source_text, answer, model_used=model, sources=packed_results, answer_metadata=answer_metadata)
         else:
             print(f"  [CACHE] Skipped write ({cache_write_status})")
 
         return {
             "query": query, "answer": answer,
-            "from_cache": False, "results": results,
+            "from_cache": False, "results": packed_results,
             "consensus": consensus,
             "retrieval": getattr(self, "_last_retrieval_info", {}),
             **self._answer_metadata_response_fields(answer_metadata),

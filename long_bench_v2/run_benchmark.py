@@ -270,6 +270,12 @@ def resolve_cache_namespace(
     reranker_disabled: bool = False,
     doc_chunk_size: int = 0,
     doc_chunk_overlap: int = 0,
+    retrieval_strategy: str = "hierarchical",
+    parent_window_chunks: int = 0,
+    neighbor_window: int = 0,
+    prompt_max_input_tokens: int = 0,
+    mcq_option_aware_retrieval: bool = True,
+    mcq_verifier_mode: str = "conditional",
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
@@ -281,7 +287,9 @@ def resolve_cache_namespace(
             f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
             f"{extra_body_sig}\n{mcq_prompt_style}\n{mcq_solver_mode}\n"
             f"{cache_write_policy}\n{adaptive_reranker}\n{reranker_disabled}\n"
-            f"{doc_chunk_size}\n{doc_chunk_overlap}"
+            f"{doc_chunk_size}\n{doc_chunk_overlap}\n{retrieval_strategy}\n"
+            f"{parent_window_chunks}\n{neighbor_window}\n{prompt_max_input_tokens}\n"
+            f"{mcq_option_aware_retrieval}\n{mcq_verifier_mode}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -439,6 +447,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         raise ValueError("--synthesis-max-chunks must be >= 1")
     if args.cache_save_interval < 1:
         raise ValueError("--cache-save-interval must be >= 1")
+    if args.parent_window_chunks is not None and args.parent_window_chunks < 1:
+        raise ValueError("--parent-window-chunks must be >= 1")
+    if args.neighbor_window is not None and args.neighbor_window < 0:
+        raise ValueError("--neighbor-window must be >= 0")
+    if args.prompt_max_input_tokens is not None and args.prompt_max_input_tokens < 1:
+        raise ValueError("--prompt-max-input-tokens must be >= 1")
 
     suite_csv = Path(args.suite_csv)
     source_json_path = Path(args.source_json_path)
@@ -504,6 +518,18 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         scs.CACHE_WRITE_POLICY = args.cache_write_policy
     if args.adaptive_reranker:
         scs.ADAPTIVE_RERANKER = True
+    if args.retrieval_strategy:
+        scs.RETRIEVAL_STRATEGY = args.retrieval_strategy
+    if args.parent_window_chunks is not None:
+        scs.PARENT_WINDOW_CHUNKS = args.parent_window_chunks
+    if args.neighbor_window is not None:
+        scs.NEIGHBOR_WINDOW = args.neighbor_window
+    if args.prompt_max_input_tokens is not None:
+        scs.PROMPT_MAX_INPUT_TOKENS = args.prompt_max_input_tokens
+    if args.mcq_option_aware_retrieval is not None:
+        scs.MCQ_OPTION_AWARE_RETRIEVAL = bool(args.mcq_option_aware_retrieval)
+    if args.mcq_verifier_mode:
+        scs.MCQ_VERIFIER_MODE = args.mcq_verifier_mode
     scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
     effective_mcq_solver_mode = _coerce_text(getattr(scs, "MCQ_SOLVER_MODE", "direct")) or "direct"
     effective_cache_write_policy = _coerce_text(getattr(scs, "CACHE_WRITE_POLICY", "always")) or "always"
@@ -511,6 +537,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     effective_doc_chunk_size = int(scs.DOCUMENT_CHUNK_SIZE)
     effective_doc_chunk_overlap = int(scs.DOCUMENT_CHUNK_OVERLAP)
     effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
+    effective_retrieval_strategy = _coerce_text(getattr(scs, "RETRIEVAL_STRATEGY", "hierarchical")) or "hierarchical"
+    effective_parent_window_chunks = int(getattr(scs, "PARENT_WINDOW_CHUNKS", 3))
+    effective_neighbor_window = int(getattr(scs, "NEIGHBOR_WINDOW", 1))
+    effective_prompt_max_input_tokens = int(getattr(scs, "PROMPT_MAX_INPUT_TOKENS", 60000))
+    effective_mcq_option_aware_retrieval = bool(getattr(scs, "MCQ_OPTION_AWARE_RETRIEVAL", True))
+    effective_mcq_verifier_mode = _coerce_text(getattr(scs, "MCQ_VERIFIER_MODE", "conditional")) or "conditional"
 
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
@@ -532,6 +564,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             reranker_disabled=bool(args.disable_reranker),
             doc_chunk_size=effective_doc_chunk_size,
             doc_chunk_overlap=effective_doc_chunk_overlap,
+            retrieval_strategy=effective_retrieval_strategy,
+            parent_window_chunks=effective_parent_window_chunks,
+            neighbor_window=effective_neighbor_window,
+            prompt_max_input_tokens=effective_prompt_max_input_tokens,
+            mcq_option_aware_retrieval=effective_mcq_option_aware_retrieval,
+            mcq_verifier_mode=effective_mcq_verifier_mode,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -554,7 +592,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     print(
         "[LONGBENCH-V2] Retrieval config: "
         f"top_k={args.top_k}, rerank_top={args.rerank_top}, "
-        f"synthesis_max_chunks={args.synthesis_max_chunks}"
+        f"synthesis_max_chunks={args.synthesis_max_chunks}, "
+        f"strategy={effective_retrieval_strategy}"
     )
     print(f"[LONGBENCH-V2] Output dir: {out_dir}")
     if cache_state_enabled:
@@ -675,6 +714,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "synthesis_max_chunks": effective_synthesis_max_chunks,
             "doc_chunk_size": effective_doc_chunk_size,
             "doc_chunk_overlap": effective_doc_chunk_overlap,
+            "retrieval_strategy": effective_retrieval_strategy,
+            "parent_window_chunks": effective_parent_window_chunks,
+            "neighbor_window": effective_neighbor_window,
+            "prompt_max_input_tokens": effective_prompt_max_input_tokens,
+            "mcq_option_aware_retrieval": effective_mcq_option_aware_retrieval,
+            "mcq_verifier_mode": effective_mcq_verifier_mode,
             "ingested_chunks": ingested_chunks,
             "expected_cache_type": row.get("expected_cache_type", ""),
             "expected_from_cache": row.get("expected_from_cache", ""),
@@ -703,6 +748,11 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "reranker_returned_count": retrieval.get("reranker_returned_count"),
             "reranker_fallback_used": retrieval.get("reranker_fallback_used"),
             "reranker_skipped_reason": retrieval.get("reranker_skipped_reason"),
+            "packed_evidence_token_estimate": retrieval.get("packed_evidence_token_estimate"),
+            "packed_evidence_count": retrieval.get("packed_evidence_count"),
+            "expanded_window_count": retrieval.get("expanded_window_count"),
+            "truncation_reason": retrieval.get("truncation_reason"),
+            "retrieval_query_count": retrieval.get("retrieval_query_count"),
         }
         bridge_rows.append(bridge_row)
 
@@ -786,6 +836,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "adaptive_reranker": effective_adaptive_reranker,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,
+        "retrieval_strategy": effective_retrieval_strategy,
+        "parent_window_chunks": effective_parent_window_chunks,
+        "neighbor_window": effective_neighbor_window,
+        "prompt_max_input_tokens": effective_prompt_max_input_tokens,
+        "mcq_option_aware_retrieval": effective_mcq_option_aware_retrieval,
+        "mcq_verifier_mode": effective_mcq_verifier_mode,
         "cache_save_interval": args.cache_save_interval,
         "row_order": args.row_order,
         "reranker_disabled": bool(args.disable_reranker),
@@ -875,6 +931,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mcq-solver-mode", choices=["direct", "evidence_adjudicated"], default=None)
     parser.add_argument("--cache-write-policy", choices=["always", "verified"], default=None)
     parser.add_argument("--adaptive-reranker", action="store_true")
+    parser.add_argument("--retrieval-strategy", choices=["hierarchical", "flat"], default=None)
+    parser.add_argument("--parent-window-chunks", type=int, default=None)
+    parser.add_argument("--neighbor-window", type=int, default=None)
+    parser.add_argument("--prompt-max-input-tokens", type=int, default=None)
+    mcq_option_group = parser.add_mutually_exclusive_group()
+    mcq_option_group.add_argument(
+        "--mcq-option-aware-retrieval",
+        dest="mcq_option_aware_retrieval",
+        action="store_true",
+        default=None,
+    )
+    mcq_option_group.add_argument(
+        "--disable-mcq-option-aware-retrieval",
+        dest="mcq_option_aware_retrieval",
+        action="store_false",
+    )
+    parser.add_argument("--mcq-verifier-mode", choices=["conditional", "always", "off"], default=None)
     parser.add_argument(
         "--row-order",
         choices=["input", "source_grouped"],

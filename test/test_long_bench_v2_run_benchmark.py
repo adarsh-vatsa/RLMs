@@ -149,6 +149,12 @@ class FakeScs:
     MCQ_SOLVER_MODE = "direct"
     CACHE_WRITE_POLICY = "always"
     ADAPTIVE_RERANKER = False
+    RETRIEVAL_STRATEGY = "hierarchical"
+    PARENT_WINDOW_CHUNKS = 3
+    NEIGHBOR_WINDOW = 1
+    PROMPT_MAX_INPUT_TOKENS = 60000
+    MCQ_OPTION_AWARE_RETRIEVAL = True
+    MCQ_VERIFIER_MODE = "conditional"
     SemanticCacheController = FakeController
     ExecutionMetrics = FakeMetrics
 
@@ -186,6 +192,12 @@ def _reset_fake_controller():
     FakeScs.MCQ_SOLVER_MODE = "direct"
     FakeScs.CACHE_WRITE_POLICY = "always"
     FakeScs.ADAPTIVE_RERANKER = False
+    FakeScs.RETRIEVAL_STRATEGY = "hierarchical"
+    FakeScs.PARENT_WINDOW_CHUNKS = 3
+    FakeScs.NEIGHBOR_WINDOW = 1
+    FakeScs.PROMPT_MAX_INPUT_TOKENS = 60000
+    FakeScs.MCQ_OPTION_AWARE_RETRIEVAL = True
+    FakeScs.MCQ_VERIFIER_MODE = "conditional"
 
 
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
@@ -336,6 +348,21 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             doc_chunk_size=200000,
             doc_chunk_overlap=40000,
         )
+        changed_hierarchical_profile = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            retrieval_strategy="flat",
+            parent_window_chunks=5,
+            neighbor_window=2,
+            prompt_max_input_tokens=32000,
+            mcq_option_aware_retrieval=False,
+            mcq_verifier_mode="always",
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
@@ -347,6 +374,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertNotEqual(first, changed_adaptive)
         self.assertNotEqual(first, changed_disabled)
         self.assertNotEqual(first, changed_chunk_profile)
+        self.assertNotEqual(first, changed_hierarchical_profile)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -497,6 +525,17 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
                     "--cache-write-policy",
                     "verified",
                     "--adaptive-reranker",
+                    "--retrieval-strategy",
+                    "hierarchical",
+                    "--parent-window-chunks",
+                    "5",
+                    "--neighbor-window",
+                    "2",
+                    "--prompt-max-input-tokens",
+                    "32000",
+                    "--disable-mcq-option-aware-retrieval",
+                    "--mcq-verifier-mode",
+                    "always",
                     "--output-dir",
                     str(output_dir),
                 ]
@@ -516,6 +555,12 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(FakeScs.MCQ_SOLVER_MODE, "evidence_adjudicated")
         self.assertEqual(FakeScs.CACHE_WRITE_POLICY, "verified")
         self.assertTrue(FakeScs.ADAPTIVE_RERANKER)
+        self.assertEqual(FakeScs.RETRIEVAL_STRATEGY, "hierarchical")
+        self.assertEqual(FakeScs.PARENT_WINDOW_CHUNKS, 5)
+        self.assertEqual(FakeScs.NEIGHBOR_WINDOW, 2)
+        self.assertEqual(FakeScs.PROMPT_MAX_INPUT_TOKENS, 32000)
+        self.assertFalse(FakeScs.MCQ_OPTION_AWARE_RETRIEVAL)
+        self.assertEqual(FakeScs.MCQ_VERIFIER_MODE, "always")
         self.assertEqual(len(FakeController.instances), 1)
         self.assertEqual(len(FakeController.load_calls), 0)
         self.assertEqual(len(FakeController.save_calls), 2)
@@ -532,6 +577,12 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["mcq_solver_mode"], "evidence_adjudicated")
         self.assertEqual(manifest["cache_write_policy"], "verified")
         self.assertTrue(manifest["adaptive_reranker"])
+        self.assertEqual(manifest["retrieval_strategy"], "hierarchical")
+        self.assertEqual(manifest["parent_window_chunks"], 5)
+        self.assertEqual(manifest["neighbor_window"], 2)
+        self.assertEqual(manifest["prompt_max_input_tokens"], 32000)
+        self.assertFalse(manifest["mcq_option_aware_retrieval"])
+        self.assertEqual(manifest["mcq_verifier_mode"], "always")
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
         self.assertEqual(
@@ -549,6 +600,12 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["verifier_choice"], "A")
         self.assertEqual(bridge_rows[0]["cache_write_status"], "stored_verified")
         self.assertEqual(bridge_rows[0]["reranker_skipped_reason"], "candidate_text_count_lte_rerank_top")
+        self.assertEqual(bridge_rows[0]["retrieval_strategy"], "hierarchical")
+        self.assertEqual(bridge_rows[0]["parent_window_chunks"], 5)
+        self.assertEqual(bridge_rows[0]["neighbor_window"], 2)
+        self.assertEqual(bridge_rows[0]["prompt_max_input_tokens"], 32000)
+        self.assertFalse(bridge_rows[0]["mcq_option_aware_retrieval"])
+        self.assertEqual(bridge_rows[0]["mcq_verifier_mode"], "always")
 
 
 if __name__ == "__main__":

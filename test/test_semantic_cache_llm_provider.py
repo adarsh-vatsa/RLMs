@@ -373,13 +373,86 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertNotEqual(strict_prompt, default_prompt)
 
     def test_evidence_mcq_solver_verifies_agreement(self):
+        original_max_tokens = scs.MCQ_SYNTHESIS_MAX_TOKENS
+        calls = []
         responses = iter([
             {"choice": "B", "confidence": 0.80, "option_evidence": {"B": {"status": "supported", "evidence": "quoted support"}}},
             {"choice": "B", "confidence": 0.90, "reason": "same answer"},
         ])
 
         def fake_message(**kwargs):
+            calls.append(kwargs)
             payload = next(responses)
+            return SimpleNamespace(
+                content=[SimpleNamespace(text=json.dumps(payload))],
+                usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+            )
+
+        controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics())
+        try:
+            scs.MCQ_SYNTHESIS_MAX_TOKENS = 123
+            with patch("semantic_cache_system.create_llm_message", fake_message):
+                solved = controller._solve_mcq_with_evidence("Question?\nA. x\nB. y\nC. z\nD. w", "Document", scs.EXECUTOR_MODEL)
+        finally:
+            scs.MCQ_SYNTHESIS_MAX_TOKENS = original_max_tokens
+
+        metadata = solved["answer_metadata"]
+        self.assertEqual(solved["answer"], "B")
+        self.assertEqual(metadata["verification_status"], "VERIFIED")
+        self.assertEqual(metadata["executor_choice"], "B")
+        self.assertEqual(metadata["verifier_choice"], "B")
+        self.assertEqual(metadata["option_evidence"]["B"]["status"], "supported")
+        self.assertEqual([call["max_tokens"] for call in calls], [123, 123])
+
+    def test_evidence_mcq_solver_adjudicates_disagreement(self):
+        original_max_tokens = scs.MCQ_SYNTHESIS_MAX_TOKENS
+        calls = []
+        responses = iter([
+            {"choice": "B", "confidence": 0.80, "reason": "executor"},
+            {"choice": "C", "confidence": 0.70, "reason": "verifier"},
+            {"choice": "C", "confidence": 0.75, "reason": "adjudicated"},
+        ])
+
+        def fake_message(**kwargs):
+            calls.append(kwargs)
+            payload = next(responses)
+            return SimpleNamespace(
+                content=[SimpleNamespace(text=json.dumps(payload))],
+                usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+            )
+
+        controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics())
+        try:
+            scs.MCQ_SYNTHESIS_MAX_TOKENS = 77
+            with patch("semantic_cache_system.create_llm_message", fake_message):
+                solved = controller._solve_mcq_with_evidence("Question?\nA. x\nB. y\nC. z\nD. w", "Document", scs.EXECUTOR_MODEL)
+        finally:
+            scs.MCQ_SYNTHESIS_MAX_TOKENS = original_max_tokens
+
+        metadata = solved["answer_metadata"]
+        self.assertEqual(solved["answer"], "C")
+        self.assertEqual(metadata["verification_status"], "ADJUDICATED")
+        self.assertEqual(metadata["executor_choice"], "B")
+        self.assertEqual(metadata["verifier_choice"], "C")
+        self.assertEqual(metadata["adjudicator_choice"], "C")
+        self.assertEqual([call["max_tokens"] for call in calls], [77, 77, 77])
+
+    def test_evidence_mcq_solver_skips_verifier_for_confident_complete_evidence(self):
+        payload = {
+            "choice": "B",
+            "confidence": 0.91,
+            "option_evidence": {
+                "A": {"status": "contradicted", "evidence": "A is ruled out."},
+                "B": {"status": "supported", "evidence": "B is directly supported."},
+                "C": {"status": "irrelevant", "evidence": "C does not answer the question."},
+                "D": {"status": "too_broad", "evidence": "D overstates the evidence."},
+            },
+            "reason": "B is best supported",
+        }
+        calls = []
+
+        def fake_message(**kwargs):
+            calls.append(kwargs)
             return SimpleNamespace(
                 content=[SimpleNamespace(text=json.dumps(payload))],
                 usage=SimpleNamespace(input_tokens=10, output_tokens=5),
@@ -391,42 +464,17 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
 
         metadata = solved["answer_metadata"]
         self.assertEqual(solved["answer"], "B")
-        self.assertEqual(metadata["verification_status"], "VERIFIED")
-        self.assertEqual(metadata["executor_choice"], "B")
-        self.assertEqual(metadata["verifier_choice"], "B")
-        self.assertEqual(metadata["option_evidence"]["B"]["status"], "supported")
+        self.assertEqual(metadata["verification_status"], "EXECUTOR_CONFIDENT")
+        self.assertEqual(len(calls), 1)
 
-    def test_evidence_mcq_solver_adjudicates_disagreement(self):
-        responses = iter([
-            {"choice": "B", "confidence": 0.80, "reason": "executor"},
-            {"choice": "C", "confidence": 0.70, "reason": "verifier"},
-            {"choice": "C", "confidence": 0.75, "reason": "adjudicated"},
-        ])
+    def test_evidence_mcq_solver_falls_back_to_strict_direct_on_bad_json(self):
+        responses = iter(["not json", "D", {"choice": "D", "confidence": 0.80, "reason": "verified"}])
 
         def fake_message(**kwargs):
             payload = next(responses)
+            text = json.dumps(payload) if isinstance(payload, dict) else payload
             return SimpleNamespace(
-                content=[SimpleNamespace(text=json.dumps(payload))],
-                usage=SimpleNamespace(input_tokens=10, output_tokens=5),
-            )
-
-        controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics())
-        with patch("semantic_cache_system.create_llm_message", fake_message):
-            solved = controller._solve_mcq_with_evidence("Question?\nA. x\nB. y\nC. z\nD. w", "Document", scs.EXECUTOR_MODEL)
-
-        metadata = solved["answer_metadata"]
-        self.assertEqual(solved["answer"], "C")
-        self.assertEqual(metadata["verification_status"], "ADJUDICATED")
-        self.assertEqual(metadata["executor_choice"], "B")
-        self.assertEqual(metadata["verifier_choice"], "C")
-        self.assertEqual(metadata["adjudicator_choice"], "C")
-
-    def test_evidence_mcq_solver_falls_back_to_strict_direct_on_bad_json(self):
-        responses = iter(["not json", "D"])
-
-        def fake_message(**kwargs):
-            return SimpleNamespace(
-                content=[SimpleNamespace(text=next(responses))],
+                content=[SimpleNamespace(text=text)],
                 usage=SimpleNamespace(input_tokens=10, output_tokens=5),
             )
 
@@ -436,8 +484,9 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
 
         metadata = solved["answer_metadata"]
         self.assertEqual(solved["answer"], "D")
-        self.assertEqual(metadata["verification_status"], "DIRECT_PARSE_FALLBACK")
+        self.assertEqual(metadata["verification_status"], "VERIFIED")
         self.assertEqual(metadata["mcq_solver_mode"], "evidence_adjudicated")
+        self.assertEqual(metadata["verifier_choice"], "D")
 
     def test_verified_write_policy_requires_verified_or_confident_adjudicated_mcq(self):
         original_policy = scs.CACHE_WRITE_POLICY
@@ -452,6 +501,23 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
             self.assertEqual(
                 controller._resolve_cache_write(True, {"verification_status": "ADJUDICATED", "confidence": 0.75}, None),
                 (True, "stored_adjudicated"),
+            )
+            self.assertEqual(
+                controller._resolve_cache_write(
+                    True,
+                    {
+                        "verification_status": "EXECUTOR_CONFIDENT",
+                        "confidence": 0.90,
+                        "option_evidence": {
+                            "A": {"status": "contradicted", "evidence": "not A"},
+                            "B": {"status": "supported", "evidence": "B"},
+                            "C": {"status": "irrelevant", "evidence": "not C"},
+                            "D": {"status": "too_broad", "evidence": "not D"},
+                        },
+                    },
+                    None,
+                ),
+                (True, "stored_executor_confident"),
             )
             self.assertEqual(
                 controller._resolve_cache_write(True, {"verification_status": "ADJUDICATED", "confidence": 0.50}, None),
