@@ -1,0 +1,140 @@
+{
+  "run_id": "20260614T203816Z",
+  "created_at": "2026-06-14T20:55:15.603941+00:00",
+  "started_at": "2026-06-14T20:38:16.730436+00:00",
+  "finished_at": "2026-06-14T20:55:15.603941+00:00",
+  "elapsed_seconds": 1018.874,
+  "benchmark_target": "longbench_v2",
+  "suite_csv": "benchmark_artifacts/longbench_v2_samples/jarvis_small.csv",
+  "suite_csv_sha256": "4e6890cd2a7b3177bddde936477aa54f674aaee673599d03af3a024f9570ba08",
+  "source_json_path": "benchmark_data/long_bench_v2/data.json",
+  "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+  "mode": "cache",
+  "llm_provider": "openai_compatible",
+  "api_key_env": null,
+  "openrouter_base_url": "https://openrouter.ai/api/v1",
+  "openai_compat_base_url": "http://127.0.0.1:8000/v1",
+  "openai_compat_executor_base_url": "http://g202.cm.cluster:8000/v1",
+  "openai_compat_evaluator_base_url": "http://g102.eth.cluster:8011/v1",
+  "openai_compat_api_key_env": "",
+  "openai_compat_extra_body": {
+    "common": {},
+    "executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    }
+  },
+  "executor_model": "Qwen/Qwen3.6-35B-A3B",
+  "evaluator_model": "Qwen/Qwen3.5-35B-A3B",
+  "top_k": 10,
+  "rerank_top": 1,
+  "synthesis_max_chunks": 6,
+  "mcq_prompt_style": "strict",
+  "mcq_solver_mode": "evidence_adjudicated",
+  "cache_write_policy": "verified",
+  "adaptive_reranker": false,
+  "doc_chunk_size": 10000,
+  "doc_chunk_overlap": 1000,
+  "retrieval_strategy": "hierarchical",
+  "parent_window_chunks": 3,
+  "neighbor_window": 1,
+  "prompt_max_input_tokens": 60000,
+  "mcq_option_aware_retrieval": true,
+  "mcq_verifier_mode": "conditional",
+  "cache_save_interval": 10,
+  "row_order": "source_grouped",
+  "reranker_disabled": true,
+  "row_types_requested": [
+    "original",
+    "exact",
+    "semantic"
+  ],
+  "max_rows": 0,
+  "rows_selected": 9,
+  "row_type_counts": {
+    "exact": 3,
+    "original": 3,
+    "semantic": 3
+  },
+  "answer_correct_count": 1,
+  "answer_accuracy": 0.111111,
+  "actual_route_counts": {
+    "exact": 1,
+    "knowledge": 0,
+    "miss": 7,
+    "semantic": 1,
+    "unknown": 0
+  },
+  "by_row_type": {
+    "exact": {
+      "rows": 3,
+      "answer_accuracy": 0.0,
+      "cache_hit_rate": 0.333333
+    },
+    "original": {
+      "rows": 3,
+      "answer_accuracy": 0.0,
+      "cache_hit_rate": 0.0
+    },
+    "semantic": {
+      "rows": 3,
+      "answer_accuracy": 0.333333,
+      "cache_hit_rate": 0.333333
+    }
+  },
+  "timing_summary": {
+    "cache_load_ms": 0.02,
+    "cache_final_save_ms": 8.602,
+    "cache_save_count": 1,
+    "context_write_ms": 21.66,
+    "ingest_ms": 933608.445,
+    "search_ms": 80122.176,
+    "interval_save_ms": 0.0,
+    "row_wall_ms": 1013757.924
+  },
+  "artifacts": {
+    "predictions": "benchmark_artifacts/longbench_v2/20260614T203816Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/longbench_v2/20260614T203816Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/longbench_v2/20260614T203816Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/longbench_v2/20260614T203816Z/official_longbench_v2_eval_report.json"
+  },
+  "total_api_calls": 16,
+  "total_input_tokens": 710900,
+  "total_output_tokens": 3173,
+  "total_tokens": 714073,
+  "total_estimated_cost_usd": 0.0,
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "longbench_v2__exact-original-semantic__b1e8ef06f05bc537",
+    "dataset_signature": "b85c1aac69f16473",
+    "cache_state_root": "/local/edogu/1084661/adarsh-rlms/cache_state",
+    "cache_state_path": "/local/edogu/1084661/adarsh-rlms/cache_state/longbench_v2__exact-original-semantic__b1e8ef06f05bc537",
+    "cache_state_existed_before_reset": false,
+    "cache_state_existed_before_run": false,
+    "cache_reset_requested": true,
+    "run_start_type": "cold_start",
+    "cache_load_attempts": 1,
+    "cache_load_successes": 0,
+    "cache_entries_before_run": 0,
+    "cache_entries_after_run": 1,
+    "cache_hits": 2,
+    "cache_hit_rate": 0.222222
+  },
+  "note": "jarvis-l40s-random-hierarchical-no-reranker-evidence-gated"
+}
