@@ -488,14 +488,14 @@ Start the executor service:
 ```bash
 MODULES="cuda12.8/toolkit/12.8.1" \
 EXECUTOR_PARTITION=gpu-h100sxm \
-EXECUTOR_GRES=gpu:4 \
-EXECUTOR_CPUS_PER_TASK=64 \
-EXECUTOR_MEM=480G \
+EXECUTOR_GRES=gpu:2 \
+EXECUTOR_CPUS_PER_TASK=32 \
+EXECUTOR_MEM=220G \
 EXECUTOR_TIME=24:00:00 \
 EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
-EXECUTOR_TP_SIZE=4 \
-EXECUTOR_MAX_MODEL_LEN=160000 \
-VLLM_GPU_MEMORY_UTILIZATION=0.95 \
+EXECUTOR_TP_SIZE=2 \
+EXECUTOR_MAX_MODEL_LEN=120000 \
+VLLM_GPU_MEMORY_UTILIZATION=0.90 \
 VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit executor
@@ -505,16 +505,16 @@ Start the evaluator service:
 
 ```bash
 MODULES="cuda12.8/toolkit/12.8.1" \
-EVALUATOR_PARTITION=gpu-h100 \
-EVALUATOR_GRES=gpu:2 \
-EVALUATOR_CPUS_PER_TASK=64 \
-EVALUATOR_MEM=220G \
+EVALUATOR_PARTITION=gpu-l40s \
+EVALUATOR_GRES=gpu:l40s:2 \
+EVALUATOR_CPUS_PER_TASK=16 \
+EVALUATOR_MEM=120G \
 EVALUATOR_TIME=24:00:00 \
 EVALUATOR_MODEL=Qwen/Qwen3.5-35B-A3B \
 EVALUATOR_TP_SIZE=2 \
 EVALUATOR_MAX_MODEL_LEN=32000 \
 EVALUATOR_PORT=8011 \
-VLLM_GPU_MEMORY_UTILIZATION=0.95 \
+VLLM_GPU_MEMORY_UTILIZATION=0.90 \
 VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit evaluator
@@ -527,20 +527,18 @@ non-thinking services for the LongBench-v2 MCQ path. If the evaluator has
 serving or output-format issues, use `Qwen/Qwen3-30B-A3B-Instruct-2507` as the
 fallback evaluator with the same `EVALUATOR_MAX_MODEL_LEN`.
 
-The executor uses the 4-GPU `gpu-h100sxm` partition with
-`EXECUTOR_MAX_MODEL_LEN=160000` for the larger-context retrieval profile below.
-The evaluator uses the 2-GPU `gpu-h100` partition with
-`EVALUATOR_MAX_MODEL_LEN=32000`. Keep the evaluator cheaper than the executor
-and cap verifier context in the client commands with
-`SEMANTIC_CACHE_MCQ_VERIFIER_MAX_SOURCE_CHARS`; MCQ first-write verification is
-a cache-write gate, not the main long-context synthesis path.
+The executor uses a shared-node H100SXM profile: 2 GPUs, 32 CPU cores, and
+`EXECUTOR_MAX_MODEL_LEN=120000`. This leaves the other half of a 4-GPU H100SXM
+node schedulable for other jobs. The evaluator stays on L40S with
+`EVALUATOR_MAX_MODEL_LEN=32000`; it verifies a bounded source excerpt and does
+not need to consume H100 capacity.
 
-If the H100SXM executor starts cleanly and the sampled run still needs more
-context, try `EXECUTOR_MAX_MODEL_LEN=200000` next. Do not jump straight to
-`256000` until the service has proven stable at `160000` and `200000`. If
-`gpu-h100sxm` is unavailable and you use the 2-GPU `gpu-h100` partition for the
-executor, set `EXECUTOR_GRES=gpu:2`, `EXECUTOR_TP_SIZE=2`, and start around
-`EXECUTOR_MAX_MODEL_LEN=120000`.
+If the shared H100SXM executor starts cleanly and the sampled run still needs
+more context, try the high-context escalation profile later: `EXECUTOR_GRES=gpu:4`,
+`EXECUTOR_CPUS_PER_TASK=64`, `EXECUTOR_MEM=480G`, `EXECUTOR_TP_SIZE=4`,
+`EXECUTOR_MAX_MODEL_LEN=160000`, and `VLLM_GPU_MEMORY_UTILIZATION=0.95`. Do not
+jump straight to `256000` until the service has proven stable at `160000` and
+`200000`.
 
 Watch both jobs:
 
@@ -592,7 +590,7 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=100000
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=75000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
 export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
@@ -628,7 +626,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --synthesis-max-chunks 4 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-h100-medium-faiss-context' \
+  --manifest-note jarvis-h100-shared-medium-faiss-context' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -654,10 +652,10 @@ The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
 `--synthesis-max-chunks 3`, `--row-order source_grouped`, and
 `--cache-save-interval 10`. The commands above intentionally disable the
 reranker and set `--top-k` equal to `--synthesis-max-chunks`, so every retrieved
-FAISS chunk is sent to the executor. The `100000 x 4` profile is intended for
-the H100 `EXECUTOR_MAX_MODEL_LEN=160000` service above. The benchmark client
-also retries context-limit synthesis failures by shrinking the source text
-before retrying, so one oversized row should not abort the run. Keep
+FAISS chunk is sent to the executor. The `75000 x 4` profile is intended for
+the shared H100 `EXECUTOR_MAX_MODEL_LEN=120000` service above. The benchmark
+client also retries context-limit synthesis failures by shrinking the source
+text before retrying, so one oversized row should not abort the run. Keep
 `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS` aligned with the runner's
 `--synthesis-max-chunks` flag. Keep
 `SEMANTIC_CACHE_MCQ_VERIFIER_MAX_SOURCE_CHARS` set so the evaluator verifies
@@ -667,7 +665,7 @@ using the executor output, but they are not cached; exact and semantic rows must
 rerun instead of replaying a known-disputed answer.
 
 ```bash
-SEMANTIC_CACHE_DOC_CHUNK_SIZE=100000
+SEMANTIC_CACHE_DOC_CHUNK_SIZE=75000
 SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
 SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
@@ -700,7 +698,7 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=100000
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=75000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
 export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
@@ -730,7 +728,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --synthesis-max-chunks 4 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-h100-medium-faiss-context-strict-mcq' \
+  --manifest-note jarvis-h100-shared-medium-faiss-context-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -783,8 +781,8 @@ Use the same service URLs and run the intended row set directly:
 
 This command exercises the cache/retrieval benchmark over the full CSV. It is
 not a direct "send every full LongBench context to the model" run. The executor
-service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=160000`, and the client
-uses `SEMANTIC_CACHE_DOC_CHUNK_SIZE=100000` with up to four synthesized FAISS
+service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=120000`, and the client
+uses `SEMANTIC_CACHE_DOC_CHUNK_SIZE=75000` with up to four synthesized FAISS
 chunks. This disables the reranker and increases the amount of source context
 sent to the executor. The benchmark client shrinks and retries any synthesis
 prompt that still crosses the active vLLM context budget. The full
@@ -796,7 +794,7 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=100000
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=75000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
 export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
@@ -825,7 +823,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --synthesis-max-chunks 4 \
   --mcq-verify-before-cache \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-h100-full-faiss-context' \
+  --manifest-note jarvis-h100-shared-full-faiss-context' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 

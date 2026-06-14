@@ -237,7 +237,7 @@ Override these only when the benchmark needs it and the service has enough KV
 cache headroom:
 
 ```bash
-EXECUTOR_MAX_MODEL_LEN=160000 bash adarsh-rlms/jarvis/run.sh submit executor
+EXECUTOR_MAX_MODEL_LEN=120000 bash adarsh-rlms/jarvis/run.sh submit executor
 EVALUATOR_MAX_MODEL_LEN=32000 bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
@@ -277,16 +277,16 @@ cleanup:   gpu-l40s by default, inspect or clean node-local Jarvis scratch
 ```
 
 Override Slurm resources per role when moving a service to H100/H200 queues.
-For example, to run the executor on one 4-GPU H100SXM node:
+For example, to run the executor on half of a 4-GPU H100SXM node:
 
 ```bash
 EXECUTOR_PARTITION=gpu-h100sxm \
-EXECUTOR_GRES=gpu:4 \
-EXECUTOR_CPUS_PER_TASK=64 \
-EXECUTOR_MEM=480G \
-EXECUTOR_TP_SIZE=4 \
-EXECUTOR_MAX_MODEL_LEN=160000 \
-VLLM_GPU_MEMORY_UTILIZATION=0.95 \
+EXECUTOR_GRES=gpu:2 \
+EXECUTOR_CPUS_PER_TASK=32 \
+EXECUTOR_MEM=220G \
+EXECUTOR_TP_SIZE=2 \
+EXECUTOR_MAX_MODEL_LEN=120000 \
+VLLM_GPU_MEMORY_UTILIZATION=0.90 \
 VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1" \
   bash adarsh-rlms/jarvis/run.sh submit executor
 ```
