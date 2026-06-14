@@ -559,28 +559,22 @@ evaluator: http://<evaluator-node>:8001/v1
 Start with a sampled LongBench-v2 run to verify the services, cache reuse, and
 scoring path before submitting a larger job. This uses the same retrieval/cache
 profile as the full benchmark below; the only intentional difference is that
-`sample_csv.py` selects 18 source-linked samples split evenly across short,
-medium, and bounded-long token buckets, producing 54 rows across the original,
-exact, and semantic variants.
+`sample_csv.py` selects 18 source-linked samples randomly with a fixed seed,
+producing 54 rows across the original, exact, and semantic variants.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000
-export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=40000
-export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
-export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
-export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
-export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=100000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=10000
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated
 export SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified
-export SEMANTIC_CACHE_ADAPTIVE_RERANKER=1
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -588,8 +582,7 @@ uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
   --sample-size 18 \
-  --selection-strategy token_stratified \
-  --token-buckets short:0:75000,medium:75001:150000,long:150001:300000 \
+  --selection-strategy random \
   --seed 0 && \
 uv run python long_bench_v2/run_benchmark.py \
   --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
@@ -600,152 +593,30 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
-  --top-k 5 \
-  --rerank-top 3 \
+  --top-k 3 \
+  --rerank-top 1 \
   --synthesis-max-chunks 3 \
   --mcq-solver-mode evidence_adjudicated \
   --cache-write-policy verified \
-  --adaptive-reranker \
+  --disable-reranker \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-token-stratified-evidence-gated' \
+  --manifest-note jarvis-l40s-random-no-reranker-evidence-gated' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
-Monitor:
+Monitor the submitted client job with `squeue -u "$USER"` and the client log in
+`$PROJECT_LOG_DIR`. When this finishes, inspect the generated artifact paths
+printed in the log; they should point under
+`benchmark_artifacts/longbench_v2/...`.
 
-```bash
-squeue -u "$USER"
-tail -f "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
-```
-
-When this finishes, inspect the generated artifact paths printed in the client
-log. They should point under `benchmark_artifacts/longbench_v2/...`.
-
-The small validation command resets only this selected cache namespace. Keep
-that reset while testing retrieval or synthesis changes; otherwise exact and
-semantic rows can reuse a bad first-write answer from an older run.
-`--selection-strategy token_stratified` avoids overfitting accuracy work to short
-contexts while excluding the `>300000` token very-long bucket. The full benchmark
-below should run the intended row set directly instead of sampling through
-`sample_csv.py`.
-
-The LongBench-v2 runner defaults to `--top-k 10`, `--rerank-top 3`,
-`--synthesis-max-chunks 3`, `--row-order source_grouped`, and
-`--cache-save-interval 10`. The commands above intentionally override the first
-three runner defaults for the larger-context profile, because the 54-row sample
-improved from `0.333` to `0.500` when each source was represented as one large
-retrieved chunk. Keep `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS` aligned with the
-runner's `--synthesis-max-chunks` flag.
-
-```bash
-SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000
-SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
-SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
-SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
-SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
-SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
-SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
-SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
-SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
-SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated
-SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified
-SEMANTIC_CACHE_ADAPTIVE_RERANKER=1
-OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
-OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON='{"chat_template_kwargs":{"enable_thinking":false}}'
-```
-
-Prefer these runner flags for the larger-context profile:
-
-```bash
---top-k 1 --rerank-top 1 --synthesis-max-chunks 1
-```
-
-Optional direct-solver ablation: if the comparable sampled run is too slow,
-rerun the sampled CSV with direct strict MCQ solving while keeping the same
-sample, model pair, and cache reset. This measures the accuracy/cost tradeoff
-from verifier/adjudicator calls.
-
-```bash
-LLM_PROVIDER=openai_compatible \
-OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
-OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
-WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000
-export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=40000
-export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
-export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
-export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
-export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
-export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
-export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
-export SEMANTIC_CACHE_MCQ_SOLVER_MODE=direct
-export SEMANTIC_CACHE_CACHE_WRITE_POLICY=always
-export SEMANTIC_CACHE_ADAPTIVE_RERANKER=1
-export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
-export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
-
-uv run python long_bench_v2/run_benchmark.py \
-  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
-  --llm-provider openai_compatible \
-  --mode cache \
-  --cache-reset \
-  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
-  --executor-model Qwen/Qwen3.6-35B-A3B \
-  --evaluator-model Qwen/Qwen3.5-35B-A3B \
-  --row-types original,exact,semantic \
-  --top-k 1 \
-  --rerank-top 1 \
-  --synthesis-max-chunks 1 \
-  --mcq-solver-mode direct \
-  --cache-write-policy always \
-  --adaptive-reranker \
-  --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-token-stratified-direct-strict-mcq' \
-  bash adarsh-rlms/jarvis/run.sh submit client
-```
-
-Optional efficient-profile ablation: if the large-context run is too slow or
-hits vLLM context-limit errors, rerun the same sampled CSV with the cheaper
-retrieval profile. This profile uses smaller chunks and more retrieval breadth;
-it was faster on the 54-row sample but less accurate.
-
-```bash
-LLM_PROVIDER=openai_compatible \
-OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
-OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
-WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
-export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
-export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
-export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
-export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
-export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
-export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
-export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
-export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
-export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
-
-uv run python long_bench_v2/run_benchmark.py \
-  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
-  --llm-provider openai_compatible \
-  --mode cache \
-  --cache-reset \
-  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
-  --executor-model Qwen/Qwen3.6-35B-A3B \
-  --evaluator-model Qwen/Qwen3.5-35B-A3B \
-  --row-types original,exact,semantic \
-  --top-k 10 \
-  --rerank-top 3 \
-  --synthesis-max-chunks 3 \
-  --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-small-efficient' \
-  bash adarsh-rlms/jarvis/run.sh submit client
-```
+Keep `--cache-reset` while testing retrieval or synthesis changes; otherwise
+exact and semantic rows can reuse a bad first-write answer from an older run.
+This profile intentionally uses `--selection-strategy random`,
+`--disable-reranker`, `--top-k 1`, `--synthesis-max-chunks 1`,
+`SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000`, and zero overlap so each answer is based
+on one large FAISS-selected chunk. The random sample can include very-long
+sources; if the client hits context limits, switch the sampler back to bounded
+`token_stratified`.
 
 ## 12. Run The Full Benchmark
 
@@ -757,9 +628,11 @@ service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=65536`, and the client
 uses `SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000` with one synthesized chunk. That
 lets the executor see substantially more source context than the efficient
 `10000/1000` retrieval profile, while still capping each synthesis prompt to one
-large retrieved chunk. The full LongBench-v2 suite contains rows well above this
-chunk/context budget, so this is a larger-context cache run, not a whole-context
-baseline.
+large retrieved chunk. `SEMANTIC_CACHE_DOC_CHUNK_SIZE` is a character budget, not
+a tokenizer count, so this profile is intentionally "large chunk / one chunk /
+zero overlap" rather than whole-source prompting. The full LongBench-v2 suite
+contains rows well above this chunk/context budget, so this is a larger-context
+cache run, not a whole-context baseline.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -768,14 +641,12 @@ OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_SIZE=200000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=0
-export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
-export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
-export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
-export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
-export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=default
+export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
+export SEMANTIC_CACHE_MCQ_SOLVER_MODE=evidence_adjudicated
+export SEMANTIC_CACHE_CACHE_WRITE_POLICY=verified
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 
@@ -790,8 +661,11 @@ uv run python long_bench_v2/run_benchmark.py \
   --top-k 1 \
   --rerank-top 1 \
   --synthesis-max-chunks 1 \
+  --mcq-solver-mode evidence_adjudicated \
+  --cache-write-policy verified \
+  --disable-reranker \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-full-large-context' \
+  --manifest-note jarvis-l40s-full-large-context-no-reranker-evidence-gated' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
