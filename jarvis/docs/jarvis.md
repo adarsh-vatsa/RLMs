@@ -72,3 +72,76 @@ Built on reliable hardware and HPC management software from DELL, the latest sto
 - Use the modules system to load and unload the software and libraries that you need for your job. Do not install software on the cluster without permission, as this will affect the security and compatibility of the cluster.
 - Use the best practices for parallel programming and optimization. Do not run serial or inefficient code on the cluster, as this will affect the speed and quality of your results.
 - Respect the policies and rules of the cluster. Do not abuse or misuse the cluster, as this will affect the availability and reliability of the cluster.
+
+# Submitting Jobs on JARVIS H100 Queue
+There are two ways to use a compute node, whether a CPU node or GPU node: interactive (srun) or batch (sbatch).
+
+To request an interactive session on a H100 GPU node using srun, you can use the following command:
+
+`$ srun --partition=gpu-h100 --nodes=1 --ntasks=1 --cpus-per-task=64 --gres=gpu:2 --time=01:00:00 --pty bash`
+
+Or if you wanted to allocate half an H100 node (32 cores and 1 GPU), allowing others to share resources:  
+
+`$ srun --partition=gpu-h100 --nodes=1 --ntasks=1 --cpus-per-task=32 --gres=gpu:1 --time=01:00:00 --pty bash`
+
+Explanation:  
+
+srun: Runs an interactive job on an allocated node.  
+- --partition=gpu-h100: Requests a node from the GPU partition.  
+- --nodes=1: Allocates an entire node.  
+- --ntasks=1: Runs a single task.  
+- --cpus-per-task=64: Requests all 64 CPU cores.  
+- --gres=gpu:2: Allocates both H100 GPUs.  
+- --time=01:00:00: Limits the session to 1 hour. You can adjust this. 
+- --pty bash: Starts an interactive Bash shell on the allocated node.  
+ 
+Once inside the interactive session, you can run commands as needed, such as checking the GPUs with:  
+
+$ module load cuda12.2  # cuda12.0, 12.1, and 12.4 are also available
+$ nvidia-smi
+
+or running your program manually:  
+$ module list # see if CUDA is already loaded  
+$ module load cuda12.2 # if you need to load it. 
+$ ./my_gpu_program  
+
+However, you may not always be able to get an interactive session in a timely manner, as other people may be using the resources. What you ought to do is once you have your program ready to go, is to submit a batch job. For that you need to make a batch script, like so:  
+  
+h100-sample.sh:  
+```
+#!/bin/bash 
+
+#SBATCH --job-name=my_gpu_job   
+#SBATCH --partition=gpu-h100   
+#SBATCH --nodes=1   
+#SBATCH --ntasks=1   
+#SBATCH --cpus-per-task=64   
+#SBATCH --gres=gpu:2   
+#SBATCH --time=01:00:00 # Set desired wall time. Max runtime is 1 day for the h100 partition, 3 days for h100sxm. 
+#SBATCH --output=slurm-%j.out   
+#SBATCH --error=slurm-%j.err   
+#SBATCH --mail-user=jhong8@stevens.edu   
+#SBATCH --mail-type=BEGIN,END,FAIL # Get email notifications for job start, end, and failure  
+
+# Load any required modules  
+module load cuda12.2 # Adjust as needed  
+
+# Activate virtual environment (if using one)  
+source ~/myenv/bin/activate    
+
+# Run your GPU job  
+srun ./my_gpu_program  
+```
+
+Once you have your batch script written, you can submit it like so:  
+
+`$ sbatch h100-sample.sh`
+
+Once your job is submitted, it will go into the queue. If there are no other jobs ahead of yours, it will run right away, but if the system is busy (use sinfo to check) and the partition full, it will wait until resources are available, and then run. 
+
+There are currently four GPU partitions on Jarvis that can be used. They are 
+
+gpu-h100, mentioned above. There are four nodes. Each node has 2x32 core CPUs, 256GB of RAM, and 2 H100 GPUs. Max runtime for a job is 24 hours. 
+gpu-h100sxm. There are four nodes. Each node has 2x32 core CPUs, 512GB of RAM, and 4 H100 GPUs. Max runtime for a job is 72 hours. 
+gpu-l40s. There are two nodes. Each node has 2x32 core CPUs, 256GB of RAM, and 4 L40S GPUs. Max runtime for a job is 24 hours. 
+gpu-h200. There are 3 nodes. Each node has 2x48 core Intel(R) Xeon(R) 6747P @ 2.7GHz and 4 H200 GPUs. Max runtime for a job is 24 hours.

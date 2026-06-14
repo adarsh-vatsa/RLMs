@@ -24,6 +24,7 @@ Common commands:
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit evaluator
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit download-all
+  EXECUTOR_PARTITION=gpu-h100sxm EXECUTOR_GRES=gpu:4 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
   CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
 
 Direct sbatch is also supported if you pass resources and JARVIS_SCRIPT_DIR yourself:
@@ -41,11 +42,11 @@ submit_mode() {
   case "$submit_mode" in
     small-smoke)
       sbatch \
-        --partition=gpu-l40s \
-        --gres=gpu:l40s:1 \
-        --cpus-per-task=8 \
-        --mem=64G \
-        --time=04:00:00 \
+        --partition="${SMALL_SMOKE_PARTITION:-gpu-l40s}" \
+        --gres="${SMALL_SMOKE_GRES:-gpu:l40s:1}" \
+        --cpus-per-task="${SMALL_SMOKE_CPUS_PER_TASK:-8}" \
+        --mem="${SMALL_SMOKE_MEM:-64G}" \
+        --time="${SMALL_SMOKE_TIME:-04:00:00}" \
         --job-name=rlms-small-smoke \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=small-smoke \
@@ -53,11 +54,11 @@ submit_mode() {
       ;;
     executor)
       sbatch \
-        --partition=gpu-l40s \
-        --gres=gpu:l40s:4 \
-        --cpus-per-task=32 \
-        --mem=220G \
-        --time=24:00:00 \
+        --partition="${EXECUTOR_PARTITION:-gpu-l40s}" \
+        --gres="${EXECUTOR_GRES:-gpu:l40s:4}" \
+        --cpus-per-task="${EXECUTOR_CPUS_PER_TASK:-32}" \
+        --mem="${EXECUTOR_MEM:-220G}" \
+        --time="${EXECUTOR_TIME:-24:00:00}" \
         --job-name=rlms-executor \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=executor \
@@ -65,11 +66,11 @@ submit_mode() {
       ;;
     evaluator)
       sbatch \
-        --partition=gpu-l40s \
-        --gres=gpu:l40s:2 \
-        --cpus-per-task=16 \
-        --mem=140G \
-        --time=24:00:00 \
+        --partition="${EVALUATOR_PARTITION:-gpu-l40s}" \
+        --gres="${EVALUATOR_GRES:-gpu:l40s:2}" \
+        --cpus-per-task="${EVALUATOR_CPUS_PER_TASK:-16}" \
+        --mem="${EVALUATOR_MEM:-140G}" \
+        --time="${EVALUATOR_TIME:-24:00:00}" \
         --job-name=rlms-evaluator \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=evaluator \
@@ -77,11 +78,11 @@ submit_mode() {
       ;;
     smoke)
       sbatch \
-        --partition=gpu-l40s \
-        --gres=gpu:l40s:2 \
-        --cpus-per-task=16 \
-        --mem=140G \
-        --time=04:00:00 \
+        --partition="${SMOKE_PARTITION:-gpu-l40s}" \
+        --gres="${SMOKE_GRES:-gpu:l40s:2}" \
+        --cpus-per-task="${SMOKE_CPUS_PER_TASK:-16}" \
+        --mem="${SMOKE_MEM:-140G}" \
+        --time="${SMOKE_TIME:-04:00:00}" \
         --job-name=rlms-smoke \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=smoke \
@@ -89,10 +90,10 @@ submit_mode() {
       ;;
     client)
       sbatch \
-        --partition=compute-short \
-        --cpus-per-task=8 \
-        --mem=32G \
-        --time=12:00:00 \
+        --partition="${CLIENT_PARTITION:-compute-short}" \
+        --cpus-per-task="${CLIENT_CPUS_PER_TASK:-8}" \
+        --mem="${CLIENT_MEM:-32G}" \
+        --time="${CLIENT_TIME:-12:00:00}" \
         --job-name=rlms-client \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=client \
@@ -100,10 +101,10 @@ submit_mode() {
       ;;
     download-small-smoke|download-executor|download-evaluator|download-smoke|download-all)
       sbatch \
-        --partition=compute-short \
-        --cpus-per-task=8 \
-        --mem=32G \
-        --time=24:00:00 \
+        --partition="${DOWNLOAD_PARTITION:-compute-short}" \
+        --cpus-per-task="${DOWNLOAD_CPUS_PER_TASK:-8}" \
+        --mem="${DOWNLOAD_MEM:-32G}" \
+        --time="${DOWNLOAD_TIME:-24:00:00}" \
         --job-name=rlms-download \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE="$submit_mode" \
@@ -117,9 +118,9 @@ submit_mode() {
       sbatch \
         --partition="${CLEANUP_PARTITION:-gpu-l40s}" \
         "${cleanup_args[@]}" \
-        --cpus-per-task=1 \
-        --mem=4G \
-        --time=00:30:00 \
+        --cpus-per-task="${CLEANUP_CPUS_PER_TASK:-1}" \
+        --mem="${CLEANUP_MEM:-4G}" \
+        --time="${CLEANUP_TIME:-00:30:00}" \
         --job-name=rlms-cleanup \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=cleanup \
