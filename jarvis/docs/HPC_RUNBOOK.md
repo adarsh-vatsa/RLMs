@@ -586,7 +586,7 @@ export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"ena
 uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_param_search.csv \
-  --sample-size 18 \
+  --sample-size 3 \
   --min-token-count 30000 \
   --max-token-count 240000 \
   --selection-strategy random \
@@ -600,9 +600,9 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
-  --top-k 20 \
-  --rerank-top 8 \
-  --synthesis-max-chunks 8 \
+  --top-k 5 \
+  --rerank-top 1 \
+  --synthesis-max-chunks 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-param-search-token-chunks-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
