@@ -376,9 +376,41 @@ Useful options:
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
 - `--manifest-note TEXT`: optional note stored in `manifest.json`.
 
-The LongBench-v2 runner intentionally reduces retrieval and synthesis breadth for speed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For local LongBench-v2 runs, prefer `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=6000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=600` so the full document is indexed as token-bounded chunks instead of a few oversized character chunks. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
+The LongBench-v2 runner intentionally reduces retrieval and synthesis breadth for speed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For local LongBench-v2 runs, use `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000` as the current speed/quality balance. This keeps the full document indexed as token-bounded chunks while reducing chunk count versus the higher-recall `6000/600` profile. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
 
 For OpenAI-compatible local serving, set `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET` below the served model's context window. For example, with `EXECUTOR_MAX_MODEL_LEN=65536`, use `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000` and keep `SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS` small, such as `8`, for single-letter MCQ answers. Synthesis packs whole ranked chunks under this budget and uses truncation only as a safety fallback for a single oversized chunk. The benchmark bridge rows include token chunk config, packed/dropped chunk counts, `synthesis_source_truncated`, and estimated input-token fields.
+
+Recommended balanced LongBench-v2 profile:
+
+```bash
+export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
+export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=4
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=4
+export SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
+
+uv run python long_bench_v2/run_benchmark.py \
+  ... \
+  --top-k 5 \
+  --rerank-top 2 \
+  --synthesis-max-chunks 4
+```
+
+If row latency is still too high, use the faster fallback profile:
+
+```bash
+export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=12000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
+export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=3
+export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+
+uv run python long_bench_v2/run_benchmark.py \
+  ... \
+  --top-k 4 \
+  --rerank-top 1 \
+  --synthesis-max-chunks 3
+```
 
 Reranker memory can be tuned without changing benchmark semantics:
 
