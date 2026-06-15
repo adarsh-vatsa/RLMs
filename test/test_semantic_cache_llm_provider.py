@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import re
 import sys
 import urllib.error
 import unittest
@@ -392,6 +393,94 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertLess(len(trimmed), len(long_source))
         self.assertTrue(info["synthesis_source_truncated"])
         self.assertLessEqual(info["synthesis_estimated_input_tokens_after"], 80)
+
+    def test_token_chunker_covers_text_with_overlap(self):
+        class FakeTokenizer:
+            def __call__(self, text, add_special_tokens=False, return_offsets_mapping=False):
+                offsets = [(match.start(), match.end()) for match in re.finditer(r"\S+\s*", text)]
+                return {"input_ids": list(range(len(offsets))), "offset_mapping": offsets}
+
+        text = "one two three four five six seven"
+        with patch("semantic_cache_system._load_document_chunk_tokenizer", return_value=FakeTokenizer()), patch(
+            "semantic_cache_system._document_chunk_tokenizer_model",
+            return_value="fake-tokenizer",
+        ):
+            chunks = scs._chunk_text_for_ingest(
+                text,
+                char_chunk_size=1000,
+                char_overlap=0,
+                token_chunk_size=3,
+                token_overlap=1,
+            )
+
+        self.assertEqual([meta["token_start"] for _, meta in chunks], [0, 2, 4])
+        self.assertEqual(chunks[-1][1]["token_end"], 7)
+        self.assertTrue(all(chunk for chunk, _ in chunks))
+        self.assertTrue(all(meta["chunk_unit"] == "tokens" for _, meta in chunks))
+        self.assertIn("three", chunks[0][0])
+        self.assertIn("three", chunks[1][0])
+
+    def test_token_chunker_falls_back_to_estimated_tokens(self):
+        text = " ".join(f"word{i}" for i in range(20))
+        with patch("semantic_cache_system._load_document_chunk_tokenizer", return_value=None):
+            chunks = scs._chunk_text_for_ingest(
+                text,
+                char_chunk_size=1000,
+                char_overlap=0,
+                token_chunk_size=6,
+                token_overlap=2,
+            )
+
+        self.assertGreater(len(chunks), 1)
+        self.assertEqual(chunks[0][1]["chunk_unit"], "estimated_tokens")
+        self.assertEqual(chunks[0][1]["char_start"], 0)
+        self.assertEqual(chunks[-1][1]["char_end"], len(text))
+        self.assertTrue(all(chunk for chunk, _ in chunks))
+
+    def test_synthesis_packs_ranked_chunks_under_budget(self):
+        system_prompt = "system"
+        query = "q"
+        separator = "\n\n---\n\n"
+        first = "alpha " * 30
+        second = "beta " * 30
+        third = "gamma " * 30
+        fixed = scs._estimate_llm_input_tokens(f"{system_prompt}\n\nQuery: {query}\n\nDocuments:\n")
+        budget = (
+            fixed
+            + scs._estimate_llm_input_tokens(first)
+            + scs._estimate_llm_input_tokens(separator)
+            + scs._estimate_llm_input_tokens(second)
+            + 1
+        )
+
+        source_text, info = scs._pack_sources_for_input_budget(
+            query=query,
+            system_prompt=system_prompt,
+            results=[{"text": first}, {"text": second}, {"text": third}],
+            source_limit=3,
+            input_token_budget=budget,
+        )
+
+        self.assertEqual(source_text, f"{first}{separator}{second}")
+        self.assertFalse(info["synthesis_source_truncated"])
+        self.assertEqual(info["synthesis_packed_chunk_count"], 2)
+        self.assertEqual(info["synthesis_dropped_chunk_count"], 1)
+        self.assertEqual(info["synthesis_selected_chunk_indices"], [0, 1])
+
+    def test_synthesis_truncates_single_oversized_chunk_as_safety_valve(self):
+        source_text, info = scs._pack_sources_for_input_budget(
+            query="q",
+            system_prompt="system",
+            results=[{"text": "alpha beta gamma delta " * 200}, {"text": "late evidence"}],
+            source_limit=2,
+            input_token_budget=80,
+        )
+
+        self.assertIn("TRUNCATED TO FIT SYNTHESIS INPUT TOKEN BUDGET", source_text)
+        self.assertTrue(info["synthesis_source_truncated"])
+        self.assertEqual(info["synthesis_packed_chunk_count"], 1)
+        self.assertEqual(info["synthesis_dropped_chunk_count"], 1)
+        self.assertEqual(info["synthesis_selected_chunk_indices"], [0])
 
     def test_sniper_fails_closed_on_malformed_or_out_of_range_json(self):
         metrics = scs.ExecutionMetrics()

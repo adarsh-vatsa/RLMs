@@ -376,9 +376,9 @@ Useful options:
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
 - `--manifest-note TEXT`: optional note stored in `manifest.json`.
 
-The LongBench-v2 runner intentionally reduces retrieval and synthesis breadth for speed, but does not change document chunking. `SEMANTIC_CACHE_DOC_CHUNK_SIZE` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP` still default to `10000` and `1000` in `semantic_cache_system.py`.
+The LongBench-v2 runner intentionally reduces retrieval and synthesis breadth for speed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For local LongBench-v2 runs, prefer `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=6000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=600` so the full document is indexed as token-bounded chunks instead of a few oversized character chunks. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
 
-For OpenAI-compatible local serving, set `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET` below the served model's context window when using large document chunks. For example, with `EXECUTOR_MAX_MODEL_LEN=65536`, use `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000` and keep `SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS` small, such as `8`, for single-letter MCQ answers. The benchmark bridge rows include `synthesis_source_truncated` and estimated input-token fields when this budget trims a synthesis prompt.
+For OpenAI-compatible local serving, set `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET` below the served model's context window. For example, with `EXECUTOR_MAX_MODEL_LEN=65536`, use `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000` and keep `SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS` small, such as `8`, for single-letter MCQ answers. Synthesis packs whole ranked chunks under this budget and uses truncation only as a safety fallback for a single oversized chunk. The benchmark bridge rows include token chunk config, packed/dropped chunk counts, `synthesis_source_truncated`, and estimated input-token fields.
 
 Reranker memory can be tuned without changing benchmark semantics:
 

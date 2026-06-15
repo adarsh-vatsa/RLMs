@@ -131,6 +131,13 @@ class FakeController:
                 "reranker_enabled": True,
                 "reranker_returned_count": rerank_top,
                 "reranker_fallback_used": False,
+                "synthesis_input_token_budget": 60000,
+                "synthesis_source_truncated": False,
+                "synthesis_estimated_input_tokens_before": 1234,
+                "synthesis_estimated_input_tokens_after": 1200,
+                "synthesis_packed_chunk_count": 3,
+                "synthesis_dropped_chunk_count": 1,
+                "synthesis_selected_chunk_indices": [0, 1, 2],
             },
         }
 
@@ -138,6 +145,10 @@ class FakeController:
 class FakeScs:
     DOCUMENT_CHUNK_SIZE = 10000
     DOCUMENT_CHUNK_OVERLAP = 1000
+    DOCUMENT_CHUNK_TOKENS = 6000
+    DOCUMENT_CHUNK_OVERLAP_TOKENS = 600
+    DOCUMENT_CHUNK_TOKENIZER_MODEL = "fake-tokenizer"
+    SYNTHESIS_INPUT_TOKEN_BUDGET = 60000
     SYNTHESIS_MAX_CHUNKS = 5
     MCQ_PROMPT_STYLE = "strict"
     SemanticCacheController = FakeController
@@ -273,12 +284,36 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             mcq_prompt_style="strict",
         )
+        changed_token_chunks = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            doc_chunk_tokens=6000,
+            doc_chunk_overlap_tokens=600,
+            doc_chunk_tokenizer_model="model-a",
+        )
+        changed_input_budget = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            synthesis_input_token_budget=60000,
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
         self.assertNotEqual(first, changed_synthesis)
         self.assertNotEqual(first, changed_extra_body)
         self.assertNotEqual(first, changed_prompt_style)
+        self.assertNotEqual(first, changed_token_chunks)
+        self.assertNotEqual(first, changed_input_budget)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -452,6 +487,10 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["rerank_top"], 2)
         self.assertEqual(manifest["doc_chunk_size"], 10000)
         self.assertEqual(manifest["doc_chunk_overlap"], 1000)
+        self.assertEqual(manifest["doc_chunk_tokens"], 6000)
+        self.assertEqual(manifest["doc_chunk_overlap_tokens"], 600)
+        self.assertEqual(manifest["doc_chunk_tokenizer_model"], "fake-tokenizer")
+        self.assertEqual(manifest["synthesis_input_token_budget"], 60000)
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
@@ -465,6 +504,10 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         )
         self.assertIn("ingest_ms", bridge_rows[0])
         self.assertIn("search_ms", bridge_rows[0])
+        self.assertEqual(bridge_rows[0]["doc_chunk_tokens"], 6000)
+        self.assertEqual(bridge_rows[0]["synthesis_packed_chunk_count"], 3)
+        self.assertEqual(bridge_rows[0]["synthesis_dropped_chunk_count"], 1)
+        self.assertEqual(bridge_rows[0]["synthesis_selected_chunk_indices"], [0, 1, 2])
 
 
 if __name__ == "__main__":

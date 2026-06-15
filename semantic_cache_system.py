@@ -123,6 +123,9 @@ if LLM_PROVIDER == "openai_compatible":
     EVALUATOR_MODEL = os.getenv("OPENAI_COMPAT_EVALUATOR_MODEL", OPENAI_COMPAT_EVALUATOR_MODEL)
 DOCUMENT_CHUNK_SIZE = _env_int("SEMANTIC_CACHE_DOC_CHUNK_SIZE", 10000)
 DOCUMENT_CHUNK_OVERLAP = _env_int("SEMANTIC_CACHE_DOC_CHUNK_OVERLAP", 1000)
+DOCUMENT_CHUNK_TOKENS = _env_int("SEMANTIC_CACHE_DOC_CHUNK_TOKENS", 0)
+DOCUMENT_CHUNK_OVERLAP_TOKENS = _env_int("SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS", 0)
+DOCUMENT_CHUNK_TOKENIZER_MODEL = os.getenv("SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL", "").strip()
 RERANKER_RELEVANCE_THRESHOLD = _env_float("SEMANTIC_CACHE_RERANKER_THRESHOLD", 0.20)
 RERANKER_BATCH_SIZE = _env_int("SEMANTIC_CACHE_RERANKER_BATCH_SIZE", 4)
 RERANKER_MAX_LENGTH = _env_int("SEMANTIC_CACHE_RERANKER_MAX_LENGTH", 8192)
@@ -561,6 +564,249 @@ def _trim_source_text_for_input_budget(
         f"{system_prompt}\n\n{user_prefix}{trimmed}"
     )
     return trimmed, info
+
+
+_DOCUMENT_CHUNK_TOKENIZER = None
+_DOCUMENT_CHUNK_TOKENIZER_MODEL_LOADED = ""
+_DOCUMENT_CHUNK_TOKENIZER_FAILED_MODEL = ""
+
+
+def _document_chunk_tokenizer_model() -> str:
+    return DOCUMENT_CHUNK_TOKENIZER_MODEL or EXECUTOR_MODEL
+
+
+def _load_document_chunk_tokenizer():
+    global _DOCUMENT_CHUNK_TOKENIZER, _DOCUMENT_CHUNK_TOKENIZER_MODEL_LOADED
+    global _DOCUMENT_CHUNK_TOKENIZER_FAILED_MODEL
+
+    model_name = _document_chunk_tokenizer_model()
+    if not model_name:
+        return None
+    if _DOCUMENT_CHUNK_TOKENIZER is not None and _DOCUMENT_CHUNK_TOKENIZER_MODEL_LOADED == model_name:
+        return _DOCUMENT_CHUNK_TOKENIZER
+    if _DOCUMENT_CHUNK_TOKENIZER_FAILED_MODEL == model_name:
+        return None
+
+    try:
+        from transformers import AutoTokenizer
+
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True, use_fast=True)
+    except Exception as exc:
+        _DOCUMENT_CHUNK_TOKENIZER_FAILED_MODEL = model_name
+        print(f"  [INGEST] ⚠ Tokenizer chunking fallback: could not load {model_name}: {exc}")
+        return None
+
+    _DOCUMENT_CHUNK_TOKENIZER = tokenizer
+    _DOCUMENT_CHUNK_TOKENIZER_MODEL_LOADED = model_name
+    _DOCUMENT_CHUNK_TOKENIZER_FAILED_MODEL = ""
+    return tokenizer
+
+
+def _chunk_text_with_estimated_tokens(
+    text: str,
+    *,
+    chunk_tokens: int,
+    overlap_tokens: int,
+) -> list[tuple[str, dict]]:
+    words = list(re.finditer(r"\S+\s*", text))
+    if not words:
+        return []
+
+    words_per_chunk = max(1, math.floor(chunk_tokens / 1.5))
+    overlap_words = min(max(0, math.floor(overlap_tokens / 1.5)), max(0, words_per_chunk - 1))
+    step = max(1, words_per_chunk - overlap_words)
+    chunks: list[tuple[str, dict]] = []
+    start_word = 0
+
+    while start_word < len(words):
+        end_word = min(start_word + words_per_chunk, len(words))
+        char_start = words[start_word].start()
+        char_end = words[end_word - 1].end()
+        chunk = text[char_start:char_end]
+        if chunk:
+            chunks.append(
+                (
+                    chunk,
+                    {
+                        "chunk_unit": "estimated_tokens",
+                        "token_start": start_word,
+                        "token_end": end_word,
+                        "char_start": char_start,
+                        "char_end": char_end,
+                        "estimated_token_count": _estimate_llm_input_tokens(chunk),
+                    },
+                )
+            )
+        if end_word >= len(words):
+            break
+        start_word += step
+
+    return chunks
+
+
+def _chunk_text_with_tokenizer(
+    text: str,
+    *,
+    tokenizer,
+    chunk_tokens: int,
+    overlap_tokens: int,
+) -> list[tuple[str, dict]] | None:
+    try:
+        encoded = tokenizer(text, add_special_tokens=False, return_offsets_mapping=True)
+    except Exception as exc:
+        print(f"  [INGEST] ⚠ Tokenizer chunking fallback: tokenizer failed: {exc}")
+        return None
+
+    input_ids = encoded.get("input_ids") if hasattr(encoded, "get") else None
+    offsets = encoded.get("offset_mapping") if hasattr(encoded, "get") else None
+    if not input_ids or not offsets or len(input_ids) != len(offsets):
+        return None
+
+    step = max(1, chunk_tokens - overlap_tokens)
+    chunks: list[tuple[str, dict]] = []
+    token_start = 0
+    while token_start < len(input_ids):
+        token_end = min(token_start + chunk_tokens, len(input_ids))
+        char_start = offsets[token_start][0]
+        char_end = offsets[token_end - 1][1]
+        chunk = text[char_start:char_end]
+        if chunk:
+            chunks.append(
+                (
+                    chunk,
+                    {
+                        "chunk_unit": "tokens",
+                        "token_start": token_start,
+                        "token_end": token_end,
+                        "char_start": char_start,
+                        "char_end": char_end,
+                        "estimated_token_count": token_end - token_start,
+                        "tokenizer_model": _document_chunk_tokenizer_model(),
+                    },
+                )
+            )
+        if token_end >= len(input_ids):
+            break
+        token_start += step
+
+    return chunks
+
+
+def _chunk_text_for_ingest(
+    text: str,
+    *,
+    char_chunk_size: int,
+    char_overlap: int,
+    token_chunk_size: int,
+    token_overlap: int,
+) -> list[tuple[str, dict]]:
+    if token_chunk_size > 0:
+        if token_overlap >= token_chunk_size:
+            raise ValueError(f"token overlap must be less than token chunk size: {token_overlap} >= {token_chunk_size}")
+
+        tokenizer = _load_document_chunk_tokenizer()
+        if tokenizer is not None:
+            token_chunks = _chunk_text_with_tokenizer(
+                text,
+                tokenizer=tokenizer,
+                chunk_tokens=token_chunk_size,
+                overlap_tokens=token_overlap,
+            )
+            if token_chunks is not None:
+                return token_chunks
+
+        return _chunk_text_with_estimated_tokens(
+            text,
+            chunk_tokens=token_chunk_size,
+            overlap_tokens=token_overlap,
+        )
+
+    chunks: list[tuple[str, dict]] = []
+    for char_start in range(0, len(text), char_chunk_size - char_overlap):
+        chunk = text[char_start:char_start + char_chunk_size]
+        if not chunk:
+            continue
+        chunks.append(
+            (
+                chunk,
+                {
+                    "chunk_unit": "chars",
+                    "char_start": char_start,
+                    "char_end": char_start + len(chunk),
+                    "estimated_token_count": _estimate_llm_input_tokens(chunk),
+                },
+            )
+        )
+    return chunks
+
+
+def _pack_sources_for_input_budget(
+    *,
+    query: str,
+    system_prompt: str,
+    results: list[dict],
+    source_limit: int,
+    input_token_budget: int,
+) -> tuple[str, dict]:
+    selected_texts: list[str] = []
+    selected_indices: list[int] = []
+    dropped_count = 0
+    user_prefix = f"Query: {query}\n\nDocuments:\n"
+
+    fixed_tokens = _estimate_llm_input_tokens(f"{system_prompt}\n\n{user_prefix}")
+    separator = "\n\n---\n\n"
+    separator_tokens = _estimate_llm_input_tokens(separator)
+    budget_enabled = input_token_budget > 0
+    available_source_budget = max(0, input_token_budget - fixed_tokens) if budget_enabled else 0
+    estimated_before = _estimate_llm_input_tokens(
+        f"{system_prompt}\n\n{user_prefix}{separator.join(r['text'] for r in results[:source_limit])}"
+    )
+    used_source_tokens = 0
+
+    for idx, result in enumerate(results[:source_limit]):
+        text = result["text"]
+        text_tokens = _estimate_llm_input_tokens(text)
+        added_separator_tokens = separator_tokens if selected_texts else 0
+        if budget_enabled and selected_texts and used_source_tokens + added_separator_tokens + text_tokens > available_source_budget:
+            dropped_count += 1
+            continue
+        if budget_enabled and not selected_texts and text_tokens > available_source_budget:
+            trimmed, trim_info = _trim_source_text_for_input_budget(
+                system_prompt=system_prompt,
+                user_prefix=user_prefix,
+                source_text=text,
+                input_token_budget=input_token_budget,
+            )
+            selected_texts.append(trimmed)
+            selected_indices.append(idx)
+            used_source_tokens = _estimate_llm_input_tokens(trimmed)
+            dropped_count += max(0, min(source_limit, len(results)) - 1)
+            source_text = separator.join(selected_texts)
+            info = {
+                **trim_info,
+                "synthesis_packed_chunk_count": len(selected_texts),
+                "synthesis_dropped_chunk_count": dropped_count,
+                "synthesis_selected_chunk_indices": selected_indices,
+                "synthesis_estimated_input_tokens_before": estimated_before,
+            }
+            return source_text, info
+
+        selected_texts.append(text)
+        selected_indices.append(idx)
+        used_source_tokens += added_separator_tokens + text_tokens
+
+    source_text = separator.join(selected_texts)
+    estimated_after = _estimate_llm_input_tokens(f"{system_prompt}\n\n{user_prefix}{source_text}")
+    info = {
+        "synthesis_input_token_budget": int(input_token_budget),
+        "synthesis_source_truncated": False,
+        "synthesis_estimated_input_tokens_before": estimated_before,
+        "synthesis_estimated_input_tokens_after": estimated_after,
+        "synthesis_packed_chunk_count": len(selected_texts),
+        "synthesis_dropped_chunk_count": dropped_count,
+        "synthesis_selected_chunk_indices": selected_indices,
+    }
+    return source_text, info
 
 
 def create_llm_message(**kwargs):
@@ -1057,10 +1303,30 @@ class SemanticCacheController:
         """Compute a deterministic hash of the data chunk being analyzed."""
         return hashlib.md5(context.strip().encode()).hexdigest()
 
-    def _get_data_scope_hash(self, docs_dir: Path, txt_files: List[Path], chunk_size: int, overlap: int) -> str:
+    def _get_data_scope_hash(
+        self,
+        docs_dir: Path,
+        txt_files: List[Path],
+        *,
+        chunk_unit: str,
+        chunk_size: int,
+        overlap: int,
+        token_chunk_size: int = 0,
+        token_overlap: int = 0,
+        tokenizer_model: str = "",
+    ) -> str:
         """Compute a deterministic identity for the active search document set."""
         hasher = hashlib.sha256()
-        hasher.update(f"chunk_size={chunk_size}\noverlap={overlap}\n".encode("utf-8"))
+        hasher.update(
+            (
+                f"chunk_unit={chunk_unit}\n"
+                f"chunk_size={chunk_size}\n"
+                f"overlap={overlap}\n"
+                f"token_chunk_size={token_chunk_size}\n"
+                f"token_overlap={token_overlap}\n"
+                f"tokenizer_model={tokenizer_model}\n"
+            ).encode("utf-8")
+        )
         for file_path in txt_files:
             text = file_path.read_text(encoding="utf-8", errors="ignore")
             normalized = text.replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -1840,18 +2106,36 @@ class SemanticCacheController:
         docs_dir = Path(docs_dir)
         chunk_size = DOCUMENT_CHUNK_SIZE if chunk_size is None else int(chunk_size)
         overlap = DOCUMENT_CHUNK_OVERLAP if overlap is None else int(overlap)
-        if chunk_size <= overlap:
+        token_chunk_size = int(DOCUMENT_CHUNK_TOKENS)
+        token_overlap = int(DOCUMENT_CHUNK_OVERLAP_TOKENS)
+        tokenizer_model = _document_chunk_tokenizer_model() if token_chunk_size > 0 else ""
+        chunk_unit = "chars"
+        if token_chunk_size > 0:
+            if token_overlap >= token_chunk_size:
+                raise ValueError(f"token overlap must be less than token chunk size: {token_overlap} >= {token_chunk_size}")
+            chunk_unit = "tokens" if _load_document_chunk_tokenizer() is not None else "estimated_tokens"
+        elif chunk_size <= overlap:
             raise ValueError(f"chunk_size must be greater than overlap: {chunk_size} <= {overlap}")
         if reset_index or self.doc_index is None:
             self.doc_index = FAISSIndex()
             self._doc_chunks = []
+            self._doc_chunk_metadata = []
 
         txt_files = sorted(docs_dir.glob("*.txt"))
         if not txt_files:
             print(f"  No .txt files found in {docs_dir}")
             self.data_scope_hash = None
             return 0
-        self.data_scope_hash = self._get_data_scope_hash(docs_dir, txt_files, chunk_size, overlap)
+        self.data_scope_hash = self._get_data_scope_hash(
+            docs_dir,
+            txt_files,
+            chunk_unit=chunk_unit,
+            chunk_size=chunk_size,
+            overlap=overlap,
+            token_chunk_size=token_chunk_size,
+            token_overlap=token_overlap,
+            tokenizer_model=tokenizer_model,
+        )
 
         print(f"  [INGEST] Found {len(txt_files)} documents")
         all_chunks = []
@@ -1862,16 +2146,20 @@ class SemanticCacheController:
             text = f.read_text(encoding="utf-8", errors="ignore").strip()
             if not text:
                 continue
-            # Chunk the document
-            for i in range(0, len(text), chunk_size - overlap):
-                chunk = text[i:i + chunk_size]
-                if len(chunk) < 50:
+            for chunk, chunk_meta in _chunk_text_for_ingest(
+                text,
+                char_chunk_size=chunk_size,
+                char_overlap=overlap,
+                token_chunk_size=token_chunk_size,
+                token_overlap=token_overlap,
+            ):
+                if not chunk:
                     continue
                 meta = {
                     "filename": f.name,
                     "chunk_index": chunk_offset + len(all_chunks),
-                    "char_start": i,
                     "data_scope_hash": self.data_scope_hash,
+                    **chunk_meta,
                 }
                 all_chunks.append(chunk)
                 all_meta.append(meta)
@@ -1881,7 +2169,7 @@ class SemanticCacheController:
             self.data_scope_hash = None
             return 0
 
-        print(f"  [INGEST] Chunked into {len(all_chunks)} pieces, embedding...")
+        print(f"  [INGEST] Chunked into {len(all_chunks)} {chunk_unit} pieces, embedding...")
         embeddings = self.embedder.encode_documents(all_chunks)
         self.doc_index.add(embeddings, all_meta)
         print(f"  [INGEST] ✓ Indexed {len(all_chunks)} chunks")
@@ -1889,8 +2177,12 @@ class SemanticCacheController:
         # Store chunks for retrieval
         if reset_index:
             self._doc_chunks = all_chunks
+            self._doc_chunk_metadata = all_meta
         else:
             self._doc_chunks.extend(all_chunks)
+            if not hasattr(self, "_doc_chunk_metadata"):
+                self._doc_chunk_metadata = []
+            self._doc_chunk_metadata.extend(all_meta)
         return len(all_chunks)
 
     def retrieve(self, query: str, top_k: int = 20, rerank_top: int = 5) -> List[dict]:
@@ -2180,7 +2472,6 @@ class SemanticCacheController:
             }
 
         source_limit = max(1, SYNTHESIS_MAX_CHUNKS)
-        source_text = "\n\n---\n\n".join(r["text"] for r in results[:source_limit])
         is_choice_query = self._query_requests_choice_letter(query)
         if is_choice_query:
             system_prompt = _mcq_system_prompt()
@@ -2195,10 +2486,11 @@ class SemanticCacheController:
             )
             max_tokens = SYNTHESIS_MAX_TOKENS
         user_prefix = f"Query: {query}\n\nDocuments:\n"
-        source_text, synthesis_budget_info = _trim_source_text_for_input_budget(
+        source_text, synthesis_budget_info = _pack_sources_for_input_budget(
+            query=query,
             system_prompt=system_prompt,
-            user_prefix=user_prefix,
-            source_text=source_text,
+            results=results,
+            source_limit=source_limit,
             input_token_budget=SYNTHESIS_INPUT_TOKEN_BUDGET,
         )
         if hasattr(self, "_last_retrieval_info"):
@@ -2210,6 +2502,12 @@ class SemanticCacheController:
                 f"(estimated {synthesis_budget_info['synthesis_estimated_input_tokens_before']} → "
                 f"{synthesis_budget_info['synthesis_estimated_input_tokens_after']})"
             )
+        selected_source_indices = synthesis_budget_info.get("synthesis_selected_chunk_indices") or []
+        selected_sources = [
+            results[i]
+            for i in selected_source_indices
+            if isinstance(i, int) and 0 <= i < len(results)
+        ] or results[:source_limit]
 
         t_synth = time.time()
         model = EXECUTOR_MODEL
@@ -2227,7 +2525,7 @@ class SemanticCacheController:
 
         # ── Stage 3: Verify and cache ──
         consensus = self.consensus_verify(query, source_text, answer, model)
-        self.store(query, source_text, answer, model_used=model, sources=results)
+        self.store(query, source_text, answer, model_used=model, sources=selected_sources)
 
         return {
             "query": query, "answer": answer,

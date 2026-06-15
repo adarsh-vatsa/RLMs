@@ -264,6 +264,12 @@ def resolve_cache_namespace(
     synthesis_max_chunks: int = 0,
     openai_compatible_extra_body: dict | None = None,
     mcq_prompt_style: str = "default",
+    doc_chunk_size: int = 0,
+    doc_chunk_overlap: int = 0,
+    doc_chunk_tokens: int = 0,
+    doc_chunk_overlap_tokens: int = 0,
+    doc_chunk_tokenizer_model: str = "",
+    synthesis_input_token_budget: int = 0,
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
@@ -273,7 +279,9 @@ def resolve_cache_namespace(
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
             f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
-            f"{extra_body_sig}\n{mcq_prompt_style}"
+            f"{extra_body_sig}\n{mcq_prompt_style}\n"
+            f"{doc_chunk_size}\n{doc_chunk_overlap}\n{doc_chunk_tokens}\n"
+            f"{doc_chunk_overlap_tokens}\n{doc_chunk_tokenizer_model}\n{synthesis_input_token_budget}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -490,6 +498,16 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         if callable(extra_body_config_getter):
             openai_compatible_extra_body_config = extra_body_config_getter(redact=True)
     effective_mcq_prompt_style = _coerce_text(getattr(scs, "MCQ_PROMPT_STYLE", "default")) or "default"
+    scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
+    effective_doc_chunk_size = int(getattr(scs, "DOCUMENT_CHUNK_SIZE", 0))
+    effective_doc_chunk_overlap = int(getattr(scs, "DOCUMENT_CHUNK_OVERLAP", 0))
+    effective_doc_chunk_tokens = int(getattr(scs, "DOCUMENT_CHUNK_TOKENS", 0))
+    effective_doc_chunk_overlap_tokens = int(getattr(scs, "DOCUMENT_CHUNK_OVERLAP_TOKENS", 0))
+    effective_doc_chunk_tokenizer_model = _coerce_text(getattr(scs, "DOCUMENT_CHUNK_TOKENIZER_MODEL", ""))
+    if effective_doc_chunk_tokens > 0 and not effective_doc_chunk_tokenizer_model:
+        effective_doc_chunk_tokenizer_model = args.executor_model
+    effective_synthesis_input_token_budget = int(getattr(scs, "SYNTHESIS_INPUT_TOKEN_BUDGET", 0))
+    effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
 
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
@@ -505,6 +523,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             synthesis_max_chunks=args.synthesis_max_chunks,
             openai_compatible_extra_body=openai_compatible_extra_body_config,
             mcq_prompt_style=effective_mcq_prompt_style,
+            doc_chunk_size=effective_doc_chunk_size,
+            doc_chunk_overlap=effective_doc_chunk_overlap,
+            doc_chunk_tokens=effective_doc_chunk_tokens,
+            doc_chunk_overlap_tokens=effective_doc_chunk_overlap_tokens,
+            doc_chunk_tokenizer_model=effective_doc_chunk_tokenizer_model,
+            synthesis_input_token_budget=effective_synthesis_input_token_budget,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -535,10 +559,6 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         print(f"[LONGBENCH-V2] Cache namespace : {cache_namespace}")
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
-    scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
-    effective_doc_chunk_size = int(scs.DOCUMENT_CHUNK_SIZE)
-    effective_doc_chunk_overlap = int(scs.DOCUMENT_CHUNK_OVERLAP)
-    effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
     shared_embedder = scs.EmbeddingEngine()
     shared_reranker = None if args.disable_reranker else scs.Reranker()
 
@@ -652,6 +672,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "synthesis_max_chunks": effective_synthesis_max_chunks,
             "doc_chunk_size": effective_doc_chunk_size,
             "doc_chunk_overlap": effective_doc_chunk_overlap,
+            "doc_chunk_tokens": effective_doc_chunk_tokens,
+            "doc_chunk_overlap_tokens": effective_doc_chunk_overlap_tokens,
+            "doc_chunk_tokenizer_model": effective_doc_chunk_tokenizer_model,
             "ingested_chunks": ingested_chunks,
             "expected_cache_type": row.get("expected_cache_type", ""),
             "expected_from_cache": row.get("expected_from_cache", ""),
@@ -678,6 +701,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "synthesis_source_truncated": retrieval.get("synthesis_source_truncated"),
             "synthesis_estimated_input_tokens_before": retrieval.get("synthesis_estimated_input_tokens_before"),
             "synthesis_estimated_input_tokens_after": retrieval.get("synthesis_estimated_input_tokens_after"),
+            "synthesis_packed_chunk_count": retrieval.get("synthesis_packed_chunk_count"),
+            "synthesis_dropped_chunk_count": retrieval.get("synthesis_dropped_chunk_count"),
+            "synthesis_selected_chunk_indices": retrieval.get("synthesis_selected_chunk_indices"),
         }
         bridge_rows.append(bridge_row)
 
@@ -758,6 +784,10 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "mcq_prompt_style": effective_mcq_prompt_style,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,
+        "doc_chunk_tokens": effective_doc_chunk_tokens,
+        "doc_chunk_overlap_tokens": effective_doc_chunk_overlap_tokens,
+        "doc_chunk_tokenizer_model": effective_doc_chunk_tokenizer_model,
+        "synthesis_input_token_budget": effective_synthesis_input_token_budget,
         "cache_save_interval": args.cache_save_interval,
         "row_order": args.row_order,
         "reranker_disabled": bool(args.disable_reranker),

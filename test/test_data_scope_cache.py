@@ -178,6 +178,44 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 self.assertFalse(result["from_cache"])
                 self.assertEqual(result["answer"], "No relevant documents found.")
 
+    def test_data_scope_hash_includes_token_chunk_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = Path(tmp)
+            doc_path = docs_dir / "doc.txt"
+            doc_path.write_text("full document text", encoding="utf-8")
+            controller = make_controller()
+
+            char_scope = controller._get_data_scope_hash(
+                docs_dir,
+                [doc_path],
+                chunk_unit="chars",
+                chunk_size=10000,
+                overlap=1000,
+            )
+            token_scope = controller._get_data_scope_hash(
+                docs_dir,
+                [doc_path],
+                chunk_unit="tokens",
+                chunk_size=10000,
+                overlap=1000,
+                token_chunk_size=6000,
+                token_overlap=600,
+                tokenizer_model="model-a",
+            )
+            changed_token_scope = controller._get_data_scope_hash(
+                docs_dir,
+                [doc_path],
+                chunk_unit="tokens",
+                chunk_size=10000,
+                overlap=1000,
+                token_chunk_size=8000,
+                token_overlap=800,
+                tokenizer_model="model-a",
+            )
+
+        self.assertNotEqual(char_scope, token_scope)
+        self.assertNotEqual(token_scope, changed_token_scope)
+
     def test_retrieval_falls_back_to_faiss_when_reranker_returns_no_results(self):
         controller = make_controller()
         first_meta = {"filename": "contract.txt", "chunk_index": 0}
