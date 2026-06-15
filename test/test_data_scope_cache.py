@@ -264,49 +264,59 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(controller._last_retrieval_info["reranker_returned_count"], 1)
         self.assertTrue(controller._last_retrieval_info["reranker_fallback_used"])
 
-    def test_iterative_scan_budget_respects_ratio_min_max_topk_and_total(self):
+    def test_iterative_scan_budget_respects_ratio_min_max_and_total(self):
         self.assertEqual(
             scs._compute_iterative_scan_budget(
                 total_chunks=20,
-                faiss_priority_count=5,
-                scan_ratio=0.30,
-                min_chunks=3,
-                max_chunks=24,
-            ),
-            6,
-        )
-        self.assertEqual(
-            scs._compute_iterative_scan_budget(
-                total_chunks=100,
-                faiss_priority_count=5,
-                scan_ratio=0.30,
-                min_chunks=3,
-                max_chunks=24,
-            ),
-            24,
-        )
-        self.assertEqual(
-            scs._compute_iterative_scan_budget(
-                total_chunks=100,
-                faiss_priority_count=5,
-                scan_ratio=0.30,
+                min_chunk_ratio=0.30,
+                max_chunk_ratio=0.50,
                 min_chunks=3,
                 max_chunks=0,
             ),
-            30,
+            (6, 10),
+        )
+        self.assertEqual(
+            scs._compute_iterative_scan_budget(
+                total_chunks=100,
+                min_chunk_ratio=0.30,
+                max_chunk_ratio=0.50,
+                min_chunks=3,
+                max_chunks=0,
+            ),
+            (30, 50),
+        )
+        self.assertEqual(
+            scs._compute_iterative_scan_budget(
+                total_chunks=100,
+                min_chunk_ratio=0.30,
+                max_chunk_ratio=0.50,
+                min_chunks=3,
+                max_chunks=24,
+            ),
+            (30, 30),
+        )
+        self.assertEqual(
+            scs._compute_iterative_scan_budget(
+                total_chunks=100,
+                min_chunk_ratio=0.30,
+                max_chunk_ratio=0.50,
+                min_chunks=3,
+                max_chunks=24,
+            ),
+            (30, 30),
         )
         self.assertEqual(
             scs._compute_iterative_scan_budget(
                 total_chunks=4,
-                faiss_priority_count=5,
-                scan_ratio=0.30,
+                min_chunk_ratio=0.30,
+                max_chunk_ratio=0.50,
                 min_chunks=3,
                 max_chunks=24,
             ),
-            4,
+            (3, 3),
         )
 
-    def test_iterative_scan_order_is_faiss_first_then_document_order_without_duplicates(self):
+    def test_iterative_scan_order_is_faiss_ranked_without_duplicates(self):
         controller = make_controller()
         controller._doc_chunks = ["chunk zero", "chunk one", "chunk two", "chunk three"]
         controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(4)]
@@ -315,11 +325,11 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             {"text": "chunk zero", "score": 0.88, "metadata": {"chunk_index": 0}},
         ]
 
-        ordered, total_chunks, faiss_priority_count = controller._build_iterative_scan_results(faiss_results)
+        ordered, total_chunks, faiss_result_count = controller._build_iterative_scan_results(faiss_results)
 
         self.assertEqual(total_chunks, 4)
-        self.assertEqual(faiss_priority_count, 2)
-        self.assertEqual([row["metadata"]["chunk_index"] for row in ordered], [2, 0, 1, 3])
+        self.assertEqual(faiss_result_count, 2)
+        self.assertEqual([row["metadata"]["chunk_index"] for row in ordered], [2, 0])
 
     def test_iterative_early_stop_requires_high_confidence_and_context_satisfied(self):
         ledger = scs._new_evidence_ledger()
@@ -339,7 +349,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 ledger=ledger,
                 visited_count=1,
                 min_chunks=3,
-                faiss_priority_count=2,
+                comparative_required_count=2,
                 comparative_query=False,
             ),
             (False, "min_chunks_not_reached"),
@@ -350,7 +360,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 ledger=ledger,
                 visited_count=3,
                 min_chunks=3,
-                faiss_priority_count=2,
+                comparative_required_count=2,
                 comparative_query=False,
             ),
             (True, "high_confidence_answer"),
@@ -362,7 +372,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 ledger=ledger,
                 visited_count=3,
                 min_chunks=3,
-                faiss_priority_count=2,
+                comparative_required_count=2,
                 comparative_query=False,
             ),
             (False, "needs_more_context"),
@@ -377,7 +387,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 ledger=contradiction_ledger,
                 visited_count=3,
                 min_chunks=3,
-                faiss_priority_count=2,
+                comparative_required_count=2,
                 comparative_query=False,
             ),
             (False, "unresolved_contradictions"),
@@ -402,7 +412,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual({note["chunk_index"] for note in ledger["A"]["support"]}, {7})
         self.assertEqual(ledger["visited_chunks"], [7])
 
-    def test_iterative_comparative_query_requires_faiss_priority_before_stop(self):
+    def test_iterative_comparative_query_requires_scan_budget_before_stop(self):
         ledger = scs._new_evidence_ledger()
         decision = {
             "status": "answer_found",
@@ -418,12 +428,12 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             ledger=ledger,
             visited_count=2,
             min_chunks=1,
-            faiss_priority_count=3,
+            comparative_required_count=3,
             comparative_query=True,
         )
 
         self.assertFalse(should_stop)
-        self.assertEqual(reason, "comparative_faiss_priority_not_complete")
+        self.assertEqual(reason, "comparative_scan_budget_not_complete")
 
     def test_iterative_search_early_stops_and_stores_compact_context(self):
         controller = make_controller()
@@ -451,14 +461,16 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             stored["result"] = result
             stored["sources"] = sources
 
-        with patch.object(scs, "SCAN_CHUNK_RATIO", 0.67), patch.object(scs, "SCAN_MIN_CHUNKS", 2), patch.object(
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 2), patch.object(
             scs, "SCAN_MAX_CHUNKS", 0
         ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
             controller, "_finalize_iterative_answer", side_effect=AssertionError("finalizer should not run")
         ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
             controller, "store", side_effect=fake_store
         ):
-            result = controller._search_iterative("Which option is correct?", top_k=2, rerank_top=1, synthesize=True)
+            result = controller._search_iterative("What answer is correct?", top_k=2, rerank_top=1, synthesize=True)
 
         self.assertEqual(result["answer"], "B")
         self.assertTrue(result["retrieval"]["iterative_scan_early_stop"])
@@ -479,7 +491,9 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             {"status": "partial", "supported_choice": None, "confidence": "low", "needs_more_context": True},
         ]
 
-        with patch.object(scs, "SCAN_CHUNK_RATIO", 1.0), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
             scs, "SCAN_MAX_CHUNKS", 0
         ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
             controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C"})

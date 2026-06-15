@@ -336,12 +336,13 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 The iterative reader is an opt-in LongBench/Jarvis path for long-context MCQ rows:
 
 1. FAISS returns candidate chunks for the query.
-2. The scan order starts with FAISS-ranked chunk indices, then appends unvisited chunks in document order.
-3. The scan budget is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_CHUNK_RATIO)`, at least `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`, at least the FAISS priority count from `--top-k`, no more than total chunks, and capped by `SEMANTIC_CACHE_SCAN_MAX_CHUNKS` unless that cap is `0`.
-4. The executor inspects one chunk per call and returns strict JSON with support, contradictions, open questions, confidence, and whether more context is needed.
-5. The controller maintains a compact evidence ledger by answer choice.
-6. Early stop is allowed only after the minimum chunk count when the inspector reports a high-confidence answer, no unresolved contradiction, and no need for more context. Comparative questions must inspect all FAISS-priority chunks first.
-7. If early stop does not happen, the executor runs a final adjudication over the compact ledger and returns one answer letter.
+2. The early-stop minimum is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO)`, at least `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`.
+3. The scan budget is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO)`, no more than total chunks, and optionally capped by `SEMANTIC_CACHE_SCAN_MAX_CHUNKS` unless that cap is `0`.
+4. The controller asks FAISS for the scan-budget top-N chunks and inspects them in FAISS-ranked order.
+5. The executor inspects one chunk per call and returns strict JSON with support, contradictions, open questions, confidence, and whether more context is needed.
+6. The controller maintains a compact evidence ledger by answer choice.
+7. Early stop is allowed only after the minimum chunk count when the inspector reports a high-confidence answer, no unresolved contradiction, and no need for more context. Comparative questions must inspect the full FAISS-ranked scan budget first.
+8. If early stop does not happen, the executor runs a final adjudication over the compact ledger and returns one answer letter.
 
 This path stores the final answer with the evidence ledger and supporting chunk metadata rather than a giant concatenated source context.
 
@@ -358,7 +359,7 @@ search("What charges did Maxwell face?")
   │
   ├─► Cache MISS:
   │     ├─ packed mode: retrieve() → FAISS + Reranker/backfill → Sonnet synthesis from selected sources
-  │     ├─ iterative LongBench/Jarvis mode: FAISS-priority chunk scan → evidence ledger → final answer
+  │     ├─ iterative LongBench/Jarvis mode: FAISS-ranked chunk scan → evidence ledger → final answer
   │     ├─ Grounding check (free)
   │     ├─ Consensus verify ($0.0001)
   │     ├─ store() → cache + embed + fact extract
@@ -489,9 +490,10 @@ The same library can serve: legal filings, financial documents, medical records,
 | `RERANKER_BATCH_SIZE` | 4 | Max reranker candidates per local model forward pass |
 | `RERANKER_MAX_LENGTH` | 8192 | Max reranker prompt tokens including prompt prefix/suffix |
 | `SEARCH_MODE` | `packed` | Global search mode; Jarvis LongBench sets `iterative` |
-| `SCAN_CHUNK_RATIO` | 0.30 | Fraction of chunks inspected by the iterative reader |
-| `SCAN_MIN_CHUNKS` | 3 | Minimum iterative chunk inspections before early stop |
-| `SCAN_MAX_CHUNKS` | 24 | Iterative inspection cap; `0` means no hard cap |
+| `SCAN_MIN_CHUNK_RATIO` | 0.30 | Fraction of chunks required before iterative early stop |
+| `SCAN_MAX_CHUNK_RATIO` | 0.50 | Fraction of chunks inspected if no early stop occurs |
+| `SCAN_MIN_CHUNKS` | 3 | Absolute minimum iterative chunk inspections before early stop |
+| `SCAN_MAX_CHUNKS` | 0 | Optional absolute iterative inspection cap; `0` means no hard cap |
 | `SCAN_MAX_TOKENS` | 256 | Output-token cap for chunk inspection and final adjudication |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |

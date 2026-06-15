@@ -356,9 +356,10 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
-export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
-export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=24
+export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
@@ -377,7 +378,6 @@ uv run python long_bench_v2/run_benchmark.py \
   --mode cache \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --row-types original,exact,semantic \
-  --top-k 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-small-smoke' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -568,9 +568,10 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=20000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
-export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.30
-export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
-export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=24
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.15
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=4
+export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
@@ -594,7 +595,6 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
-  --top-k 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-param-search-iterative-scan-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
@@ -620,29 +620,31 @@ single letter.
 The default profile above is the current accuracy-first LongBench/Jarvis path.
 FAISS ranks likely chunks first, then the executor inspects chunks one at a time
 and carries a compact evidence ledger forward. The scan budget is adaptive:
-`SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.30` inspects roughly 30% of chunks, never fewer
-than `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`, always including the FAISS-priority chunks,
-and never more than `SEMANTIC_CACHE_SCAN_MAX_CHUNKS` unless that max is set to
-`0`.
+`SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30` means early stop is not allowed until
+at least 30% of chunks have been inspected, while
+`SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50` means the reader scans up to 50% of
+chunks if no high-confidence answer is found. The reader asks FAISS for the
+ratio-based scan budget and inspects those chunks in FAISS-ranked order.
+`SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0` leaves the ratio-based maximum uncapped by an
+absolute chunk count.
 
-If rows still take too long, lower the ratio or max chunk cap first:
+If rows still take too long, lower the ratio band first:
 
 ```bash
-export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.20
-export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=12
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.20
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.35
 
 uv run python long_bench_v2/run_benchmark.py \
-  ... \
-  --top-k 4
+  ...
 ```
 
 The main knobs to edit in the one command above are the sample token band,
 `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`,
 `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS`,
-`SEMANTIC_CACHE_SCAN_CHUNK_RATIO`, `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`,
-`SEMANTIC_CACHE_SCAN_MAX_CHUNKS`, `SEMANTIC_CACHE_SCAN_MAX_TOKENS`, and
-`--top-k`. For additional short, medium, and long random sample examples, see
-`long_bench_v2/docs/longbench_v2.md`.
+`SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO`, `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`,
+`SEMANTIC_CACHE_SCAN_MIN_CHUNKS`, `SEMANTIC_CACHE_SCAN_MAX_CHUNKS`,
+`SEMANTIC_CACHE_SCAN_MAX_TOKENS`. For additional short, medium, and long random
+sample examples, see `long_bench_v2/docs/longbench_v2.md`.
 
 ## 12. Run The Full Benchmark
 
@@ -664,9 +666,10 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
-export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
-export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=24
+export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
@@ -681,7 +684,6 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original,exact,semantic \
-  --top-k 5 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-full-iterative-scan-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client

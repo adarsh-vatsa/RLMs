@@ -367,9 +367,9 @@ Useful options:
 - `--executor-model MODEL`: model assigned to `semantic_cache_system.EXECUTOR_MODEL`. Default: `claude-sonnet-4-5`.
 - `--evaluator-model MODEL`: model assigned to cache verification/fact extraction calls. Default: `claude-haiku-4-5`.
 - `--openrouter-base-url URL`: OpenRouter-compatible base URL. Default: `https://openrouter.ai/api/v1`.
-- `--top-k N`: FAISS retrieval candidates. In iterative mode, these are the priority chunks inspected first. Default: `10`.
+- `--top-k N`: packed-mode FAISS retrieval candidates. Jarvis iterative mode ignores this flag and computes FAISS top-N from the scan budget. Default: `10`.
 - `--rerank-top N`: packed-mode compatibility argument. In Jarvis iterative mode, the reranker is not instantiated or used. Default: `3`.
-- `--synthesis-max-chunks N`: packed-mode synthesis limit. In iterative mode, scan breadth is controlled by the scan ratio, min, max, and `--top-k`. Default: `3` for this runner.
+- `--synthesis-max-chunks N`: packed-mode synthesis limit. In iterative mode, scan breadth is controlled by the scan min/max ratio band and absolute scan floors/caps. Default: `3` for this runner.
 - `--row-order input|source_grouped`: execution order. Default: `source_grouped`, so rows with the same `source_id` run adjacent to reduce repeated ingest work.
 - `--cache-save-interval N`: save cache state every N rows in cache mode, plus a final save. Default: `10`; use `1` for per-row saves.
 - `--disable-reranker`: skip the reranker in packed mode. Jarvis iterative mode already bypasses the reranker.
@@ -378,7 +378,7 @@ Useful options:
 
 The LongBench-v2 runner intentionally reduces retrieval breadth for speed while keeping the full source document indexed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For Jarvis LongBench-v2 runs, use `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000` as the current speed/quality balance. This keeps the full document indexed as token-bounded chunks while reducing chunk count versus the higher-recall `6000/600` profile. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
 
-For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects one chunk per call and maintains a compact evidence ledger before either early-stopping or running a final adjudication call. The bridge rows and manifest include the token chunk config, search mode, scan ratio/min/max/token caps, scan order, visited chunk count, early-stop reason, supporting chunk indices, and compact evidence ledger.
+For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects one chunk per call and maintains a compact evidence ledger before either early-stopping or running a final adjudication call. The bridge rows and manifest include the token chunk config, search mode, scan min/max ratio band, absolute scan floors/caps, scan order, visited chunk count, early-stop reason, supporting chunk indices, and compact evidence ledger.
 
 Recommended balanced Jarvis LongBench-v2 profile:
 
@@ -386,15 +386,15 @@ Recommended balanced Jarvis LongBench-v2 profile:
 export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
-export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
-export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=24
+export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
 uv run python long_bench_v2/run_benchmark.py \
-  ... \
-  --top-k 5
+  ...
 ```
 
 If row latency is still too high, use the faster fallback profile:
@@ -402,12 +402,11 @@ If row latency is still too high, use the faster fallback profile:
 ```bash
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=12000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
-export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.20
-export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=12
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.20
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.35
 
 uv run python long_bench_v2/run_benchmark.py \
-  ... \
-  --top-k 4
+  ...
 ```
 
 Packed-mode reranker memory can be tuned without changing benchmark semantics:

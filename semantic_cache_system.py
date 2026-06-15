@@ -139,11 +139,12 @@ SEARCH_MODE = os.getenv("SEMANTIC_CACHE_SEARCH_MODE", "packed").strip().lower() 
 if SEARCH_MODE not in {"packed", "iterative"}:
     print(f"[CONFIG] Ignoring invalid SEMANTIC_CACHE_SEARCH_MODE={SEARCH_MODE!r}; using 'packed'")
     SEARCH_MODE = "packed"
-SCAN_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_CHUNK_RATIO", 0.30)
+SCAN_MIN_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO", 0.30)
+SCAN_MAX_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO", 0.50)
 SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
-SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 24)
+SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 256)
-SCAN_ORDER = "faiss_then_document"
+SCAN_ORDER = "faiss_ranked"
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -831,26 +832,29 @@ def _normalize_choice_letter(value) -> str | None:
 def _compute_iterative_scan_budget(
     *,
     total_chunks: int,
-    faiss_priority_count: int,
-    scan_ratio: float,
+    min_chunk_ratio: float,
+    max_chunk_ratio: float,
     min_chunks: int,
     max_chunks: int,
-) -> int:
+) -> tuple[int, int]:
     total_chunks = max(0, int(total_chunks))
     if total_chunks == 0:
-        return 0
+        return 0, 0
 
-    faiss_priority_count = min(max(0, int(faiss_priority_count)), total_chunks)
-    ratio = max(0.0, float(scan_ratio))
-    ratio_budget = math.ceil(total_chunks * ratio)
-    budget = max(ratio_budget, max(0, int(min_chunks)), faiss_priority_count)
-    budget = min(budget, total_chunks)
+    min_ratio_budget = math.ceil(total_chunks * max(0.0, float(min_chunk_ratio)))
+    early_stop_min = max(1, min_ratio_budget, max(0, int(min_chunks)))
+    early_stop_min = min(early_stop_min, total_chunks)
+
+    max_ratio = max(0.0, float(max_chunk_ratio))
+    max_ratio_budget = math.ceil(total_chunks * max_ratio) if max_ratio > 0 else total_chunks
+    scan_budget = max(max_ratio_budget, early_stop_min)
+    scan_budget = min(scan_budget, total_chunks)
 
     max_chunks = int(max_chunks)
     if max_chunks > 0:
-        effective_cap = min(total_chunks, max(max_chunks, faiss_priority_count))
-        budget = min(budget, effective_cap)
-    return max(0, budget)
+        effective_cap = min(total_chunks, max(max_chunks, early_stop_min))
+        scan_budget = min(scan_budget, effective_cap)
+    return early_stop_min, max(0, scan_budget)
 
 
 def _bounded_text(value, limit: int = 240) -> str:
@@ -971,14 +975,14 @@ def _should_stop_iterative_scan(
     ledger: dict,
     visited_count: int,
     min_chunks: int,
-    faiss_priority_count: int,
+    comparative_required_count: int,
     comparative_query: bool,
 ) -> tuple[bool, str]:
     decision = decision if isinstance(decision, dict) else {}
     if visited_count < max(1, int(min_chunks)):
         return False, "min_chunks_not_reached"
-    if comparative_query and visited_count < max(1, int(faiss_priority_count)):
-        return False, "comparative_faiss_priority_not_complete"
+    if comparative_query and visited_count < max(1, int(comparative_required_count)):
+        return False, "comparative_scan_budget_not_complete"
     if str(decision.get("status") or "").strip().lower() != "answer_found":
         return False, "answer_not_found"
     choice = _normalize_choice_letter(decision.get("supported_choice") or ledger.get("best_choice"))
@@ -2483,10 +2487,16 @@ class SemanticCacheController:
                 pass
         return fallback_idx
 
-    def _build_iterative_scan_results(self, faiss_results: list[dict]) -> tuple[list[dict], int, int]:
+    def _build_iterative_scan_results(
+        self,
+        faiss_results: list[dict],
+        *,
+        total_chunks: int | None = None,
+    ) -> tuple[list[dict], int, int]:
         doc_chunks = list(getattr(self, "_doc_chunks", []) or [])
-        doc_meta = list(getattr(self, "_doc_chunk_metadata", []) or [])
-        total_chunks = len(doc_chunks) if doc_chunks else len(faiss_results)
+        resolved_total_chunks = int(total_chunks) if total_chunks is not None else 0
+        if resolved_total_chunks <= 0:
+            resolved_total_chunks = len(doc_chunks) if doc_chunks else len(faiss_results)
 
         ordered: list[dict] = []
         seen: set[int] = set()
@@ -2502,18 +2512,7 @@ class SemanticCacheController:
             ordered.append(copied)
             seen.add(chunk_index)
 
-        faiss_priority_count = len(ordered)
-        if doc_chunks:
-            for chunk_index, text in enumerate(doc_chunks):
-                if chunk_index in seen:
-                    continue
-                metadata = dict(doc_meta[chunk_index]) if chunk_index < len(doc_meta) else {}
-                metadata["chunk_index"] = chunk_index
-                metadata["faiss_rank"] = None
-                ordered.append({"text": text, "score": None, "metadata": metadata})
-                seen.add(chunk_index)
-
-        return ordered, total_chunks, faiss_priority_count
+        return ordered, resolved_total_chunks, len(ordered)
 
     def _inspect_iterative_chunk(self, query: str, ledger: dict, result: dict) -> dict:
         metadata = result.get("metadata") or {}
@@ -2592,7 +2591,17 @@ class SemanticCacheController:
         return sorted(indices)
 
     def _search_iterative(self, query: str, top_k: int, rerank_top: int, synthesize: bool) -> dict:
-        results = self.retrieve(query, top_k=top_k, rerank_top=rerank_top, use_reranker=False)
+        total_chunks = len(getattr(self, "_doc_chunks", []) or [])
+        if total_chunks == 0 and self.doc_index is not None:
+            total_chunks = int(getattr(self.doc_index, "total", 0) or 0)
+        early_stop_min_chunks, scan_budget = _compute_iterative_scan_budget(
+            total_chunks=total_chunks,
+            min_chunk_ratio=SCAN_MIN_CHUNK_RATIO,
+            max_chunk_ratio=SCAN_MAX_CHUNK_RATIO,
+            min_chunks=SCAN_MIN_CHUNKS,
+            max_chunks=SCAN_MAX_CHUNKS,
+        )
+        results = self.retrieve(query, top_k=scan_budget, rerank_top=rerank_top, use_reranker=False)
         if not results:
             return {
                 "query": query,
@@ -2608,13 +2617,9 @@ class SemanticCacheController:
                 "retrieval": getattr(self, "_last_retrieval_info", {}),
             }
 
-        scan_results, total_chunks, faiss_priority_count = self._build_iterative_scan_results(results)
-        scan_budget = _compute_iterative_scan_budget(
+        scan_results, total_chunks, faiss_result_count = self._build_iterative_scan_results(
+            results,
             total_chunks=total_chunks,
-            faiss_priority_count=faiss_priority_count,
-            scan_ratio=SCAN_CHUNK_RATIO,
-            min_chunks=SCAN_MIN_CHUNKS,
-            max_chunks=SCAN_MAX_CHUNKS,
         )
         scan_results = scan_results[:scan_budget]
         ledger = _new_evidence_ledger()
@@ -2635,8 +2640,8 @@ class SemanticCacheController:
                 decision=decision,
                 ledger=ledger,
                 visited_count=inspector_call_count,
-                min_chunks=SCAN_MIN_CHUNKS,
-                faiss_priority_count=faiss_priority_count,
+                min_chunks=early_stop_min_chunks,
+                comparative_required_count=scan_budget,
                 comparative_query=comparative_query,
             )
             stop_reason = reason
@@ -2674,14 +2679,17 @@ class SemanticCacheController:
         iterative_info = {
             "search_mode": "iterative",
             "scan_order": SCAN_ORDER,
-            "scan_chunk_ratio": float(SCAN_CHUNK_RATIO),
+            "scan_min_chunk_ratio": float(SCAN_MIN_CHUNK_RATIO),
+            "scan_max_chunk_ratio": float(SCAN_MAX_CHUNK_RATIO),
             "scan_min_chunks": int(SCAN_MIN_CHUNKS),
             "scan_max_chunks": int(SCAN_MAX_CHUNKS),
             "scan_max_tokens": int(SCAN_MAX_TOKENS),
             "iterative_scan_total_chunks": total_chunks,
+            "iterative_scan_early_stop_min_chunks": early_stop_min_chunks,
             "iterative_scan_budget": scan_budget,
             "iterative_scan_visited_chunk_count": inspector_call_count,
-            "iterative_scan_faiss_priority_count": faiss_priority_count,
+            "iterative_scan_faiss_top_n": scan_budget,
+            "iterative_scan_faiss_result_count": faiss_result_count,
             "iterative_scan_early_stop": early_stop,
             "iterative_scan_stop_reason": stop_reason,
             "iterative_scan_selected_chunk_indices": visited_indices,

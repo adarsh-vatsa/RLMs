@@ -14,14 +14,17 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 - `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS`: Sets token overlap between adjacent chunks.
   Overlap protects boundary evidence, but higher overlap increases chunk count and embedding cost.
 
-- `SEMANTIC_CACHE_SCAN_CHUNK_RATIO`: Fraction of available chunks inspected in iterative mode.
-  Longer contexts therefore get proportionally more executor inspections than shorter contexts.
+- `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO`: Fraction of chunks that must be inspected before early stopping is allowed.
+  This keeps longer contexts from stopping after the same tiny number of chunks as shorter contexts.
 
-- `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`: Minimum number of chunks inspected before early stopping is allowed.
-  This prevents the executor from returning after only one lucky-looking chunk.
+- `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`: Fraction of chunks the reader may inspect if no high-confidence answer is found.
+  This is the ratio-based FAISS retrieval and scan budget.
 
-- `SEMANTIC_CACHE_SCAN_MAX_CHUNKS`: Maximum number of chunks inspected in iterative mode.
-  Set it to `0` to remove the hard cap; the scan still cannot exceed the total number of chunks.
+- `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`: Absolute minimum number of chunks inspected before early stopping is allowed.
+  This is a safety floor in addition to `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO`.
+
+- `SEMANTIC_CACHE_SCAN_MAX_CHUNKS`: Optional absolute maximum number of chunks inspected in iterative mode.
+  Set it to `0` to rely only on `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`.
 
 - `SEMANTIC_CACHE_SCAN_MAX_TOKENS`: Maximum output tokens for each chunk-inspection or final-adjudication call.
   Keep this compact because each call should return strict JSON, not long prose.
@@ -83,6 +86,3 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 
 - `--row-types`: Comma-separated row variants to run.
   `original,exact,semantic` tests first-write quality plus exact and semantic cache reuse.
-
-- `--top-k`: Number of FAISS-priority chunks placed first in the iterative scan order.
-  Higher values increase recall, and the scan budget is always at least this priority count.
