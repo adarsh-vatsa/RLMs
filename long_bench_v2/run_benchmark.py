@@ -674,6 +674,10 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "reranker_enabled": retrieval.get("reranker_enabled"),
             "reranker_returned_count": retrieval.get("reranker_returned_count"),
             "reranker_fallback_used": retrieval.get("reranker_fallback_used"),
+            "synthesis_input_token_budget": retrieval.get("synthesis_input_token_budget"),
+            "synthesis_source_truncated": retrieval.get("synthesis_source_truncated"),
+            "synthesis_estimated_input_tokens_before": retrieval.get("synthesis_estimated_input_tokens_before"),
+            "synthesis_estimated_input_tokens_after": retrieval.get("synthesis_estimated_input_tokens_after"),
         }
         bridge_rows.append(bridge_row)
 

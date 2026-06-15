@@ -360,8 +360,9 @@ export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
 uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
@@ -575,8 +576,9 @@ export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -625,10 +627,13 @@ single letter.
 
 The main knobs to edit in the one command above are the sample token band,
 `SEMANTIC_CACHE_DOC_CHUNK_SIZE`, `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP`,
-`SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS`, `--top-k`, `--rerank-top`, and
+`SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS`,
+`SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET`, `--top-k`, `--rerank-top`, and
 `--synthesis-max-chunks`. Keep `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS` aligned
-with the runner's `--synthesis-max-chunks` flag. For additional short, medium,
-and long random sample examples, see `long_bench_v2/docs/longbench_v2.md`.
+with the runner's `--synthesis-max-chunks` flag. The input budget should stay
+below `EXECUTOR_MAX_MODEL_LEN` by enough room for system/query overhead and
+output tokens. For additional short, medium, and long random sample examples,
+see `long_bench_v2/docs/longbench_v2.md`.
 
 ## 12. Run The Full Benchmark
 
@@ -656,8 +661,9 @@ export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
 export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=5
 export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=1
+export SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS=512
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=32
+export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"

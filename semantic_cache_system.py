@@ -131,6 +131,7 @@ SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
 MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
+SYNTHESIS_INPUT_TOKEN_BUDGET = _env_int("SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET", 0)
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -511,6 +512,55 @@ def _mcq_system_prompt() -> str:
         "one capital letter: A, B, C, or D. If evidence is incomplete, choose "
         "the best-supported option from the given choices. Do not explain."
     )
+
+
+def _estimate_llm_input_tokens(text: str) -> int:
+    if not text:
+        return 0
+    # Conservative cross-tokenizer estimate. The LongBench CSV estimate is
+    # words-based, but vLLM rejects requests by the served model's tokenizer.
+    char_estimate = math.ceil(len(text) / 3)
+    word_estimate = math.ceil(len(text.split()) * 1.5)
+    return max(char_estimate, word_estimate, 1)
+
+
+def _trim_source_text_for_input_budget(
+    *,
+    system_prompt: str,
+    user_prefix: str,
+    source_text: str,
+    input_token_budget: int,
+) -> tuple[str, dict]:
+    estimated_before = _estimate_llm_input_tokens(f"{system_prompt}\n\n{user_prefix}{source_text}")
+    info = {
+        "synthesis_input_token_budget": int(input_token_budget),
+        "synthesis_source_truncated": False,
+        "synthesis_estimated_input_tokens_before": estimated_before,
+        "synthesis_estimated_input_tokens_after": estimated_before,
+    }
+    if input_token_budget <= 0:
+        return source_text, info
+
+    fixed_tokens = _estimate_llm_input_tokens(f"{system_prompt}\n\n{user_prefix}")
+    source_budget = max(0, input_token_budget - fixed_tokens)
+    source_tokens = _estimate_llm_input_tokens(source_text)
+    if source_tokens <= source_budget:
+        return source_text, info
+
+    if source_budget <= 0:
+        trimmed = ""
+    else:
+        char_budget = max(1, math.floor(len(source_text) * source_budget / max(source_tokens, 1)))
+        marker = "\n\n[TRUNCATED TO FIT SYNTHESIS INPUT TOKEN BUDGET]"
+        trimmed = source_text[: max(0, char_budget - len(marker))].rstrip()
+        if trimmed:
+            trimmed += marker
+
+    info["synthesis_source_truncated"] = True
+    info["synthesis_estimated_input_tokens_after"] = _estimate_llm_input_tokens(
+        f"{system_prompt}\n\n{user_prefix}{trimmed}"
+    )
+    return trimmed, info
 
 
 def create_llm_message(**kwargs):
@@ -2144,6 +2194,23 @@ class SemanticCacheController:
                 "Otherwise, cite specific details and be precise and thorough."
             )
             max_tokens = SYNTHESIS_MAX_TOKENS
+        user_prefix = f"Query: {query}\n\nDocuments:\n"
+        source_text, synthesis_budget_info = _trim_source_text_for_input_budget(
+            system_prompt=system_prompt,
+            user_prefix=user_prefix,
+            source_text=source_text,
+            input_token_budget=SYNTHESIS_INPUT_TOKEN_BUDGET,
+        )
+        if hasattr(self, "_last_retrieval_info"):
+            self._last_retrieval_info.update(synthesis_budget_info)
+        if synthesis_budget_info.get("synthesis_source_truncated"):
+            print(
+                "  [SYNTH] Trimmed source context for input budget "
+                f"{SYNTHESIS_INPUT_TOKEN_BUDGET} tokens "
+                f"(estimated {synthesis_budget_info['synthesis_estimated_input_tokens_before']} → "
+                f"{synthesis_budget_info['synthesis_estimated_input_tokens_after']})"
+            )
+
         t_synth = time.time()
         model = EXECUTOR_MODEL
         response = create_llm_message(
@@ -2151,7 +2218,7 @@ class SemanticCacheController:
             max_tokens=max_tokens,
             temperature=0,
             system=system_prompt,
-            messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}]
+            messages=[{"role": "user", "content": f"{user_prefix}{source_text}"}]
         )
         self.metrics.record_call(model, response.usage.input_tokens, response.usage.output_tokens)
         answer = response.content[0].text

@@ -378,6 +378,8 @@ Useful options:
 
 The LongBench-v2 runner intentionally reduces retrieval and synthesis breadth for speed, but does not change document chunking. `SEMANTIC_CACHE_DOC_CHUNK_SIZE` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP` still default to `10000` and `1000` in `semantic_cache_system.py`.
 
+For OpenAI-compatible local serving, set `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET` below the served model's context window when using large document chunks. For example, with `EXECUTOR_MAX_MODEL_LEN=65536`, use `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000` and keep `SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS` small, such as `8`, for single-letter MCQ answers. The benchmark bridge rows include `synthesis_source_truncated` and estimated input-token fields when this budget trims a synthesis prompt.
+
 Reranker memory can be tuned without changing benchmark semantics:
 
 ```bash

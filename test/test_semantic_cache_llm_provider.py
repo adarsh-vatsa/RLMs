@@ -370,6 +370,29 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertIn("overstate the evidence", strict_prompt)
         self.assertNotEqual(strict_prompt, default_prompt)
 
+    def test_synthesis_source_text_can_be_trimmed_to_input_budget(self):
+        short_source = "short evidence"
+        short_trimmed, short_info = scs._trim_source_text_for_input_budget(
+            system_prompt="system",
+            user_prefix="Query: question\n\nDocuments:\n",
+            source_text=short_source,
+            input_token_budget=100,
+        )
+        self.assertEqual(short_trimmed, short_source)
+        self.assertFalse(short_info["synthesis_source_truncated"])
+
+        long_source = "alpha beta gamma delta " * 200
+        trimmed, info = scs._trim_source_text_for_input_budget(
+            system_prompt="system",
+            user_prefix="Query: question\n\nDocuments:\n",
+            source_text=long_source,
+            input_token_budget=80,
+        )
+
+        self.assertLess(len(trimmed), len(long_source))
+        self.assertTrue(info["synthesis_source_truncated"])
+        self.assertLessEqual(info["synthesis_estimated_input_tokens_after"], 80)
+
     def test_sniper_fails_closed_on_malformed_or_out_of_range_json(self):
         metrics = scs.ExecutionMetrics()
         controller = scs.SemanticCacheController(metrics=metrics)
