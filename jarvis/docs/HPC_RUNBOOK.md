@@ -569,8 +569,8 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=20000
-export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
+CLIENT_CMD='export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
+export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
 export SEMANTIC_CACHE_RERANKER_THRESHOLD=0.20
 export SEMANTIC_CACHE_RERANKER_BATCH_SIZE=4
 export SEMANTIC_CACHE_RERANKER_MAX_LENGTH=8192
@@ -602,7 +602,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --row-types original,exact,semantic \
   --top-k 5 \
   --rerank-top 2 \
-  --synthesis-max-chunks 3 \
+  --synthesis-max-chunks 4 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-param-search-balanced-token-chunks-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
