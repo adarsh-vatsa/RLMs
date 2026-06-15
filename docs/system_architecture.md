@@ -119,6 +119,8 @@ encode_documents(["The defendant was charged with..."])
 
 > **Why a reranker?** FAISS does similarity on 1024-dim embeddings — good for recall but imprecise for ranking. The cross-encoder processes the full query-document pair jointly, achieving much higher ranking precision. This is the industry-standard two-stage retrieval pattern (bi-encoder → cross-encoder).
 
+> **LongBench/Jarvis exception**: The Jarvis LongBench path can run with `SEMANTIC_CACHE_SEARCH_MODE=iterative`, which bypasses the reranker and lets the executor inspect FAISS-prioritized chunks one at a time. Other benchmark runners and packed-mode workflows can still use the reranker.
+
 ---
 
 ## Cache Components
@@ -312,21 +314,36 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 - Builds `doc_index` (FAISS) with per-chunk metadata (filename, chunk_index, text, etc.)
 - Persists via `save_doc_index()` which writes `index.faiss`, `metadata.json`, `chunks.json`, and `corpus_config.json`
 
-#### 2m. Document Retrieval with Reranker (`retrieve`)
-**Line 1077** · FAISS dragnet → Qwen3-Reranker relevance gate.
+#### 2m. Document Retrieval (`retrieve`)
+**Line 1077** · FAISS dragnet with optional Qwen3-Reranker relevance gate.
 
 1. Encode query via `encode_query()` (with instruction prefix)
 2. FAISS search for top-20 candidates (~130ms)
 3. Extract text from FAISS metadata for each candidate
-4. Rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.20)
+4. In packed mode, rerank via Qwen3-Reranker-0.6B with relevance threshold (default 0.20)
 5. Return top-5 reranked/backfilled results with scores and metadata
 6. If the reranker returns too few results, backfill from the FAISS ranking and record retrieval telemetry
+7. In iterative LongBench/Jarvis mode, call `retrieve(..., use_reranker=False)` and preserve the FAISS ranking as the priority scan order
 
 `ingest()` defaults to rebuilding the active document index for the provided directory with 4,000-character chunks and 500-character overlap. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
 
 > **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.20 threshold keeps irrelevant documents filtered while avoiding evidence starvation on long-context benchmark chunks where reranker scores are not perfectly calibrated.
 
 > **Why backfill exists**: The reranker remains the preferred path, but a strict relevance gate can reject or under-supply long chunks even when FAISS found usable evidence. Backfill prevents evidence starvation while keeping synthesis bounded to the selected top chunks.
+
+#### 2m.1. LongBench/Jarvis Iterative Reader (`SEMANTIC_CACHE_SEARCH_MODE=iterative`)
+
+The iterative reader is an opt-in LongBench/Jarvis path for long-context MCQ rows:
+
+1. FAISS returns candidate chunks for the query.
+2. The scan order starts with FAISS-ranked chunk indices, then appends unvisited chunks in document order.
+3. The scan budget is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_CHUNK_RATIO)`, at least `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`, at least the FAISS priority count from `--top-k`, no more than total chunks, and capped by `SEMANTIC_CACHE_SCAN_MAX_CHUNKS` unless that cap is `0`.
+4. The executor inspects one chunk per call and returns strict JSON with support, contradictions, open questions, confidence, and whether more context is needed.
+5. The controller maintains a compact evidence ledger by answer choice.
+6. Early stop is allowed only after the minimum chunk count when the inspector reports a high-confidence answer, no unresolved contradiction, and no need for more context. Comparative questions must inspect all FAISS-priority chunks first.
+7. If early stop does not happen, the executor runs a final adjudication over the compact ledger and returns one answer letter.
+
+This path stores the final answer with the evidence ledger and supporting chunk metadata rather than a giant concatenated source context.
 
 #### 2n. Full Search Pipeline (`search`)
 **Line 1130** · The main entry point for domain-specific clients.
@@ -340,8 +357,8 @@ search("What charges did Maxwell face?")
   │     └─ Knowledge fact lookup + data_scope_hash gate (free, FAISS)
   │
   ├─► Cache MISS:
-  │     ├─ retrieve() → FAISS + Reranker (top-5)
-  │     ├─ Sonnet synthesis from top-3 sources
+  │     ├─ packed mode: retrieve() → FAISS + Reranker/backfill → Sonnet synthesis from selected sources
+  │     ├─ iterative LongBench/Jarvis mode: FAISS-priority chunk scan → evidence ledger → final answer
   │     ├─ Grounding check (free)
   │     ├─ Consensus verify ($0.0001)
   │     ├─ store() → cache + embed + fact extract
@@ -471,6 +488,11 @@ The same library can serve: legal filings, financial documents, medical records,
 | `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Local cross-encoder reranker |
 | `RERANKER_BATCH_SIZE` | 4 | Max reranker candidates per local model forward pass |
 | `RERANKER_MAX_LENGTH` | 8192 | Max reranker prompt tokens including prompt prefix/suffix |
+| `SEARCH_MODE` | `packed` | Global search mode; Jarvis LongBench sets `iterative` |
+| `SCAN_CHUNK_RATIO` | 0.30 | Fraction of chunks inspected by the iterative reader |
+| `SCAN_MIN_CHUNKS` | 3 | Minimum iterative chunk inspections before early stop |
+| `SCAN_MAX_CHUNKS` | 24 | Iterative inspection cap; `0` means no hard cap |
+| `SCAN_MAX_TOKENS` | 256 | Output-token cap for chunk inspection and final adjudication |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |
@@ -504,7 +526,7 @@ Every `search()` call returns:
 {
     "query": "What charges did Maxwell face?",
     "answer": "Based on the source documents...",
-    "results": [                       # Reranked source documents
+    "results": [                       # Selected source documents or inspected iterative chunks
         {"text": "...", "score": 0.87, "metadata": {"filename": "DOJ-OGR-00001229.txt"}},
     ],
     "timing": {"cache_ms": 2.1, "dragnet_ms": 130, "rerank_ms": 10900, "synthesize_ms": 3200},

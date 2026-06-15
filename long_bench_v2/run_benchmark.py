@@ -270,18 +270,32 @@ def resolve_cache_namespace(
     doc_chunk_overlap_tokens: int = 0,
     doc_chunk_tokenizer_model: str = "",
     synthesis_input_token_budget: int = 0,
+    search_mode: str = "packed",
+    scan_chunk_ratio: float = 0.0,
+    scan_min_chunks: int = 0,
+    scan_max_chunks: int = 0,
+    scan_max_tokens: int = 0,
+    scan_order: str = "",
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
     extra_body_sig = json.dumps(openai_compatible_extra_body or {}, sort_keys=True)
+    normalized_search_mode = (_coerce_text(search_mode) or "packed").lower()
+    namespace_rerank_top = 0 if normalized_search_mode == "iterative" else rerank_top
+    namespace_synthesis_max_chunks = 0 if normalized_search_mode == "iterative" else synthesis_max_chunks
+    namespace_synthesis_input_budget = (
+        0 if normalized_search_mode == "iterative" else synthesis_input_token_budget
+    )
     digest = hashlib.sha256(
         (
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
-            f"{top_k}\n{rerank_top}\n{synthesis_max_chunks}\n{row_type_sig}\n"
+            f"{top_k}\n{namespace_rerank_top}\n{namespace_synthesis_max_chunks}\n{row_type_sig}\n"
             f"{extra_body_sig}\n{mcq_prompt_style}\n"
             f"{doc_chunk_size}\n{doc_chunk_overlap}\n{doc_chunk_tokens}\n"
-            f"{doc_chunk_overlap_tokens}\n{doc_chunk_tokenizer_model}\n{synthesis_input_token_budget}"
+            f"{doc_chunk_overlap_tokens}\n{doc_chunk_tokenizer_model}\n{namespace_synthesis_input_budget}\n"
+            f"{normalized_search_mode}\n{scan_chunk_ratio}\n{scan_min_chunks}\n{scan_max_chunks}\n"
+            f"{scan_max_tokens}\n{scan_order}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -508,6 +522,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         effective_doc_chunk_tokenizer_model = args.executor_model
     effective_synthesis_input_token_budget = int(getattr(scs, "SYNTHESIS_INPUT_TOKEN_BUDGET", 0))
     effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
+    effective_search_mode = _coerce_text(getattr(scs, "SEARCH_MODE", "packed")) or "packed"
+    effective_scan_chunk_ratio = float(getattr(scs, "SCAN_CHUNK_RATIO", 0.0))
+    effective_scan_min_chunks = int(getattr(scs, "SCAN_MIN_CHUNKS", 0))
+    effective_scan_max_chunks = int(getattr(scs, "SCAN_MAX_CHUNKS", 0))
+    effective_scan_max_tokens = int(getattr(scs, "SCAN_MAX_TOKENS", 0))
+    effective_scan_order = _coerce_text(getattr(scs, "SCAN_ORDER", ""))
 
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
@@ -529,6 +549,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             doc_chunk_overlap_tokens=effective_doc_chunk_overlap_tokens,
             doc_chunk_tokenizer_model=effective_doc_chunk_tokenizer_model,
             synthesis_input_token_budget=effective_synthesis_input_token_budget,
+            search_mode=effective_search_mode,
+            scan_chunk_ratio=effective_scan_chunk_ratio,
+            scan_min_chunks=effective_scan_min_chunks,
+            scan_max_chunks=effective_scan_max_chunks,
+            scan_max_tokens=effective_scan_max_tokens,
+            scan_order=effective_scan_order,
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -548,11 +574,19 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     print(f"[LONGBENCH-V2] Row types: {row_types}")
     print(f"[LONGBENCH-V2] Row order: {args.row_order}")
     print(f"[LONGBENCH-V2] Mode: {args.mode}")
-    print(
-        "[LONGBENCH-V2] Retrieval config: "
-        f"top_k={args.top_k}, rerank_top={args.rerank_top}, "
-        f"synthesis_max_chunks={args.synthesis_max_chunks}"
-    )
+    if effective_search_mode == "iterative":
+        print(
+            "[LONGBENCH-V2] Retrieval config: "
+            f"search_mode=iterative, top_k={args.top_k}, "
+            f"scan_ratio={effective_scan_chunk_ratio}, scan_min={effective_scan_min_chunks}, "
+            f"scan_max={effective_scan_max_chunks}, scan_max_tokens={effective_scan_max_tokens}"
+        )
+    else:
+        print(
+            "[LONGBENCH-V2] Retrieval config: "
+            f"top_k={args.top_k}, rerank_top={args.rerank_top}, "
+            f"synthesis_max_chunks={args.synthesis_max_chunks}, search_mode={effective_search_mode}"
+        )
     print(f"[LONGBENCH-V2] Output dir: {out_dir}")
     if cache_state_enabled:
         print(f"[LONGBENCH-V2] Cache state root: {cache_state_root}")
@@ -560,7 +594,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
     shared_embedder = scs.EmbeddingEngine()
-    shared_reranker = None if args.disable_reranker else scs.Reranker()
+    shared_reranker = None if args.disable_reranker or effective_search_mode == "iterative" else scs.Reranker()
 
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
@@ -670,6 +704,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "top_k": args.top_k,
             "rerank_top": args.rerank_top,
             "synthesis_max_chunks": effective_synthesis_max_chunks,
+            "search_mode": effective_search_mode,
+            "scan_chunk_ratio": effective_scan_chunk_ratio,
+            "scan_min_chunks": effective_scan_min_chunks,
+            "scan_max_chunks": effective_scan_max_chunks,
+            "scan_max_tokens": effective_scan_max_tokens,
+            "scan_order": effective_scan_order,
             "doc_chunk_size": effective_doc_chunk_size,
             "doc_chunk_overlap": effective_doc_chunk_overlap,
             "doc_chunk_tokens": effective_doc_chunk_tokens,
@@ -704,6 +744,17 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "synthesis_packed_chunk_count": retrieval.get("synthesis_packed_chunk_count"),
             "synthesis_dropped_chunk_count": retrieval.get("synthesis_dropped_chunk_count"),
             "synthesis_selected_chunk_indices": retrieval.get("synthesis_selected_chunk_indices"),
+            "iterative_scan_total_chunks": retrieval.get("iterative_scan_total_chunks"),
+            "iterative_scan_budget": retrieval.get("iterative_scan_budget"),
+            "iterative_scan_visited_chunk_count": retrieval.get("iterative_scan_visited_chunk_count"),
+            "iterative_scan_faiss_priority_count": retrieval.get("iterative_scan_faiss_priority_count"),
+            "iterative_scan_early_stop": retrieval.get("iterative_scan_early_stop"),
+            "iterative_scan_stop_reason": retrieval.get("iterative_scan_stop_reason"),
+            "iterative_scan_selected_chunk_indices": retrieval.get("iterative_scan_selected_chunk_indices"),
+            "iterative_scan_supporting_chunk_indices": retrieval.get("iterative_scan_supporting_chunk_indices"),
+            "iterative_scan_inspector_call_count": retrieval.get("iterative_scan_inspector_call_count"),
+            "iterative_scan_final_adjudication_call_count": retrieval.get("iterative_scan_final_adjudication_call_count"),
+            "iterative_scan_evidence_ledger": retrieval.get("iterative_scan_evidence_ledger"),
         }
         bridge_rows.append(bridge_row)
 
@@ -782,6 +833,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "rerank_top": args.rerank_top,
         "synthesis_max_chunks": effective_synthesis_max_chunks,
         "mcq_prompt_style": effective_mcq_prompt_style,
+        "search_mode": effective_search_mode,
+        "scan_chunk_ratio": effective_scan_chunk_ratio,
+        "scan_min_chunks": effective_scan_min_chunks,
+        "scan_max_chunks": effective_scan_max_chunks,
+        "scan_max_tokens": effective_scan_max_tokens,
+        "scan_order": effective_scan_order,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,
         "doc_chunk_tokens": effective_doc_chunk_tokens,
@@ -790,7 +847,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "synthesis_input_token_budget": effective_synthesis_input_token_budget,
         "cache_save_interval": args.cache_save_interval,
         "row_order": args.row_order,
-        "reranker_disabled": bool(args.disable_reranker),
+        "reranker_disabled": bool(args.disable_reranker or effective_search_mode == "iterative"),
         "row_types_requested": row_types,
         "max_rows": args.max_rows,
         "rows_selected": len(bridge_rows),

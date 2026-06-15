@@ -138,6 +138,17 @@ class FakeController:
                 "synthesis_packed_chunk_count": 3,
                 "synthesis_dropped_chunk_count": 1,
                 "synthesis_selected_chunk_indices": [0, 1, 2],
+                "iterative_scan_total_chunks": 10,
+                "iterative_scan_budget": 4,
+                "iterative_scan_visited_chunk_count": 4,
+                "iterative_scan_faiss_priority_count": top_k,
+                "iterative_scan_early_stop": True,
+                "iterative_scan_stop_reason": "high_confidence_answer",
+                "iterative_scan_selected_chunk_indices": [0, 1, 2, 3],
+                "iterative_scan_supporting_chunk_indices": [1],
+                "iterative_scan_inspector_call_count": 4,
+                "iterative_scan_final_adjudication_call_count": 0,
+                "iterative_scan_evidence_ledger": {"best_choice": "A"},
             },
         }
 
@@ -151,8 +162,15 @@ class FakeScs:
     SYNTHESIS_INPUT_TOKEN_BUDGET = 60000
     SYNTHESIS_MAX_CHUNKS = 5
     MCQ_PROMPT_STYLE = "strict"
+    SEARCH_MODE = "iterative"
+    SCAN_CHUNK_RATIO = 0.30
+    SCAN_MIN_CHUNKS = 3
+    SCAN_MAX_CHUNKS = 24
+    SCAN_MAX_TOKENS = 256
+    SCAN_ORDER = "faiss_then_document"
     SemanticCacheController = FakeController
     ExecutionMetrics = FakeMetrics
+    reranker_calls = 0
 
     @staticmethod
     def configure_llm_provider(**kwargs):
@@ -174,6 +192,7 @@ class FakeScs:
 
     @staticmethod
     def Reranker():
+        FakeScs.reranker_calls += 1
         return object()
 
 
@@ -185,6 +204,13 @@ def _reset_fake_controller():
     FakeController.search_calls = []
     FakeScs.SYNTHESIS_MAX_CHUNKS = 5
     FakeScs.MCQ_PROMPT_STYLE = "strict"
+    FakeScs.SEARCH_MODE = "iterative"
+    FakeScs.SCAN_CHUNK_RATIO = 0.30
+    FakeScs.SCAN_MIN_CHUNKS = 3
+    FakeScs.SCAN_MAX_CHUNKS = 24
+    FakeScs.SCAN_MAX_TOKENS = 256
+    FakeScs.SCAN_ORDER = "faiss_then_document"
+    FakeScs.reranker_calls = 0
 
 
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
@@ -306,6 +332,38 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             synthesis_input_token_budget=60000,
         )
+        changed_scan_config = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            search_mode="iterative",
+            scan_chunk_ratio=0.30,
+            scan_min_chunks=3,
+            scan_max_chunks=24,
+            scan_max_tokens=256,
+            scan_order="faiss_then_document",
+        )
+        iterative_with_legacy_args = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            99,
+            ["original", "exact"],
+            synthesis_max_chunks=99,
+            synthesis_input_token_budget=12345,
+            search_mode="iterative",
+            scan_chunk_ratio=0.30,
+            scan_min_chunks=3,
+            scan_max_chunks=24,
+            scan_max_tokens=256,
+            scan_order="faiss_then_document",
+        )
 
         self.assertEqual(first, second)
         self.assertNotEqual(first, changed)
@@ -314,6 +372,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertNotEqual(first, changed_prompt_style)
         self.assertNotEqual(first, changed_token_chunks)
         self.assertNotEqual(first, changed_input_budget)
+        self.assertNotEqual(first, changed_scan_config)
+        self.assertEqual(changed_scan_config, iterative_with_legacy_args)
 
     def test_parse_choice_and_answer_correct(self):
         self.assertEqual(parse_choice("A"), "A")
@@ -476,6 +536,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
 
         self.assertEqual(FakeScs.SYNTHESIS_MAX_CHUNKS, 4)
         self.assertEqual(len(FakeController.instances), 1)
+        self.assertEqual(FakeScs.reranker_calls, 0)
         self.assertEqual(len(FakeController.load_calls), 0)
         self.assertEqual(len(FakeController.save_calls), 2)
         self.assertEqual(len(FakeController.ingest_calls), 2)
@@ -485,6 +546,13 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["synthesis_max_chunks"], 4)
         self.assertEqual(manifest["top_k"], 9)
         self.assertEqual(manifest["rerank_top"], 2)
+        self.assertEqual(manifest["search_mode"], "iterative")
+        self.assertEqual(manifest["scan_chunk_ratio"], 0.30)
+        self.assertEqual(manifest["scan_min_chunks"], 3)
+        self.assertEqual(manifest["scan_max_chunks"], 24)
+        self.assertEqual(manifest["scan_max_tokens"], 256)
+        self.assertEqual(manifest["scan_order"], "faiss_then_document")
+        self.assertTrue(manifest["reranker_disabled"])
         self.assertEqual(manifest["doc_chunk_size"], 10000)
         self.assertEqual(manifest["doc_chunk_overlap"], 1000)
         self.assertEqual(manifest["doc_chunk_tokens"], 6000)
@@ -508,6 +576,12 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["synthesis_packed_chunk_count"], 3)
         self.assertEqual(bridge_rows[0]["synthesis_dropped_chunk_count"], 1)
         self.assertEqual(bridge_rows[0]["synthesis_selected_chunk_indices"], [0, 1, 2])
+        self.assertEqual(bridge_rows[0]["search_mode"], "iterative")
+        self.assertEqual(bridge_rows[0]["scan_chunk_ratio"], 0.30)
+        self.assertEqual(bridge_rows[0]["iterative_scan_total_chunks"], 10)
+        self.assertEqual(bridge_rows[0]["iterative_scan_budget"], 4)
+        self.assertEqual(bridge_rows[0]["iterative_scan_supporting_chunk_indices"], [1])
+        self.assertEqual(bridge_rows[0]["iterative_scan_evidence_ledger"], {"best_choice": "A"})
 
 
 if __name__ == "__main__":

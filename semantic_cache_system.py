@@ -135,6 +135,15 @@ SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
 MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
 SYNTHESIS_INPUT_TOKEN_BUDGET = _env_int("SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET", 0)
+SEARCH_MODE = os.getenv("SEMANTIC_CACHE_SEARCH_MODE", "packed").strip().lower() or "packed"
+if SEARCH_MODE not in {"packed", "iterative"}:
+    print(f"[CONFIG] Ignoring invalid SEMANTIC_CACHE_SEARCH_MODE={SEARCH_MODE!r}; using 'packed'")
+    SEARCH_MODE = "packed"
+SCAN_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_CHUNK_RATIO", 0.30)
+SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
+SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 24)
+SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 256)
+SCAN_ORDER = "faiss_then_document"
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -807,6 +816,181 @@ def _pack_sources_for_input_budget(
         "synthesis_selected_chunk_indices": selected_indices,
     }
     return source_text, info
+
+
+def _normalize_choice_letter(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip().upper()
+    if text in {"A", "B", "C", "D"}:
+        return text
+    match = re.search(r"\b([ABCD])\b", text)
+    return match.group(1) if match else None
+
+
+def _compute_iterative_scan_budget(
+    *,
+    total_chunks: int,
+    faiss_priority_count: int,
+    scan_ratio: float,
+    min_chunks: int,
+    max_chunks: int,
+) -> int:
+    total_chunks = max(0, int(total_chunks))
+    if total_chunks == 0:
+        return 0
+
+    faiss_priority_count = min(max(0, int(faiss_priority_count)), total_chunks)
+    ratio = max(0.0, float(scan_ratio))
+    ratio_budget = math.ceil(total_chunks * ratio)
+    budget = max(ratio_budget, max(0, int(min_chunks)), faiss_priority_count)
+    budget = min(budget, total_chunks)
+
+    max_chunks = int(max_chunks)
+    if max_chunks > 0:
+        effective_cap = min(total_chunks, max(max_chunks, faiss_priority_count))
+        budget = min(budget, effective_cap)
+    return max(0, budget)
+
+
+def _bounded_text(value, limit: int = 240) -> str:
+    text = str(value or "").strip()
+    text = re.sub(r"\s+", " ", text)
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _coerce_note_list(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [_bounded_text(item) for item in value if _bounded_text(item)]
+    if isinstance(value, dict):
+        notes = []
+        for key, item in value.items():
+            text = _bounded_text(item)
+            if text:
+                notes.append(_bounded_text(f"{key}: {text}"))
+        return notes
+    text = _bounded_text(value)
+    return [text] if text else []
+
+
+def _new_evidence_ledger() -> dict:
+    return {
+        "A": {"support": [], "against": []},
+        "B": {"support": [], "against": []},
+        "C": {"support": [], "against": []},
+        "D": {"support": [], "against": []},
+        "open_questions": [],
+        "visited_chunks": [],
+        "best_choice": None,
+        "confidence": "low",
+    }
+
+
+def _append_ledger_notes(target: list, notes: list[str], *, chunk_index: int | None = None, limit: int = 5) -> None:
+    for note in notes:
+        if len(target) >= limit:
+            break
+        if isinstance(note, str) and note.strip():
+            item = {"note": _bounded_text(note)}
+            if chunk_index is not None:
+                item["chunk_index"] = int(chunk_index)
+            target.append(item)
+
+
+def _update_evidence_ledger(ledger: dict, decision: dict | None, *, chunk_index: int) -> dict:
+    decision = decision if isinstance(decision, dict) else {}
+    if chunk_index not in ledger["visited_chunks"]:
+        ledger["visited_chunks"].append(int(chunk_index))
+
+    choice = _normalize_choice_letter(
+        decision.get("supported_choice") or decision.get("answer") or decision.get("choice")
+    )
+    confidence = str(decision.get("confidence") or "low").strip().lower()
+    if confidence not in {"low", "medium", "high"}:
+        confidence = "low"
+    if choice:
+        ledger["best_choice"] = choice
+        ledger["confidence"] = confidence
+        _append_ledger_notes(
+            ledger[choice]["support"],
+            _coerce_note_list(decision.get("evidence") or decision.get("support")),
+            chunk_index=chunk_index,
+        )
+        _append_ledger_notes(
+            ledger[choice]["against"],
+            _coerce_note_list(decision.get("contradictions") or decision.get("against")),
+            chunk_index=chunk_index,
+        )
+
+    choice_assessments = decision.get("choice_assessments")
+    if isinstance(choice_assessments, dict):
+        for raw_choice, assessment in choice_assessments.items():
+            assessed_choice = _normalize_choice_letter(raw_choice)
+            if assessed_choice and isinstance(assessment, dict):
+                _append_ledger_notes(
+                    ledger[assessed_choice]["support"],
+                    _coerce_note_list(assessment.get("support")),
+                    chunk_index=chunk_index,
+                )
+                _append_ledger_notes(
+                    ledger[assessed_choice]["against"],
+                    _coerce_note_list(assessment.get("against")),
+                    chunk_index=chunk_index,
+                )
+
+    for note in _coerce_note_list(decision.get("open_questions")):
+        if len(ledger["open_questions"]) >= 8:
+            break
+        ledger["open_questions"].append(note)
+    return ledger
+
+
+def _ledger_has_unresolved_contradictions(ledger: dict, choice: str | None) -> bool:
+    if not choice or choice not in {"A", "B", "C", "D"}:
+        return True
+    return bool(ledger.get(choice, {}).get("against"))
+
+
+def _query_requires_comparative_scan(query: str) -> bool:
+    return bool(
+        re.search(
+            r"(?i)\b(best|trade[- ]?off|compare|comparison|combination|overall|between|among|"
+            r"which method|which option|which approach|multi[- ]?document|papers?)\b",
+            query or "",
+        )
+    )
+
+
+def _should_stop_iterative_scan(
+    *,
+    decision: dict | None,
+    ledger: dict,
+    visited_count: int,
+    min_chunks: int,
+    faiss_priority_count: int,
+    comparative_query: bool,
+) -> tuple[bool, str]:
+    decision = decision if isinstance(decision, dict) else {}
+    if visited_count < max(1, int(min_chunks)):
+        return False, "min_chunks_not_reached"
+    if comparative_query and visited_count < max(1, int(faiss_priority_count)):
+        return False, "comparative_faiss_priority_not_complete"
+    if str(decision.get("status") or "").strip().lower() != "answer_found":
+        return False, "answer_not_found"
+    choice = _normalize_choice_letter(decision.get("supported_choice") or ledger.get("best_choice"))
+    if not choice:
+        return False, "no_supported_choice"
+    if str(decision.get("confidence") or "").strip().lower() != "high":
+        return False, "confidence_not_high"
+    if _coerce_bool(decision.get("needs_more_context")):
+        return False, "needs_more_context"
+    if _ledger_has_unresolved_contradictions(ledger, choice):
+        return False, "unresolved_contradictions"
+    return True, "high_confidence_answer"
 
 
 def create_llm_message(**kwargs):
@@ -2185,15 +2369,15 @@ class SemanticCacheController:
             self._doc_chunk_metadata.extend(all_meta)
         return len(all_chunks)
 
-    def retrieve(self, query: str, top_k: int = 20, rerank_top: int = 5) -> List[dict]:
+    def retrieve(self, query: str, top_k: int = 20, rerank_top: int = 5, *, use_reranker: bool = True) -> List[dict]:
         """
-        Retrieve relevant document chunks: FAISS dragnet → Reranker (with relevance gate).
+        Retrieve relevant document chunks: FAISS dragnet with optional reranker relevance gate.
         Returns list of {text, score, metadata}.
         """
         self._last_retrieval_info = {
             "faiss_candidate_count": 0,
             "candidate_text_count": 0,
-            "reranker_enabled": bool(self.reranker),
+            "reranker_enabled": bool(self.reranker and use_reranker),
             "reranker_returned_count": 0,
             "reranker_fallback_used": False,
         }
@@ -2211,7 +2395,7 @@ class SemanticCacheController:
         if not faiss_results:
             return []
 
-        # Get text for reranking
+        # Get text for direct return or reranking
         candidate_texts = []
         candidate_meta = []
         candidate_scores = []
@@ -2236,7 +2420,7 @@ class SemanticCacheController:
         self._last_retrieval_info["candidate_text_count"] = len(raw_results)
 
         # Rerank with relevance gate
-        if self.reranker and candidate_texts:
+        if self.reranker and use_reranker and candidate_texts:
             t1 = time.time()
             reranked = self.reranker.rerank(query, candidate_texts, top_k=rerank_top)
             dt_rerank = (time.time() - t1) * 1000
@@ -2283,6 +2467,246 @@ class SemanticCacheController:
         if "return only the single best answer choice letter" in query.lower():
             return True
         return bool(re.search(r"(?is)\bA\.\s+.+\bB\.\s+.+\bC\.\s+.+\bD\.\s+", query))
+
+    def _result_chunk_index(self, result: dict, fallback_idx: int | None = None) -> int | None:
+        metadata = result.get("metadata") or {}
+        raw_idx = metadata.get("chunk_index")
+        if isinstance(raw_idx, int):
+            return raw_idx
+        if isinstance(raw_idx, str) and raw_idx.isdigit():
+            return int(raw_idx)
+        text = result.get("text")
+        if text and hasattr(self, "_doc_chunks"):
+            try:
+                return self._doc_chunks.index(text)
+            except ValueError:
+                pass
+        return fallback_idx
+
+    def _build_iterative_scan_results(self, faiss_results: list[dict]) -> tuple[list[dict], int, int]:
+        doc_chunks = list(getattr(self, "_doc_chunks", []) or [])
+        doc_meta = list(getattr(self, "_doc_chunk_metadata", []) or [])
+        total_chunks = len(doc_chunks) if doc_chunks else len(faiss_results)
+
+        ordered: list[dict] = []
+        seen: set[int] = set()
+        for faiss_rank, result in enumerate(faiss_results):
+            chunk_index = self._result_chunk_index(result, faiss_rank)
+            if chunk_index is None or chunk_index in seen:
+                continue
+            copied = dict(result)
+            metadata = dict(copied.get("metadata") or {})
+            metadata["chunk_index"] = chunk_index
+            metadata["faiss_rank"] = faiss_rank
+            copied["metadata"] = metadata
+            ordered.append(copied)
+            seen.add(chunk_index)
+
+        faiss_priority_count = len(ordered)
+        if doc_chunks:
+            for chunk_index, text in enumerate(doc_chunks):
+                if chunk_index in seen:
+                    continue
+                metadata = dict(doc_meta[chunk_index]) if chunk_index < len(doc_meta) else {}
+                metadata["chunk_index"] = chunk_index
+                metadata["faiss_rank"] = None
+                ordered.append({"text": text, "score": None, "metadata": metadata})
+                seen.add(chunk_index)
+
+        return ordered, total_chunks, faiss_priority_count
+
+    def _inspect_iterative_chunk(self, query: str, ledger: dict, result: dict) -> dict:
+        metadata = result.get("metadata") or {}
+        chunk_index = self._result_chunk_index(result, len(ledger.get("visited_chunks", [])))
+        system_prompt = (
+            "You are an evidence inspector for a LongBench-v2 question. Use ONLY the "
+            "current chunk and the existing evidence ledger. Return one JSON object "
+            "with keys: status, supported_choice, confidence, evidence, contradictions, "
+            "open_questions, needs_more_context. status must be no_evidence, partial, "
+            "or answer_found. supported_choice must be A, B, C, D, or null."
+        )
+        user_content = (
+            f"Question and choices:\n{query}\n\n"
+            f"Existing evidence ledger:\n{json.dumps(ledger, ensure_ascii=False)}\n\n"
+            f"Chunk metadata:\n{json.dumps(metadata, ensure_ascii=False)}\n\n"
+            f"Chunk text:\n{result.get('text', '')}"
+        )
+        response = create_llm_message(
+            model=EXECUTOR_MODEL,
+            max_tokens=max(1, SCAN_MAX_TOKENS),
+            temperature=0,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}],
+            response_format=_json_response_format(),
+        )
+        self.metrics.record_call(EXECUTOR_MODEL, response.usage.input_tokens, response.usage.output_tokens)
+        parsed = _extract_llm_json_object(response.content[0].text)
+        if parsed is None:
+            return {
+                "status": "no_evidence",
+                "supported_choice": None,
+                "confidence": "low",
+                "evidence": [],
+                "contradictions": [],
+                "open_questions": ["Inspector response was not valid JSON."],
+                "needs_more_context": True,
+                "chunk_index": chunk_index,
+            }
+        parsed["chunk_index"] = chunk_index
+        return parsed
+
+    def _finalize_iterative_answer(self, query: str, ledger: dict) -> tuple[str, dict]:
+        system_prompt = (
+            _mcq_system_prompt()
+            + " Use the evidence ledger below as the only inspected evidence. Return JSON "
+            "with keys answer, confidence, and reason. answer must be A, B, C, or D."
+        )
+        response = create_llm_message(
+            model=EXECUTOR_MODEL,
+            max_tokens=max(1, SCAN_MAX_TOKENS),
+            temperature=0,
+            system=system_prompt,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"Question and choices:\n{query}\n\nEvidence ledger:\n{json.dumps(ledger, ensure_ascii=False)}",
+                }
+            ],
+            response_format=_json_response_format(),
+        )
+        self.metrics.record_call(EXECUTOR_MODEL, response.usage.input_tokens, response.usage.output_tokens)
+        raw_text = response.content[0].text
+        parsed = _extract_llm_json_object(raw_text) or {}
+        answer = _normalize_choice_letter(parsed.get("answer")) or _normalize_choice_letter(raw_text)
+        if not answer:
+            answer = _normalize_choice_letter(ledger.get("best_choice")) or raw_text.strip()
+        parsed["answer"] = answer
+        return answer, parsed
+
+    def _supporting_chunk_indices_from_ledger(self, ledger: dict) -> list[int]:
+        indices = set()
+        for choice in ("A", "B", "C", "D"):
+            for note in ledger.get(choice, {}).get("support", []):
+                if isinstance(note, dict) and isinstance(note.get("chunk_index"), int):
+                    indices.add(note["chunk_index"])
+        return sorted(indices)
+
+    def _search_iterative(self, query: str, top_k: int, rerank_top: int, synthesize: bool) -> dict:
+        results = self.retrieve(query, top_k=top_k, rerank_top=rerank_top, use_reranker=False)
+        if not results:
+            return {
+                "query": query,
+                "answer": "No relevant documents found.",
+                "from_cache": False,
+                "retrieval": getattr(self, "_last_retrieval_info", {}),
+            }
+        if not synthesize:
+            return {
+                "query": query,
+                "results": results,
+                "from_cache": False,
+                "retrieval": getattr(self, "_last_retrieval_info", {}),
+            }
+
+        scan_results, total_chunks, faiss_priority_count = self._build_iterative_scan_results(results)
+        scan_budget = _compute_iterative_scan_budget(
+            total_chunks=total_chunks,
+            faiss_priority_count=faiss_priority_count,
+            scan_ratio=SCAN_CHUNK_RATIO,
+            min_chunks=SCAN_MIN_CHUNKS,
+            max_chunks=SCAN_MAX_CHUNKS,
+        )
+        scan_results = scan_results[:scan_budget]
+        ledger = _new_evidence_ledger()
+        comparative_query = _query_requires_comparative_scan(query)
+        inspector_call_count = 0
+        final_adjudication_call_count = 0
+        early_stop = False
+        stop_reason = "scan_budget_exhausted"
+        answer = None
+        final_decision = None
+
+        for result in scan_results:
+            chunk_index = self._result_chunk_index(result, inspector_call_count)
+            decision = self._inspect_iterative_chunk(query, ledger, result)
+            inspector_call_count += 1
+            _update_evidence_ledger(ledger, decision, chunk_index=chunk_index if chunk_index is not None else -1)
+            should_stop, reason = _should_stop_iterative_scan(
+                decision=decision,
+                ledger=ledger,
+                visited_count=inspector_call_count,
+                min_chunks=SCAN_MIN_CHUNKS,
+                faiss_priority_count=faiss_priority_count,
+                comparative_query=comparative_query,
+            )
+            stop_reason = reason
+            if should_stop:
+                answer = _normalize_choice_letter(decision.get("supported_choice") or ledger.get("best_choice"))
+                early_stop = True
+                break
+
+        if answer is None:
+            answer, final_decision = self._finalize_iterative_answer(query, ledger)
+            final_adjudication_call_count = 1
+
+        visited_indices = list(ledger.get("visited_chunks", []))
+        supporting_indices = self._supporting_chunk_indices_from_ledger(ledger)
+        scanned_by_index = {
+            self._result_chunk_index(result, idx): result
+            for idx, result in enumerate(scan_results[:inspector_call_count])
+        }
+        selected_sources = [
+            scanned_by_index[idx]
+            for idx in supporting_indices
+            if idx in scanned_by_index
+        ] or list(scanned_by_index.values())
+        source_context = json.dumps(
+            {
+                "search_mode": "iterative",
+                "evidence_ledger": ledger,
+                "supporting_chunk_indices": supporting_indices,
+                "visited_chunk_indices": visited_indices,
+                "final_decision": final_decision,
+            },
+            ensure_ascii=False,
+        )
+
+        iterative_info = {
+            "search_mode": "iterative",
+            "scan_order": SCAN_ORDER,
+            "scan_chunk_ratio": float(SCAN_CHUNK_RATIO),
+            "scan_min_chunks": int(SCAN_MIN_CHUNKS),
+            "scan_max_chunks": int(SCAN_MAX_CHUNKS),
+            "scan_max_tokens": int(SCAN_MAX_TOKENS),
+            "iterative_scan_total_chunks": total_chunks,
+            "iterative_scan_budget": scan_budget,
+            "iterative_scan_visited_chunk_count": inspector_call_count,
+            "iterative_scan_faiss_priority_count": faiss_priority_count,
+            "iterative_scan_early_stop": early_stop,
+            "iterative_scan_stop_reason": stop_reason,
+            "iterative_scan_selected_chunk_indices": visited_indices,
+            "iterative_scan_supporting_chunk_indices": supporting_indices,
+            "iterative_scan_inspector_call_count": inspector_call_count,
+            "iterative_scan_final_adjudication_call_count": final_adjudication_call_count,
+            "iterative_scan_evidence_ledger": ledger,
+            "synthesis_packed_chunk_count": inspector_call_count,
+            "synthesis_dropped_chunk_count": max(0, total_chunks - inspector_call_count),
+            "synthesis_selected_chunk_indices": visited_indices,
+        }
+        if hasattr(self, "_last_retrieval_info"):
+            self._last_retrieval_info.update(iterative_info)
+
+        consensus = self.consensus_verify(query, source_context, answer, EXECUTOR_MODEL)
+        self.store(query, source_context, answer, model_used=EXECUTOR_MODEL, sources=selected_sources)
+
+        return {
+            "query": query,
+            "answer": answer,
+            "from_cache": False,
+            "results": scan_results[:inspector_call_count],
+            "consensus": consensus,
+            "retrieval": getattr(self, "_last_retrieval_info", {}),
+        }
 
     def search(self, query: str, top_k: int = 20, rerank_top: int = 5,
                synthesize: bool = True, cache_read: bool = True) -> dict:
@@ -2453,6 +2877,9 @@ class SemanticCacheController:
 
         # ── Stage 1: Retrieve relevant documents ──
         self.metrics.cache_misses += 1
+        if SEARCH_MODE == "iterative":
+            return self._search_iterative(query, top_k=top_k, rerank_top=rerank_top, synthesize=synthesize)
+
         results = self.retrieve(query, top_k=top_k, rerank_top=rerank_top)
         if not results:
             return {
@@ -2461,6 +2888,8 @@ class SemanticCacheController:
                 "from_cache": False,
                 "retrieval": getattr(self, "_last_retrieval_info", {}),
             }
+        if hasattr(self, "_last_retrieval_info"):
+            self._last_retrieval_info["search_mode"] = "packed"
 
         # ── Stage 2: Synthesize answer ──
         if not synthesize:

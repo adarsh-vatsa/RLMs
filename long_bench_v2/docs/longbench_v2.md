@@ -298,7 +298,7 @@ python long_bench_v2/sample_csv.py \
 
 ## STEP 6 - Run Cache Experiments
 
-Use `long_bench_v2/run_benchmark.py` to run the prepared CSV suite through the project retrieval pipeline. In this script, `baseline` means the same retrieval/rerank/synthesis path with cache reads and persistent cache state disabled. It is not the later plain full-context API baseline.
+Use `long_bench_v2/run_benchmark.py` to run the prepared CSV suite through the project retrieval pipeline. In this script, `baseline` means the same retrieval/search path with cache reads and persistent cache state disabled. It is not the later plain full-context API baseline.
 
 Start with the sampled suite before running the full CSV.
 
@@ -367,34 +367,34 @@ Useful options:
 - `--executor-model MODEL`: model assigned to `semantic_cache_system.EXECUTOR_MODEL`. Default: `claude-sonnet-4-5`.
 - `--evaluator-model MODEL`: model assigned to cache verification/fact extraction calls. Default: `claude-haiku-4-5`.
 - `--openrouter-base-url URL`: OpenRouter-compatible base URL. Default: `https://openrouter.ai/api/v1`.
-- `--top-k N`: FAISS retrieval candidates. Default: `10`.
-- `--rerank-top N`: reranked chunks kept for synthesis. Default: `3`.
-- `--synthesis-max-chunks N`: retrieved chunks passed into answer synthesis. Default: `3` for this runner.
+- `--top-k N`: FAISS retrieval candidates. In iterative mode, these are the priority chunks inspected first. Default: `10`.
+- `--rerank-top N`: packed-mode compatibility argument. In Jarvis iterative mode, the reranker is not instantiated or used. Default: `3`.
+- `--synthesis-max-chunks N`: packed-mode synthesis limit. In iterative mode, scan breadth is controlled by the scan ratio, min, max, and `--top-k`. Default: `3` for this runner.
 - `--row-order input|source_grouped`: execution order. Default: `source_grouped`, so rows with the same `source_id` run adjacent to reduce repeated ingest work.
 - `--cache-save-interval N`: save cache state every N rows in cache mode, plus a final save. Default: `10`; use `1` for per-row saves.
-- `--disable-reranker`: skip the reranker and use FAISS candidates directly.
+- `--disable-reranker`: skip the reranker in packed mode. Jarvis iterative mode already bypasses the reranker.
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
 - `--manifest-note TEXT`: optional note stored in `manifest.json`.
 
-The LongBench-v2 runner intentionally reduces retrieval and synthesis breadth for speed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For local LongBench-v2 runs, use `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000` as the current speed/quality balance. This keeps the full document indexed as token-bounded chunks while reducing chunk count versus the higher-recall `6000/600` profile. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
+The LongBench-v2 runner intentionally reduces retrieval breadth for speed while keeping the full source document indexed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For Jarvis LongBench-v2 runs, use `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000` as the current speed/quality balance. This keeps the full document indexed as token-bounded chunks while reducing chunk count versus the higher-recall `6000/600` profile. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
 
-For OpenAI-compatible local serving, set `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET` below the served model's context window. For example, with `EXECUTOR_MAX_MODEL_LEN=65536`, use `SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000` and keep `SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS` small, such as `8`, for single-letter MCQ answers. Synthesis packs whole ranked chunks under this budget and uses truncation only as a safety fallback for a single oversized chunk. The benchmark bridge rows include token chunk config, packed/dropped chunk counts, `synthesis_source_truncated`, and estimated input-token fields.
+For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects one chunk per call and maintains a compact evidence ledger before either early-stopping or running a final adjudication call. The bridge rows and manifest include the token chunk config, search mode, scan ratio/min/max/token caps, scan order, visited chunk count, early-stop reason, supporting chunk indices, and compact evidence ledger.
 
-Recommended balanced LongBench-v2 profile:
+Recommended balanced Jarvis LongBench-v2 profile:
 
 ```bash
+export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
-export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=4
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=4
-export SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET=60000
+export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
+export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=24
+export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
 uv run python long_bench_v2/run_benchmark.py \
   ... \
-  --top-k 5 \
-  --rerank-top 2 \
-  --synthesis-max-chunks 4
+  --top-k 5
 ```
 
 If row latency is still too high, use the faster fallback profile:
@@ -402,17 +402,15 @@ If row latency is still too high, use the faster fallback profile:
 ```bash
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=12000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
-export SEMANTIC_CACHE_MIN_RERANKED_RESULTS=3
-export SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=3
+export SEMANTIC_CACHE_SCAN_CHUNK_RATIO=0.20
+export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=12
 
 uv run python long_bench_v2/run_benchmark.py \
   ... \
-  --top-k 4 \
-  --rerank-top 1 \
-  --synthesis-max-chunks 3
+  --top-k 4
 ```
 
-Reranker memory can be tuned without changing benchmark semantics:
+Packed-mode reranker memory can be tuned without changing benchmark semantics:
 
 ```bash
 SEMANTIC_CACHE_RERANKER_BATCH_SIZE=2
@@ -422,7 +420,8 @@ SEMANTIC_CACHE_RERANKER_MAX_LENGTH=4096
 The default reranker batch size is `4`, and the default max length is `8192`.
 Qwen3 reranking uses only the final-position logits when the installed
 Transformers model exposes `logits_to_keep`; this avoids materializing full
-sequence vocabulary logits for every candidate.
+sequence vocabulary logits for every candidate. These settings do not affect
+Jarvis iterative LongBench runs.
 
 ## STEP 7 - Run RLM Baseline
 
