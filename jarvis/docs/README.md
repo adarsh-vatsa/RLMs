@@ -71,15 +71,17 @@ also need partial download files and cache overhead. Override with
 `MIN_LOCAL_FREE_GB=<gb>` only when the model is already cached or you have
 inspected the node manually.
 
-Expected persistent storage:
+Expected persistent storage for the current explicit Qwen LongBench-v2 profile:
 
 ```text
-Llama 3.3 70B BF16:      about 141 GB, https://huggingface.co/meta-llama/Llama-3.3-70B-Instruct
-Mistral Small 24B:       about 50 GB minimal, about 100 GB if full repo files are cached, https://huggingface.co/mistralai/Mistral-Small-24B-Instruct-2501
-Qwen2.5 7B smoke model:  about 15-25 GB, https://huggingface.co/Qwen/Qwen2.5-7B-Instruct
-Qwen embed/reranker:     about 2-4 GB, https://huggingface.co/Qwen/Qwen3-Embedding-0.6B and https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
-Comfortable cache size:  about 300 GB
-Room for variants:       about 500 GB
+Qwen3.6 35B-A3B executor:   about 72 GB, https://huggingface.co/Qwen/Qwen3.6-35B-A3B
+Qwen3.5 35B-A3B evaluator:  about 72 GB, https://huggingface.co/Qwen/Qwen3.5-35B-A3B
+Qwen3 30B-A3B fallback:     about 61 GB, https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507
+Qwen2.5 7B smoke model:     about 15-25 GB, https://huggingface.co/Qwen/Qwen2.5-7B-Instruct
+Qwen embed/reranker:        about 2-4 GB, https://huggingface.co/Qwen/Qwen3-Embedding-0.6B and https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
+Qwen executor+evaluator:    about 145 GB before cache overhead
+Comfortable cache size:     about 300 GB
+Room for fallback variants: about 500 GB
 ```
 
 Do not place model weights under `/home`, because `/home` is backed by

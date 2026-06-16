@@ -1,6 +1,6 @@
 # Two-Stage Semantic Cache — System Architecture
 
-> **File**: [`semantic_cache_system.py`](semantic_cache_system.py) (1941 lines)
+> **File**: [`semantic_cache_system.py`](semantic_cache_system.py)
 > **Dependencies**: `transformers`, `torch`, `faiss-cpu`, `anthropic`, `python-dotenv`, `numpy`
 > **Local Models**: `Qwen3-Embedding-0.6B` (596M params, 1024-dim embeddings), `Qwen3-Reranker-0.6B` (yes/no cross-encoder)
 > **API Models**: `claude-sonnet-4-5` (execution/synthesis), `claude-haiku-4-5` (evaluation/sniper/consensus/knowledge extraction)
@@ -73,7 +73,7 @@ Note: LLM Sniper runs on the semantic branch. The knowledge branch currently use
 |----------|-------|
 | Model | `Qwen/Qwen3-Embedding-0.6B` |
 | Output dim | 1024 |
-| Pooling | CLS token (`last_hidden_state[:, 0, :]`) |
+| Pooling | Attention-masked mean pooling |
 | Normalization | L2-normalized (cosine similarity via inner product) |
 | Max length | 8,192 tokens (32K context supported) |
 | Device | CPU (MPS has known segfault issues with some architectures) |
@@ -83,7 +83,7 @@ Note: LLM Sniper runs on the semantic branch. The knowledge branch currently use
 ```python
 # Query encoding (with instruction)
 encode_query("What charges did Maxwell face?")
-# → "Instruct: Given a legal query, retrieve relevant court documents\nQuery: What charges..."
+# → "Instruct: Given a benchmark or user query, retrieve source chunks...\nQuery: What charges..."
 
 # Document encoding (no instruction)
 encode_documents(["The defendant was charged with..."])
@@ -169,7 +169,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 
 #### 2c. Vector Dragnet (`_vector_dragnet`)
 **Line 444** · Qwen3-Embedding-0.6B + FAISS for local similarity search.
-- 1024-dim embeddings via `encode_single()` (CLS token pooling, instruction-aware)
+- 1024-dim embeddings via `encode_single()` (attention-masked mean pooling, instruction-aware)
 - Cosine similarity via FAISS `IndexFlatIP` on L2-normalized vectors
 - Returns Top-K (default: 5) candidates above 0.3 threshold
 - **Cost**: $0 (runs locally)
@@ -258,7 +258,7 @@ The cache updates results on every subsequent cache miss. If we ran consensus on
 {
     "query": str,            # The original query text
     "result": str,           # The LLM's answer
-    "embedding": ndarray,    # Qwen3 1024-dim vector (CLS token pooling)
+    "embedding": ndarray,    # Qwen3 1024-dim vector (mean pooled)
     "source_context": str,   # Original source text for verification
     "model_used": str,       # Which model generated this result
     "grounding_info": dict,  # Pre-computed grounding verification
@@ -488,6 +488,7 @@ The same library can serve: legal filings, financial documents, medical records,
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Local embedding model |
+| `EMBEDDING_QUERY_INSTRUCTION` | benchmark evidence retrieval | Instruction prepended before query embeddings |
 | `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Local cross-encoder reranker |
 | `RERANKER_BATCH_SIZE` | 4 | Max reranker candidates per local model forward pass |
 | `RERANKER_MAX_LENGTH` | 8192 | Max reranker prompt tokens including prompt prefix/suffix |

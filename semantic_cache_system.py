@@ -1,39 +1,9 @@
 """
-================================================================================
-TWO-STAGE SEMANTIC CACHE FOR AUTONOMOUS AGENTS
-================================================================================
+Core semantic-cache implementation for autonomous-agent and benchmark workflows.
 
-A complete, production-quality implementation of the Two-Stage "Dragnet & Sniper"
-Semantic Cache architecture.
-
-This system implements every theoretical concept from our research:
-
-1. HASH BUCKETING         — Partition cache by document chunk to prevent
-                            cross-context contamination.
-2. VECTOR DRAGNET         — Local SentenceTransformer embedding + cosine
-                            similarity for fast Top-K candidate retrieval.
-3. LLM SNIPER             — Micro-LLM (Claude Haiku) validates logical +
-                            semantic equivalence of candidates.
-4. PARALLEL TOP-K CHUNKING— When K is large, chunk candidates into parallel
-                            Haiku calls to prevent evaluator Context Rot.
-5. CONTEXT COLLAPSE GUARD — Two defenses against the agent drowning in its
-                            own cached outputs:
-                            (A) Ephemeral Retrieval: large results are served
-                                but NOT appended to agent context.
-                            (B) Recursive Chunking: oversized results are
-                                summarized via sub-agent calls.
-6. CACHE PRE-WARMING      — Programmatic Day-1 sweep to saturate the cache
-                            before any human touches the system.
-7. HETEROGENEOUS ROUTING  — Dispatch to cheap models for simple tasks,
-                            expensive models for complex reasoning.
-
-Usage:
-    cd /Users/zeitgeist/research/RLMs
-    python3 semantic_cache_system.py
-
-Requirements:
-    pip install sentence-transformers anthropic python-dotenv numpy scikit-learn
-================================================================================
+The module provides provider-neutral LLM calls, embedding-backed exact/semantic
+cache lookup, FAISS document retrieval, optional reranking, LongBench iterative
+chunk reading, persistence, provenance checks, and the lightweight agent facade.
 """
 
 import os
@@ -126,6 +96,14 @@ DOCUMENT_CHUNK_OVERLAP = _env_int("SEMANTIC_CACHE_DOC_CHUNK_OVERLAP", 1000)
 DOCUMENT_CHUNK_TOKENS = _env_int("SEMANTIC_CACHE_DOC_CHUNK_TOKENS", 0)
 DOCUMENT_CHUNK_OVERLAP_TOKENS = _env_int("SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS", 0)
 DOCUMENT_CHUNK_TOKENIZER_MODEL = os.getenv("SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL", "").strip()
+DEFAULT_EMBEDDING_QUERY_INSTRUCTION = (
+    "Given a benchmark or user query, retrieve source chunks containing evidence, "
+    "facts, examples, or mappings needed to answer it."
+)
+EMBEDDING_QUERY_INSTRUCTION = (
+    os.getenv("SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION", "").strip()
+    or DEFAULT_EMBEDDING_QUERY_INSTRUCTION
+)
 RERANKER_RELEVANCE_THRESHOLD = _env_float("SEMANTIC_CACHE_RERANKER_THRESHOLD", 0.20)
 RERANKER_BATCH_SIZE = _env_int("SEMANTIC_CACHE_RERANKER_BATCH_SIZE", 4)
 RERANKER_MAX_LENGTH = _env_int("SEMANTIC_CACHE_RERANKER_MAX_LENGTH", 8192)
@@ -1199,10 +1177,10 @@ class EmbeddingEngine:
                 print(f"    Embedded {min(i + batch_size, len(texts))}/{len(texts)} chunks...")
         return np.vstack(all_embs).astype("float32")
 
-    def encode_query(self, query: str) -> np.ndarray:
+    def encode_query(self, query: str, instruction: str | None = None) -> np.ndarray:
         return self.encode(
             [query],
-            instruction="Given a legal query, retrieve relevant court documents and filings"
+            instruction=EMBEDDING_QUERY_INSTRUCTION if instruction is None else instruction,
         )
 
     def encode_documents(self, documents: list) -> np.ndarray:
@@ -1549,22 +1527,8 @@ class ExecutionMetrics:
 # ============================================================================
 class SemanticCacheController:
     """
-    THEORY: The Two-Stage "Dragnet & Sniper" Architecture
-    -----------------------------------------------------------------------
-    Standard Semantic Caches (like GPTCache) rely solely on vector similarity
-    thresholds. This causes catastrophic collisions: "Include X" and "Exclude X"
-    have nearly identical embeddings but opposite meanings.
-
-    Our architecture splits the cache lookup into two stages:
-      Stage 1 (Dragnet): Fast, cheap vector search to find Top-K candidates.
-      Stage 2 (Sniper):  A micro-LLM (Haiku) performs logical validation,
-                         catching inversions that math alone cannot detect.
-
-    Additionally, we implement:
-      - Hash Bucketing:     Partition by document chunk hash.
-      - Parallel Chunking:  Batch large candidate sets to prevent evaluator
-                            Context Rot.
-      - Context Collapse Guard: Protect the agent from oversized cache returns.
+    Core cache controller for scoped cache lookup, document retrieval,
+    synthesis, persistence, provenance checks, and LongBench iterative reading.
     """
 
     # Configuration constants
@@ -1608,14 +1572,7 @@ class SemanticCacheController:
             print(f"[INIT] Corpus: {corpus_id} (domain: {corpus_domain})")
         print("[INIT] Semantic Cache Controller ready.\n")
 
-    # ------------------------------------------------------------------
-    # THEORY: Hash Bucketing
-    # ------------------------------------------------------------------
-    # Before we even look at the query, we look at the DATA the agent is
-    # reading. We hash the document chunk into a unique ID so the cache
-    # never accidentally mixes up answers from Page 42 with Page 99.
-    # This prevents cross-document contamination.
-    # ------------------------------------------------------------------
+    # Source-context hash used for direct cached_query() bucket isolation.
     def _get_chunk_hash(self, context: str) -> str:
         """Compute a deterministic hash of the data chunk being analyzed."""
         return hashlib.md5(context.strip().encode()).hexdigest()
@@ -1673,17 +1630,7 @@ class SemanticCacheController:
                 flat_idx += 1
         return None
 
-    # ------------------------------------------------------------------
-    # STAGE 1: THE VECTOR DRAGNET
-    # ------------------------------------------------------------------
-    # Uses a lightweight, free, local SentenceTransformer to embed the
-    # query and compute cosine similarity against all cached queries in
-    # this hash bucket. Returns the Top-K most similar candidates.
-    #
-    # THEORY: This is O(log N) with proper ANN indexing. For our proof-
-    # of-concept we use brute-force numpy, which is O(N) but still
-    # sub-millisecond for realistic cache sizes.
-    # ------------------------------------------------------------------
+    # Stage 1: cheap embedding retrieval inside the active source bucket.
     def _vector_dragnet(self, new_query: str, bucket_entries: list) -> list:
         """Cast a wide, cheap net to find broadly similar past queries."""
         if not bucket_entries:
@@ -1700,29 +1647,9 @@ class SemanticCacheController:
 
         return [(bucket_entries[i], i, similarities[i]) for i in top_k_indices]
 
-    # ------------------------------------------------------------------
-    # STAGE 2: THE LLM SNIPER (Single-Batch Evaluation)
-    # ------------------------------------------------------------------
-    # Takes a batch of candidate queries and asks Haiku:
-    # "Does the NEW query ask for the EXACT SAME logical computation
-    #  as any of these candidates?"
-    #
-    # THEORY: This is the key innovation over pure vector caches.
-    # Because Haiku is an actual language model, it understands that
-    # "Include the timeout logs" ≠ "Exclude the timeout logs" even
-    # though their embeddings are 99% similar.
-    # ------------------------------------------------------------------
+    # Stage 2: LLM validation protects against embedding-only false positives.
     def _llm_sniper_evaluate(self, new_query: str, candidates: list) -> dict:
-        """
-        Ask Haiku to evaluate a batch of candidates for semantic equivalence.
-
-        Args:
-            new_query: The incoming query to check
-            candidates: List of (entry, original_index, similarity_score) tuples
-
-        Returns:
-            {"hit": True/False, "id": original_index or None}
-        """
+        """Ask the evaluator whether any candidate query is equivalent."""
         prompt = (
             "You are a Semantic Cache Controller. Your ONLY job is to determine "
             "if a NEW QUERY asks for the EXACT SAME information as any PREVIOUS QUERY.\n\n"
@@ -1896,21 +1823,7 @@ class SemanticCacheController:
         # Fail-safe: reject candidate and continue full retrieval path.
         return {"allow": False, "reason": "verifier_error_or_parse_failure", "confidence": 0.0}
 
-    # ------------------------------------------------------------------
-    # PARALLEL TOP-K CHUNKING
-    # ------------------------------------------------------------------
-    # THEORY: If the Vector Dragnet returns a large number of candidates
-    # (e.g., 500 near-misses in a massive cache), we CANNOT pass all 500
-    # to Haiku in a single prompt — Haiku would suffer Context Rot and
-    # hallucinate its evaluation.
-    #
-    # Solution: Chunk the candidates into small batches (e.g., 5 per call)
-    # and fire them all in parallel using ThreadPoolExecutor.
-    #
-    # Wall-clock latency: O(1) — all batches run simultaneously.
-    # Dollar cost: O(K/C) Haiku calls — but at $0.0001/call, this is
-    # negligible compared to a single Sonnet call at $0.05.
-    # ------------------------------------------------------------------
+    # Batch large candidate sets so each sniper call sees a compact prompt.
     def _parallel_sniper_evaluate(self, new_query: str, candidates: list) -> dict:
         """
         Chunk candidates into parallel batches for Haiku evaluation.
@@ -1939,44 +1852,16 @@ class SemanticCacheController:
 
         return {"hit": False, "id": None}
 
-    # ------------------------------------------------------------------
-    # CONTEXT COLLAPSE PROTECTION
-    # ------------------------------------------------------------------
-    # THEORY: Even if the cache returns a valid hit, the RESULT itself
-    # might be enormous (e.g., a 500,000-token legal summary). If the
-    # agent tries to read this, it will blow its own context window.
-    #
-    # Two defenses:
-    #   (A) Ephemeral Retrieval: Return the result to the agent but flag
-    #       it as "do not persist in conversation history." If the agent
-    #       needs it again, it re-queries the cache (which is near-free).
-    #   (B) Recursive Chunking: If the result is too large for even a
-    #       single context window, chunk it and summarize via sub-agent
-    #       calls — the same map-reduce pattern any agent can use.
-    # ------------------------------------------------------------------
+    # Protect callers from appending oversized cached results to context.
     def _estimate_tokens(self, text: str) -> int:
         """Rough token estimate: ~4 characters per token for English text."""
         return len(text) // 4
 
     def _grounding_check(self, result: str, source_context: str) -> dict:
         """
-        THEORY: Source Provenance Verification
-        ---------------------------------------------------------------
-        The cache is trust-on-first-write: whatever the LLM produces on
-        the first query gets locked in. If the LLM hallucinated a number,
-        the cache serves that wrong number forever.
-
-        This method extracts quantitative facts (numbers, dollar amounts,
-        percentages) from the LLM's result and checks whether they appear
-        verbatim in the original source chunk. This catches the most
-        dangerous hallucination mode — fabricated numbers — for zero cost.
-
-        Returns:
-            {
-                "grounding": "GROUNDED" | "PARTIAL" | "INFERRED",
-                "verified_facts": [...],   # Facts found in source
-                "unverified_facts": [...]  # Facts NOT found in source
-            }
+        Check whether quantitative facts in a first-write answer appear in
+        the source context. This catches fabricated numbers without an extra
+        model call.
         """
         # Extract quantitative facts: dollar amounts, percentages, plain numbers
         fact_patterns = [
@@ -2016,18 +1901,7 @@ class SemanticCacheController:
 
     def _apply_context_collapse_guard(self, result: str, query: str, source_context: str = "", grounding_info: dict = None) -> dict:
         """
-        Wrap the cache result with metadata to protect the agent from
-        Context Collapse, and attach source provenance information.
-
-        Returns:
-            {
-                "result": str,          # The actual text
-                "ephemeral": bool,      # If True, do NOT append to agent context
-                "was_summarized": bool,  # If True, this is a condensed version
-                "grounding": str,       # GROUNDED | PARTIAL | INFERRED
-                "verified_facts": list,  # Facts confirmed in source
-                "unverified_facts": list # Facts NOT found in source
-            }
+        Wrap a cached result with provenance and context-size safety metadata.
         """
         # Attach grounding info (either passed in or computed fresh)
         if grounding_info is None:
@@ -2075,24 +1949,8 @@ class SemanticCacheController:
 
     def _recursive_summarize(self, large_text: str, original_query: str, depth: int = 0) -> str:
         """
-        THEORY: Truly Recursive Parallel Summarization
-        ---------------------------------------------------------------
-        If a cached result is too large for the agent's context window,
-        we chunk the text and summarize each chunk via cheap sub-agent
-        calls fired in PARALLEL using ThreadPoolExecutor.
-
-        CRITICAL: After the first pass, the JOINED summaries may STILL
-        exceed MAX_CONTEXT_TOKENS (e.g., a 100K-token document produces
-        25 chunk summaries × 200 tokens = 5,000 tokens). So we RECURSE:
-        the joined summary becomes the input to the next level of
-        parallel chunking + summarization.
-
-        This yields logarithmic reduction:
-          Level 0: 100K tokens → 25 chunks → ~5,000 token summary
-          Level 1:   5K tokens →  2 chunks → ~400 token summary   ✓ fits
-
-        Each level is fully parallel, so total wall-clock time is
-        O(depth) where depth = log(N / max_tokens) — typically 2-3.
+        Recursively summarize oversized cached results until they fit the
+        configured context budget.
         """
         if depth >= self.MAX_RECURSION_DEPTH:
             print(f"      [SUMMARIZE] ⚠ Max recursion depth ({self.MAX_RECURSION_DEPTH}) reached. Truncating.")
@@ -2158,16 +2016,7 @@ class SemanticCacheController:
     # ------------------------------------------------------------------
     def check(self, query: str, context: str) -> Optional[dict]:
         """
-        The complete cache lookup pipeline:
-          1. Hash Bucket isolation
-          2. Exact match check (free)
-          3. Vector Dragnet (fast, local)
-          4. LLM Sniper (cheap, accurate) — with parallel chunking if needed
-          5. Context Collapse Guard on the result
-
-        Returns:
-            None if cache miss.
-            dict {"result", "ephemeral", "was_summarized"} if cache hit.
+        Return a scoped cache hit with guard metadata, or None on miss.
         """
         chunk_hash = self._get_chunk_hash(context)
 
@@ -2284,29 +2133,7 @@ class SemanticCacheController:
         return sum(len(entries) for entries in self.cache.values())
 
     def consensus_verify(self, query: str, context: str, primary_result: str, primary_model: str) -> dict:
-        """
-        THEORY: Multi-Model Consensus Verification
-        ---------------------------------------------------------------
-        Grounding is a property of the WRITE PATH, not a one-time event.
-        Every cache write is an opportunity to validate before locking in.
-
-        After the primary model (e.g., Sonnet) generates an answer, we
-        independently dispatch the same query to the evaluator model
-        (Haiku) and compare key quantitative facts. If they agree, the
-        result is trustworthy. If they disagree, it's flagged DISPUTED
-        and surfaced for review before entering the cache.
-
-        Cost: ~$0.0001 per write (one Haiku call). For 2,000 cache
-        misses, that's $0.20 total for consensus on every entry.
-
-        Returns:
-            {
-                "consensus": "AGREED" | "DISPUTED",
-                "primary_facts": [...],
-                "verifier_facts": [...],
-                "divergent_facts": [...]  # Facts that differ
-            }
-        """
+        """Compare quantitative facts from primary and verifier answers."""
         try:
             response = create_llm_message(
                 model=self.EVALUATOR_MODEL,
@@ -2366,15 +2193,7 @@ class SemanticCacheController:
     # KNOWLEDGE EXTRACTION — Decompose answers into atomic triples
     # ------------------------------------------------------------------
     def _extract_facts(self, answer: str, sources: List[dict]) -> List[dict]:
-        """
-        THEORY: Intelligent Knowledge Extraction
-        ---------------------------------------------------------------
-        Instead of storing monolithic query→answer blobs, decompose each
-        answer into atomic (subject, relation, object) triples that are
-        independently indexed for cross-query reuse.
-
-        Cost: ~$0.0002 per write (one Haiku call).
-        """
+        """Extract subject-relation-object triples for knowledge reuse."""
         source_file = sources[0].get("metadata", {}).get("filename", "unknown") if sources else "unknown"
         try:
             response = create_llm_message(
@@ -3381,25 +3200,7 @@ class SemanticCacheController:
 # 3. CACHE PRE-WARMER — Programmatic Day-1 saturation
 # ============================================================================
 class CachePreWarmer:
-    """
-    THEORY: Programmatic Cache Pre-Warming (Solving Cold-Start)
-    -----------------------------------------------------------------------
-    Standard caches are "lazy" — they start empty and slowly fill up as
-    unlucky early users take the latency and cost hits.
-
-    We solve this with Programmatic Pre-Warming: before any human touches
-    the system, we deploy an automated sweep that loops over the entire
-    corpus with a set of template queries, forcing the cache to saturate.
-
-    This is architecture-agnostic. Any agent framework (RLM, LangChain,
-    AutoGen, or a simple Python script) can pre-warm a cache. The key
-    insight is that closed-domain corpora (legal, financial, medical)
-    have a finite set of relevant queries that can be enumerated.
-
-    Example: A PE firm uploads a 50-page financial model. We instantly
-    sweep it with ["What is Q1 ARR?", "What is EBITDA?", "What is Churn?"]
-    so that by the time the analyst logs in, every question is an instant hit.
-    """
+    """Populate cache entries by sweeping corpus chunks with template queries."""
 
     def __init__(self, agent):
         """
@@ -3442,17 +3243,7 @@ class CachePreWarmer:
 # 4. HETEROGENEOUS MODEL ROUTER
 # ============================================================================
 class Router:
-    """
-    THEORY: Heterogeneous Dispatch
-    -----------------------------------------------------------------------
-    Not every sub-query needs a frontier model. Simple classification or
-    extraction tasks can be handled by cheap, fast models (Haiku), while
-    complex reasoning or synthesis tasks require expensive models (Sonnet).
-
-    This router is a simple heuristic. In a production system, it could
-    be a trained classifier that predicts the optimal model based on
-    query complexity, context size, and historical performance.
-    """
+    """Simple keyword router for evaluator-class versus executor-class calls."""
 
     @staticmethod
     def select_model(query: str) -> str:
@@ -3467,25 +3258,7 @@ class Router:
 # 5. AUTONOMOUS AGENT — The transparent interceptor
 # ============================================================================
 class AutonomousAgent:
-    """
-    THEORY: The Agent-Cache Integration Layer
-    -----------------------------------------------------------------------
-    This class represents ANY autonomous agent (RLM, LangChain, AutoGen,
-    or a custom loop). The key function is `cached_query()`, which acts
-    as a transparent interceptor: the agent calls it exactly like it
-    would call an LLM API, but internally the Two-Stage Cache intercepts
-    redundant queries before they ever reach the expensive model.
-
-    THEORY: Context Collapse is Architecture-Agnostic
-    -----------------------------------------------------------------------
-    Context Collapse is NOT specific to RLMs. ANY agent that processes
-    more data than fits in its context window is vulnerable. A LangChain
-    agent appending tool results, an AutoGen orchestrator receiving sub-
-    agent reports, or even Claude Code accumulating terminal outputs —
-    all suffer from the same fundamental limitation.
-
-    The cache is the universal solution regardless of agent framework.
-    """
+    """Minimal agent facade that routes queries through the semantic cache."""
 
     def __init__(self):
         self.metrics = ExecutionMetrics()
@@ -3495,18 +3268,8 @@ class AutonomousAgent:
 
     def cached_query(self, query: str, context: str) -> dict:
         """
-        The transparent cache-interceptor function.
-
-        This is analogous to rlm_query() in the RLM architecture, but is
-        framework-agnostic. Any agent framework can call this instead of
-        calling the LLM API directly.
-
-        Returns:
-            dict with keys:
-                "result":         The answer text
-                "ephemeral":      If True, do NOT append to agent's context history
-                "was_summarized": If True, result was condensed from a larger original
-                "from_cache":     If True, this was a cache hit (no expensive LLM call)
+        Return a cache hit when possible; otherwise call the selected model and
+        store the result with provenance/collapse-guard metadata.
         """
         print(f"\n    → cached_query('{query[:60]}...')")
 
@@ -3545,346 +3308,3 @@ class AutonomousAgent:
         guarded["consensus"] = consensus["consensus"]
         guarded["divergent_facts"] = consensus.get("divergent_facts", [])
         return guarded
-
-
-# ============================================================================
-# 6. DEMONSTRATION — 4-Pass Agent Simulation
-# ============================================================================
-def run_full_demonstration():
-    """
-    Runs a complete 4-pass demonstration of the Two-Stage Semantic Cache:
-
-    Pass 1 (COLD START):   All cache misses. The agent processes a corpus
-                           for the first time, populating the cache.
-
-    Pass 2 (PARAPHRASED):  The agent returns with differently-worded queries
-                           that ask for the same information. The Haiku Sniper
-                           correctly identifies semantic equivalence → cache hits.
-
-    Pass 3 (DISTINCT):     The agent asks logically DIFFERENT questions about
-                           the same data. The Haiku Sniper correctly rejects
-                           them → cache misses (no false positives).
-
-    Pass 4 (PRE-WARMED):   We run the Cache Pre-Warmer with finance-style
-                           extraction queries, then demonstrate instant hits.
-    """
-
-    # --- Synthetic Corpus ---
-    # A small but realistic dataset that demonstrates all cache behaviors.
-    corpus = """FINANCIAL REPORT Q1 2024
-Company: Acme Corp
-Annual Recurring Revenue (ARR): $12.4M
-Monthly Recurring Revenue (MRR): $1.03M
-Customer Churn Rate: 4.2%
-EBITDA: $2.1M
-Net Revenue Retention: 112%
-
-INCIDENT REPORT — SERVER OUTAGE
-Date: 2024-01-15
-Duration: 3 hours 42 minutes
-Root Cause: Database connection pool exhausted due to unbounded retry loop.
-Impact: 2,400 users affected. HTTP 503 errors returned.
-Resolution: Connection pool limit raised from 50 to 200. Circuit breaker added.
-
-LEGAL REVIEW — CONTRACT AMENDMENT
-Clause 7.2(b): Vendor must INCLUDE all source code in escrow deposit.
-Clause 7.3(a): Vendor must EXCLUDE proprietary third-party libraries from escrow.
-Amendment effective: March 1, 2024.
-Signed by: J. Martinez (Buyer), K. Chen (Vendor)."""
-
-    chunks = [c.strip() for c in corpus.split("\n\n") if c.strip()]
-
-    agent = AutonomousAgent()
-    agent.metrics.start_time = time.time()
-
-    # ========== PASS 1: COLD START ==========
-    print("\n" + "="*65)
-    print("  PASS 1: COLD START (All misses — populating cache)")
-    print("="*65)
-
-    cold_queries = [
-        ("Extract the Annual Recurring Revenue.", chunks[0]),
-        ("What was the root cause of the server outage?", chunks[1]),
-        ("What must the vendor INCLUDE in the escrow deposit?", chunks[2]),
-    ]
-
-    for query, chunk in cold_queries:
-        result = agent.cached_query(query, chunk)
-        print(f"      Result: {result['result'][:100]}...")
-        time.sleep(1)
-
-    # ========== PASS 2: PARAPHRASED QUERIES (Semantic hits) ==========
-    print("\n" + "="*65)
-    print("  PASS 2: PARAPHRASED QUERIES (Haiku Sniper should detect equivalence)")
-    print("="*65)
-
-    paraphrased_queries = [
-        ("What is the ARR for Acme Corp?", chunks[0]),
-        ("Identify the primary reason the servers went down.", chunks[1]),
-        ("What should the vendor include in the escrow?", chunks[2]),
-    ]
-
-    for query, chunk in paraphrased_queries:
-        result = agent.cached_query(query, chunk)
-        print(f"      Result: {result['result'][:100]}...")
-        print(f"      From Cache: {result['from_cache']}")
-        time.sleep(1)
-
-    # ========== PASS 3: LOGICALLY DISTINCT (Correct misses) ==========
-    print("\n" + "="*65)
-    print("  PASS 3: LOGICALLY DISTINCT QUERIES (Sniper should reject — no false positives)")
-    print("="*65)
-
-    # Critical test: "INCLUDE" vs "EXCLUDE" — the classic vector cache failure
-    distinct_queries = [
-        ("What is the customer churn rate?", chunks[0]),        # Different metric, same chunk
-        ("How long did the outage last?", chunks[1]),           # Different question, same chunk
-        ("What must the vendor EXCLUDE from escrow?", chunks[2]),  # Logical inversion!
-    ]
-
-    for query, chunk in distinct_queries:
-        result = agent.cached_query(query, chunk)
-        print(f"      Result: {result['result'][:100]}...")
-        print(f"      From Cache: {result['from_cache']}")
-        time.sleep(1)
-
-    # ========== PASS 4: PRE-WARMING + INSTANT HITS ==========
-    print("\n" + "="*65)
-    print("  PASS 4: CACHE PRE-WARMING (Programmatic Day-1 saturation)")
-    print("="*65)
-
-    # Pre-warm with financial extraction templates
-    pre_warmer = CachePreWarmer(agent)
-    finance_queries = [
-        "Extract the Monthly Recurring Revenue.",
-        "What is the Net Revenue Retention rate?",
-        "What is the EBITDA?",
-    ]
-    pre_warmer.warm([chunks[0]], finance_queries)
-
-    # Now query with paraphrased versions — should be instant hits
-    print("\n  [POST-WARMING] Testing paraphrased queries against pre-warmed cache...")
-    post_warm_queries = [
-        ("What is Acme's MRR?", chunks[0]),
-        ("Report the NRR percentage.", chunks[0]),
-        ("What was the EBITDA figure?", chunks[0]),
-    ]
-
-    for query, chunk in post_warm_queries:
-        result = agent.cached_query(query, chunk)
-        print(f"      Result: {result['result'][:100]}...")
-        print(f"      From Cache: {result['from_cache']}")
-        time.sleep(1)
-
-    # ========== PASS 5: CONTEXT COLLAPSE GUARD (Large result retrieval) ==========
-    print("\n" + "="*65)
-    print("  PASS 5: CONTEXT COLLAPSE GUARD (Triggering large-result protection)")
-    print("="*65)
-
-    # -----------------------------------------------------------------------
-    # SCENARIO: A previous agent run analyzed a massive due diligence package
-    # and cached the full result. When the agent (or a new session) retrieves
-    # it, the result is too large to safely append to context. The guard must:
-    #   (A) Flag as ephemeral if result is 2000-4000 tokens
-    #   (B) Recursively chunk + summarize via parallel Haiku if >4000 tokens
-    # -----------------------------------------------------------------------
-
-    # --- 5A: EPHEMERAL RETRIEVAL (medium-sized result, 2000-4000 tokens) ---
-    print("\n  --- 5A: Ephemeral Retrieval (medium result > 2000 tokens) ---")
-    medium_result = (
-        "EXECUTIVE SUMMARY — ACME CORP Q1 2024 PERFORMANCE REVIEW\n"
-        + "=" * 60 + "\n\n"
-    )
-    # Pad to ~10,000 chars (~2500 tokens) to trigger ephemeral but not summarization
-    for i in range(1, 16):
-        medium_result += (
-            f"Finding {i}: The Q{(i % 4) + 1} analysis reveals that operational metric "
-            f"category {i} showed a {10 + i}% improvement over baseline projections "
-            f"established in the prior fiscal quarter. This improvement is attributed "
-            f"to the deployment of automated monitoring systems in region {chr(64 + i)} "
-            f"and the renegotiation of vendor contracts covering service tier {i}. "
-            f"The financial impact is estimated at ${i * 0.3:.1f}M in annualized "
-            f"cost savings, with full realization expected by Q{(i % 4) + 1} 2025. "
-            f"Stakeholder feedback from the {i * 3} affected business units has been "
-            f"overwhelmingly positive, with a satisfaction score of {85 + (i % 10)}%. "
-            f"Risk mitigation measures including redundant failover systems and "
-            f"automated alerting have been validated through {i * 2} tabletop exercises.\n\n"
-        )
-
-    medium_context = "ACME CORP Q1 2024 — QUARTERLY PERFORMANCE PACKAGE"
-    medium_query = "Summarize the Q1 2024 performance review findings."
-    agent.cache.store(medium_query, medium_context, medium_result)
-    print(f"  [SETUP] Injected medium cached result ({len(medium_result)} chars, ~{len(medium_result)//4} tokens)")
-
-    # Exact-match retrieval to guarantee the hit fires
-    result = agent.cached_query(medium_query, medium_context)
-    print(f"      Result (first 150 chars): {result['result'][:150]}...")
-    print(f"      From Cache: {result['from_cache']}")
-    print(f"      >>> Ephemeral: {result.get('ephemeral')}  (should be True — do NOT persist in context)")
-    print(f"      >>> Was Summarized: {result.get('was_summarized')}  (should be False — not large enough)")
-
-    # --- 5B: RECURSIVE PARALLEL SUMMARIZATION (huge result > 4000 tokens) ---
-    print("\n  --- 5B: Recursive Parallel Summarization (huge result > 4000 tokens) ---")
-    large_result = (
-        "COMPREHENSIVE DUE DILIGENCE REPORT — ACME CORP ACQUISITION\n"
-        + "=" * 60 + "\n\n"
-    )
-    # Build a ~20,000 char result (~5000 tokens) to exceed the MAX_CONTEXT_TOKENS threshold
-    sections = [
-        ("FINANCIAL OVERVIEW",
-         "Acme Corp reported total revenues of $48.7M in FY2023, representing "
-         "a 23% year-over-year growth rate. The company's gross margin expanded "
-         "from 62% to 68%, driven primarily by operational efficiencies in their "
-         "cloud infrastructure division. EBITDA margins improved to 18.4%, up "
-         "from 14.1% in the prior year. The company maintains $12.3M in cash "
-         "and equivalents with a debt-to-equity ratio of 0.34. Working capital "
-         "stands at $8.7M, providing adequate runway for the next 18 months of "
-         "projected operations without additional financing requirements. "
-         "Revenue breakdown by segment: Cloud Platform ($28.3M, +31% YoY), "
-         "Professional Services ($12.1M, +14% YoY), and Support & Maintenance "
-         "($8.3M, +11% YoY). The Cloud Platform segment is the primary growth "
-         "driver with 58% of total revenue and the highest contribution margin."),
-        ("CUSTOMER ANALYSIS",
-         "The customer base consists of 2,847 active accounts across 14 industry "
-         "verticals. The top 10 customers represent 31% of ARR, indicating healthy "
-         "diversification. Logo retention rate is 94.2% with net dollar retention "
-         "at 118%, demonstrating strong expansion within existing accounts. The "
-         "average contract value (ACV) increased from $14.2K to $17.1K, reflecting "
-         "successful upselling of premium features. Customer acquisition cost (CAC) "
-         "is $23.4K with an LTV:CAC ratio of 4.7x, well above the 3x benchmark. "
-         "Enterprise customers (>$100K ACV) grew from 47 to 89 accounts, representing "
-         "62% of total ARR. The SMB segment, while larger by count at 2,412 accounts, "
-         "contributes 22% of ARR with higher churn (8.1%) compared to enterprise (1.4%)."),
-        ("TECHNOLOGY & INTELLECTUAL PROPERTY",
-         "The platform comprises 847,000 lines of production code across 12 "
-         "microservices deployed on AWS. The tech stack includes Python, Go, and "
-         "TypeScript. Key IP assets include 3 granted patents and 7 pending "
-         "applications covering their proprietary data pipeline architecture and "
-         "ML-based anomaly detection algorithms. The engineering team of 42 FTEs "
-         "maintains a deployment frequency of 47 releases per week with a change "
-         "failure rate of 2.1%. Technical debt ratio is estimated at 14%, with a "
-         "dedicated time allocation of 20% sprint capacity for remediation. The "
-         "platform processes 2.3 billion events per day with 99.97% uptime SLA "
-         "compliance over the trailing 12-month period. Infrastructure cost as a "
-         "percentage of revenue has declined from 23% to 17% through optimization."),
-        ("LEGAL & COMPLIANCE",
-         "The company holds SOC 2 Type II certification, ISO 27001, and GDPR "
-         "compliance attestation. Outstanding litigation includes one minor "
-         "patent infringement claim (estimated exposure: $200K-$500K). All "
-         "employee agreements include standard IP assignment and non-compete "
-         "clauses. The data processing agreements with all enterprise customers "
-         "are current and compliant with applicable privacy regulations including "
-         "CCPA, HIPAA BAA for healthcare customers, and FedRAMP authorization "
-         "is in progress with expected completion in Q2 2025. The company has "
-         "completed 3 external penetration tests in the past 12 months with "
-         "all critical findings remediated within the 30-day SLA."),
-        ("MARKET POSITION & COMPETITIVE LANDSCAPE",
-         "Acme Corp is positioned as a mid-market leader in the observability "
-         "space, competing primarily with Datadog, New Relic, and Splunk. Their "
-         "differentiation lies in automated root cause analysis, which reduces "
-         "mean time to resolution (MTTR) by an average of 73% based on customer "
-         "benchmarks. The total addressable market (TAM) for cloud observability "
-         "is projected at $52B by 2027, growing at 14.3% CAGR. Acme's current "
-         "market share is approximately 0.09%. Their positioning in the Gartner "
-         "Magic Quadrant moved from Niche Players to Visionaries in the 2023 "
-         "report. Win rates against incumbents improved from 28% to 41%."),
-        ("RISK FACTORS",
-         "Key risks include: (1) concentration in AWS infrastructure creating "
-         "vendor dependency, (2) potential margin compression from AI compute "
-         "costs as the ML pipeline scales, (3) regulatory uncertainty around "
-         "AI-generated insights in regulated industries, and (4) talent "
-         "retention challenges in the current market. The company has partially "
-         "mitigated risk #1 through a multi-cloud roadmap targeting Q3 2024 "
-         "completion. Risk #2 is being addressed through model optimization "
-         "and a partnership with a custom silicon provider. Risk #3 requires "
-         "ongoing monitoring of the EU AI Act and SEC proposed disclosure rules. "
-         "Risk #4 is partially mitigated by above-market compensation and a "
-         "99th-percentile employee Net Promoter Score of 72."),
-        ("VALUATION CONSIDERATIONS",
-         "Based on comparable public company multiples (NTM Revenue: 12.4x, "
-         "NTM EBITDA: 34.2x) and precedent transactions in the observability "
-         "space, the implied enterprise value range is $580M-$720M. Applying "
-         "a 15-20% illiquidity discount for the private market context yields "
-         "a fair value estimate of $490M-$610M. The Rule of 40 score of 41.4 "
-         "(23% growth + 18.4% margin) supports a premium multiple within "
-         "the peer group. Sensitivity analysis on growth deceleration scenarios "
-         "suggests a floor valuation of $420M even under conservative assumptions."),
-        ("INTEGRATION PLANNING",
-         "Post-acquisition integration is estimated to require 12-18 months "
-         "across four workstreams: (A) Technology stack consolidation targeting "
-         "$4.2M in annual infrastructure savings, (B) Go-to-market alignment "
-         "to capitalize on cross-sell opportunities estimated at $8M in Year 1, "
-         "(C) G&A rationalization yielding $2.8M in headcount synergies, and "
-         "(D) Product roadmap harmonization to avoid customer confusion. Key "
-         "integration risks include the potential loss of 3-5 senior engineers "
-         "during the transition period, a 6-month revenue dip during sales team "
-         "realignment, and brand perception challenges in the developer community. "
-         "A retention package of $3.2M has been budgeted for key personnel."),
-        ("APPENDIX: DETAILED FINANCIAL PROJECTIONS",
-         "FY2024E: Revenue $59.8M (+23% YoY), EBITDA $11.4M (19.1% margin). "
-         "FY2025E: Revenue $72.3M (+21% YoY), EBITDA $15.2M (21.0% margin). "
-         "FY2026E: Revenue $85.1M (+18% YoY), EBITDA $19.6M (23.0% margin). "
-         "These projections assume stable competitive dynamics, successful "
-         "execution of the multi-cloud roadmap, and continued expansion of "
-         "the enterprise segment. Downside scenario (15% probability): revenue "
-         "growth decelerates to 12% due to macro headwinds, compressing "
-         "EBITDA margins to 15%. Upside scenario (25% probability): successful "
-         "product-led growth initiative accelerates enterprise adoption, driving "
-         "28% revenue growth and 25% EBITDA margins by FY2026. The base case "
-         "assumes 2% quarterly price increases across the SMB segment and a "
-         "12% annual expansion in enterprise contract renewals."),
-    ]
-
-    for i, (title, body) in enumerate(sections, 1):
-        large_result += f"SECTION {i}: {title}\n{body}\n\n"
-
-    # Repeat the analysis under different framing to realistically bulk up the result
-    # (In production, a real DD report would be 50-200 pages)
-    large_result += "\n" + "=" * 60 + "\nSUPPLEMENTAL ANALYSIS — YEAR-OVER-YEAR COMPARISON\n" + "=" * 60 + "\n\n"
-    for i, (title, body) in enumerate(sections, 1):
-        large_result += f"YoY COMPARISON {i}: {title}\n{body}\n\n"
-
-    large_result += "\n" + "=" * 60 + "\nHISTORICAL TREND ANALYSIS — 5-YEAR LOOKBACK\n" + "=" * 60 + "\n\n"
-    for i, (title, body) in enumerate(sections, 1):
-        large_result += f"HISTORICAL {i}: {title}\n{body}\n\n"
-
-    dd_context = "ACME CORP ACQUISITION TARGET — FULL DUE DILIGENCE PACKAGE"
-    dd_query = "Provide a comprehensive due diligence analysis of the acquisition target."
-    agent.cache.store(dd_query, dd_context, large_result)
-    print(f"  [SETUP] Injected large cached result ({len(large_result)} chars, ~{len(large_result)//4} tokens)")
-    print(f"  [SETUP] MAX_CONTEXT_TOKENS threshold = {agent.cache.MAX_CONTEXT_TOKENS}")
-    print(f"  [SETUP] This should trigger recursive parallel summarization.\n")
-
-    # Exact-match retrieval — guaranteed cache hit, forces the guard to fire
-    result = agent.cached_query(dd_query, dd_context)
-    print(f"      Result (first 200 chars): {result['result'][:200]}...")
-    print(f"      From Cache: {result['from_cache']}")
-    print(f"      >>> Ephemeral: {result.get('ephemeral')}  (should be False — it was summarized instead)")
-    print(f"      >>> Was Summarized: {result.get('was_summarized')}  (should be True — parallel Haiku chunks)")
-    time.sleep(1)
-
-    # Paraphrased retrieval — tests Sniper + Guard combo
-    print("\n  --- 5C: Paraphrased retrieval of large cached result (Sniper + Guard) ---")
-    result = agent.cached_query(
-        "What are the key findings from the Acme Corp due diligence?",
-        dd_context
-    )
-    print(f"      Result (first 200 chars): {result['result'][:200]}...")
-    print(f"      From Cache: {result['from_cache']}")
-    print(f"      Ephemeral: {result.get('ephemeral', 'N/A')}")
-    print(f"      Was Summarized: {result.get('was_summarized', 'N/A')}")
-
-    # ========== FINAL SUMMARY ==========
-    agent.metrics.end_time = time.time()
-    agent.metrics.print_summary()
-
-
-# ============================================================================
-# ENTRY POINT
-# ============================================================================
-if __name__ == "__main__":
-    if "ANTHROPIC_API_KEY" not in os.environ:
-        print("ERROR: ANTHROPIC_API_KEY not found. Check your .env file.")
-        exit(1)
-
-    run_full_demonstration()

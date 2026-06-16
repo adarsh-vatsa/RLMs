@@ -96,6 +96,24 @@ def make_entry(query, result, scope=None):
 
 
 class DataScopedSearchCacheTests(unittest.TestCase):
+    def test_embedding_query_uses_configured_instruction(self):
+        engine = scs.EmbeddingEngine.__new__(scs.EmbeddingEngine)
+        seen = {}
+
+        def fake_encode(texts, instruction=""):
+            seen["texts"] = texts
+            seen["instruction"] = instruction
+            return np.array([[1.0, 0.0]], dtype="float32")
+
+        engine.encode = fake_encode
+
+        with patch.object(scs, "EMBEDDING_QUERY_INSTRUCTION", "custom evidence instruction"):
+            embedding = engine.encode_query("Which option is supported?")
+
+        self.assertEqual(seen["texts"], ["Which option is supported?"])
+        self.assertEqual(seen["instruction"], "custom evidence instruction")
+        self.assertEqual(embedding.shape, (1, 2))
+
     def test_exact_hits_are_limited_to_active_data_scope(self):
         query = "same question"
         controller = make_controller()

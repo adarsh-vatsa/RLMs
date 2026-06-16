@@ -38,11 +38,8 @@ Query → Cache Check (free/cheap)
 # Install dependencies
 pip install transformers torch faiss-cpu anthropic python-dotenv numpy
 
-# Set your API key
-echo "ANTHROPIC_API_KEY=sk-..." > .env
-
-# Run the semantic cache system demo
-python semantic_cache_system.py
+# Run the test suite
+python -m unittest discover -s test
 ```
 
 ## Benchmarking

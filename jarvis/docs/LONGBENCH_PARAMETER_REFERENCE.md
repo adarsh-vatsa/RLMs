@@ -8,6 +8,9 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 - `SEMANTIC_CACHE_SEARCH_MODE`: Selects the LongBench retrieval path.
   Use `iterative` for the Jarvis FAISS-prioritized chunk reader; the global default remains `packed`.
 
+- `SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION`: Instruction prepended before query embedding.
+  For LongBench, use a benchmark evidence instruction rather than a legal-domain retrieval instruction.
+
 - `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`: Enables token-based document chunking and sets the target chunk size.
   Larger values reduce chunk count and ingest work, but chunks that are too large make FAISS evidence selection coarser.
 
