@@ -491,7 +491,7 @@ def _coerce_bool(value) -> bool:
 def _mcq_system_prompt() -> str:
     if MCQ_PROMPT_STYLE == "strict":
         return (
-            "You are solving a LongBench-v2 multiple-choice question using ONLY the "
+            "You are solving a long-context multiple-choice question using ONLY the "
             "provided documents. The query includes choices A, B, C, and D. Silently "
             "check each option against the documents before answering. The correct "
             "choice must satisfy every constraint in the question and every substantive "
@@ -504,7 +504,7 @@ def _mcq_system_prompt() -> str:
             "Return exactly one capital letter: A, B, C, or D. Do not explain."
         )
     return (
-        "You are answering a multiple-choice benchmark question using ONLY "
+        "You are answering a multiple-choice question using ONLY "
         "the provided documents. The query includes choices A, B, C, and D. "
         "Compare the choices against the retrieved evidence and return exactly "
         "one capital letter: A, B, C, or D. If evidence is incomplete, choose "
@@ -1305,7 +1305,7 @@ def _iterative_task_guidance(query: str) -> str:
             else ""
         )
         return (
-            "This may be a LongBench many-shot relation task. Chunks can contain "
+            "This may be a many-shot relation task. Chunks can contain "
             "demonstration examples, answer letters, and symbolic relation codes. "
             "The question's entities are the target; never replace them with entities "
             "from demonstrations. Do not discard demonstrations just because they do "
@@ -2725,7 +2725,7 @@ class SemanticCacheController:
         relation_codes = sorted(_relation_choice_codes(query))
         relation_code_text = ", ".join(relation_codes) if relation_codes else "none"
         system_prompt = (
-            "You are a cumulative memory updater for a LongBench-v2 multiple-choice "
+            "You are a cumulative evidence ledger updater for a long-context multiple-choice "
             "question. Use ONLY the current chunk and the existing ledger. Return ONLY "
             "one valid compact JSON object. Use exactly these keys: status, memory_update, "
             "target_facts, code_mappings, best_choice, best_choice_rationale, confidence, "

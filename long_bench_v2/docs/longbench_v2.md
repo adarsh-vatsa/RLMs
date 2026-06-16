@@ -384,7 +384,7 @@ Recommended balanced Jarvis LongBench-v2 profile:
 
 ```bash
 export SEMANTIC_CACHE_SEARCH_MODE=iterative
-export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a LongBench question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a long-context multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30

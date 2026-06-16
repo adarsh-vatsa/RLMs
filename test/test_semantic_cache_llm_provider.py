@@ -369,6 +369,8 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertIn("Reject choices", strict_prompt)
         self.assertIn("satisfy every constraint", strict_prompt)
         self.assertIn("overstate the evidence", strict_prompt)
+        self.assertNotIn("LongBench", strict_prompt)
+        self.assertNotIn("benchmark", default_prompt.lower())
         self.assertNotEqual(strict_prompt, default_prompt)
 
     def test_synthesis_source_text_can_be_trimmed_to_input_budget(self):
