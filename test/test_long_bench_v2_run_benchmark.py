@@ -141,7 +141,7 @@ class FakeController:
                 "synthesis_packed_chunk_count": 3,
                 "synthesis_dropped_chunk_count": 1,
                 "synthesis_selected_chunk_indices": [0, 1, 2],
-                "iterative_reader_version": 4,
+                "iterative_reader_version": 5,
                 "iterative_scan_total_chunks": 10,
                 "iterative_scan_early_stop_min_chunks": fake_early_stop_min,
                 "iterative_scan_budget": fake_scan_budget,
@@ -158,6 +158,9 @@ class FakeController:
                 "iterative_scan_inspector_call_count": fake_early_stop_min,
                 "iterative_scan_final_adjudication_call_count": 0,
                 "iterative_scan_packed_fallback_call_count": 0,
+                "iterative_scan_packed_fallback_reason": None,
+                "iterative_scan_final_answer": None,
+                "iterative_scan_final_confidence": None,
                 "iterative_scan_useful_memory_count": 1,
                 "iterative_scan_observation_count": 0,
                 "iterative_scan_rule_count": 0,
@@ -179,7 +182,7 @@ class FakeScs:
     SYNTHESIS_MAX_CHUNKS = 5
     MCQ_PROMPT_STYLE = "strict"
     SEARCH_MODE = "iterative"
-    ITERATIVE_READER_VERSION = 4
+    ITERATIVE_READER_VERSION = 5
     SCAN_MIN_CHUNK_RATIO = 0.30
     SCAN_MAX_CHUNK_RATIO = 0.50
     SCAN_MIN_CHUNKS = 3
@@ -225,7 +228,7 @@ def _reset_fake_controller():
     FakeScs.SYNTHESIS_MAX_CHUNKS = 5
     FakeScs.MCQ_PROMPT_STYLE = "strict"
     FakeScs.SEARCH_MODE = "iterative"
-    FakeScs.ITERATIVE_READER_VERSION = 4
+    FakeScs.ITERATIVE_READER_VERSION = 5
     FakeScs.SCAN_MIN_CHUNK_RATIO = 0.30
     FakeScs.SCAN_MAX_CHUNK_RATIO = 0.50
     FakeScs.SCAN_MIN_CHUNKS = 3
@@ -376,7 +379,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             5,
             ["original", "exact"],
             search_mode="iterative",
-            iterative_reader_version=4,
+            iterative_reader_version=5,
             scan_min_chunk_ratio=0.30,
             scan_max_chunk_ratio=0.50,
             scan_min_chunks=3,
@@ -395,7 +398,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             5,
             ["original", "exact"],
             search_mode="iterative",
-            iterative_reader_version=5,
+            iterative_reader_version=6,
             scan_min_chunk_ratio=0.30,
             scan_max_chunk_ratio=0.50,
             scan_min_chunks=3,
@@ -416,7 +419,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             synthesis_max_chunks=99,
             synthesis_input_token_budget=12345,
             search_mode="iterative",
-            iterative_reader_version=4,
+            iterative_reader_version=5,
             scan_min_chunk_ratio=0.30,
             scan_max_chunk_ratio=0.50,
             scan_min_chunks=3,
@@ -611,7 +614,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertTrue(manifest["iterative_top_k_ignored"])
         self.assertEqual(manifest["rerank_top"], 2)
         self.assertEqual(manifest["search_mode"], "iterative")
-        self.assertEqual(manifest["iterative_reader_version"], 4)
+        self.assertEqual(manifest["iterative_reader_version"], 5)
         self.assertEqual(manifest["scan_min_chunk_ratio"], 0.30)
         self.assertEqual(manifest["scan_max_chunk_ratio"], 0.50)
         self.assertEqual(manifest["scan_min_chunks"], 3)
@@ -650,7 +653,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["top_k"], 10)
         self.assertIsNone(bridge_rows[0]["top_k_effective"])
         self.assertTrue(bridge_rows[0]["iterative_top_k_ignored"])
-        self.assertEqual(bridge_rows[0]["iterative_reader_version"], 4)
+        self.assertEqual(bridge_rows[0]["iterative_reader_version"], 5)
         self.assertEqual(bridge_rows[0]["scan_min_chunk_ratio"], 0.30)
         self.assertEqual(bridge_rows[0]["scan_max_chunk_ratio"], 0.50)
         self.assertEqual(bridge_rows[0]["scan_empty_ledger_fallback_ratio"], 1.0)
@@ -662,6 +665,9 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["iterative_scan_faiss_result_count"], 10)
         self.assertFalse(bridge_rows[0]["iterative_scan_empty_ledger_fallback_used"])
         self.assertFalse(bridge_rows[0]["iterative_scan_packed_fallback_used"])
+        self.assertIsNone(bridge_rows[0]["iterative_scan_packed_fallback_reason"])
+        self.assertIsNone(bridge_rows[0]["iterative_scan_final_answer"])
+        self.assertIsNone(bridge_rows[0]["iterative_scan_final_confidence"])
         self.assertEqual(bridge_rows[0]["iterative_scan_supporting_chunk_indices"], [1])
         self.assertEqual(bridge_rows[0]["iterative_scan_useful_memory_count"], 1)
         self.assertEqual(bridge_rows[0]["iterative_scan_parse_failure_count"], 0)

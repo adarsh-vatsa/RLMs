@@ -123,7 +123,7 @@ SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 SCAN_ORDER = "faiss_ranked"
-ITERATIVE_READER_VERSION = 4
+ITERATIVE_READER_VERSION = 5
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
     "SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET",
@@ -953,7 +953,13 @@ def _ledger_has_useful_memory(ledger: dict) -> bool:
     return _ledger_useful_memory_count(ledger) > 0
 
 
-def _update_evidence_ledger(ledger: dict, decision: dict | None, *, chunk_index: int) -> dict:
+def _update_evidence_ledger(
+    ledger: dict,
+    decision: dict | None,
+    *,
+    chunk_index: int,
+    query: str | None = None,
+) -> dict:
     decision = decision if isinstance(decision, dict) else {}
     if chunk_index not in ledger["visited_chunks"]:
         ledger["visited_chunks"].append(int(chunk_index))
@@ -979,18 +985,16 @@ def _update_evidence_ledger(ledger: dict, decision: dict | None, *, chunk_index:
         ledger,
         "rules",
         decision,
-        ("rules", "patterns", "learned_rules", "mappings"),
+        ("rules", "patterns", "learned_rules"),
         chunk_index=chunk_index,
         limit=12,
     )
-    _append_decision_notes(
-        ledger,
-        "examples",
-        decision,
-        ("examples", "demonstrations"),
-        chunk_index=chunk_index,
-        limit=12,
-    )
+
+    example_notes: list[str] = []
+    for field in ("examples", "demonstrations", "mappings"):
+        example_notes.extend(_coerce_note_list(decision.get(field)))
+    example_notes = _filter_relation_notes_for_query(example_notes, query)
+    _append_ledger_notes(ledger["examples"], example_notes, chunk_index=chunk_index, limit=12)
 
     choice = _normalize_choice_letter(
         decision.get("supported_choice") or decision.get("answer") or decision.get("choice")
@@ -1051,17 +1055,75 @@ def _query_requires_comparative_scan(query: str) -> bool:
     )
 
 
+def _extract_choice_texts(query: str) -> dict[str, str]:
+    choices: dict[str, str] = {}
+    for line in str(query or "").splitlines():
+        match = re.match(r"\s*([ABCD])\.\s*(.+?)\s*$", line)
+        if match:
+            choices[match.group(1).upper()] = match.group(2).strip()
+    return choices
+
+
+def _is_relation_type_query(query: str) -> bool:
+    return bool(re.search(r"(?is)\brelation type\b.*\bentity\d+\b", query or ""))
+
+
+def _relation_choice_codes(query: str) -> set[str]:
+    if not _is_relation_type_query(query):
+        return set()
+    codes: set[str] = set()
+    for choice_text in _extract_choice_texts(query).values():
+        normalized = choice_text.strip().lower()
+        if re.fullmatch(r"[a-z]{2,8}", normalized):
+            codes.add(normalized)
+        for token in re.findall(r"\b[a-z]{2,8}\b", normalized):
+            codes.add(token)
+    return codes
+
+
+def _filter_relation_notes_for_query(notes: list[str], query: str | None) -> list[str]:
+    codes = _relation_choice_codes(query or "")
+    if not codes:
+        return notes
+    filtered: list[str] = []
+    for note in notes:
+        text = str(note or "").lower()
+        if any(re.search(rf"\b{re.escape(code)}\b", text) for code in codes):
+            filtered.append(note)
+    return filtered
+
+
+def _final_decision_needs_packed_fallback(answer: str | None, decision: dict | None) -> tuple[bool, str]:
+    if not _normalize_choice_letter(answer):
+        return True, "invalid_final_answer"
+    decision = decision if isinstance(decision, dict) else {}
+    confidence = str(decision.get("confidence") or "").strip().lower()
+    if confidence != "high":
+        return True, "low_confidence_final_adjudication"
+    if _coerce_bool(decision.get("needs_more_context")):
+        return True, "final_adjudication_needs_more_context"
+    return False, ""
+
+
 def _iterative_task_guidance(query: str) -> str:
     text = query or ""
-    if re.search(r"(?is)\brelation type\b.*\bentity\d+\b", text):
+    if _is_relation_type_query(text):
+        codes = sorted(_relation_choice_codes(text))
+        code_guidance = (
+            f" Current candidate relation codes are: {', '.join(codes)}."
+            if codes
+            else ""
+        )
         return (
             "This may be a LongBench many-shot relation task. Chunks can contain "
             "demonstration examples, answer letters, and symbolic relation codes. "
             "The question's entities are the target; never replace them with entities "
             "from demonstrations. Do not discard demonstrations just because they do "
-            "not directly answer the target question. Extract compact option-code "
-            "mappings and relation examples only. If the target document appears, "
-            "record the target entity relation facts as observations."
+            "not directly answer the target question. Extract compact relation "
+            "examples or option-code mappings only when they use one of the current "
+            "candidate relation codes; discard unrelated demonstration codes. If the "
+            "target document appears, record the target entity relation facts as "
+            f"observations.{code_guidance}"
         )
     if re.search(r"(?i)\b(symboli[sz]e|theme|novel|literary|meaning)\b", text):
         return (
@@ -2466,6 +2528,8 @@ class SemanticCacheController:
         metadata = result.get("metadata") or {}
         chunk_index = self._result_chunk_index(result, len(ledger.get("visited_chunks", [])))
         task_guidance = _iterative_task_guidance(query)
+        relation_codes = sorted(_relation_choice_codes(query))
+        relation_code_text = ", ".join(relation_codes) if relation_codes else "none"
         system_prompt = (
             "You are an evidence inspector for a LongBench-v2 question. Use ONLY the "
             "current chunk and the existing evidence ledger. Return ONLY one valid "
@@ -2482,6 +2546,7 @@ class SemanticCacheController:
         )
         user_content = (
             f"Question and choices:\n{query}\n\n"
+            f"Current relation option codes, if any:\n{relation_code_text}\n\n"
             f"Existing evidence ledger:\n{json.dumps(ledger, ensure_ascii=False)}\n\n"
             f"Chunk metadata:\n{json.dumps(metadata, ensure_ascii=False)}\n\n"
             f"Chunk text:\n{result.get('text', '')}"
@@ -2517,14 +2582,26 @@ class SemanticCacheController:
         return parsed
 
     def _finalize_iterative_answer(self, query: str, ledger: dict) -> tuple[str, dict]:
+        choice_texts = _extract_choice_texts(query)
+        relation_codes = sorted(_relation_choice_codes(query))
         system_prompt = (
             _mcq_system_prompt()
-            + " Use the evidence ledger below as the only inspected evidence. The ledger "
-            "may contain direct answer-choice support, observations, learned rules, and "
-            "few-shot examples. Infer from those rules/examples when direct support is "
-            "not present. Return JSON with keys answer, confidence, and reason. answer "
-            "must be A, B, C, or D."
+            + " For this final adjudication, override the output format and return ONLY "
+            "one compact JSON object. Do not accept ledger.best_choice or the per-choice "
+            "support buckets as authoritative; chunk inspectors can mis-bucket evidence. "
+            "Re-score every choice A, B, C, and D from the raw ledger notes, including "
+            "observations, learned rules, examples, all support/against notes, and open "
+            "questions. For many-shot relation tasks, use demonstration examples only "
+            "when their relation code is one of the current choice codes. Return keys: "
+            "answer, confidence, reason, choice_scores, needs_more_context. answer must "
+            "be A, B, C, or D. confidence must be low, medium, or high."
         )
+        adjudication_payload = {
+            "choices": choice_texts,
+            "relation_choice_codes": relation_codes,
+            "ledger_best_choice_noisy_hint": ledger.get("best_choice"),
+            "evidence_ledger": ledger,
+        }
         response = create_llm_message(
             model=EXECUTOR_MODEL,
             max_tokens=max(1, SCAN_MAX_TOKENS),
@@ -2533,7 +2610,10 @@ class SemanticCacheController:
             messages=[
                 {
                     "role": "user",
-                    "content": f"Question and choices:\n{query}\n\nEvidence ledger:\n{json.dumps(ledger, ensure_ascii=False)}",
+                    "content": (
+                        f"Question and choices:\n{query}\n\n"
+                        f"Final adjudication payload:\n{json.dumps(adjudication_payload, ensure_ascii=False)}"
+                    ),
                 }
             ],
             response_format=_json_response_format(),
@@ -2542,17 +2622,25 @@ class SemanticCacheController:
         raw_text = response.content[0].text
         parsed = _extract_llm_json_object(raw_text) or {}
         answer = _normalize_choice_letter(parsed.get("answer")) or _normalize_choice_letter(raw_text)
-        if not answer:
-            answer = _normalize_choice_letter(ledger.get("best_choice")) or raw_text.strip()
-        parsed["answer"] = answer
-        return answer, parsed
+        parsed["answer"] = answer or ""
+        parsed["raw_response"] = _bounded_text(raw_text, limit=800)
+        return answer or "", parsed
 
-    def _fallback_iterative_packed_answer(self, query: str, scan_results: list[dict]) -> tuple[str, dict]:
+    def _fallback_iterative_packed_answer(
+        self,
+        query: str,
+        scan_results: list[dict],
+        *,
+        ledger: dict | None = None,
+        reason: str = "",
+    ) -> tuple[str, dict]:
         system_prompt = (
             _mcq_system_prompt()
-            + " The iterative evidence ledger remained empty, so answer from the inspected "
-            "chunks below. Use only these chunks and the question choices. Return only one "
-            "answer letter: A, B, C, or D."
+            + " The iterative reader needs a direct packed fallback because final ledger "
+            "adjudication was empty, invalid, or not high-confidence. Re-evaluate every "
+            "choice from the compact ledger and packed inspected chunks below. Treat the "
+            "ledger as noisy notes, not as a final answer. Use only these materials and "
+            "the question choices. Return only one answer letter: A, B, C, or D."
         )
         source_text, pack_info = _pack_sources_for_input_budget(
             query=query,
@@ -2566,7 +2654,17 @@ class SemanticCacheController:
             max_tokens=max(1, MCQ_SYNTHESIS_MAX_TOKENS),
             temperature=0,
             system=system_prompt,
-            messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}],
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Fallback reason: {reason or 'unspecified'}\n\n"
+                        f"Query: {query}\n\n"
+                        f"Compact evidence ledger:\n{json.dumps(ledger or {}, ensure_ascii=False)}\n\n"
+                        f"Documents:\n{source_text}"
+                    ),
+                }
+            ],
         )
         self.metrics.record_call(EXECUTOR_MODEL, response.usage.input_tokens, response.usage.output_tokens)
         raw_text = response.content[0].text
@@ -2574,6 +2672,7 @@ class SemanticCacheController:
         decision = {
             "answer": answer,
             "raw_response": _bounded_text(raw_text, limit=800),
+            "fallback_reason": reason,
             **pack_info,
         }
         return answer, decision
@@ -2634,6 +2733,7 @@ class SemanticCacheController:
         answer = None
         final_decision = None
         packed_fallback_decision = None
+        packed_fallback_reason = None
         empty_ledger_fallback_used = False
 
         for result in scan_results:
@@ -2650,7 +2750,12 @@ class SemanticCacheController:
             chunk_index = self._result_chunk_index(result, inspector_call_count)
             decision = self._inspect_iterative_chunk(query, ledger, result)
             inspector_call_count += 1
-            _update_evidence_ledger(ledger, decision, chunk_index=chunk_index if chunk_index is not None else -1)
+            _update_evidence_ledger(
+                ledger,
+                decision,
+                chunk_index=chunk_index if chunk_index is not None else -1,
+                query=query,
+            )
             should_stop, reason = _should_stop_iterative_scan(
                 decision=decision,
                 ledger=ledger,
@@ -2666,12 +2771,33 @@ class SemanticCacheController:
                 break
 
         if answer is None:
+            inspected_results = scan_results[:inspector_call_count]
             if _ledger_has_useful_memory(ledger):
                 answer, final_decision = self._finalize_iterative_answer(query, ledger)
                 final_adjudication_call_count = 1
+                needs_fallback, fallback_reason = _final_decision_needs_packed_fallback(answer, final_decision)
+                if needs_fallback:
+                    packed_fallback_reason = fallback_reason
+                    answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
+                        query,
+                        inspected_results,
+                        ledger=ledger,
+                        reason=fallback_reason,
+                    )
+                    packed_fallback_call_count = 1
+                    stop_reason = (
+                        "invalid_final_packed_fallback"
+                        if fallback_reason == "invalid_final_answer"
+                        else "low_confidence_packed_fallback"
+                    )
             else:
-                inspected_results = scan_results[:inspector_call_count]
-                answer, packed_fallback_decision = self._fallback_iterative_packed_answer(query, inspected_results)
+                packed_fallback_reason = "empty_ledger"
+                answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
+                    query,
+                    inspected_results,
+                    ledger=ledger,
+                    reason=packed_fallback_reason,
+                )
                 packed_fallback_call_count = 1
                 stop_reason = "empty_ledger_packed_fallback"
 
@@ -2694,6 +2820,7 @@ class SemanticCacheController:
                 "visited_chunk_indices": visited_indices,
                 "final_decision": final_decision,
                 "packed_fallback_decision": packed_fallback_decision,
+                "packed_fallback_reason": packed_fallback_reason,
             },
             ensure_ascii=False,
         )
@@ -2730,6 +2857,13 @@ class SemanticCacheController:
             "iterative_scan_inspector_call_count": inspector_call_count,
             "iterative_scan_final_adjudication_call_count": final_adjudication_call_count,
             "iterative_scan_packed_fallback_call_count": packed_fallback_call_count,
+            "iterative_scan_packed_fallback_reason": packed_fallback_reason,
+            "iterative_scan_final_answer": (
+                final_decision.get("answer") if isinstance(final_decision, dict) else None
+            ),
+            "iterative_scan_final_confidence": (
+                final_decision.get("confidence") if isinstance(final_decision, dict) else None
+            ),
             "iterative_scan_useful_memory_count": useful_memory_count,
             "iterative_scan_observation_count": observation_count,
             "iterative_scan_rule_count": rule_count,

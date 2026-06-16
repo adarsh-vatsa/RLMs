@@ -340,11 +340,11 @@ The iterative reader is an opt-in LongBench/Jarvis path for long-context MCQ row
 3. The scan budget is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO)`, no more than total chunks, and optionally capped by `SEMANTIC_CACHE_SCAN_MAX_CHUNKS` unless that cap is `0`.
 4. The controller asks FAISS for enough top-N chunks to cover the normal scan budget and any empty-ledger fallback, then inspects them in FAISS-ranked order.
 5. The executor inspects one chunk per call and returns strict JSON with support, contradictions, observations, learned rules, few-shot examples, open questions, confidence, and whether more context is needed.
-6. The controller maintains a compact evidence ledger by answer choice plus cross-chunk observations, rules, examples, and bounded parse-failure telemetry.
+6. The controller maintains a compact evidence ledger by answer choice plus cross-chunk observations, rules, examples, and bounded parse-failure telemetry. For many-shot relation tasks, example notes are filtered to the relation codes present in the current answer options.
 7. Early stop is allowed only after the minimum chunk count when the inspector reports a high-confidence answer, no unresolved contradiction, and no need for more context. Comparative questions must inspect the full FAISS-ranked scan budget first.
 8. If the normal scan budget produces no useful ledger memory, the reader can continue toward `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO` before giving up on iterative evidence extraction.
-9. If early stop does not happen and the ledger has useful memory, the executor runs a final adjudication over the compact ledger and returns one answer letter.
-10. If the ledger is still empty, the reader uses a bounded packed fallback under `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` instead of adjudicating from an empty ledger.
+9. If early stop does not happen and the ledger has useful memory, the executor runs a final adjudication that re-scores all answer choices from raw ledger notes rather than trusting `best_choice` or support buckets as authoritative.
+10. If the ledger is empty, final adjudication is invalid, or final confidence is not high, the reader uses a bounded packed fallback under `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`.
 
 This path stores the final answer with the evidence ledger and supporting chunk metadata rather than a giant concatenated source context.
 
@@ -499,8 +499,8 @@ The same library can serve: legal filings, financial documents, medical records,
 | `SCAN_MAX_CHUNKS` | 0 | Optional absolute iterative inspection cap; `0` means no hard cap |
 | `SCAN_MAX_TOKENS` | 768 | Output-token cap for chunk inspection and final adjudication |
 | `SCAN_EMPTY_LEDGER_FALLBACK_RATIO` | 1.0 | Extra scan ratio used only when the evidence ledger is empty |
-| `ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` | 60000 | Input-token budget for empty-ledger packed fallback |
-| `ITERATIVE_READER_VERSION` | 4 | Namespace version for iterative reader semantics |
+| `ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` | 60000 | Input-token budget for empty/low-confidence packed fallback |
+| `ITERATIVE_READER_VERSION` | 5 | Namespace version for iterative reader semantics |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |

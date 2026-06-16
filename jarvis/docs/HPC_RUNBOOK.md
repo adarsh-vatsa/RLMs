@@ -627,7 +627,9 @@ The default profile above is the current accuracy-first LongBench/Jarvis path.
 FAISS ranks likely chunks first, then the executor inspects chunks one at a time
 and carries a compact evidence ledger forward. The ledger keeps direct
 choice-support notes plus partial observations, learned rules, and few-shot
-examples. The scan budget is adaptive:
+examples. For many-shot relation rows, examples are retained only when they use
+one of the relation codes present in the current answer options. The scan budget
+is adaptive:
 `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30` means early stop is not allowed until
 at least 30% of chunks have been inspected, while
 `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0` means this diagnostic profile scans
@@ -636,7 +638,9 @@ ratio-based scan budget and inspects those chunks in FAISS-ranked order.
 `SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0` leaves the ratio-based maximum uncapped by an
 absolute chunk count. If the normal scan produces no useful observations,
 `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0` allows scanning the
-remaining chunks before the reader falls back to a bounded packed synthesis call.
+remaining chunks. If final ledger adjudication is empty, invalid, or not
+high-confidence, the reader falls back to a bounded packed synthesis call under
+`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`.
 
 If rows still take too long, lower the ratio band first:
 

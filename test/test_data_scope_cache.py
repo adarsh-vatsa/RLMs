@@ -472,6 +472,37 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(ledger["parse_failures"][0]["chunk_index"], 3)
         self.assertLessEqual(len(ledger["parse_failures"][0]["raw_response"]), 800)
 
+    def test_relation_ledger_filters_examples_to_current_option_codes(self):
+        ledger = scs._new_evidence_ledger()
+        query = (
+            "Question: Only considering the given document, what is the relation type "
+            "between entity0 and entity3?\n\n"
+            "Choices:\n"
+            "A. abf\n"
+            "B. adn\n"
+            "C. abb\n"
+            "D. aae\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        decision = {
+            "status": "partial",
+            "examples": [
+                "Entity0 Rapid Penang, Entity1 State of Penang -> abi (C)",
+                "Entity0 Second River, Entity2 New Jersey -> abb (C)",
+                "Entity0 Lucius Caesar, Entity5 Agrippa -> aae (B)",
+            ],
+            "mappings": ["Entity0 developed by Entity1 -> abr"],
+        }
+
+        scs._update_evidence_ledger(ledger, decision, chunk_index=6, query=query)
+
+        notes = [item["note"] for item in ledger["examples"]]
+        self.assertEqual(len(notes), 2)
+        self.assertTrue(any("abb" in note for note in notes))
+        self.assertTrue(any("aae" in note for note in notes))
+        self.assertFalse(any("abi" in note for note in notes))
+        self.assertFalse(any("abr" in note for note in notes))
+
     def test_iterative_inspector_uses_compact_json_contract(self):
         controller = make_controller()
         captured = {}
@@ -503,6 +534,63 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertIn("at most three items each", captured["system"])
         self.assertIn("twenty words or fewer", captured["system"])
         self.assertIn("never replace them with entities from demonstrations", captured["system"])
+        self.assertIn("Current relation option codes", captured["messages"][0]["content"])
+
+    def test_final_adjudication_scores_raw_notes_without_best_choice_fallback(self):
+        controller = make_controller()
+        ledger = scs._new_evidence_ledger()
+        ledger["best_choice"] = "D"
+        ledger["observations"].append({"note": "Love symptoms are identical to cholera.", "chunk_index": 0})
+        captured = {}
+
+        class FakeUsage:
+            input_tokens = 10
+            output_tokens = 5
+
+        class FakeResponse:
+            usage = FakeUsage()
+            content = [
+                types.SimpleNamespace(
+                    text='{"answer":"C","confidence":"high","reason":"raw notes favor love danger"}'
+                )
+            ]
+
+        def fake_create_llm_message(**kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+        with patch.object(scs, "create_llm_message", side_effect=fake_create_llm_message):
+            answer, decision = controller._finalize_iterative_answer(
+                "Question: What is symbolized?\n\nChoices:\nA. Confusion\nB. Fate\nC. Love is dangerous\nD. Social indifference",
+                ledger,
+            )
+
+        self.assertEqual(answer, "C")
+        self.assertEqual(decision["confidence"], "high")
+        self.assertIn("Do not accept ledger.best_choice", captured["system"])
+        self.assertIn("ledger_best_choice_noisy_hint", captured["messages"][0]["content"])
+
+    def test_final_adjudication_does_not_fallback_to_ledger_best_choice(self):
+        controller = make_controller()
+        ledger = scs._new_evidence_ledger()
+        ledger["best_choice"] = "D"
+
+        class FakeUsage:
+            input_tokens = 10
+            output_tokens = 5
+
+        class FakeResponse:
+            usage = FakeUsage()
+            content = [types.SimpleNamespace(text="unparseable")]
+
+        with patch.object(scs, "create_llm_message", return_value=FakeResponse()):
+            answer, decision = controller._finalize_iterative_answer(
+                "Question: Which option?\n\nChoices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta",
+                ledger,
+            )
+
+        self.assertEqual(answer, "")
+        self.assertEqual(decision["answer"], "")
 
     def test_iterative_comparative_query_requires_scan_budget_before_stop(self):
         ledger = scs._new_evidence_ledger()
@@ -600,7 +688,9 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
             scs, "SCAN_MAX_CHUNKS", 0
         ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
-            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C"})
+            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C", "confidence": "high"})
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
         ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
             controller, "store"
         ):
@@ -642,7 +732,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ), patch.object(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0), patch.object(
             controller, "_inspect_iterative_chunk", side_effect=inspections
         ), patch.object(
-            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C"})
+            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C", "confidence": "high"})
         ), patch.object(
             controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
         ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
@@ -691,6 +781,57 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertTrue(result["retrieval"]["iterative_scan_empty_ledger_fallback_used"])
         self.assertTrue(result["retrieval"]["iterative_scan_packed_fallback_used"])
         self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 1)
+
+    def test_iterative_search_uses_packed_fallback_when_final_low_confidence(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, {"chunk_index": 0}), (0.86, {"chunk_index": 1})]
+        )
+        controller._doc_chunks = ["partial one", "partial two"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
+        inspections = [
+            {
+                "status": "partial",
+                "supported_choice": None,
+                "confidence": "low",
+                "observations": ["alpha evidence is relevant but incomplete"],
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "supported_choice": None,
+                "confidence": "low",
+                "observations": ["beta evidence is relevant but incomplete"],
+                "needs_more_context": True,
+            },
+        ]
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
+            controller, "_finalize_iterative_answer", return_value=("B", {"answer": "B", "confidence": "low"})
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", return_value=("C", {"answer": "C"})
+        ) as packed_fallback, patch.object(
+            controller, "consensus_verify", return_value={"consensus": "AGREED"}
+        ), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative("Which option is correct?", top_k=2, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "C")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_adjudication_call_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 1)
+        self.assertEqual(
+            result["retrieval"]["iterative_scan_packed_fallback_reason"],
+            "low_confidence_final_adjudication",
+        )
+        self.assertEqual(result["retrieval"]["iterative_scan_stop_reason"], "low_confidence_packed_fallback")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_answer"], "B")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_confidence"], "low")
+        packed_fallback.assert_called_once()
 
 
 if __name__ == "__main__":

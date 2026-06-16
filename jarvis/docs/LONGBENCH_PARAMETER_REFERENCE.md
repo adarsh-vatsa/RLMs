@@ -35,8 +35,8 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 - `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO`: Extra scan budget used only when the normal scan produced no useful ledger memory.
   `1.0` lets the reader continue through all chunks before giving up on iterative evidence extraction.
 
-- `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`: Input-token budget for the bounded packed fallback used when the ledger stays empty.
-  This is a safety path so the model does not adjudicate from an empty evidence ledger.
+- `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`: Input-token budget for the bounded packed fallback.
+  This path is used when the ledger is empty, invalid, or still low-confidence after final adjudication.
 
 - `SEMANTIC_CACHE_MCQ_PROMPT_STYLE`: Selects the multiple-choice prompt template.
   `strict` tells the model to compare choices carefully and return only `A`, `B`, `C`, or `D`.
