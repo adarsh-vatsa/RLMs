@@ -364,6 +364,7 @@ export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=768
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
+export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
 uv run python long_bench_v2/sample_csv.py \
@@ -579,6 +580,7 @@ export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=768
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
+export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -625,11 +627,12 @@ single letter.
 
 The default profile above is the current accuracy-first LongBench/Jarvis path.
 FAISS ranks likely chunks first, then the executor inspects chunks one at a time
-and carries a compact evidence ledger forward. The ledger keeps direct
-choice-support notes plus partial observations, learned rules, and few-shot
-examples. For many-shot relation rows, examples are retained only when they use
-one of the relation codes present in the current answer options. The scan budget
-is adaptive:
+and carries a cumulative memory ledger forward. The ledger keeps additive
+chunk-referenced notes, target facts, option-code mappings, the current
+`best_choice`, confidence, and up to five open questions. For many-shot relation
+rows, examples are retained in `code_mappings` only when they use one of the
+relation codes present in the current answer options. The scan budget is
+adaptive:
 `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30` means early stop is not allowed until
 at least 30% of chunks have been inspected, while
 `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0` means this diagnostic profile scans
@@ -640,7 +643,10 @@ absolute chunk count. If the normal scan produces no useful observations,
 `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0` allows scanning the
 remaining chunks. If final ledger adjudication is empty, invalid, or not
 high-confidence, the reader falls back to a bounded packed synthesis call under
-`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`.
+`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`. The cumulative
+memory text is bounded by `SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`; if it
+exceeds the cap, old prose updates are trimmed while structured facts, mappings,
+best choice, and parse failures are preserved.
 
 If rows still take too long, lower the ratio band first:
 
@@ -659,8 +665,9 @@ The main knobs to edit in the one command above are the sample token band,
 `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`, `SEMANTIC_CACHE_SCAN_MAX_CHUNKS`,
 `SEMANTIC_CACHE_SCAN_MAX_TOKENS`,
 `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO`, and
-`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`. For additional
-short, medium, and long random sample examples, see
+`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`,
+`SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`. For additional short, medium, and
+long random sample examples, see
 `long_bench_v2/docs/longbench_v2.md`.
 
 ## 12. Run The Full Benchmark
@@ -670,10 +677,10 @@ Use the same service URLs and run the intended row set directly:
 This command exercises the cache/retrieval benchmark over the full CSV. It is
 not a direct "send every full LongBench context to the model" run. The full
 document is ingested into token-bounded chunks, FAISS ranks likely chunks, and
-the iterative reader inspects an adaptive ratio of chunks with a compact evidence
-ledger. The executor service above starts vLLM with `EXECUTOR_MAX_MODEL_LEN=65536`,
-so each chunk-inspection call stays below that context window while the index
-still covers the full source document.
+the iterative reader inspects an adaptive ratio of chunks with a cumulative
+memory ledger. The executor service above starts vLLM with
+`EXECUTOR_MAX_MODEL_LEN=65536`, so each chunk-inspection call stays below that
+context window while the index still covers the full source document.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -691,6 +698,7 @@ export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=768
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
+export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"

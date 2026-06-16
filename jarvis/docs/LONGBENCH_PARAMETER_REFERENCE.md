@@ -6,7 +6,7 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 ## Semantic Cache Environment Variables
 
 - `SEMANTIC_CACHE_SEARCH_MODE`: Selects the LongBench retrieval path.
-  Use `iterative` for the Jarvis FAISS-prioritized chunk reader; the global default remains `packed`.
+  Use `iterative` for the Jarvis FAISS-prioritized cumulative chunk reader; the global default remains `packed`.
 
 - `SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION`: Instruction prepended before query embedding.
   For LongBench, use a benchmark evidence instruction rather than a legal-domain retrieval instruction.
@@ -37,6 +37,9 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 
 - `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`: Input-token budget for the bounded packed fallback.
   This path is used when the ledger is empty, invalid, or still low-confidence after final adjudication.
+
+- `SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`: Character cap for the cumulative iterative memory string.
+  When the cap is exceeded, old prose updates are trimmed while structured target facts, code mappings, best choice, and parse failures are preserved.
 
 - `SEMANTIC_CACHE_MCQ_PROMPT_STYLE`: Selects the multiple-choice prompt template.
   `strict` tells the model to compare choices carefully and return only `A`, `B`, `C`, or `D`.

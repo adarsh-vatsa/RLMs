@@ -280,6 +280,7 @@ def resolve_cache_namespace(
     scan_max_tokens: int = 0,
     scan_empty_ledger_fallback_ratio: float = 0.0,
     iterative_packed_fallback_input_token_budget: int = 0,
+    iterative_memory_max_chars: int = 0,
     scan_order: str = "",
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
@@ -301,6 +302,9 @@ def resolve_cache_namespace(
     namespace_iterative_packed_fallback_input_token_budget = (
         iterative_packed_fallback_input_token_budget if normalized_search_mode == "iterative" else 0
     )
+    namespace_iterative_memory_max_chars = (
+        iterative_memory_max_chars if normalized_search_mode == "iterative" else 0
+    )
     digest = hashlib.sha256(
         (
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
@@ -314,6 +318,7 @@ def resolve_cache_namespace(
             f"{scan_min_chunks}\n{scan_max_chunks}\n"
             f"{scan_max_tokens}\n{namespace_scan_empty_ledger_fallback_ratio}\n"
             f"{namespace_iterative_packed_fallback_input_token_budget}\n"
+            f"{namespace_iterative_memory_max_chars}\n"
             f"{namespace_iterative_reader_version}\n{scan_order}"
         ).encode("utf-8")
     ).hexdigest()[:16]
@@ -555,6 +560,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     effective_iterative_packed_fallback_input_token_budget = int(
         getattr(scs, "ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET", 0)
     )
+    effective_iterative_memory_max_chars = int(getattr(scs, "ITERATIVE_MEMORY_MAX_CHARS", 0))
     effective_scan_order = _coerce_text(getattr(scs, "SCAN_ORDER", ""))
 
     if cache_state_enabled:
@@ -587,6 +593,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             scan_max_tokens=effective_scan_max_tokens,
             scan_empty_ledger_fallback_ratio=effective_scan_empty_ledger_fallback_ratio,
             iterative_packed_fallback_input_token_budget=effective_iterative_packed_fallback_input_token_budget,
+            iterative_memory_max_chars=effective_iterative_memory_max_chars,
             scan_order=effective_scan_order,
         )
         cache_state_root = (
@@ -616,6 +623,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             f"scan_min={effective_scan_min_chunks}, "
             f"scan_max={effective_scan_max_chunks}, scan_max_tokens={effective_scan_max_tokens}, "
             f"empty_ledger_fallback_ratio={effective_scan_empty_ledger_fallback_ratio}, "
+            f"memory_max_chars={effective_iterative_memory_max_chars}, "
             f"reader_version={effective_iterative_reader_version}"
         )
     else:
@@ -753,6 +761,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "scan_max_tokens": effective_scan_max_tokens,
             "scan_empty_ledger_fallback_ratio": effective_scan_empty_ledger_fallback_ratio,
             "iterative_packed_fallback_input_token_budget": effective_iterative_packed_fallback_input_token_budget,
+            "iterative_memory_max_chars": effective_iterative_memory_max_chars,
             "scan_order": effective_scan_order,
             "doc_chunk_size": effective_doc_chunk_size,
             "doc_chunk_overlap": effective_doc_chunk_overlap,
@@ -809,6 +818,11 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "iterative_scan_final_answer": retrieval.get("iterative_scan_final_answer"),
             "iterative_scan_final_confidence": retrieval.get("iterative_scan_final_confidence"),
             "iterative_scan_useful_memory_count": retrieval.get("iterative_scan_useful_memory_count"),
+            "iterative_scan_memory_char_count": retrieval.get("iterative_scan_memory_char_count"),
+            "iterative_scan_memory_update_count": retrieval.get("iterative_scan_memory_update_count"),
+            "iterative_scan_target_fact_count": retrieval.get("iterative_scan_target_fact_count"),
+            "iterative_scan_code_mapping_count": retrieval.get("iterative_scan_code_mapping_count"),
+            "iterative_scan_open_question_count": retrieval.get("iterative_scan_open_question_count"),
             "iterative_scan_observation_count": retrieval.get("iterative_scan_observation_count"),
             "iterative_scan_rule_count": retrieval.get("iterative_scan_rule_count"),
             "iterative_scan_example_count": retrieval.get("iterative_scan_example_count"),
@@ -903,6 +917,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "scan_max_tokens": effective_scan_max_tokens,
         "scan_empty_ledger_fallback_ratio": effective_scan_empty_ledger_fallback_ratio,
         "iterative_packed_fallback_input_token_budget": effective_iterative_packed_fallback_input_token_budget,
+        "iterative_memory_max_chars": effective_iterative_memory_max_chars,
         "scan_order": effective_scan_order,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,

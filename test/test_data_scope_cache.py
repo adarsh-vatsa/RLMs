@@ -369,10 +369,11 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ledger = scs._new_evidence_ledger()
         decision = {
             "status": "answer_found",
-            "supported_choice": "B",
+            "memory_update": "Chunk directly supports B.",
+            "best_choice": "B",
+            "best_choice_rationale": "B is directly supported.",
             "confidence": "high",
-            "evidence": ["B is directly supported"],
-            "contradictions": [],
+            "open_questions": [],
             "needs_more_context": False,
         }
         scs._update_evidence_ledger(ledger, decision, chunk_index=2)
@@ -413,7 +414,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         )
 
         contradiction_ledger = scs._new_evidence_ledger()
-        contradiction_decision = dict(decision, contradictions=["Another chunk rejects B"])
+        contradiction_decision = dict(decision, open_questions=["Need to verify another chunk does not reject B"])
         scs._update_evidence_ledger(contradiction_ledger, contradiction_decision, chunk_index=4)
         self.assertEqual(
             scs._should_stop_iterative_scan(
@@ -424,35 +425,72 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 comparative_required_count=2,
                 comparative_query=False,
             ),
-            (False, "unresolved_contradictions"),
+            (False, "open_questions_remain"),
         )
 
     def test_iterative_evidence_ledger_is_bounded_and_preserves_chunk_references(self):
         ledger = scs._new_evidence_ledger()
         decision = {
             "status": "answer_found",
-            "supported_choice": "A",
+            "memory_update": "A is supported by chunk 7.",
+            "target_facts": ["Target event appears in the current chunk."],
+            "code_mappings": [{"code": "abb", "relation": "located in", "example": "X -> abb"}],
+            "best_choice": "A",
+            "best_choice_rationale": "A matches the cumulative memory.",
             "confidence": "high",
-            "evidence": [f"support note {idx}" for idx in range(10)],
-            "contradictions": [f"against note {idx}" for idx in range(10)],
-            "observations": [f"observation {idx}" for idx in range(20)],
-            "rules": [f"rule {idx}" for idx in range(20)],
-            "examples": [f"example {idx}" for idx in range(20)],
             "open_questions": [f"open question {idx}" for idx in range(12)],
         }
 
         scs._update_evidence_ledger(ledger, decision, chunk_index=7)
 
-        self.assertEqual(len(ledger["A"]["support"]), 5)
-        self.assertEqual(len(ledger["A"]["against"]), 5)
-        self.assertEqual(len(ledger["observations"]), 12)
-        self.assertEqual(len(ledger["rules"]), 12)
-        self.assertEqual(len(ledger["examples"]), 12)
-        self.assertEqual(len(ledger["open_questions"]), 8)
-        self.assertEqual({note["chunk_index"] for note in ledger["A"]["support"]}, {7})
-        self.assertEqual({note["chunk_index"] for note in ledger["observations"]}, {7})
+        self.assertNotIn("A", ledger)
+        self.assertEqual(len(ledger["memory_updates"]), 1)
+        self.assertIn("[chunk 7]", ledger["memory"])
+        self.assertEqual(len(ledger["target_facts"]), 1)
+        self.assertEqual(len(ledger["code_mappings"]), 1)
+        self.assertEqual(len(ledger["open_questions"]), 5)
+        self.assertEqual(ledger["memory_updates"][0]["chunk_index"], 7)
+        self.assertEqual(ledger["target_facts"][0]["chunk_index"], 7)
+        self.assertEqual(ledger["code_mappings"][0]["chunk_index"], 7)
         self.assertEqual(ledger["visited_chunks"], [7])
+        self.assertEqual(ledger["best_choice"], "A")
+        self.assertEqual(ledger["confidence"], "high")
         self.assertTrue(scs._ledger_has_useful_memory(ledger))
+
+    def test_iterative_memory_cap_trims_updates_but_preserves_structured_state(self):
+        ledger = scs._new_evidence_ledger()
+        ledger["parse_failures"].append({"chunk_index": 1, "raw_response": "bad json"})
+
+        with patch.object(scs, "ITERATIVE_MEMORY_MAX_CHARS", 60):
+            scs._update_evidence_ledger(
+                ledger,
+                {
+                    "memory_update": "old note " * 20,
+                    "best_choice": "B",
+                    "best_choice_rationale": "first rationale",
+                    "confidence": "medium",
+                },
+                chunk_index=1,
+            )
+            scs._update_evidence_ledger(
+                ledger,
+                {
+                    "memory_update": "new note " * 20,
+                    "target_facts": ["preserved fact"],
+                    "code_mappings": [{"code": "abb", "relation": "located in", "example": "example"}],
+                    "best_choice": "C",
+                    "best_choice_rationale": "updated rationale",
+                    "confidence": "high",
+                },
+                chunk_index=2,
+            )
+
+        self.assertLessEqual(len(ledger["memory"]), 60)
+        self.assertEqual(ledger["memory_updates"][-1]["chunk_index"], 2)
+        self.assertEqual(ledger["target_facts"][0]["note"], "preserved fact")
+        self.assertEqual(ledger["code_mappings"][0]["code"], "abb")
+        self.assertEqual(ledger["best_choice"], "C")
+        self.assertEqual(ledger["parse_failures"][0]["chunk_index"], 1)
 
     def test_iterative_evidence_ledger_records_parse_failures(self):
         ledger = scs._new_evidence_ledger()
@@ -460,7 +498,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         scs._update_evidence_ledger(
             ledger,
             {
-                "status": "no_evidence",
+                "status": "no_update",
                 "parse_failed": True,
                 "raw_response": "not-json " * 200,
             },
@@ -473,8 +511,8 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertLessEqual(len(ledger["parse_failures"][0]["raw_response"]), 800)
 
     def test_relation_ledger_filters_examples_to_current_option_codes(self):
-        ledger = scs._new_evidence_ledger()
         query = (
+            "Document: entity0 A was born in entity3 B.\n\n"
             "Question: Only considering the given document, what is the relation type "
             "between entity0 and entity3?\n\n"
             "Choices:\n"
@@ -484,9 +522,10 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             "D. aae\n\n"
             "Return only the single best answer choice letter: A, B, C, or D."
         )
+        ledger = scs._new_evidence_ledger(query)
         decision = {
             "status": "partial",
-            "examples": [
+            "code_mappings": [
                 "Entity0 Rapid Penang, Entity1 State of Penang -> abi (C)",
                 "Entity0 Second River, Entity2 New Jersey -> abb (C)",
                 "Entity0 Lucius Caesar, Entity5 Agrippa -> aae (B)",
@@ -496,12 +535,19 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         scs._update_evidence_ledger(ledger, decision, chunk_index=6, query=query)
 
-        notes = [item["note"] for item in ledger["examples"]]
-        self.assertEqual(len(notes), 2)
-        self.assertTrue(any("abb" in note for note in notes))
-        self.assertTrue(any("aae" in note for note in notes))
-        self.assertFalse(any("abi" in note for note in notes))
-        self.assertFalse(any("abr" in note for note in notes))
+        target_fact_notes = [item["note"] for item in ledger["target_facts"]]
+        self.assertTrue(any("entity0, entity3" in note for note in target_fact_notes))
+        self.assertTrue(
+            any(
+                "Current answer option relation codes" in note
+                and all(code in note for code in ("abf", "adn", "abb", "aae"))
+                for note in target_fact_notes
+            )
+        )
+        mappings = ledger["code_mappings"]
+        self.assertEqual([item["code"] for item in mappings], ["abb", "aae"])
+        self.assertFalse(any(item["code"] == "abi" for item in mappings))
+        self.assertFalse(any(item["code"] == "abr" for item in mappings))
 
     def test_iterative_inspector_uses_compact_json_contract(self):
         controller = make_controller()
@@ -513,7 +559,11 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         class FakeResponse:
             usage = FakeUsage()
-            content = [types.SimpleNamespace(text='{"status":"no_evidence","supported_choice":null}')]
+            content = [
+                types.SimpleNamespace(
+                    text='{"status":"no_update","memory_update":"","target_facts":[],"code_mappings":[],"best_choice":null,"best_choice_rationale":"","confidence":"low","open_questions":[],"needs_more_context":true}'
+                )
+            ]
 
         def fake_create_llm_message(**kwargs):
             captured.update(kwargs)
@@ -531,8 +581,9 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(parsed["chunk_index"], 4)
         self.assertEqual(captured["max_tokens"], 768)
         self.assertIn("Return ONLY one valid compact JSON object", captured["system"])
-        self.assertIn("at most three items each", captured["system"])
-        self.assertIn("twenty words or fewer", captured["system"])
+        self.assertIn("memory_update", captured["system"])
+        self.assertIn("code_mappings", captured["system"])
+        self.assertIn("best_choice must be A, B, C, D, or null", captured["system"])
         self.assertIn("never replace them with entities from demonstrations", captured["system"])
         self.assertIn("Current relation option codes", captured["messages"][0]["content"])
 
@@ -540,7 +591,8 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         controller = make_controller()
         ledger = scs._new_evidence_ledger()
         ledger["best_choice"] = "D"
-        ledger["observations"].append({"note": "Love symptoms are identical to cholera.", "chunk_index": 0})
+        ledger["memory_updates"].append({"note": "Love symptoms are identical to cholera.", "chunk_index": 0})
+        ledger["memory"] = "[chunk 0] Love symptoms are identical to cholera."
         captured = {}
 
         class FakeUsage:
@@ -567,8 +619,9 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         self.assertEqual(answer, "C")
         self.assertEqual(decision["confidence"], "high")
-        self.assertIn("Do not accept ledger.best_choice", captured["system"])
-        self.assertIn("ledger_best_choice_noisy_hint", captured["messages"][0]["content"])
+        self.assertIn("Treat ledger.best_choice as a prior", captured["system"])
+        self.assertIn("ledger_best_choice_prior", captured["messages"][0]["content"])
+        self.assertIn("ledger only", captured["messages"][0]["content"])
 
     def test_final_adjudication_does_not_fallback_to_ledger_best_choice(self):
         controller = make_controller()
@@ -596,9 +649,10 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ledger = scs._new_evidence_ledger()
         decision = {
             "status": "answer_found",
-            "supported_choice": "C",
+            "memory_update": "C has the best trade-off.",
+            "best_choice": "C",
             "confidence": "high",
-            "evidence": ["C has the best trade-off"],
+            "open_questions": [],
             "needs_more_context": False,
         }
         scs._update_evidence_ledger(ledger, decision, chunk_index=0)
@@ -623,13 +677,21 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         controller._doc_chunks = ["alpha evidence", "beta evidence", "gamma evidence"]
         controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(3)]
         inspections = [
-            {"status": "partial", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+            {
+                "status": "partial",
+                "memory_update": "alpha is relevant but incomplete",
+                "best_choice": None,
+                "confidence": "low",
+                "open_questions": ["need beta"],
+                "needs_more_context": True,
+            },
             {
                 "status": "answer_found",
-                "supported_choice": "B",
+                "memory_update": "beta evidence supports B",
+                "best_choice": "B",
+                "best_choice_rationale": "beta evidence supports B",
                 "confidence": "high",
-                "evidence": ["beta evidence supports B"],
-                "contradictions": [],
+                "open_questions": [],
                 "needs_more_context": False,
             },
         ]
@@ -669,16 +731,18 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         inspections = [
             {
                 "status": "partial",
-                "supported_choice": None,
+                "memory_update": "alpha is relevant but incomplete",
+                "best_choice": None,
                 "confidence": "low",
-                "observations": ["alpha is relevant but incomplete"],
+                "open_questions": ["need beta"],
                 "needs_more_context": True,
             },
             {
                 "status": "partial",
-                "supported_choice": None,
+                "memory_update": "beta is relevant but incomplete",
+                "best_choice": None,
                 "confidence": "low",
-                "observations": ["beta is relevant but incomplete"],
+                "open_questions": ["need final adjudication"],
                 "needs_more_context": True,
             },
         ]
@@ -713,14 +777,15 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         controller._doc_chunks = ["empty one", "empty two", "useful rule", "extra"]
         controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(4)]
         inspections = [
-            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
-            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
             {
                 "status": "partial",
-                "supported_choice": None,
+                "memory_update": "The target entity relation appears in this chunk. Relation code abb maps to location containment in examples.",
+                "target_facts": ["The target entity relation appears in this chunk."],
+                "code_mappings": [{"code": "abb", "relation": "location containment", "example": "Entity0 -> abb"}],
+                "best_choice": None,
                 "confidence": "medium",
-                "observations": ["The target entity relation appears in this chunk."],
-                "rules": ["Relation code abb maps to location containment in examples."],
                 "needs_more_context": True,
             },
         ]
@@ -745,8 +810,9 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["iterative_scan_empty_ledger_fallback_budget"], 4)
         self.assertTrue(result["retrieval"]["iterative_scan_empty_ledger_fallback_used"])
         self.assertEqual(result["retrieval"]["iterative_scan_inspector_call_count"], 3)
-        self.assertEqual(result["retrieval"]["iterative_scan_observation_count"], 1)
-        self.assertEqual(result["retrieval"]["iterative_scan_rule_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_memory_update_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_target_fact_count"], 2)
+        self.assertEqual(result["retrieval"]["iterative_scan_code_mapping_count"], 1)
         self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 0)
 
     def test_iterative_search_uses_packed_fallback_when_ledger_stays_empty(self):
@@ -757,8 +823,8 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         controller._doc_chunks = ["empty one", "empty two"]
         controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
         inspections = [
-            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
-            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
         ]
 
         with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
@@ -792,16 +858,16 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         inspections = [
             {
                 "status": "partial",
-                "supported_choice": None,
+                "memory_update": "alpha evidence is relevant but incomplete",
+                "best_choice": None,
                 "confidence": "low",
-                "observations": ["alpha evidence is relevant but incomplete"],
                 "needs_more_context": True,
             },
             {
                 "status": "partial",
-                "supported_choice": None,
+                "memory_update": "beta evidence is relevant but incomplete",
+                "best_choice": None,
                 "confidence": "low",
-                "observations": ["beta evidence is relevant but incomplete"],
                 "needs_more_context": True,
             },
         ]

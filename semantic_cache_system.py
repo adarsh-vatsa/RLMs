@@ -123,7 +123,8 @@ SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 SCAN_ORDER = "faiss_ranked"
-ITERATIVE_READER_VERSION = 5
+ITERATIVE_READER_VERSION = 6
+ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
     "SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET",
@@ -882,179 +883,6 @@ def _coerce_note_list(value) -> list[str]:
     return [text] if text else []
 
 
-def _new_evidence_ledger() -> dict:
-    return {
-        "A": {"support": [], "against": []},
-        "B": {"support": [], "against": []},
-        "C": {"support": [], "against": []},
-        "D": {"support": [], "against": []},
-        "observations": [],
-        "rules": [],
-        "examples": [],
-        "parse_failures": [],
-        "open_questions": [],
-        "visited_chunks": [],
-        "best_choice": None,
-        "confidence": "low",
-    }
-
-
-def _append_ledger_notes(target: list, notes: list[str], *, chunk_index: int | None = None, limit: int = 5) -> None:
-    for note in notes:
-        if len(target) >= limit:
-            break
-        if isinstance(note, str) and note.strip():
-            item = {"note": _bounded_text(note)}
-            if chunk_index is not None:
-                item["chunk_index"] = int(chunk_index)
-            target.append(item)
-
-
-def _append_decision_notes(
-    ledger: dict,
-    section: str,
-    decision: dict,
-    fields: tuple[str, ...],
-    *,
-    chunk_index: int,
-    limit: int,
-) -> None:
-    notes: list[str] = []
-    for field in fields:
-        notes.extend(_coerce_note_list(decision.get(field)))
-    _append_ledger_notes(ledger[section], notes, chunk_index=chunk_index, limit=limit)
-
-
-def _ledger_section_count(ledger: dict, section: str) -> int:
-    value = ledger.get(section)
-    return len(value) if isinstance(value, list) else 0
-
-
-def _ledger_choice_note_count(ledger: dict) -> int:
-    total = 0
-    for choice in ("A", "B", "C", "D"):
-        choice_notes = ledger.get(choice) or {}
-        total += len(choice_notes.get("support") or [])
-        total += len(choice_notes.get("against") or [])
-    return total
-
-
-def _ledger_useful_memory_count(ledger: dict) -> int:
-    return (
-        _ledger_choice_note_count(ledger)
-        + _ledger_section_count(ledger, "observations")
-        + _ledger_section_count(ledger, "rules")
-        + _ledger_section_count(ledger, "examples")
-        + (1 if _normalize_choice_letter(ledger.get("best_choice")) else 0)
-    )
-
-
-def _ledger_has_useful_memory(ledger: dict) -> bool:
-    return _ledger_useful_memory_count(ledger) > 0
-
-
-def _update_evidence_ledger(
-    ledger: dict,
-    decision: dict | None,
-    *,
-    chunk_index: int,
-    query: str | None = None,
-) -> dict:
-    decision = decision if isinstance(decision, dict) else {}
-    if chunk_index not in ledger["visited_chunks"]:
-        ledger["visited_chunks"].append(int(chunk_index))
-
-    if decision.get("parse_failed"):
-        if len(ledger["parse_failures"]) < 4:
-            ledger["parse_failures"].append(
-                {
-                    "chunk_index": int(chunk_index),
-                    "raw_response": _bounded_text(decision.get("raw_response"), limit=800),
-                }
-            )
-
-    _append_decision_notes(
-        ledger,
-        "observations",
-        decision,
-        ("observations", "facts", "relevant_context", "partial_evidence"),
-        chunk_index=chunk_index,
-        limit=12,
-    )
-    _append_decision_notes(
-        ledger,
-        "rules",
-        decision,
-        ("rules", "patterns", "learned_rules"),
-        chunk_index=chunk_index,
-        limit=12,
-    )
-
-    example_notes: list[str] = []
-    for field in ("examples", "demonstrations", "mappings"):
-        example_notes.extend(_coerce_note_list(decision.get(field)))
-    example_notes = _filter_relation_notes_for_query(example_notes, query)
-    _append_ledger_notes(ledger["examples"], example_notes, chunk_index=chunk_index, limit=12)
-
-    choice = _normalize_choice_letter(
-        decision.get("supported_choice") or decision.get("answer") or decision.get("choice")
-    )
-    confidence = str(decision.get("confidence") or "low").strip().lower()
-    if confidence not in {"low", "medium", "high"}:
-        confidence = "low"
-    if choice:
-        ledger["best_choice"] = choice
-        ledger["confidence"] = confidence
-        _append_ledger_notes(
-            ledger[choice]["support"],
-            _coerce_note_list(decision.get("evidence") or decision.get("support")),
-            chunk_index=chunk_index,
-        )
-        _append_ledger_notes(
-            ledger[choice]["against"],
-            _coerce_note_list(decision.get("contradictions") or decision.get("against")),
-            chunk_index=chunk_index,
-        )
-
-    choice_assessments = decision.get("choice_assessments")
-    if isinstance(choice_assessments, dict):
-        for raw_choice, assessment in choice_assessments.items():
-            assessed_choice = _normalize_choice_letter(raw_choice)
-            if assessed_choice and isinstance(assessment, dict):
-                _append_ledger_notes(
-                    ledger[assessed_choice]["support"],
-                    _coerce_note_list(assessment.get("support")),
-                    chunk_index=chunk_index,
-                )
-                _append_ledger_notes(
-                    ledger[assessed_choice]["against"],
-                    _coerce_note_list(assessment.get("against")),
-                    chunk_index=chunk_index,
-                )
-
-    for note in _coerce_note_list(decision.get("open_questions")):
-        if len(ledger["open_questions"]) >= 8:
-            break
-        ledger["open_questions"].append(note)
-    return ledger
-
-
-def _ledger_has_unresolved_contradictions(ledger: dict, choice: str | None) -> bool:
-    if not choice or choice not in {"A", "B", "C", "D"}:
-        return True
-    return bool(ledger.get(choice, {}).get("against"))
-
-
-def _query_requires_comparative_scan(query: str) -> bool:
-    return bool(
-        re.search(
-            r"(?i)\b(best|trade[- ]?off|compare|comparison|combination|overall|between|among|"
-            r"which method|which option|which approach|multi[- ]?document|papers?)\b",
-            query or "",
-        )
-    )
-
-
 def _extract_choice_texts(query: str) -> dict[str, str]:
     choices: dict[str, str] = {}
     for line in str(query or "").splitlines():
@@ -1093,6 +921,368 @@ def _filter_relation_notes_for_query(notes: list[str], query: str | None) -> lis
     return filtered
 
 
+def _relation_target_entities(query: str) -> list[str]:
+    match = re.search(
+        r"(?is)\brelation type\b.*?\bbetween\s+(entity\d+)\s+and\s+(entity\d+)",
+        query or "",
+    )
+    if match:
+        return [match.group(1).lower(), match.group(2).lower()]
+    entities: list[str] = []
+    for token in re.findall(r"(?i)\bentity\d+\b", query or ""):
+        normalized = token.lower()
+        if normalized not in entities:
+            entities.append(normalized)
+        if len(entities) >= 4:
+            break
+    return entities
+
+
+def _extract_document_snippet_from_query(query: str, *, limit: int = 1200) -> str:
+    match = re.search(r"(?is)\bDocument:\s*(.*?)(?:\n\s*\n\s*Question:|\Z)", query or "")
+    if not match:
+        return ""
+    return _bounded_text(match.group(1), limit=limit)
+
+
+def _extract_question_snippet(query: str, *, limit: int = 800) -> str:
+    text = str(query or "")
+    before_choices = re.split(r"(?is)\n\s*\n\s*Choices:", text, maxsplit=1)[0]
+    marker = before_choices.lower().rfind("question:")
+    if marker < 0:
+        return _bounded_text(query, limit=limit)
+    return _bounded_text(before_choices[marker + len("question:") :], limit=limit)
+
+
+def _query_target_facts(query: str | None) -> list[dict]:
+    if not query:
+        return []
+    facts: list[dict] = []
+    choices = _extract_choice_texts(query)
+    if choices:
+        choice_note = "; ".join(f"{letter}={_bounded_text(text, limit=80)}" for letter, text in sorted(choices.items()))
+        facts.append({"source": "query", "chunk_index": None, "note": f"Answer choices: {choice_note}"})
+
+    question = _extract_question_snippet(query)
+    if question:
+        facts.append({"source": "query", "chunk_index": None, "note": f"Target question: {question}"})
+
+    if _is_relation_type_query(query):
+        entities = _relation_target_entities(query)
+        if entities:
+            facts.append(
+                {
+                    "source": "query",
+                    "chunk_index": None,
+                    "note": f"Target relation entities: {', '.join(entities)}",
+                }
+            )
+        codes = sorted(_relation_choice_codes(query))
+        if codes:
+            facts.append(
+                {
+                    "source": "query",
+                    "chunk_index": None,
+                    "note": f"Current answer option relation codes: {', '.join(codes)}",
+                }
+            )
+        document_snippet = _extract_document_snippet_from_query(query)
+        if document_snippet:
+            facts.append(
+                {
+                    "source": "query",
+                    "chunk_index": None,
+                    "note": f"Target document snippet: {document_snippet}",
+                }
+            )
+    return facts
+
+
+def _new_evidence_ledger(query: str | None = None) -> dict:
+    return {
+        "memory": "",
+        "memory_updates": [],
+        "target_facts": _query_target_facts(query),
+        "code_mappings": [],
+        "best_choice": None,
+        "best_choice_rationale": "",
+        "confidence": "low",
+        "open_questions": [],
+        "visited_chunks": [],
+        "parse_failures": [],
+    }
+
+
+def _ledger_section_count(ledger: dict, section: str) -> int:
+    value = ledger.get(section)
+    return len(value) if isinstance(value, list) else 0
+
+
+def _ledger_memory_char_count(ledger: dict) -> int:
+    return len(str(ledger.get("memory") or ""))
+
+
+def _ledger_chunk_target_fact_count(ledger: dict) -> int:
+    count = 0
+    for fact in ledger.get("target_facts") or []:
+        if not isinstance(fact, dict):
+            continue
+        if fact.get("source") != "query" or fact.get("chunk_index") is not None:
+            count += 1
+    return count
+
+
+def _ledger_useful_memory_count(ledger: dict) -> int:
+    return (
+        _ledger_section_count(ledger, "memory_updates")
+        + _ledger_chunk_target_fact_count(ledger)
+        + _ledger_section_count(ledger, "code_mappings")
+        + (1 if _normalize_choice_letter(ledger.get("best_choice")) else 0)
+    )
+
+
+def _ledger_has_useful_memory(ledger: dict) -> bool:
+    return _ledger_useful_memory_count(ledger) > 0
+
+
+def _item_identity(item: dict, fields: tuple[str, ...]) -> tuple:
+    return tuple(str(item.get(field, "")).strip().lower() for field in fields)
+
+
+def _append_unique_dict(
+    target: list,
+    item: dict | None,
+    *,
+    fields: tuple[str, ...],
+    limit: int,
+) -> None:
+    if not item:
+        return
+    identity = _item_identity(item, fields)
+    if not any(_item_identity(existing, fields) == identity for existing in target if isinstance(existing, dict)):
+        target.append(item)
+    if len(target) > limit:
+        del target[: len(target) - limit]
+
+
+def _normalize_target_fact(item, *, chunk_index: int | None, default_source: str = "chunk") -> dict | None:
+    if isinstance(item, dict):
+        note = _bounded_text(
+            item.get("note") or item.get("fact") or item.get("text") or item.get("observation"),
+            limit=800,
+        )
+        source = _bounded_text(item.get("source") or default_source, limit=40) or default_source
+        raw_chunk_index = item.get("chunk_index", chunk_index)
+    else:
+        note = _bounded_text(item, limit=800)
+        source = default_source
+        raw_chunk_index = chunk_index
+    if not note:
+        return None
+    normalized_chunk_index = None
+    if raw_chunk_index is not None:
+        try:
+            normalized_chunk_index = int(raw_chunk_index)
+        except (TypeError, ValueError):
+            normalized_chunk_index = chunk_index
+    return {"source": source, "chunk_index": normalized_chunk_index, "note": note}
+
+
+def _normalize_code_mapping(item, *, chunk_index: int, query: str | None) -> dict | None:
+    candidate_codes = sorted(_relation_choice_codes(query or ""))
+    relation_query = bool(candidate_codes)
+    if isinstance(item, dict):
+        code = str(item.get("code") or item.get("relation_code") or "").strip().lower()
+        relation = _bounded_text(item.get("relation") or item.get("meaning") or item.get("label"), limit=240)
+        example = _bounded_text(item.get("example") or item.get("note") or item.get("text"), limit=800)
+    else:
+        text = _bounded_text(item, limit=800)
+        code = ""
+        for candidate in candidate_codes:
+            if re.search(rf"\b{re.escape(candidate)}\b", text.lower()):
+                code = candidate
+                break
+        if not code and not relation_query:
+            match = re.search(r"\b([a-z]{2,8})\b", text.lower())
+            code = match.group(1) if match else ""
+        relation = ""
+        example = text
+    if not code:
+        return None
+    if relation_query and code not in candidate_codes:
+        return None
+    return {
+        "chunk_index": int(chunk_index),
+        "code": code,
+        "relation": relation,
+        "example": example,
+    }
+
+
+def _rebuild_iterative_memory(ledger: dict) -> None:
+    lines = []
+    for update in ledger.get("memory_updates") or []:
+        if not isinstance(update, dict):
+            continue
+        note = _bounded_text(update.get("note"), limit=2400)
+        if not note:
+            continue
+        chunk_label = update.get("chunk_index")
+        lines.append(f"[chunk {chunk_label}] {note}")
+    ledger["memory"] = "\n".join(lines)
+
+
+def _trim_iterative_memory(ledger: dict) -> None:
+    max_chars = max(0, int(ITERATIVE_MEMORY_MAX_CHARS))
+    _rebuild_iterative_memory(ledger)
+    if max_chars <= 0:
+        ledger["memory"] = ""
+        ledger["memory_updates"] = []
+        return
+    while len(ledger.get("memory") or "") > max_chars and len(ledger.get("memory_updates") or []) > 1:
+        ledger["memory_updates"].pop(0)
+        _rebuild_iterative_memory(ledger)
+    if len(ledger.get("memory") or "") > max_chars:
+        updates = ledger.get("memory_updates") or []
+        if updates and isinstance(updates[-1], dict):
+            updates[-1]["note"] = _bounded_text(str(updates[-1].get("note") or "")[-max_chars:], limit=max_chars)
+            _rebuild_iterative_memory(ledger)
+        if len(ledger.get("memory") or "") > max_chars:
+            ledger["memory"] = str(ledger.get("memory") or "")[-max_chars:]
+
+
+def _append_memory_update(ledger: dict, note: str, *, chunk_index: int) -> None:
+    bounded = _bounded_text(note, limit=2400)
+    if not bounded:
+        return
+    ledger["memory_updates"].append({"chunk_index": int(chunk_index), "note": bounded})
+    _trim_iterative_memory(ledger)
+
+
+def _dedupe_open_questions(notes: list[str], *, limit: int = 5) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for note in notes:
+        text = _bounded_text(note, limit=240)
+        key = text.lower()
+        if text and key not in seen:
+            seen.add(key)
+            deduped.append(text)
+        if len(deduped) >= limit:
+            break
+    return deduped
+
+
+def _update_evidence_ledger(
+    ledger: dict,
+    decision: dict | None,
+    *,
+    chunk_index: int,
+    query: str | None = None,
+) -> dict:
+    decision = decision if isinstance(decision, dict) else {}
+    chunk_index = int(chunk_index)
+    ledger.setdefault("memory", "")
+    ledger.setdefault("memory_updates", [])
+    ledger.setdefault("target_facts", [])
+    ledger.setdefault("code_mappings", [])
+    ledger.setdefault("parse_failures", [])
+    ledger.setdefault("open_questions", [])
+    ledger.setdefault("visited_chunks", [])
+    ledger.setdefault("best_choice", None)
+    ledger.setdefault("best_choice_rationale", "")
+    ledger.setdefault("confidence", "low")
+
+    if chunk_index not in ledger["visited_chunks"]:
+        ledger["visited_chunks"].append(chunk_index)
+
+    if decision.get("parse_failed"):
+        _append_unique_dict(
+            ledger["parse_failures"],
+            {
+                "chunk_index": chunk_index,
+                "raw_response": _bounded_text(decision.get("raw_response"), limit=800),
+            },
+            fields=("chunk_index", "raw_response"),
+            limit=8,
+        )
+
+    memory_notes: list[str] = []
+    for field in (
+        "memory_update",
+        "evidence",
+        "support",
+        "observations",
+        "rules",
+        "examples",
+        "partial_evidence",
+        "relevant_context",
+    ):
+        memory_notes.extend(_coerce_note_list(decision.get(field)))
+    if memory_notes:
+        _append_memory_update(ledger, " ".join(memory_notes), chunk_index=chunk_index)
+
+    target_fact_items: list = []
+    for field in ("target_facts", "facts"):
+        value = decision.get(field)
+        if isinstance(value, list):
+            target_fact_items.extend(value)
+        elif value:
+            target_fact_items.append(value)
+    for item in target_fact_items:
+        fact = _normalize_target_fact(item, chunk_index=chunk_index)
+        _append_unique_dict(ledger["target_facts"], fact, fields=("source", "chunk_index", "note"), limit=64)
+
+    mapping_items: list = []
+    for field in ("code_mappings", "mappings", "demonstrations"):
+        value = decision.get(field)
+        if isinstance(value, list):
+            mapping_items.extend(value)
+        elif value:
+            mapping_items.append(value)
+    for item in mapping_items:
+        mapping = _normalize_code_mapping(item, chunk_index=chunk_index, query=query)
+        _append_unique_dict(ledger["code_mappings"], mapping, fields=("chunk_index", "code", "example"), limit=64)
+
+    if any(key in decision for key in ("best_choice", "supported_choice", "answer", "choice")):
+        ledger["best_choice"] = _normalize_choice_letter(
+            decision.get("best_choice")
+            or decision.get("supported_choice")
+            or decision.get("answer")
+            or decision.get("choice")
+        )
+
+    rationale = _bounded_text(
+        decision.get("best_choice_rationale") or decision.get("rationale") or decision.get("reason"),
+        limit=800,
+    )
+    if rationale:
+        ledger["best_choice_rationale"] = rationale
+
+    confidence = str(decision.get("confidence") or ledger.get("confidence") or "low").strip().lower()
+    ledger["confidence"] = confidence if confidence in {"low", "medium", "high"} else "low"
+
+    if "open_questions" in decision:
+        ledger["open_questions"] = _dedupe_open_questions(_coerce_note_list(decision.get("open_questions")), limit=5)
+
+    _trim_iterative_memory(ledger)
+    return ledger
+
+
+def _ledger_has_unresolved_contradictions(ledger: dict, choice: str | None) -> bool:
+    return bool(ledger.get("open_questions"))
+
+
+def _query_requires_comparative_scan(query: str) -> bool:
+    return bool(
+        re.search(
+            r"(?i)\b(best|trade[- ]?off|compare|comparison|combination|overall|between|among|"
+            r"which method|which option|which approach|multi[- ]?document|papers?)\b",
+            query or "",
+        )
+    )
+
+
 def _final_decision_needs_packed_fallback(answer: str | None, decision: dict | None) -> tuple[bool, str]:
     if not _normalize_choice_letter(answer):
         return True, "invalid_final_answer"
@@ -1121,9 +1311,10 @@ def _iterative_task_guidance(query: str) -> str:
             "from demonstrations. Do not discard demonstrations just because they do "
             "not directly answer the target question. Extract compact relation "
             "examples or option-code mappings only when they use one of the current "
-            "candidate relation codes; discard unrelated demonstration codes. If the "
-            "target document appears, record the target entity relation facts as "
-            f"observations.{code_guidance}"
+            "candidate relation codes; discard unrelated demonstration codes. Store "
+            "those examples in code_mappings, not generic prose. If the target "
+            "document appears, record the target entity relation facts in "
+            f"target_facts.{code_guidance}"
         )
     if re.search(r"(?i)\b(symboli[sz]e|theme|novel|literary|meaning)\b", text):
         return (
@@ -1133,7 +1324,7 @@ def _iterative_task_guidance(query: str) -> str:
         )
     return (
         "If the chunk contains partial but relevant facts, definitions, examples, "
-        "or constraints, record them as observations, rules, or examples even when "
+        "or constraints, append them to memory_update and target_facts even when "
         "no answer choice is fully supported yet."
     )
 
@@ -1154,15 +1345,18 @@ def _should_stop_iterative_scan(
         return False, "comparative_scan_budget_not_complete"
     if str(decision.get("status") or "").strip().lower() != "answer_found":
         return False, "answer_not_found"
-    choice = _normalize_choice_letter(decision.get("supported_choice") or ledger.get("best_choice"))
+    choice = _normalize_choice_letter(
+        decision.get("best_choice") or decision.get("supported_choice") or ledger.get("best_choice")
+    )
     if not choice:
-        return False, "no_supported_choice"
-    if str(decision.get("confidence") or "").strip().lower() != "high":
+        return False, "no_best_choice"
+    confidence = str(decision.get("confidence") or ledger.get("confidence") or "").strip().lower()
+    if confidence != "high":
         return False, "confidence_not_high"
     if _coerce_bool(decision.get("needs_more_context")):
         return False, "needs_more_context"
-    if _ledger_has_unresolved_contradictions(ledger, choice):
-        return False, "unresolved_contradictions"
+    if ledger.get("open_questions"):
+        return False, "open_questions_remain"
     return True, "high_confidence_answer"
 
 
@@ -2531,17 +2725,22 @@ class SemanticCacheController:
         relation_codes = sorted(_relation_choice_codes(query))
         relation_code_text = ", ".join(relation_codes) if relation_codes else "none"
         system_prompt = (
-            "You are an evidence inspector for a LongBench-v2 question. Use ONLY the "
-            "current chunk and the existing evidence ledger. Return ONLY one valid "
-            "compact JSON object. Use exactly these keys: status, supported_choice, "
-            "confidence, evidence, contradictions, observations, rules, examples, "
-            "open_questions, needs_more_context. status must be no_evidence, partial, "
-            "or answer_found. supported_choice must be A, B, C, D, or null. confidence "
-            "must be low, medium, or high. All list fields must be arrays, at most three "
-            "items each, and each item must be twenty words or fewer. Use [] for empty "
-            "lists. Do not quote long passages. Do not explain outside JSON. Use "
-            "status=partial when the chunk has useful observations, rules, examples, "
-            "or mappings but does not yet prove one choice. "
+            "You are a cumulative memory updater for a LongBench-v2 multiple-choice "
+            "question. Use ONLY the current chunk and the existing ledger. Return ONLY "
+            "one valid compact JSON object. Use exactly these keys: status, memory_update, "
+            "target_facts, code_mappings, best_choice, best_choice_rationale, confidence, "
+            "open_questions, needs_more_context. status must be no_update, partial, or "
+            "answer_found. memory_update is an additive note for this chunk, not a full "
+            "rewrite of prior memory. target_facts must be an array of strings or objects "
+            "for facts about the target question/document. code_mappings must be an array "
+            "of objects with code, relation, and example. For relation tasks, include only "
+            "code_mappings whose code is one of the current option codes. best_choice must "
+            "be A, B, C, D, or null, reflecting all inspected chunks so far. confidence "
+            "must be low, medium, or high. open_questions must contain only currently "
+            "unresolved critical questions and must be at most three items. Use [] for "
+            "empty lists. Do not quote long passages. Do not explain outside JSON. Use "
+            "status=partial when the chunk updates memory but does not yet prove one "
+            "choice. "
             + task_guidance
         )
         user_content = (
@@ -2564,14 +2763,13 @@ class SemanticCacheController:
         parsed = _extract_llm_json_object(raw_text)
         if parsed is None:
             return {
-                "status": "no_evidence",
-                "supported_choice": None,
+                "status": "no_update",
+                "memory_update": "",
+                "target_facts": [],
+                "code_mappings": [],
+                "best_choice": None,
+                "best_choice_rationale": "",
                 "confidence": "low",
-                "evidence": [],
-                "contradictions": [],
-                "observations": [],
-                "rules": [],
-                "examples": [],
                 "open_questions": ["Inspector response was not valid JSON."],
                 "needs_more_context": True,
                 "chunk_index": chunk_index,
@@ -2587,20 +2785,20 @@ class SemanticCacheController:
         system_prompt = (
             _mcq_system_prompt()
             + " For this final adjudication, override the output format and return ONLY "
-            "one compact JSON object. Do not accept ledger.best_choice or the per-choice "
-            "support buckets as authoritative; chunk inspectors can mis-bucket evidence. "
-            "Re-score every choice A, B, C, and D from the raw ledger notes, including "
-            "observations, learned rules, examples, all support/against notes, and open "
-            "questions. For many-shot relation tasks, use demonstration examples only "
-            "when their relation code is one of the current choice codes. Return keys: "
-            "answer, confidence, reason, choice_scores, needs_more_context. answer must "
-            "be A, B, C, or D. confidence must be low, medium, or high."
+            "one compact JSON object. You receive the completed iterative ledger only, "
+            "not raw chunks. Treat ledger.best_choice as a prior, not authority. Re-score "
+            "every choice A, B, C, and D from the cumulative memory, target_facts, "
+            "code_mappings, rationale, confidence, and open_questions. For many-shot "
+            "relation tasks, use code_mappings only when their relation code is one of "
+            "the current choice codes. Return keys: answer, confidence, reason, "
+            "needs_more_context. answer must be A, B, C, or D. confidence must be low, "
+            "medium, or high."
         )
         adjudication_payload = {
             "choices": choice_texts,
             "relation_choice_codes": relation_codes,
-            "ledger_best_choice_noisy_hint": ledger.get("best_choice"),
-            "evidence_ledger": ledger,
+            "ledger_best_choice_prior": ledger.get("best_choice"),
+            "iterative_memory_ledger": ledger,
         }
         response = create_llm_message(
             model=EXECUTOR_MODEL,
@@ -2612,7 +2810,8 @@ class SemanticCacheController:
                     "role": "user",
                     "content": (
                         f"Question and choices:\n{query}\n\n"
-                        f"Final adjudication payload:\n{json.dumps(adjudication_payload, ensure_ascii=False)}"
+                        f"Final adjudication payload, ledger only:\n"
+                        f"{json.dumps(adjudication_payload, ensure_ascii=False)}"
                     ),
                 }
             ],
@@ -2638,7 +2837,7 @@ class SemanticCacheController:
             _mcq_system_prompt()
             + " The iterative reader needs a direct packed fallback because final ledger "
             "adjudication was empty, invalid, or not high-confidence. Re-evaluate every "
-            "choice from the compact ledger and packed inspected chunks below. Treat the "
+            "choice from the completed memory ledger and packed inspected chunks below. Treat the "
             "ledger as noisy notes, not as a final answer. Use only these materials and "
             "the question choices. Return only one answer letter: A, B, C, or D."
         )
@@ -2660,7 +2859,7 @@ class SemanticCacheController:
                     "content": (
                         f"Fallback reason: {reason or 'unspecified'}\n\n"
                         f"Query: {query}\n\n"
-                        f"Compact evidence ledger:\n{json.dumps(ledger or {}, ensure_ascii=False)}\n\n"
+                        f"Completed iterative memory ledger:\n{json.dumps(ledger or {}, ensure_ascii=False)}\n\n"
                         f"Documents:\n{source_text}"
                     ),
                 }
@@ -2679,10 +2878,10 @@ class SemanticCacheController:
 
     def _supporting_chunk_indices_from_ledger(self, ledger: dict) -> list[int]:
         indices = set()
-        for choice in ("A", "B", "C", "D"):
-            for note in ledger.get(choice, {}).get("support", []):
-                if isinstance(note, dict) and isinstance(note.get("chunk_index"), int):
-                    indices.add(note["chunk_index"])
+        for section in ("memory_updates", "target_facts", "code_mappings"):
+            for item in ledger.get(section) or []:
+                if isinstance(item, dict) and isinstance(item.get("chunk_index"), int):
+                    indices.add(item["chunk_index"])
         return sorted(indices)
 
     def _search_iterative(self, query: str, top_k: int, rerank_top: int, synthesize: bool) -> dict:
@@ -2723,7 +2922,7 @@ class SemanticCacheController:
             total_chunks=total_chunks,
         )
         scan_results = scan_results[:faiss_top_n]
-        ledger = _new_evidence_ledger()
+        ledger = _new_evidence_ledger(query)
         comparative_query = _query_requires_comparative_scan(query)
         inspector_call_count = 0
         final_adjudication_call_count = 0
@@ -2766,7 +2965,9 @@ class SemanticCacheController:
             )
             stop_reason = reason
             if should_stop:
-                answer = _normalize_choice_letter(decision.get("supported_choice") or ledger.get("best_choice"))
+                answer = _normalize_choice_letter(
+                    decision.get("best_choice") or decision.get("supported_choice") or ledger.get("best_choice")
+                )
                 early_stop = True
                 break
 
@@ -2825,9 +3026,14 @@ class SemanticCacheController:
             ensure_ascii=False,
         )
         useful_memory_count = _ledger_useful_memory_count(ledger)
-        observation_count = _ledger_section_count(ledger, "observations")
-        rule_count = _ledger_section_count(ledger, "rules")
-        example_count = _ledger_section_count(ledger, "examples")
+        memory_char_count = _ledger_memory_char_count(ledger)
+        memory_update_count = _ledger_section_count(ledger, "memory_updates")
+        target_fact_count = _ledger_section_count(ledger, "target_facts")
+        code_mapping_count = _ledger_section_count(ledger, "code_mappings")
+        open_question_count = _ledger_section_count(ledger, "open_questions")
+        observation_count = target_fact_count
+        rule_count = code_mapping_count
+        example_count = memory_update_count
         parse_failure_count = _ledger_section_count(ledger, "parse_failures")
 
         iterative_info = {
@@ -2841,6 +3047,7 @@ class SemanticCacheController:
             "scan_max_tokens": int(SCAN_MAX_TOKENS),
             "scan_empty_ledger_fallback_ratio": float(SCAN_EMPTY_LEDGER_FALLBACK_RATIO),
             "iterative_packed_fallback_input_token_budget": int(ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET),
+            "iterative_memory_max_chars": int(ITERATIVE_MEMORY_MAX_CHARS),
             "iterative_scan_total_chunks": total_chunks,
             "iterative_scan_early_stop_min_chunks": early_stop_min_chunks,
             "iterative_scan_budget": scan_budget,
@@ -2865,6 +3072,11 @@ class SemanticCacheController:
                 final_decision.get("confidence") if isinstance(final_decision, dict) else None
             ),
             "iterative_scan_useful_memory_count": useful_memory_count,
+            "iterative_scan_memory_char_count": memory_char_count,
+            "iterative_scan_memory_update_count": memory_update_count,
+            "iterative_scan_target_fact_count": target_fact_count,
+            "iterative_scan_code_mapping_count": code_mapping_count,
+            "iterative_scan_open_question_count": open_question_count,
             "iterative_scan_observation_count": observation_count,
             "iterative_scan_rule_count": rule_count,
             "iterative_scan_example_count": example_count,
