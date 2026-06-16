@@ -454,6 +454,38 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(ledger["parse_failures"][0]["chunk_index"], 3)
         self.assertLessEqual(len(ledger["parse_failures"][0]["raw_response"]), 800)
 
+    def test_iterative_inspector_uses_compact_json_contract(self):
+        controller = make_controller()
+        captured = {}
+
+        class FakeUsage:
+            input_tokens = 10
+            output_tokens = 5
+
+        class FakeResponse:
+            usage = FakeUsage()
+            content = [types.SimpleNamespace(text='{"status":"no_evidence","supported_choice":null}')]
+
+        def fake_create_llm_message(**kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+        with patch.object(scs, "SCAN_MAX_TOKENS", 768), patch.object(
+            scs, "create_llm_message", side_effect=fake_create_llm_message
+        ):
+            parsed = controller._inspect_iterative_chunk(
+                "Document: entity0 A is entity1 B.\nQuestion: relation type between entity0 and entity1?",
+                scs._new_evidence_ledger(),
+                {"text": "chunk text", "metadata": {"chunk_index": 4}},
+            )
+
+        self.assertEqual(parsed["chunk_index"], 4)
+        self.assertEqual(captured["max_tokens"], 768)
+        self.assertIn("Return ONLY one valid compact JSON object", captured["system"])
+        self.assertIn("at most three items each", captured["system"])
+        self.assertIn("twenty words or fewer", captured["system"])
+        self.assertIn("never replace them with entities from demonstrations", captured["system"])
+
     def test_iterative_comparative_query_requires_scan_budget_before_stop(self):
         ledger = scs._new_evidence_ledger()
         decision = {

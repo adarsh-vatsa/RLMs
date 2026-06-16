@@ -496,10 +496,10 @@ The same library can serve: legal filings, financial documents, medical records,
 | `SCAN_MAX_CHUNK_RATIO` | 0.50 | Fraction of chunks inspected if no early stop occurs |
 | `SCAN_MIN_CHUNKS` | 3 | Absolute minimum iterative chunk inspections before early stop |
 | `SCAN_MAX_CHUNKS` | 0 | Optional absolute iterative inspection cap; `0` means no hard cap |
-| `SCAN_MAX_TOKENS` | 256 | Output-token cap for chunk inspection and final adjudication |
+| `SCAN_MAX_TOKENS` | 768 | Output-token cap for chunk inspection and final adjudication |
 | `SCAN_EMPTY_LEDGER_FALLBACK_RATIO` | 1.0 | Extra scan ratio used only when the evidence ledger is empty |
 | `ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` | 60000 | Input-token budget for empty-ledger packed fallback |
-| `ITERATIVE_READER_VERSION` | 2 | Namespace version for iterative reader semantics |
+| `ITERATIVE_READER_VERSION` | 4 | Namespace version for iterative reader semantics |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |

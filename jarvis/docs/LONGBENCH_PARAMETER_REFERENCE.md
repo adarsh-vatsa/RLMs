@@ -27,7 +27,7 @@ Each item is intentionally short so it can be used while tuning one run at a tim
   Set it to `0` to rely only on `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`.
 
 - `SEMANTIC_CACHE_SCAN_MAX_TOKENS`: Maximum output tokens for each chunk-inspection or final-adjudication call.
-  Keep this compact because each call should return strict JSON, but use enough room for observations, rules, and examples.
+  The current Jarvis profile uses `768`; lower caps can truncate the inspector JSON or retain too little evidence.
 
 - `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO`: Extra scan budget used only when the normal scan produced no useful ledger memory.
   `1.0` lets the reader continue through all chunks before giving up on iterative evidence extraction.

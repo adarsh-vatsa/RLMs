@@ -143,9 +143,9 @@ SCAN_MIN_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO", 0.30)
 SCAN_MAX_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO", 0.50)
 SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
-SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 256)
+SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 SCAN_ORDER = "faiss_ranked"
-ITERATIVE_READER_VERSION = 2
+ITERATIVE_READER_VERSION = 4
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
     "SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET",
@@ -1079,10 +1079,11 @@ def _iterative_task_guidance(query: str) -> str:
         return (
             "This may be a LongBench many-shot relation task. Chunks can contain "
             "demonstration examples, answer letters, and symbolic relation codes. "
-            "Do not discard demonstrations just because they do not directly answer "
-            "the target question. Extract compact rules, mappings, and examples, "
-            "such as which relation-code option corresponded to which entity relation. "
-            "If the target document appears, record the entity relation facts as observations."
+            "The question's entities are the target; never replace them with entities "
+            "from demonstrations. Do not discard demonstrations just because they do "
+            "not directly answer the target question. Extract compact option-code "
+            "mappings and relation examples only. If the target document appears, "
+            "record the target entity relation facts as observations."
         )
     if re.search(r"(?i)\b(symboli[sz]e|theme|novel|literary|meaning)\b", text):
         return (
@@ -2648,13 +2649,16 @@ class SemanticCacheController:
         task_guidance = _iterative_task_guidance(query)
         system_prompt = (
             "You are an evidence inspector for a LongBench-v2 question. Use ONLY the "
-            "current chunk and the existing evidence ledger. Return one JSON object "
-            "with keys: status, supported_choice, confidence, evidence, contradictions, "
-            "observations, rules, examples, open_questions, needs_more_context. status "
-            "must be no_evidence, partial, or answer_found. supported_choice must be "
-            "A, B, C, D, or null. Use status=partial when the chunk has useful "
-            "observations, rules, examples, or mappings but does not yet prove one "
-            "choice. Keep every field compact; do not include prose outside JSON. "
+            "current chunk and the existing evidence ledger. Return ONLY one valid "
+            "compact JSON object. Use exactly these keys: status, supported_choice, "
+            "confidence, evidence, contradictions, observations, rules, examples, "
+            "open_questions, needs_more_context. status must be no_evidence, partial, "
+            "or answer_found. supported_choice must be A, B, C, D, or null. confidence "
+            "must be low, medium, or high. All list fields must be arrays, at most three "
+            "items each, and each item must be twenty words or fewer. Use [] for empty "
+            "lists. Do not quote long passages. Do not explain outside JSON. Use "
+            "status=partial when the chunk has useful observations, rules, examples, "
+            "or mappings but does not yet prove one choice. "
             + task_guidance
         )
         user_content = (
