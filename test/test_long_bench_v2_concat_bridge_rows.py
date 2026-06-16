@@ -40,10 +40,10 @@ class LongBenchV2ConcatBridgeRowsTests(unittest.TestCase):
             )
             _write_run(
                 root,
-                "official_ruler_v2",
+                "other_benchmark",
                 "run_b",
-                {"benchmark_target": "ruler_v2", "mode": "cache"},
-                [{"case_id": "b", "row_type": "ruler", "answer_correct": "true"}],
+                {"benchmark_target": "other_benchmark", "mode": "cache"},
+                [{"case_id": "b", "row_type": "other", "answer_correct": "true"}],
             )
 
             paths = _iter_bridge_csv_paths(root, ("longbench_v2", "longbench_v2_rlm", "longbench_v2_api"))
@@ -85,7 +85,7 @@ class LongBenchV2ConcatBridgeRowsTests(unittest.TestCase):
                     "--artifact-root",
                     tmpdir,
                     "--namespaces",
-                    "official_ruler_v2",
+                    "other_benchmark",
                 ])
 
 

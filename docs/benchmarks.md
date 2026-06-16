@@ -1,6 +1,6 @@
 # Benchmarks
 
-This document separates the benchmark tracks that are already implemented from the candidate benchmarks discussed for the next evaluation phase.
+This document separates the active LongBench-v2 benchmark track from candidate benchmarks discussed for later evaluation phases.
 
 The goal is to evaluate whether the semantic cache system preserves reasoning quality while reducing latency, API calls, and cost compared with uncached baselines.
 
@@ -10,41 +10,15 @@ The goal is to evaluate whether the semantic cache system preserves reasoning qu
 
 | Track | Status | Purpose | Main Artifacts |
 |-------|--------|---------|----------------|
-| RULER v2 cache runner | Implemented | Long-context retrieval stress test for the semantic cache system | `benchmark_artifacts/official_ruler_v2/<run_id>/` |
-| RULER v2 RLM baseline | Implemented | Uncached RLM baseline over the same prepared RULER v2 samples | `benchmark_artifacts/official_ruler_v2_rlm/<run_id>/` |
-| NoLiMa | Implemented | Needle-placement long-context benchmark with repository-native runner and scorer | `benchmark_artifacts/official_nolima/<run_id>/` |
-| Synthetic cache-mode suite | Implemented | Small hand-authored route test for exact, semantic, knowledge, and miss behavior | `benchmark_artifacts/cache_mode_suite/<run_id>/` |
-| LegalBench/CUAD cache suite | Implemented | Real contract-data cache-route benchmark for debugging cache behavior on legal text | `benchmark_artifacts/legal_cache_suite/<run_id>/` |
+| LongBench-v2 cache runner | Implemented | Modified LongBench-v2 cache-route suite for exact, semantic, miss, and knowledge behavior | `benchmark_artifacts/longbench_v2/<run_id>/` |
+| LongBench-v2 API baseline | Implemented | Plain full-context API baseline over prepared LongBench-v2 rows | `benchmark_artifacts/longbench_v2_api/<run_id>/` |
+| LongBench-v2 RLM baseline | Implemented | Uncached RLM baseline over prepared LongBench-v2 rows | `benchmark_artifacts/longbench_v2_rlm/<run_id>/` |
 
-### RULER v2
+### LongBench-v2
 
-The RULER v2 runner lives in `ruler_v2/run_benchmark.py`. It uses prepared RULER-style data and evaluates the semantic cache system on selected official RULER tasks and context lengths.
+The active benchmark runner lives in `long_bench_v2/run_benchmark.py`. It evaluates the semantic cache system on prepared LongBench-v2 CSV suites while preserving deterministic multiple-choice labels.
 
-RULER is useful for engineering validation because it stresses long-context retrieval and source scoping. It is less ideal as the main reasoning benchmark because many tasks are closer to finding needles or retrieving facts than evaluating complex reasoning.
-
-The uncached RLM baseline lives in `ruler_v2/run_rlm_benchmark.py`. It writes the same core artifact files under the `official_ruler_v2_rlm` namespace and does not use cache, FAISS, reranking, or the semantic cache controller. Usage instructions are in `ruler_v2/docs/rlm_baseline_runner.md`.
-
-### NoLiMa
-
-The NoLiMa integration lives under `nolima/`. It expands NoLiMa needle sets into placement sweeps and evaluates the semantic cache system with repository-native artifacts.
-
-NoLiMa is valuable as a long-context retrieval benchmark where literal overlap between the question and the inserted needle is minimized. Like RULER, it is mostly a retrieval stress test rather than the strongest reasoning benchmark.
-
-### Synthetic Cache-Mode Suite
-
-The synthetic cache-mode suite lives under `cache_bench/` and uses the fixture `benchmark_fixtures/cache_bench/cache_mode_suite_v1.json`.
-
-This suite exists to directly test cache routing: `exact`, `semantic`, `knowledge`, and `miss`.
-
-It is intentionally small and hand-authored. It should stay separate from real dataset benchmarks because it is a debugging fixture, not a headline accuracy benchmark. Usage notes are in `cache_bench/docs/cache_mode_benchmark.md`.
-
-### LegalBench/CUAD Cache Suite
-
-The legal cache suite lives under `legal_bench/`. It builds route-labeled cases from CUAD-style contract QA rows and writes artifacts under `benchmark_artifacts/legal_cache_suite/<run_id>/`.
-
-CUAD is useful because it gives real contract text, real clause labels, and real answer spans. It is currently best viewed as a cache-route and legal-domain debugging benchmark. It is weaker as a final accuracy benchmark because CUAD answers are span annotations, and some spans are too terse for robust free-form answer scoring.
-
-The legal runner uses the reranker by default. If FAISS finds candidates but the reranker filters all of them out, the runner falls back to bounded FAISS candidates and records that fallback in the bridge rows. Usage notes are in `legal_bench/docs/legal_cache_benchmark.md`.
+The plain full-context API baseline lives in `long_bench_v2/run_api_benchmark.py`, and the uncached RLM baseline lives in `long_bench_v2/run_rlm_benchmark.py`. These write under the `longbench_v2_api` and `longbench_v2_rlm` artifact namespaces and intentionally bypass semantic-cache reuse.
 
 ## Candidate Benchmarks
 

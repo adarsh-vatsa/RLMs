@@ -49,9 +49,7 @@ The README only summarizes the purpose of each benchmark track.
 
 | Benchmark | Role |
 |-----------|------|
-| CUAD cache suite | cache-route debugging and legal contract fixture |
-| RULER | long-context retrieval stress test, mainly engineering validation |
-| LongBench-v2 | next candidate for general long-context reasoning with deterministic multiple-choice scoring |
+| LongBench-v2 | primary long-context reasoning benchmark with deterministic multiple-choice scoring |
 | CorpusQA | candidate for very high-context corpus-level reasoning if the dataset and scoring harness are reproducible |
 | OOLONG | candidate for aggregation-heavy long-context reasoning that may require map-reduce style execution |
 | LongMemEval | candidate for persistent memory and knowledge reuse across sessions |
@@ -62,13 +60,11 @@ Current implemented benchmark tracks:
 
 | Track | Purpose | Documentation |
 |-------|---------|---------------|
-| RULER v2 cache runner | Official RULER v2 runs against this cache system | `ruler_v2/run_benchmark.py` |
-| RULER v2 RLM baseline | Uncached RLM baseline over prepared RULER v2 data | `ruler_v2/docs/rlm_baseline_runner.md` |
-| NoLiMa | Long-context needle placement benchmark | `nolima/` |
-| Synthetic cache-mode suite | Small hand-authored exact/semantic/knowledge/miss fixture | `cache_bench/docs/cache_mode_benchmark.md` |
-| LegalBench/CUAD cache suite | Real contract-data cache-route benchmark | `legal_bench/docs/legal_cache_benchmark.md` |
+| LongBench-v2 cache runner | Modified LongBench-v2 cache-route suite | `long_bench_v2/run_benchmark.py` |
+| LongBench-v2 API baseline | Plain full-context API baseline over prepared LongBench-v2 rows | `long_bench_v2/run_api_benchmark.py` |
+| LongBench-v2 RLM baseline | Uncached RLM baseline over prepared LongBench-v2 rows | `long_bench_v2/run_rlm_benchmark.py` |
 
-The current benchmark recommendation is documented in `docs/benchmarks.md`. The next likely implementation target is `(Modified) LongBench-v2`: preserve original multiple-choice accuracy labels, then add cache-route wrappers for exact duplicates, semantic paraphrases, misses, and knowledge hits only when repeated contexts support them naturally.
+The current benchmark recommendation is documented in `docs/benchmarks.md`. The active track is `(Modified) LongBench-v2`: preserve original multiple-choice accuracy labels, then add cache-route wrappers for exact duplicates, semantic paraphrases, misses, and knowledge hits only when repeated contexts support them naturally.
 
 Benchmark artifacts are written under `benchmark_artifacts/`. Historical
 artifacts should be treated as read-only unless a run is intentionally being

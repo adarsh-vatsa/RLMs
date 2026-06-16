@@ -14,17 +14,13 @@ dependencies = [
 benchmarks = [
     { name = "numpy" },
 ]
-nolima-benchmark = [
-    { name = "numpy" },
-]
 
 [package.metadata]
 requires-dist = [
     { name = "dotenv", specifier = ">=0.9.9" },
     { name = "numpy", marker = "extra == 'benchmarks'", specifier = ">=1.26" },
-    { name = "numpy", marker = "extra == 'nolima-benchmark'", specifier = ">=1.26" },
 ]
-provides-extras = ["benchmarks", "nolima-benchmark"]
+provides-extras = ["benchmarks"]
 
 [[package]]
 name = "dotenv"

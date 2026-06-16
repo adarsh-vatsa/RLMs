@@ -42,7 +42,7 @@ from long_bench_v2.run_benchmark import (  # noqa: E402
     parse_choice,
     summarize_rows,
 )
-from ruler_v2.run_rlm_benchmark import (  # noqa: E402
+from long_bench_v2.rlm_helpers import (  # noqa: E402
     _aggregate_bridge_row_totals,
     _estimate_cost_usd,
     _get_nested_number,

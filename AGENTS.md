@@ -13,8 +13,9 @@ Use this file as a compact index. Read the linked source files only when the tas
 - `docs/system_architecture.md`: full architecture, component behavior, data flow, scenarios, and return shapes.
 - `semantic_cache_system.py`: core implementation and constants, including model roles, cache controller, persistence, routing, and pricing.
 - `README.md`: setup, run commands, benchmark examples, artifact layout, and current results summary.
-- `ruler_v2/run_benchmark.py`: official RULER v2 benchmark orchestration.
-- `nolima/run_benchmark.py`: NoLiMa benchmark orchestration.
+- `long_bench_v2/run_benchmark.py`: modified LongBench-v2 cache benchmark orchestration.
+- `long_bench_v2/run_api_benchmark.py`: plain full-context LongBench-v2 API baseline.
+- `long_bench_v2/run_rlm_benchmark.py`: uncached LongBench-v2 RLM baseline.
 
 ## Core Architecture Map
 
@@ -38,10 +39,9 @@ Cache/search flow:
 
 ## Benchmark Guidance
 
-- Official RULER v2 work is in `ruler_v2/run_benchmark.py` and currently targets `mk_niah_basic`, `mv_niah_basic`, and `qa_basic`.
-- NoLiMa work lives under `nolima/`; use `nolima/run_benchmark.py` for runs and `nolima/score_nolima_predictions.py` for scoring existing runs.
+- LongBench-v2 work is in `long_bench_v2/`; use `long_bench_v2/run_benchmark.py` for cache runs, `long_bench_v2/run_api_benchmark.py` for full-context API baselines, and `long_bench_v2/run_rlm_benchmark.py` for uncached RLM baselines.
 - Benchmark data and fixtures live under `benchmark_data/` and `benchmark_fixtures/`.
-- Benchmark outputs and reusable cache state live under `benchmark_artifacts/`; treat historical artifacts as read-only unless the user explicitly requests edits or regeneration.
+- LongBench benchmark outputs and reusable cache state live under `benchmark_artifacts/longbench_v2*`; treat historical artifacts as read-only unless the user explicitly requests edits or regeneration.
 - Preserve persistent cache reuse, namespace derivation, manifest fields, and `delta_cost_usd` reproducibility when changing benchmark code.
 
 ## Coding Guidelines
