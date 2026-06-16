@@ -357,10 +357,12 @@ CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
-export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
+export SEMANTIC_CACHE_SCAN_MAX_TOKENS=384
+export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
+export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
 uv run python long_bench_v2/sample_csv.py \
@@ -568,11 +570,13 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=20000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
-export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.15
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=4
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
-export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
+export SEMANTIC_CACHE_SCAN_MAX_TOKENS=384
+export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
+export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -619,20 +623,24 @@ single letter.
 
 The default profile above is the current accuracy-first LongBench/Jarvis path.
 FAISS ranks likely chunks first, then the executor inspects chunks one at a time
-and carries a compact evidence ledger forward. The scan budget is adaptive:
+and carries a compact evidence ledger forward. The ledger keeps direct
+choice-support notes plus partial observations, learned rules, and few-shot
+examples. The scan budget is adaptive:
 `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30` means early stop is not allowed until
 at least 30% of chunks have been inspected, while
-`SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50` means the reader scans up to 50% of
-chunks if no high-confidence answer is found. The reader asks FAISS for the
+`SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0` means this diagnostic profile scans
+all chunks if no high-confidence answer is found. The reader asks FAISS for the
 ratio-based scan budget and inspects those chunks in FAISS-ranked order.
 `SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0` leaves the ratio-based maximum uncapped by an
-absolute chunk count.
+absolute chunk count. If the normal scan produces no useful observations,
+`SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0` allows scanning the
+remaining chunks before the reader falls back to a bounded packed synthesis call.
 
 If rows still take too long, lower the ratio band first:
 
 ```bash
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.20
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.35
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
 
 uv run python long_bench_v2/run_benchmark.py \
   ...
@@ -643,8 +651,11 @@ The main knobs to edit in the one command above are the sample token band,
 `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS`,
 `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO`, `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`,
 `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`, `SEMANTIC_CACHE_SCAN_MAX_CHUNKS`,
-`SEMANTIC_CACHE_SCAN_MAX_TOKENS`. For additional short, medium, and long random
-sample examples, see `long_bench_v2/docs/longbench_v2.md`.
+`SEMANTIC_CACHE_SCAN_MAX_TOKENS`,
+`SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO`, and
+`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`. For additional
+short, medium, and long random sample examples, see
+`long_bench_v2/docs/longbench_v2.md`.
 
 ## 12. Run The Full Benchmark
 
@@ -667,10 +678,12 @@ CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.75
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
-export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
+export SEMANTIC_CACHE_SCAN_MAX_TOKENS=384
+export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
+export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"

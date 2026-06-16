@@ -378,7 +378,7 @@ Useful options:
 
 The LongBench-v2 runner intentionally reduces retrieval breadth for speed while keeping the full source document indexed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For Jarvis LongBench-v2 runs, use `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000` as the current speed/quality balance. This keeps the full document indexed as token-bounded chunks while reducing chunk count versus the higher-recall `6000/600` profile. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
 
-For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects one chunk per call and maintains a compact evidence ledger before either early-stopping or running a final adjudication call. The bridge rows and manifest include the token chunk config, search mode, scan min/max ratio band, absolute scan floors/caps, scan order, visited chunk count, early-stop reason, supporting chunk indices, and compact evidence ledger.
+For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects one chunk per call and maintains a compact evidence ledger before either early-stopping or running a final adjudication call. The ledger stores direct choice support plus partial observations, learned rules, and few-shot examples. If the normal scan leaves the ledger empty, the reader can scan farther and then use a bounded packed fallback instead of adjudicating from no evidence. The bridge rows and manifest include the token chunk config, search mode, scan min/max ratio band, fallback settings, scan order, visited chunk count, useful-memory counts, parse-failure count, early-stop reason, supporting chunk indices, and compact evidence ledger.
 
 Recommended balanced Jarvis LongBench-v2 profile:
 
@@ -387,10 +387,12 @@ export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
-export SEMANTIC_CACHE_SCAN_MAX_TOKENS=256
+export SEMANTIC_CACHE_SCAN_MAX_TOKENS=384
+export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
+export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
 uv run python long_bench_v2/run_benchmark.py \
@@ -403,7 +405,7 @@ If row latency is still too high, use the faster fallback profile:
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=12000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.20
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.35
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.50
 
 uv run python long_bench_v2/run_benchmark.py \
   ...

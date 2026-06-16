@@ -145,6 +145,12 @@ SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 256)
 SCAN_ORDER = "faiss_ranked"
+ITERATIVE_READER_VERSION = 2
+SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
+ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
+    "SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET",
+    60000,
+)
 OPENAI_COMPAT_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON"
 OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_ENV = "OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON"
@@ -857,6 +863,23 @@ def _compute_iterative_scan_budget(
     return early_stop_min, max(0, scan_budget)
 
 
+def _compute_empty_ledger_fallback_budget(
+    *,
+    total_chunks: int,
+    initial_scan_budget: int,
+    fallback_ratio: float,
+) -> int:
+    total_chunks = max(0, int(total_chunks))
+    initial_scan_budget = min(max(0, int(initial_scan_budget)), total_chunks)
+    if total_chunks == 0:
+        return 0
+    ratio = max(0.0, float(fallback_ratio))
+    if ratio <= 0:
+        return initial_scan_budget
+    fallback_budget = math.ceil(total_chunks * ratio)
+    return min(total_chunks, max(initial_scan_budget, fallback_budget))
+
+
 def _bounded_text(value, limit: int = 240) -> str:
     text = str(value or "").strip()
     text = re.sub(r"\s+", " ", text)
@@ -887,6 +910,10 @@ def _new_evidence_ledger() -> dict:
         "B": {"support": [], "against": []},
         "C": {"support": [], "against": []},
         "D": {"support": [], "against": []},
+        "observations": [],
+        "rules": [],
+        "examples": [],
+        "parse_failures": [],
         "open_questions": [],
         "visited_chunks": [],
         "best_choice": None,
@@ -905,10 +932,87 @@ def _append_ledger_notes(target: list, notes: list[str], *, chunk_index: int | N
             target.append(item)
 
 
+def _append_decision_notes(
+    ledger: dict,
+    section: str,
+    decision: dict,
+    fields: tuple[str, ...],
+    *,
+    chunk_index: int,
+    limit: int,
+) -> None:
+    notes: list[str] = []
+    for field in fields:
+        notes.extend(_coerce_note_list(decision.get(field)))
+    _append_ledger_notes(ledger[section], notes, chunk_index=chunk_index, limit=limit)
+
+
+def _ledger_section_count(ledger: dict, section: str) -> int:
+    value = ledger.get(section)
+    return len(value) if isinstance(value, list) else 0
+
+
+def _ledger_choice_note_count(ledger: dict) -> int:
+    total = 0
+    for choice in ("A", "B", "C", "D"):
+        choice_notes = ledger.get(choice) or {}
+        total += len(choice_notes.get("support") or [])
+        total += len(choice_notes.get("against") or [])
+    return total
+
+
+def _ledger_useful_memory_count(ledger: dict) -> int:
+    return (
+        _ledger_choice_note_count(ledger)
+        + _ledger_section_count(ledger, "observations")
+        + _ledger_section_count(ledger, "rules")
+        + _ledger_section_count(ledger, "examples")
+        + (1 if _normalize_choice_letter(ledger.get("best_choice")) else 0)
+    )
+
+
+def _ledger_has_useful_memory(ledger: dict) -> bool:
+    return _ledger_useful_memory_count(ledger) > 0
+
+
 def _update_evidence_ledger(ledger: dict, decision: dict | None, *, chunk_index: int) -> dict:
     decision = decision if isinstance(decision, dict) else {}
     if chunk_index not in ledger["visited_chunks"]:
         ledger["visited_chunks"].append(int(chunk_index))
+
+    if decision.get("parse_failed"):
+        if len(ledger["parse_failures"]) < 4:
+            ledger["parse_failures"].append(
+                {
+                    "chunk_index": int(chunk_index),
+                    "raw_response": _bounded_text(decision.get("raw_response"), limit=800),
+                }
+            )
+
+    _append_decision_notes(
+        ledger,
+        "observations",
+        decision,
+        ("observations", "facts", "relevant_context", "partial_evidence"),
+        chunk_index=chunk_index,
+        limit=12,
+    )
+    _append_decision_notes(
+        ledger,
+        "rules",
+        decision,
+        ("rules", "patterns", "learned_rules", "mappings"),
+        chunk_index=chunk_index,
+        limit=12,
+    )
+    _append_decision_notes(
+        ledger,
+        "examples",
+        decision,
+        ("examples", "demonstrations"),
+        chunk_index=chunk_index,
+        limit=12,
+    )
 
     choice = _normalize_choice_letter(
         decision.get("supported_choice") or decision.get("answer") or decision.get("choice")
@@ -966,6 +1070,30 @@ def _query_requires_comparative_scan(query: str) -> bool:
             r"which method|which option|which approach|multi[- ]?document|papers?)\b",
             query or "",
         )
+    )
+
+
+def _iterative_task_guidance(query: str) -> str:
+    text = query or ""
+    if re.search(r"(?is)\brelation type\b.*\bentity\d+\b", text):
+        return (
+            "This may be a LongBench many-shot relation task. Chunks can contain "
+            "demonstration examples, answer letters, and symbolic relation codes. "
+            "Do not discard demonstrations just because they do not directly answer "
+            "the target question. Extract compact rules, mappings, and examples, "
+            "such as which relation-code option corresponded to which entity relation. "
+            "If the target document appears, record the entity relation facts as observations."
+        )
+    if re.search(r"(?i)\b(symboli[sz]e|theme|novel|literary|meaning)\b", text):
+        return (
+            "This may be a literary or thematic QA task. Preserve compact thematic "
+            "observations from each chunk even if the chunk does not directly name an "
+            "answer choice."
+        )
+    return (
+        "If the chunk contains partial but relevant facts, definitions, examples, "
+        "or constraints, record them as observations, rules, or examples even when "
+        "no answer choice is fully supported yet."
     )
 
 
@@ -2517,12 +2645,17 @@ class SemanticCacheController:
     def _inspect_iterative_chunk(self, query: str, ledger: dict, result: dict) -> dict:
         metadata = result.get("metadata") or {}
         chunk_index = self._result_chunk_index(result, len(ledger.get("visited_chunks", [])))
+        task_guidance = _iterative_task_guidance(query)
         system_prompt = (
             "You are an evidence inspector for a LongBench-v2 question. Use ONLY the "
             "current chunk and the existing evidence ledger. Return one JSON object "
             "with keys: status, supported_choice, confidence, evidence, contradictions, "
-            "open_questions, needs_more_context. status must be no_evidence, partial, "
-            "or answer_found. supported_choice must be A, B, C, D, or null."
+            "observations, rules, examples, open_questions, needs_more_context. status "
+            "must be no_evidence, partial, or answer_found. supported_choice must be "
+            "A, B, C, D, or null. Use status=partial when the chunk has useful "
+            "observations, rules, examples, or mappings but does not yet prove one "
+            "choice. Keep every field compact; do not include prose outside JSON. "
+            + task_guidance
         )
         user_content = (
             f"Question and choices:\n{query}\n\n"
@@ -2539,7 +2672,8 @@ class SemanticCacheController:
             response_format=_json_response_format(),
         )
         self.metrics.record_call(EXECUTOR_MODEL, response.usage.input_tokens, response.usage.output_tokens)
-        parsed = _extract_llm_json_object(response.content[0].text)
+        raw_text = response.content[0].text
+        parsed = _extract_llm_json_object(raw_text)
         if parsed is None:
             return {
                 "status": "no_evidence",
@@ -2547,9 +2681,14 @@ class SemanticCacheController:
                 "confidence": "low",
                 "evidence": [],
                 "contradictions": [],
+                "observations": [],
+                "rules": [],
+                "examples": [],
                 "open_questions": ["Inspector response was not valid JSON."],
                 "needs_more_context": True,
                 "chunk_index": chunk_index,
+                "parse_failed": True,
+                "raw_response": _bounded_text(raw_text, limit=800),
             }
         parsed["chunk_index"] = chunk_index
         return parsed
@@ -2557,8 +2696,11 @@ class SemanticCacheController:
     def _finalize_iterative_answer(self, query: str, ledger: dict) -> tuple[str, dict]:
         system_prompt = (
             _mcq_system_prompt()
-            + " Use the evidence ledger below as the only inspected evidence. Return JSON "
-            "with keys answer, confidence, and reason. answer must be A, B, C, or D."
+            + " Use the evidence ledger below as the only inspected evidence. The ledger "
+            "may contain direct answer-choice support, observations, learned rules, and "
+            "few-shot examples. Infer from those rules/examples when direct support is "
+            "not present. Return JSON with keys answer, confidence, and reason. answer "
+            "must be A, B, C, or D."
         )
         response = create_llm_message(
             model=EXECUTOR_MODEL,
@@ -2582,6 +2724,37 @@ class SemanticCacheController:
         parsed["answer"] = answer
         return answer, parsed
 
+    def _fallback_iterative_packed_answer(self, query: str, scan_results: list[dict]) -> tuple[str, dict]:
+        system_prompt = (
+            _mcq_system_prompt()
+            + " The iterative evidence ledger remained empty, so answer from the inspected "
+            "chunks below. Use only these chunks and the question choices. Return only one "
+            "answer letter: A, B, C, or D."
+        )
+        source_text, pack_info = _pack_sources_for_input_budget(
+            query=query,
+            system_prompt=system_prompt,
+            results=scan_results,
+            source_limit=len(scan_results),
+            input_token_budget=ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET,
+        )
+        response = create_llm_message(
+            model=EXECUTOR_MODEL,
+            max_tokens=max(1, MCQ_SYNTHESIS_MAX_TOKENS),
+            temperature=0,
+            system=system_prompt,
+            messages=[{"role": "user", "content": f"Query: {query}\n\nDocuments:\n{source_text}"}],
+        )
+        self.metrics.record_call(EXECUTOR_MODEL, response.usage.input_tokens, response.usage.output_tokens)
+        raw_text = response.content[0].text
+        answer = _normalize_choice_letter(raw_text) or raw_text.strip()
+        decision = {
+            "answer": answer,
+            "raw_response": _bounded_text(raw_text, limit=800),
+            **pack_info,
+        }
+        return answer, decision
+
     def _supporting_chunk_indices_from_ledger(self, ledger: dict) -> list[int]:
         indices = set()
         for choice in ("A", "B", "C", "D"):
@@ -2601,7 +2774,13 @@ class SemanticCacheController:
             min_chunks=SCAN_MIN_CHUNKS,
             max_chunks=SCAN_MAX_CHUNKS,
         )
-        results = self.retrieve(query, top_k=scan_budget, rerank_top=rerank_top, use_reranker=False)
+        empty_ledger_fallback_budget = _compute_empty_ledger_fallback_budget(
+            total_chunks=total_chunks,
+            initial_scan_budget=scan_budget,
+            fallback_ratio=SCAN_EMPTY_LEDGER_FALLBACK_RATIO,
+        )
+        faiss_top_n = max(scan_budget, empty_ledger_fallback_budget)
+        results = self.retrieve(query, top_k=faiss_top_n, rerank_top=rerank_top, use_reranker=False)
         if not results:
             return {
                 "query": query,
@@ -2621,17 +2800,30 @@ class SemanticCacheController:
             results,
             total_chunks=total_chunks,
         )
-        scan_results = scan_results[:scan_budget]
+        scan_results = scan_results[:faiss_top_n]
         ledger = _new_evidence_ledger()
         comparative_query = _query_requires_comparative_scan(query)
         inspector_call_count = 0
         final_adjudication_call_count = 0
+        packed_fallback_call_count = 0
         early_stop = False
         stop_reason = "scan_budget_exhausted"
         answer = None
         final_decision = None
+        packed_fallback_decision = None
+        empty_ledger_fallback_used = False
 
         for result in scan_results:
+            if inspector_call_count >= scan_budget:
+                if _ledger_has_useful_memory(ledger):
+                    stop_reason = "scan_budget_exhausted"
+                    break
+                if inspector_call_count >= empty_ledger_fallback_budget:
+                    stop_reason = "empty_ledger_fallback_exhausted"
+                    break
+                empty_ledger_fallback_used = True
+                stop_reason = "empty_ledger_fallback_scanning"
+
             chunk_index = self._result_chunk_index(result, inspector_call_count)
             decision = self._inspect_iterative_chunk(query, ledger, result)
             inspector_call_count += 1
@@ -2651,8 +2843,14 @@ class SemanticCacheController:
                 break
 
         if answer is None:
-            answer, final_decision = self._finalize_iterative_answer(query, ledger)
-            final_adjudication_call_count = 1
+            if _ledger_has_useful_memory(ledger):
+                answer, final_decision = self._finalize_iterative_answer(query, ledger)
+                final_adjudication_call_count = 1
+            else:
+                inspected_results = scan_results[:inspector_call_count]
+                answer, packed_fallback_decision = self._fallback_iterative_packed_answer(query, inspected_results)
+                packed_fallback_call_count = 1
+                stop_reason = "empty_ledger_packed_fallback"
 
         visited_indices = list(ledger.get("visited_chunks", []))
         supporting_indices = self._supporting_chunk_indices_from_ledger(ledger)
@@ -2672,11 +2870,18 @@ class SemanticCacheController:
                 "supporting_chunk_indices": supporting_indices,
                 "visited_chunk_indices": visited_indices,
                 "final_decision": final_decision,
+                "packed_fallback_decision": packed_fallback_decision,
             },
             ensure_ascii=False,
         )
+        useful_memory_count = _ledger_useful_memory_count(ledger)
+        observation_count = _ledger_section_count(ledger, "observations")
+        rule_count = _ledger_section_count(ledger, "rules")
+        example_count = _ledger_section_count(ledger, "examples")
+        parse_failure_count = _ledger_section_count(ledger, "parse_failures")
 
         iterative_info = {
+            "iterative_reader_version": ITERATIVE_READER_VERSION,
             "search_mode": "iterative",
             "scan_order": SCAN_ORDER,
             "scan_min_chunk_ratio": float(SCAN_MIN_CHUNK_RATIO),
@@ -2684,18 +2889,29 @@ class SemanticCacheController:
             "scan_min_chunks": int(SCAN_MIN_CHUNKS),
             "scan_max_chunks": int(SCAN_MAX_CHUNKS),
             "scan_max_tokens": int(SCAN_MAX_TOKENS),
+            "scan_empty_ledger_fallback_ratio": float(SCAN_EMPTY_LEDGER_FALLBACK_RATIO),
+            "iterative_packed_fallback_input_token_budget": int(ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET),
             "iterative_scan_total_chunks": total_chunks,
             "iterative_scan_early_stop_min_chunks": early_stop_min_chunks,
             "iterative_scan_budget": scan_budget,
+            "iterative_scan_empty_ledger_fallback_budget": empty_ledger_fallback_budget,
             "iterative_scan_visited_chunk_count": inspector_call_count,
-            "iterative_scan_faiss_top_n": scan_budget,
+            "iterative_scan_faiss_top_n": faiss_top_n,
             "iterative_scan_faiss_result_count": faiss_result_count,
+            "iterative_scan_empty_ledger_fallback_used": empty_ledger_fallback_used,
+            "iterative_scan_packed_fallback_used": packed_fallback_call_count > 0,
             "iterative_scan_early_stop": early_stop,
             "iterative_scan_stop_reason": stop_reason,
             "iterative_scan_selected_chunk_indices": visited_indices,
             "iterative_scan_supporting_chunk_indices": supporting_indices,
             "iterative_scan_inspector_call_count": inspector_call_count,
             "iterative_scan_final_adjudication_call_count": final_adjudication_call_count,
+            "iterative_scan_packed_fallback_call_count": packed_fallback_call_count,
+            "iterative_scan_useful_memory_count": useful_memory_count,
+            "iterative_scan_observation_count": observation_count,
+            "iterative_scan_rule_count": rule_count,
+            "iterative_scan_example_count": example_count,
+            "iterative_scan_parse_failure_count": parse_failure_count,
             "iterative_scan_evidence_ledger": ledger,
             "synthesis_packed_chunk_count": inspector_call_count,
             "synthesis_dropped_chunk_count": max(0, total_chunks - inspector_call_count),

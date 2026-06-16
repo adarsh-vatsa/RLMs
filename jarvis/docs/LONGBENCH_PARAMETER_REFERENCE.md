@@ -27,7 +27,13 @@ Each item is intentionally short so it can be used while tuning one run at a tim
   Set it to `0` to rely only on `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`.
 
 - `SEMANTIC_CACHE_SCAN_MAX_TOKENS`: Maximum output tokens for each chunk-inspection or final-adjudication call.
-  Keep this compact because each call should return strict JSON, not long prose.
+  Keep this compact because each call should return strict JSON, but use enough room for observations, rules, and examples.
+
+- `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO`: Extra scan budget used only when the normal scan produced no useful ledger memory.
+  `1.0` lets the reader continue through all chunks before giving up on iterative evidence extraction.
+
+- `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`: Input-token budget for the bounded packed fallback used when the ledger stays empty.
+  This is a safety path so the model does not adjudicate from an empty evidence ledger.
 
 - `SEMANTIC_CACHE_MCQ_PROMPT_STYLE`: Selects the multiple-choice prompt template.
   `strict` tells the model to compare choices carefully and return only `A`, `B`, `C`, or `D`.

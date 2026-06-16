@@ -271,11 +271,14 @@ def resolve_cache_namespace(
     doc_chunk_tokenizer_model: str = "",
     synthesis_input_token_budget: int = 0,
     search_mode: str = "packed",
+    iterative_reader_version: int = 0,
     scan_min_chunk_ratio: float = 0.0,
     scan_max_chunk_ratio: float = 0.0,
     scan_min_chunks: int = 0,
     scan_max_chunks: int = 0,
     scan_max_tokens: int = 0,
+    scan_empty_ledger_fallback_ratio: float = 0.0,
+    iterative_packed_fallback_input_token_budget: int = 0,
     scan_order: str = "",
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
@@ -288,6 +291,15 @@ def resolve_cache_namespace(
     namespace_synthesis_input_budget = (
         0 if normalized_search_mode == "iterative" else synthesis_input_token_budget
     )
+    namespace_iterative_reader_version = (
+        iterative_reader_version if normalized_search_mode == "iterative" else 0
+    )
+    namespace_scan_empty_ledger_fallback_ratio = (
+        scan_empty_ledger_fallback_ratio if normalized_search_mode == "iterative" else 0.0
+    )
+    namespace_iterative_packed_fallback_input_token_budget = (
+        iterative_packed_fallback_input_token_budget if normalized_search_mode == "iterative" else 0
+    )
     digest = hashlib.sha256(
         (
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
@@ -298,7 +310,9 @@ def resolve_cache_namespace(
             f"{doc_chunk_overlap_tokens}\n{doc_chunk_tokenizer_model}\n{namespace_synthesis_input_budget}\n"
             f"{normalized_search_mode}\n{scan_min_chunk_ratio}\n{scan_max_chunk_ratio}\n"
             f"{scan_min_chunks}\n{scan_max_chunks}\n"
-            f"{scan_max_tokens}\n{scan_order}"
+            f"{scan_max_tokens}\n{namespace_scan_empty_ledger_fallback_ratio}\n"
+            f"{namespace_iterative_packed_fallback_input_token_budget}\n"
+            f"{namespace_iterative_reader_version}\n{scan_order}"
         ).encode("utf-8")
     ).hexdigest()[:16]
     return _sanitize_path_segment(f"longbench_v2__{row_type_sig}__{digest}"), dataset_signature
@@ -526,11 +540,16 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     effective_synthesis_input_token_budget = int(getattr(scs, "SYNTHESIS_INPUT_TOKEN_BUDGET", 0))
     effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
     effective_search_mode = _coerce_text(getattr(scs, "SEARCH_MODE", "packed")) or "packed"
+    effective_iterative_reader_version = int(getattr(scs, "ITERATIVE_READER_VERSION", 0))
     effective_scan_min_chunk_ratio = float(getattr(scs, "SCAN_MIN_CHUNK_RATIO", 0.0))
     effective_scan_max_chunk_ratio = float(getattr(scs, "SCAN_MAX_CHUNK_RATIO", 0.0))
     effective_scan_min_chunks = int(getattr(scs, "SCAN_MIN_CHUNKS", 0))
     effective_scan_max_chunks = int(getattr(scs, "SCAN_MAX_CHUNKS", 0))
     effective_scan_max_tokens = int(getattr(scs, "SCAN_MAX_TOKENS", 0))
+    effective_scan_empty_ledger_fallback_ratio = float(getattr(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 0.0))
+    effective_iterative_packed_fallback_input_token_budget = int(
+        getattr(scs, "ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET", 0)
+    )
     effective_scan_order = _coerce_text(getattr(scs, "SCAN_ORDER", ""))
 
     if cache_state_enabled:
@@ -554,11 +573,14 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             doc_chunk_tokenizer_model=effective_doc_chunk_tokenizer_model,
             synthesis_input_token_budget=effective_synthesis_input_token_budget,
             search_mode=effective_search_mode,
+            iterative_reader_version=effective_iterative_reader_version,
             scan_min_chunk_ratio=effective_scan_min_chunk_ratio,
             scan_max_chunk_ratio=effective_scan_max_chunk_ratio,
             scan_min_chunks=effective_scan_min_chunks,
             scan_max_chunks=effective_scan_max_chunks,
             scan_max_tokens=effective_scan_max_tokens,
+            scan_empty_ledger_fallback_ratio=effective_scan_empty_ledger_fallback_ratio,
+            iterative_packed_fallback_input_token_budget=effective_iterative_packed_fallback_input_token_budget,
             scan_order=effective_scan_order,
         )
         cache_state_root = (
@@ -586,7 +608,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             f"scan_min_ratio={effective_scan_min_chunk_ratio}, "
             f"scan_max_ratio={effective_scan_max_chunk_ratio}, "
             f"scan_min={effective_scan_min_chunks}, "
-            f"scan_max={effective_scan_max_chunks}, scan_max_tokens={effective_scan_max_tokens}"
+            f"scan_max={effective_scan_max_chunks}, scan_max_tokens={effective_scan_max_tokens}, "
+            f"empty_ledger_fallback_ratio={effective_scan_empty_ledger_fallback_ratio}, "
+            f"reader_version={effective_iterative_reader_version}"
         )
     else:
         print(
@@ -715,11 +739,14 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "rerank_top": args.rerank_top,
             "synthesis_max_chunks": effective_synthesis_max_chunks,
             "search_mode": effective_search_mode,
+            "iterative_reader_version": effective_iterative_reader_version,
             "scan_min_chunk_ratio": effective_scan_min_chunk_ratio,
             "scan_max_chunk_ratio": effective_scan_max_chunk_ratio,
             "scan_min_chunks": effective_scan_min_chunks,
             "scan_max_chunks": effective_scan_max_chunks,
             "scan_max_tokens": effective_scan_max_tokens,
+            "scan_empty_ledger_fallback_ratio": effective_scan_empty_ledger_fallback_ratio,
+            "iterative_packed_fallback_input_token_budget": effective_iterative_packed_fallback_input_token_budget,
             "scan_order": effective_scan_order,
             "doc_chunk_size": effective_doc_chunk_size,
             "doc_chunk_overlap": effective_doc_chunk_overlap,
@@ -758,15 +785,24 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "iterative_scan_total_chunks": retrieval.get("iterative_scan_total_chunks"),
             "iterative_scan_early_stop_min_chunks": retrieval.get("iterative_scan_early_stop_min_chunks"),
             "iterative_scan_budget": retrieval.get("iterative_scan_budget"),
+            "iterative_scan_empty_ledger_fallback_budget": retrieval.get("iterative_scan_empty_ledger_fallback_budget"),
             "iterative_scan_visited_chunk_count": retrieval.get("iterative_scan_visited_chunk_count"),
             "iterative_scan_faiss_top_n": retrieval.get("iterative_scan_faiss_top_n"),
             "iterative_scan_faiss_result_count": retrieval.get("iterative_scan_faiss_result_count"),
+            "iterative_scan_empty_ledger_fallback_used": retrieval.get("iterative_scan_empty_ledger_fallback_used"),
+            "iterative_scan_packed_fallback_used": retrieval.get("iterative_scan_packed_fallback_used"),
             "iterative_scan_early_stop": retrieval.get("iterative_scan_early_stop"),
             "iterative_scan_stop_reason": retrieval.get("iterative_scan_stop_reason"),
             "iterative_scan_selected_chunk_indices": retrieval.get("iterative_scan_selected_chunk_indices"),
             "iterative_scan_supporting_chunk_indices": retrieval.get("iterative_scan_supporting_chunk_indices"),
             "iterative_scan_inspector_call_count": retrieval.get("iterative_scan_inspector_call_count"),
             "iterative_scan_final_adjudication_call_count": retrieval.get("iterative_scan_final_adjudication_call_count"),
+            "iterative_scan_packed_fallback_call_count": retrieval.get("iterative_scan_packed_fallback_call_count"),
+            "iterative_scan_useful_memory_count": retrieval.get("iterative_scan_useful_memory_count"),
+            "iterative_scan_observation_count": retrieval.get("iterative_scan_observation_count"),
+            "iterative_scan_rule_count": retrieval.get("iterative_scan_rule_count"),
+            "iterative_scan_example_count": retrieval.get("iterative_scan_example_count"),
+            "iterative_scan_parse_failure_count": retrieval.get("iterative_scan_parse_failure_count"),
             "iterative_scan_evidence_ledger": retrieval.get("iterative_scan_evidence_ledger"),
         }
         bridge_rows.append(bridge_row)
@@ -849,11 +885,14 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "synthesis_max_chunks": effective_synthesis_max_chunks,
         "mcq_prompt_style": effective_mcq_prompt_style,
         "search_mode": effective_search_mode,
+        "iterative_reader_version": effective_iterative_reader_version,
         "scan_min_chunk_ratio": effective_scan_min_chunk_ratio,
         "scan_max_chunk_ratio": effective_scan_max_chunk_ratio,
         "scan_min_chunks": effective_scan_min_chunks,
         "scan_max_chunks": effective_scan_max_chunks,
         "scan_max_tokens": effective_scan_max_tokens,
+        "scan_empty_ledger_fallback_ratio": effective_scan_empty_ledger_fallback_ratio,
+        "iterative_packed_fallback_input_token_budget": effective_iterative_packed_fallback_input_token_budget,
         "scan_order": effective_scan_order,
         "doc_chunk_size": effective_doc_chunk_size,
         "doc_chunk_overlap": effective_doc_chunk_overlap,

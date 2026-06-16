@@ -315,6 +315,22 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             ),
             (3, 3),
         )
+        self.assertEqual(
+            scs._compute_empty_ledger_fallback_budget(
+                total_chunks=10,
+                initial_scan_budget=3,
+                fallback_ratio=1.0,
+            ),
+            10,
+        )
+        self.assertEqual(
+            scs._compute_empty_ledger_fallback_budget(
+                total_chunks=10,
+                initial_scan_budget=3,
+                fallback_ratio=0.0,
+            ),
+            3,
+        )
 
     def test_iterative_scan_order_is_faiss_ranked_without_duplicates(self):
         controller = make_controller()
@@ -401,6 +417,9 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             "confidence": "high",
             "evidence": [f"support note {idx}" for idx in range(10)],
             "contradictions": [f"against note {idx}" for idx in range(10)],
+            "observations": [f"observation {idx}" for idx in range(20)],
+            "rules": [f"rule {idx}" for idx in range(20)],
+            "examples": [f"example {idx}" for idx in range(20)],
             "open_questions": [f"open question {idx}" for idx in range(12)],
         }
 
@@ -408,9 +427,32 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         self.assertEqual(len(ledger["A"]["support"]), 5)
         self.assertEqual(len(ledger["A"]["against"]), 5)
+        self.assertEqual(len(ledger["observations"]), 12)
+        self.assertEqual(len(ledger["rules"]), 12)
+        self.assertEqual(len(ledger["examples"]), 12)
         self.assertEqual(len(ledger["open_questions"]), 8)
         self.assertEqual({note["chunk_index"] for note in ledger["A"]["support"]}, {7})
+        self.assertEqual({note["chunk_index"] for note in ledger["observations"]}, {7})
         self.assertEqual(ledger["visited_chunks"], [7])
+        self.assertTrue(scs._ledger_has_useful_memory(ledger))
+
+    def test_iterative_evidence_ledger_records_parse_failures(self):
+        ledger = scs._new_evidence_ledger()
+
+        scs._update_evidence_ledger(
+            ledger,
+            {
+                "status": "no_evidence",
+                "parse_failed": True,
+                "raw_response": "not-json " * 200,
+            },
+            chunk_index=3,
+        )
+
+        self.assertFalse(scs._ledger_has_useful_memory(ledger))
+        self.assertEqual(len(ledger["parse_failures"]), 1)
+        self.assertEqual(ledger["parse_failures"][0]["chunk_index"], 3)
+        self.assertLessEqual(len(ledger["parse_failures"][0]["raw_response"]), 800)
 
     def test_iterative_comparative_query_requires_scan_budget_before_stop(self):
         ledger = scs._new_evidence_ledger()
@@ -487,8 +529,20 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         controller._doc_chunks = ["alpha evidence", "beta evidence"]
         controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
         inspections = [
-            {"status": "partial", "supported_choice": None, "confidence": "low", "needs_more_context": True},
-            {"status": "partial", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+            {
+                "status": "partial",
+                "supported_choice": None,
+                "confidence": "low",
+                "observations": ["alpha is relevant but incomplete"],
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "supported_choice": None,
+                "confidence": "low",
+                "observations": ["beta is relevant but incomplete"],
+                "needs_more_context": True,
+            },
         ]
 
         with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
@@ -505,6 +559,88 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(result["answer"], "C")
         self.assertFalse(result["retrieval"]["iterative_scan_early_stop"])
         self.assertEqual(result["retrieval"]["iterative_scan_final_adjudication_call_count"], 1)
+
+    def test_iterative_search_scans_more_when_initial_budget_has_empty_ledger(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [
+                (0.91, {"chunk_index": 0}),
+                (0.86, {"chunk_index": 1}),
+                (0.82, {"chunk_index": 2}),
+                (0.79, {"chunk_index": 3}),
+            ]
+        )
+        controller._doc_chunks = ["empty one", "empty two", "useful rule", "extra"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(4)]
+        inspections = [
+            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+            {
+                "status": "partial",
+                "supported_choice": None,
+                "confidence": "medium",
+                "observations": ["The target entity relation appears in this chunk."],
+                "rules": ["Relation code abb maps to location containment in examples."],
+                "needs_more_context": True,
+            },
+        ]
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.50
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0), patch.object(
+            controller, "_inspect_iterative_chunk", side_effect=inspections
+        ), patch.object(
+            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C"})
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
+        ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative("Which relation type is correct?", top_k=2, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "C")
+        self.assertEqual(result["retrieval"]["iterative_scan_budget"], 2)
+        self.assertEqual(result["retrieval"]["iterative_scan_empty_ledger_fallback_budget"], 4)
+        self.assertTrue(result["retrieval"]["iterative_scan_empty_ledger_fallback_used"])
+        self.assertEqual(result["retrieval"]["iterative_scan_inspector_call_count"], 3)
+        self.assertEqual(result["retrieval"]["iterative_scan_observation_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_rule_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 0)
+
+    def test_iterative_search_uses_packed_fallback_when_ledger_stays_empty(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, {"chunk_index": 0}), (0.86, {"chunk_index": 1})]
+        )
+        controller._doc_chunks = ["empty one", "empty two"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
+        inspections = [
+            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_evidence", "supported_choice": None, "confidence": "low", "needs_more_context": True},
+        ]
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.50
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0), patch.object(
+            controller, "_inspect_iterative_chunk", side_effect=inspections
+        ), patch.object(
+            controller, "_finalize_iterative_answer", side_effect=AssertionError("empty ledger finalizer should not run")
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", return_value=("D", {"answer": "D"})
+        ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative("Which relation type is correct?", top_k=2, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "D")
+        self.assertEqual(result["retrieval"]["iterative_scan_stop_reason"], "empty_ledger_packed_fallback")
+        self.assertTrue(result["retrieval"]["iterative_scan_empty_ledger_fallback_used"])
+        self.assertTrue(result["retrieval"]["iterative_scan_packed_fallback_used"])
+        self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 1)
 
 
 if __name__ == "__main__":
