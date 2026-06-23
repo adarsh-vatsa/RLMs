@@ -629,20 +629,20 @@ The default profile above is the current accuracy-first LongBench/Jarvis path.
 FAISS ranks likely chunks first, then the executor inspects chunks one at a time
 and carries a cumulative memory ledger forward. The ledger keeps additive
 chunk-referenced notes, target facts, option-code mappings, the current
-`best_choice`, confidence, and up to five open questions. For many-shot relation
+`best_choice`, rationale, and up to five open questions. For many-shot relation
 rows, examples are retained in `code_mappings` only when they use one of the
 relation codes present in the current answer options. The scan budget is
 adaptive:
 `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30` means early stop is not allowed until
 at least 30% of chunks have been inspected, while
 `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0` means this diagnostic profile scans
-all chunks if no high-confidence answer is found. The reader asks FAISS for the
+all chunks if no answer is found. The reader asks FAISS for the
 ratio-based scan budget and inspects those chunks in FAISS-ranked order.
 `SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0` leaves the ratio-based maximum uncapped by an
 absolute chunk count. If the normal scan produces no useful observations,
 `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0` allows scanning the
-remaining chunks. If final ledger adjudication is empty, invalid, or not
-high-confidence, the reader falls back to a bounded packed synthesis call under
+remaining chunks. If final ledger adjudication is empty, invalid, or asks for
+more context, the reader falls back to a bounded packed synthesis call under
 `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`. The cumulative
 memory text is bounded by `SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`; if it
 exceeds the cap, old prose updates are trimmed while structured facts, mappings,

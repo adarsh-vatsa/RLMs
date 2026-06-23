@@ -365,14 +365,13 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(faiss_result_count, 2)
         self.assertEqual([row["metadata"]["chunk_index"] for row in ordered], [2, 0])
 
-    def test_iterative_early_stop_requires_high_confidence_and_context_satisfied(self):
+    def test_iterative_early_stop_requires_answer_and_context_satisfied(self):
         ledger = scs._new_evidence_ledger()
         decision = {
             "status": "answer_found",
             "memory_update": "Chunk directly supports B.",
             "best_choice": "B",
             "best_choice_rationale": "B is directly supported.",
-            "confidence": "high",
             "open_questions": [],
             "needs_more_context": False,
         }
@@ -398,7 +397,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 comparative_required_count=2,
                 comparative_query=False,
             ),
-            (True, "high_confidence_answer"),
+            (True, "answer_found"),
         )
         needs_more_context = dict(decision, needs_more_context=True)
         self.assertEqual(
@@ -437,7 +436,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             "code_mappings": [{"code": "abb", "relation": "located in", "example": "X -> abb"}],
             "best_choice": "A",
             "best_choice_rationale": "A matches the cumulative memory.",
-            "confidence": "high",
             "open_questions": [f"open question {idx}" for idx in range(12)],
         }
 
@@ -454,7 +452,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(ledger["code_mappings"][0]["chunk_index"], 7)
         self.assertEqual(ledger["visited_chunks"], [7])
         self.assertEqual(ledger["best_choice"], "A")
-        self.assertEqual(ledger["confidence"], "high")
+        self.assertNotIn("confidence", ledger)
         self.assertTrue(scs._ledger_has_useful_memory(ledger))
 
     def test_iterative_memory_cap_trims_updates_but_preserves_structured_state(self):
@@ -468,7 +466,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                     "memory_update": "old note " * 20,
                     "best_choice": "B",
                     "best_choice_rationale": "first rationale",
-                    "confidence": "medium",
                 },
                 chunk_index=1,
             )
@@ -480,7 +477,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                     "code_mappings": [{"code": "abb", "relation": "located in", "example": "example"}],
                     "best_choice": "C",
                     "best_choice_rationale": "updated rationale",
-                    "confidence": "high",
                 },
                 chunk_index=2,
             )
@@ -561,7 +557,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             usage = FakeUsage()
             content = [
                 types.SimpleNamespace(
-                    text='{"status":"no_update","memory_update":"","target_facts":[],"code_mappings":[],"best_choice":null,"best_choice_rationale":"","confidence":"low","open_questions":[],"needs_more_context":true}'
+                    text='{"status":"no_update","memory_update":"","target_facts":[],"code_mappings":[],"best_choice":null,"best_choice_rationale":"","open_questions":[],"needs_more_context":true}'
                 )
             ]
 
@@ -584,6 +580,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertIn("memory_update", captured["system"])
         self.assertIn("code_mappings", captured["system"])
         self.assertIn("best_choice must be A, B, C, D, or null", captured["system"])
+        self.assertNotIn("confidence", captured["system"])
         self.assertIn("never replace them with entities from demonstrations", captured["system"])
         self.assertIn("Current relation option codes", captured["messages"][0]["content"])
 
@@ -603,7 +600,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             usage = FakeUsage()
             content = [
                 types.SimpleNamespace(
-                    text='{"answer":"C","confidence":"high","reason":"raw notes favor love danger"}'
+                    text='{"answer":"C","reason":"raw notes favor love danger"}'
                 )
             ]
 
@@ -618,7 +615,8 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             )
 
         self.assertEqual(answer, "C")
-        self.assertEqual(decision["confidence"], "high")
+        self.assertEqual(decision["reason"], "raw notes favor love danger")
+        self.assertNotIn("confidence", captured["system"])
         self.assertIn("Treat ledger.best_choice as a prior", captured["system"])
         self.assertIn("ledger_best_choice_prior", captured["messages"][0]["content"])
         self.assertIn("ledger only", captured["messages"][0]["content"])
@@ -651,7 +649,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             "status": "answer_found",
             "memory_update": "C has the best trade-off.",
             "best_choice": "C",
-            "confidence": "high",
             "open_questions": [],
             "needs_more_context": False,
         }
@@ -681,7 +678,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 "status": "partial",
                 "memory_update": "alpha is relevant but incomplete",
                 "best_choice": None,
-                "confidence": "low",
                 "open_questions": ["need beta"],
                 "needs_more_context": True,
             },
@@ -690,7 +686,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 "memory_update": "beta evidence supports B",
                 "best_choice": "B",
                 "best_choice_rationale": "beta evidence supports B",
-                "confidence": "high",
                 "open_questions": [],
                 "needs_more_context": False,
             },
@@ -733,7 +728,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 "status": "partial",
                 "memory_update": "alpha is relevant but incomplete",
                 "best_choice": None,
-                "confidence": "low",
                 "open_questions": ["need beta"],
                 "needs_more_context": True,
             },
@@ -741,7 +735,6 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 "status": "partial",
                 "memory_update": "beta is relevant but incomplete",
                 "best_choice": None,
-                "confidence": "low",
                 "open_questions": ["need final adjudication"],
                 "needs_more_context": True,
             },
@@ -752,7 +745,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
             scs, "SCAN_MAX_CHUNKS", 0
         ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
-            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C", "confidence": "high"})
+            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C", "reason": "ledger supports C"})
         ), patch.object(
             controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
         ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
@@ -777,15 +770,14 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         controller._doc_chunks = ["empty one", "empty two", "useful rule", "extra"]
         controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(4)]
         inspections = [
-            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
-            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "needs_more_context": True},
             {
                 "status": "partial",
                 "memory_update": "The target entity relation appears in this chunk. Relation code abb maps to location containment in examples.",
                 "target_facts": ["The target entity relation appears in this chunk."],
                 "code_mappings": [{"code": "abb", "relation": "location containment", "example": "Entity0 -> abb"}],
                 "best_choice": None,
-                "confidence": "medium",
                 "needs_more_context": True,
             },
         ]
@@ -797,7 +789,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ), patch.object(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0), patch.object(
             controller, "_inspect_iterative_chunk", side_effect=inspections
         ), patch.object(
-            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C", "confidence": "high"})
+            controller, "_finalize_iterative_answer", return_value=("C", {"answer": "C", "reason": "ledger supports C"})
         ), patch.object(
             controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
         ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
@@ -823,8 +815,8 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         controller._doc_chunks = ["empty one", "empty two"]
         controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
         inspections = [
-            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
-            {"status": "no_update", "best_choice": None, "confidence": "low", "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "needs_more_context": True},
+            {"status": "no_update", "best_choice": None, "needs_more_context": True},
         ]
 
         with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
@@ -848,7 +840,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertTrue(result["retrieval"]["iterative_scan_packed_fallback_used"])
         self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 1)
 
-    def test_iterative_search_uses_packed_fallback_when_final_low_confidence(self):
+    def test_iterative_search_uses_final_answer_without_confidence(self):
         controller = make_controller()
         controller.doc_index = FakeSearchIndex(
             [(0.91, {"chunk_index": 0}), (0.86, {"chunk_index": 1})]
@@ -860,14 +852,12 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 "status": "partial",
                 "memory_update": "alpha evidence is relevant but incomplete",
                 "best_choice": None,
-                "confidence": "low",
                 "needs_more_context": True,
             },
             {
                 "status": "partial",
                 "memory_update": "beta evidence is relevant but incomplete",
                 "best_choice": None,
-                "confidence": "low",
                 "needs_more_context": True,
             },
         ]
@@ -877,7 +867,64 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
             scs, "SCAN_MAX_CHUNKS", 0
         ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
-            controller, "_finalize_iterative_answer", return_value=("B", {"answer": "B", "confidence": "low"})
+            controller,
+            "_finalize_iterative_answer",
+            return_value=("B", {"answer": "B", "reason": "ledger notes support B"}),
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
+        ) as packed_fallback, patch.object(
+            controller, "consensus_verify", return_value={"consensus": "AGREED"}
+        ), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative("Which option is correct?", top_k=2, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "B")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_adjudication_call_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 0)
+        self.assertEqual(result["retrieval"]["iterative_scan_final_answer"], "B")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_reason"], "ledger notes support B")
+        self.assertIsNone(result["retrieval"]["iterative_scan_final_raw_response"])
+        packed_fallback.assert_not_called()
+
+    def test_iterative_search_uses_packed_fallback_when_final_needs_more_context(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, {"chunk_index": 0}), (0.86, {"chunk_index": 1})]
+        )
+        controller._doc_chunks = ["partial one", "partial two"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
+        inspections = [
+            {
+                "status": "partial",
+                "memory_update": "alpha evidence is relevant but incomplete",
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "memory_update": "beta evidence is relevant but incomplete",
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+        ]
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
+            controller,
+            "_finalize_iterative_answer",
+            return_value=(
+                "B",
+                {
+                    "answer": "B",
+                    "reason": "ledger notes are not enough",
+                    "needs_more_context": True,
+                    "raw_response": '{"answer":"B","reason":"ledger notes are not enough","needs_more_context":true}',
+                },
+            ),
         ), patch.object(
             controller, "_fallback_iterative_packed_answer", return_value=("C", {"answer": "C"})
         ) as packed_fallback, patch.object(
@@ -892,11 +939,12 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 1)
         self.assertEqual(
             result["retrieval"]["iterative_scan_packed_fallback_reason"],
-            "low_confidence_final_adjudication",
+            "final_adjudication_needs_more_context",
         )
-        self.assertEqual(result["retrieval"]["iterative_scan_stop_reason"], "low_confidence_packed_fallback")
+        self.assertEqual(result["retrieval"]["iterative_scan_stop_reason"], "final_adjudication_needs_more_context")
         self.assertEqual(result["retrieval"]["iterative_scan_final_answer"], "B")
-        self.assertEqual(result["retrieval"]["iterative_scan_final_confidence"], "low")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_reason"], "ledger notes are not enough")
+        self.assertIn("needs_more_context", result["retrieval"]["iterative_scan_final_raw_response"])
         packed_fallback.assert_called_once()
 
 

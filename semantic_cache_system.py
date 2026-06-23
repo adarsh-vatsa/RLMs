@@ -123,7 +123,7 @@ SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 SCAN_ORDER = "faiss_ranked"
-ITERATIVE_READER_VERSION = 6
+ITERATIVE_READER_VERSION = 7
 ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
@@ -1006,7 +1006,6 @@ def _new_evidence_ledger(query: str | None = None) -> dict:
         "code_mappings": [],
         "best_choice": None,
         "best_choice_rationale": "",
-        "confidence": "low",
         "open_questions": [],
         "visited_chunks": [],
         "parse_failures": [],
@@ -1191,7 +1190,6 @@ def _update_evidence_ledger(
     ledger.setdefault("visited_chunks", [])
     ledger.setdefault("best_choice", None)
     ledger.setdefault("best_choice_rationale", "")
-    ledger.setdefault("confidence", "low")
 
     if chunk_index not in ledger["visited_chunks"]:
         ledger["visited_chunks"].append(chunk_index)
@@ -1259,9 +1257,6 @@ def _update_evidence_ledger(
     if rationale:
         ledger["best_choice_rationale"] = rationale
 
-    confidence = str(decision.get("confidence") or ledger.get("confidence") or "low").strip().lower()
-    ledger["confidence"] = confidence if confidence in {"low", "medium", "high"} else "low"
-
     if "open_questions" in decision:
         ledger["open_questions"] = _dedupe_open_questions(_coerce_note_list(decision.get("open_questions")), limit=5)
 
@@ -1287,9 +1282,6 @@ def _final_decision_needs_packed_fallback(answer: str | None, decision: dict | N
     if not _normalize_choice_letter(answer):
         return True, "invalid_final_answer"
     decision = decision if isinstance(decision, dict) else {}
-    confidence = str(decision.get("confidence") or "").strip().lower()
-    if confidence != "high":
-        return True, "low_confidence_final_adjudication"
     if _coerce_bool(decision.get("needs_more_context")):
         return True, "final_adjudication_needs_more_context"
     return False, ""
@@ -1350,14 +1342,11 @@ def _should_stop_iterative_scan(
     )
     if not choice:
         return False, "no_best_choice"
-    confidence = str(decision.get("confidence") or ledger.get("confidence") or "").strip().lower()
-    if confidence != "high":
-        return False, "confidence_not_high"
     if _coerce_bool(decision.get("needs_more_context")):
         return False, "needs_more_context"
     if ledger.get("open_questions"):
         return False, "open_questions_remain"
-    return True, "high_confidence_answer"
+    return True, "answer_found"
 
 
 def create_llm_message(**kwargs):
@@ -2728,15 +2717,15 @@ class SemanticCacheController:
             "You are a cumulative evidence ledger updater for a long-context multiple-choice "
             "question. Use ONLY the current chunk and the existing ledger. Return ONLY "
             "one valid compact JSON object. Use exactly these keys: status, memory_update, "
-            "target_facts, code_mappings, best_choice, best_choice_rationale, confidence, "
+            "target_facts, code_mappings, best_choice, best_choice_rationale, "
             "open_questions, needs_more_context. status must be no_update, partial, or "
             "answer_found. memory_update is an additive note for this chunk, not a full "
             "rewrite of prior memory. target_facts must be an array of strings or objects "
             "for facts about the target question/document. code_mappings must be an array "
             "of objects with code, relation, and example. For relation tasks, include only "
             "code_mappings whose code is one of the current option codes. best_choice must "
-            "be A, B, C, D, or null, reflecting all inspected chunks so far. confidence "
-            "must be low, medium, or high. open_questions must contain only currently "
+            "be A, B, C, D, or null, reflecting all inspected chunks so far. "
+            "open_questions must contain only currently "
             "unresolved critical questions and must be at most three items. Use [] for "
             "empty lists. Do not quote long passages. Do not explain outside JSON. Use "
             "status=partial when the chunk updates memory but does not yet prove one "
@@ -2769,7 +2758,6 @@ class SemanticCacheController:
                 "code_mappings": [],
                 "best_choice": None,
                 "best_choice_rationale": "",
-                "confidence": "low",
                 "open_questions": ["Inspector response was not valid JSON."],
                 "needs_more_context": True,
                 "chunk_index": chunk_index,
@@ -2788,11 +2776,10 @@ class SemanticCacheController:
             "one compact JSON object. You receive the completed iterative ledger only, "
             "not raw chunks. Treat ledger.best_choice as a prior, not authority. Re-score "
             "every choice A, B, C, and D from the cumulative memory, target_facts, "
-            "code_mappings, rationale, confidence, and open_questions. For many-shot "
+            "code_mappings, rationale, and open_questions. For many-shot "
             "relation tasks, use code_mappings only when their relation code is one of "
-            "the current choice codes. Return keys: answer, confidence, reason, "
-            "needs_more_context. answer must be A, B, C, or D. confidence must be low, "
-            "medium, or high."
+            "the current choice codes. Return keys: answer, reason, needs_more_context. "
+            "answer must be A, B, C, or D."
         )
         adjudication_payload = {
             "choices": choice_texts,
@@ -2836,7 +2823,7 @@ class SemanticCacheController:
         system_prompt = (
             _mcq_system_prompt()
             + " The iterative reader needs a direct packed fallback because final ledger "
-            "adjudication was empty, invalid, or not high-confidence. Re-evaluate every "
+            "adjudication was empty, invalid, or asked for more context. Re-evaluate every "
             "choice from the completed memory ledger and packed inspected chunks below. Treat the "
             "ledger as noisy notes, not as a final answer. Use only these materials and "
             "the question choices. Return only one answer letter: A, B, C, or D."
@@ -2986,11 +2973,7 @@ class SemanticCacheController:
                         reason=fallback_reason,
                     )
                     packed_fallback_call_count = 1
-                    stop_reason = (
-                        "invalid_final_packed_fallback"
-                        if fallback_reason == "invalid_final_answer"
-                        else "low_confidence_packed_fallback"
-                    )
+                    stop_reason = fallback_reason
             else:
                 packed_fallback_reason = "empty_ledger"
                 answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
@@ -3068,8 +3051,11 @@ class SemanticCacheController:
             "iterative_scan_final_answer": (
                 final_decision.get("answer") if isinstance(final_decision, dict) else None
             ),
-            "iterative_scan_final_confidence": (
-                final_decision.get("confidence") if isinstance(final_decision, dict) else None
+            "iterative_scan_final_reason": (
+                final_decision.get("reason") if isinstance(final_decision, dict) else None
+            ),
+            "iterative_scan_final_raw_response": (
+                final_decision.get("raw_response") if isinstance(final_decision, dict) else None
             ),
             "iterative_scan_useful_memory_count": useful_memory_count,
             "iterative_scan_memory_char_count": memory_char_count,

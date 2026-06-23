@@ -339,12 +339,12 @@ The iterative reader is an opt-in LongBench/Jarvis path for long-context MCQ row
 2. The early-stop minimum is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO)`, at least `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`.
 3. The scan budget is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO)`, no more than total chunks, and optionally capped by `SEMANTIC_CACHE_SCAN_MAX_CHUNKS` unless that cap is `0`.
 4. The controller asks FAISS for enough top-N chunks to cover the normal scan budget and any empty-ledger fallback, then inspects them in FAISS-ranked order.
-5. The executor inspects one chunk per call and returns strict JSON with an additive `memory_update`, target facts, option-code mappings, current `best_choice`, rationale, confidence, bounded open questions, and whether more context is needed.
+5. The executor inspects one chunk per call and returns strict JSON with an additive `memory_update`, target facts, option-code mappings, current `best_choice`, rationale, bounded open questions, and whether more context is needed.
 6. The controller maintains a cumulative memory ledger with chunk-referenced updates, structured target facts, relation `code_mappings`, current best choice, visited chunks, and bounded parse-failure telemetry. For many-shot relation tasks, mappings are retained only when they use relation codes present in the current answer options.
-7. Early stop is allowed only after the minimum chunk count when the inspector reports a valid high-confidence `best_choice`, no critical open questions, and no need for more context. Comparative questions must inspect the full FAISS-ranked scan budget first.
+7. Early stop is allowed only after the minimum chunk count when the inspector reports `status=answer_found`, a valid `best_choice`, no critical open questions, and no need for more context. Comparative questions must inspect the full FAISS-ranked scan budget first.
 8. If the normal scan budget produces no useful ledger memory, the reader can continue toward `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO` before giving up on iterative evidence extraction.
 9. If early stop does not happen and the ledger has useful memory, the executor runs a final adjudication over the completed ledger only. It treats `best_choice` as a prior, not authority.
-10. If the ledger is empty, final adjudication is invalid, asks for more context, or final confidence is not high, the reader uses a bounded packed fallback under `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`; this is the only iterative recovery path that sees raw inspected chunks again.
+10. If the ledger is empty, final adjudication is invalid, or final adjudication asks for more context, the reader uses a bounded packed fallback under `SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`; this is the only iterative recovery path that sees raw inspected chunks again.
 
 This path stores the final answer with the cumulative memory ledger and supporting chunk metadata rather than a giant concatenated source context.
 
@@ -499,9 +499,9 @@ The same library can serve: legal filings, financial documents, medical records,
 | `SCAN_MAX_CHUNKS` | 0 | Optional absolute iterative inspection cap; `0` means no hard cap |
 | `SCAN_MAX_TOKENS` | 768 | Output-token cap for chunk inspection and final adjudication |
 | `SCAN_EMPTY_LEDGER_FALLBACK_RATIO` | 1.0 | Extra scan ratio used only when the evidence ledger is empty |
-| `ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` | 60000 | Input-token budget for empty/low-confidence packed fallback |
+| `ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` | 60000 | Input-token budget for empty, invalid, or needs-more-context packed fallback |
 | `ITERATIVE_MEMORY_MAX_CHARS` | 16000 | Character cap for cumulative iterative memory prose |
-| `ITERATIVE_READER_VERSION` | 6 | Namespace version for iterative reader semantics |
+| `ITERATIVE_READER_VERSION` | 7 | Namespace version for iterative reader semantics |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |
