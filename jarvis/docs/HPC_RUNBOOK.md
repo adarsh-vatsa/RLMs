@@ -542,8 +542,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1090631.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1090632.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1091290.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1091291.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -570,8 +570,8 @@ OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
-export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a long-context multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
-export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=20000
+export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.50
 export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
