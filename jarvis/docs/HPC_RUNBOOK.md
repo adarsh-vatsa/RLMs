@@ -573,11 +573,11 @@ CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a long-context multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=20000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
-export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.50
 export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=4
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
-export SEMANTIC_CACHE_SCAN_MAX_TOKENS=768
+export SEMANTIC_CACHE_SCAN_MAX_TOKENS=1024
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
@@ -602,7 +602,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
-  --row-types original,exact,semantic \
+  --row-types original \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-param-search-iterative-scan-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client
