@@ -83,6 +83,13 @@ download-all:       350 GB free required
 client:              30 GB free required
 ```
 
+The `client` line above is a scratch free-space check, not the Slurm RAM
+allocation. The dispatcher submits benchmark client jobs with 32 GB RAM. Smaller
+token chunks and higher overlap increase chunk count, duplicated chunk text,
+tokenizer offset maps, embeddings, metadata, and FAISS state held by the client.
+If a smaller chunk profile is OOM-killed, raise the client Slurm memory or use a
+less aggressive chunk-count profile.
+
 Override only if you know the model is already cached or you intentionally want a
 lower threshold:
 
@@ -569,6 +576,7 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=96G \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
@@ -608,6 +616,19 @@ uv run python long_bench_v2/run_benchmark.py \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
+`CLIENT_MEM=96G` raises the dispatcher client allocation above the 32 GB default.
+The `10000/2000` token chunk profile above can exceed 32 GB on long-context
+samples because it creates many more overlapping chunks than larger profiles such
+as `20000/4000`. If Slurm reports `oom_kill`, confirm the memory limit and peak
+RSS:
+
+```bash
+sacct -j <client_job_id> --format=JobID,JobName,State,ExitCode,MaxRSS,ReqMem,Elapsed
+```
+
+Use `CLIENT_MEM=64G` first if queue pressure matters; use `CLIENT_MEM=96G` when
+testing smaller chunks or higher overlap against 50k-200k token samples.
+
 Monitor:
 
 ```bash
@@ -633,8 +654,8 @@ chunk-referenced notes, target facts, option-code mappings, the current
 rows, examples are retained in `code_mappings` only when they use one of the
 relation codes present in the current answer options. The scan budget is
 adaptive:
-`SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30` means early stop is not allowed until
-at least 30% of chunks have been inspected, while
+`SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.50` means early stop is not allowed until
+at least 50% of chunks have been inspected, while
 `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0` means this diagnostic profile scans
 all chunks if no answer is found. The reader asks FAISS for the
 ratio-based scan budget and inspects those chunks in FAISS-ranked order.
@@ -669,6 +690,13 @@ The main knobs to edit in the one command above are the sample token band,
 `SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`. For additional short, medium, and
 long random sample examples, see
 `long_bench_v2/docs/longbench_v2.md`.
+
+Chunking changes affect client RAM as well as retrieval quality. The effective
+chunk step is `DOC_CHUNK_TOKENS - DOC_CHUNK_OVERLAP_TOKENS`, so `10000/2000`
+roughly doubles the number of chunks compared with `20000/4000` over the same
+source length. If the smaller profile OOMs before producing artifacts, try a
+larger client allocation or a middle profile such as `12000/3000` before lowering
+chunk size further.
 
 ## 12. Run The Full Benchmark
 
@@ -809,6 +837,26 @@ Likely causes:
   `EXECUTOR_MAX_MODEL_LEN` or `EVALUATOR_MAX_MODEL_LEN`.
 - The endpoint URL points to `127.0.0.1` from a different Slurm job. Use the
   hostname URL written to the `.url` file.
+
+If a benchmark client job is OOM-killed:
+
+```bash
+sacct -j <client_job_id> --format=JobID,JobName,State,ExitCode,MaxRSS,ReqMem,Elapsed
+tail -n 200 "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
+```
+
+Likely causes:
+
+- The client Slurm allocation is still the dispatcher default of 32 GB.
+- `SEMANTIC_CACHE_DOC_CHUNK_TOKENS` is low and
+  `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS` is high, increasing chunk count and
+  duplicated text.
+- The sampled suite includes 50k-200k token contexts, so ingest, tokenizer
+  offsets, embeddings, metadata, and FAISS state are all larger.
+
+Rerun only the client job with a larger `CLIENT_MEM` value, or use a less
+chunk-heavy profile such as `12000/3000` or `20000/4000`. The vLLM service jobs
+can stay running.
 
 If the benchmark imports fail, fix the client environment and rerun only the
 client job. The vLLM service jobs can stay running.

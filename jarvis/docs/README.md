@@ -70,6 +70,9 @@ These thresholds are larger than the model weights because first startup can
 also need partial download files and cache overhead. Override with
 `MIN_LOCAL_FREE_GB=<gb>` only when the model is already cached or you have
 inspected the node manually.
+The client threshold is scratch free space, not Slurm RAM. The dispatcher client
+job requests 32 GB RAM by default; smaller LongBench chunk profiles can require
+`CLIENT_MEM=64G` or `CLIENT_MEM=96G` on the outer client submission command.
 
 Expected persistent storage for the current explicit Qwen LongBench-v2 profile:
 

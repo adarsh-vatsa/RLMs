@@ -3,6 +3,17 @@
 This file explains the parameters used in the Jarvis LongBench-v2 client command.
 Each item is intentionally short so it can be used while tuning one run at a time.
 
+## Slurm Client Resources
+
+- `bash adarsh-rlms/jarvis/run.sh submit client`: Uses the dispatcher client
+  default of 32 GB RAM. This is separate from the runbook's client scratch
+  free-space check.
+
+- `CLIENT_MEM=64G` or `CLIENT_MEM=96G`: Use this on the outer dispatcher command
+  when smaller chunk profiles are OOM-killed. The benchmark client holds
+  overlapping chunk text, tokenizer offset maps, embeddings, metadata, and FAISS
+  state during ingest.
+
 ## Semantic Cache Environment Variables
 
 - `SEMANTIC_CACHE_SEARCH_MODE`: Selects the LongBench retrieval path.
@@ -12,10 +23,11 @@ Each item is intentionally short so it can be used while tuning one run at a tim
   For LongBench, use a benchmark evidence instruction rather than a legal-domain retrieval instruction.
 
 - `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`: Enables token-based document chunking and sets the target chunk size.
-  Larger values reduce chunk count and ingest work, but chunks that are too large make FAISS evidence selection coarser.
+  Larger values reduce chunk count and client memory pressure, but chunks that are too large make FAISS evidence selection coarser.
 
 - `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS`: Sets token overlap between adjacent chunks.
-  Overlap protects boundary evidence, but higher overlap increases chunk count and embedding cost.
+  Overlap protects boundary evidence, but higher overlap increases chunk count, duplicated text, embedding cost, and client RAM use.
+  The effective step is `DOC_CHUNK_TOKENS - DOC_CHUNK_OVERLAP_TOKENS`; for example, `10000/2000` creates about twice as many chunks as `20000/4000` over the same source.
 
 - `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO`: Fraction of chunks that must be inspected before early stopping is allowed.
   This keeps longer contexts from stopping after the same tiny number of chunks as shorter contexts.
@@ -30,7 +42,7 @@ Each item is intentionally short so it can be used while tuning one run at a tim
   Set it to `0` to rely only on `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`.
 
 - `SEMANTIC_CACHE_SCAN_MAX_TOKENS`: Maximum output tokens for each chunk-inspection or final-adjudication call.
-  The current Jarvis profile uses `768`; lower caps can truncate the inspector JSON or retain too little evidence.
+  The current Jarvis profile uses `1024`; lower caps can truncate the inspector JSON or retain too little evidence.
 
 - `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO`: Extra scan budget used only when the normal scan produced no useful ledger memory.
   `1.0` lets the reader continue through all chunks before giving up on iterative evidence extraction.

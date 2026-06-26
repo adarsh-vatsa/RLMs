@@ -25,6 +25,7 @@ Common commands:
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit evaluator
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit download-all
   CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
+  CLIENT_MEM=96G CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
 
 Direct sbatch is also supported if you pass resources and JARVIS_SCRIPT_DIR yourself:
   sbatch --partition=gpu-l40s --gres=gpu:l40s:4 --export=ALL,JARVIS_SCRIPT_DIR=/path/to/adarsh-rlms/jarvis,MODE=executor /path/to/adarsh-rlms/jarvis/run.sh
@@ -91,7 +92,7 @@ submit_mode() {
       sbatch \
         --partition=compute-short \
         --cpus-per-task=8 \
-        --mem=32G \
+        --mem="${CLIENT_MEM:-32G}" \
         --time=12:00:00 \
         --job-name=rlms-client \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
