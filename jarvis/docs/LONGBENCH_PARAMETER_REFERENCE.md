@@ -22,6 +22,16 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 - `SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION`: Instruction prepended before query embedding.
   For LongBench, use a benchmark evidence instruction rather than a legal-domain retrieval instruction.
 
+- `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE`: Number of chunks the local embedding
+  model processes per CPU forward pass during ingest. The default is `16`;
+  use `1` or `2` when long chunks OOM. This changes memory and throughput, not
+  intended retrieval behavior.
+
+- `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH`: Maximum token length passed to the
+  embedding model for each chunk. The default is `8192`. Lowering it reduces
+  memory, but can hurt FAISS ranking when relevant evidence appears late in a
+  chunk. This is recorded in the cache namespace and benchmark manifest.
+
 - `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`: Enables token-based document chunking and sets the target chunk size.
   Larger values reduce chunk count and client memory pressure, but chunks that are too large make FAISS evidence selection coarser.
 

@@ -270,6 +270,7 @@ def resolve_cache_namespace(
     doc_chunk_overlap_tokens: int = 0,
     doc_chunk_tokenizer_model: str = "",
     embedding_query_instruction: str = "",
+    embedding_max_length: int = 0,
     synthesis_input_token_budget: int = 0,
     search_mode: str = "packed",
     iterative_reader_version: int = 0,
@@ -313,7 +314,8 @@ def resolve_cache_namespace(
             f"{extra_body_sig}\n{mcq_prompt_style}\n"
             f"{doc_chunk_size}\n{doc_chunk_overlap}\n{doc_chunk_tokens}\n"
             f"{doc_chunk_overlap_tokens}\n{doc_chunk_tokenizer_model}\n"
-            f"{embedding_query_instruction}\n{namespace_synthesis_input_budget}\n"
+            f"{embedding_query_instruction}\n{embedding_max_length}\n"
+            f"{namespace_synthesis_input_budget}\n"
             f"{normalized_search_mode}\n{scan_min_chunk_ratio}\n{scan_max_chunk_ratio}\n"
             f"{scan_min_chunks}\n{scan_max_chunks}\n"
             f"{scan_max_tokens}\n{namespace_scan_empty_ledger_fallback_ratio}\n"
@@ -547,6 +549,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     effective_embedding_query_instruction = _coerce_text(
         getattr(scs, "EMBEDDING_QUERY_INSTRUCTION", "")
     )
+    effective_embedding_batch_size = int(getattr(scs, "EMBEDDING_BATCH_SIZE", 0))
+    effective_embedding_max_length = int(getattr(scs, "EMBEDDING_MAX_LENGTH", 0))
     effective_synthesis_input_token_budget = int(getattr(scs, "SYNTHESIS_INPUT_TOKEN_BUDGET", 0))
     effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
     effective_search_mode = _coerce_text(getattr(scs, "SEARCH_MODE", "packed")) or "packed"
@@ -583,6 +587,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             doc_chunk_overlap_tokens=effective_doc_chunk_overlap_tokens,
             doc_chunk_tokenizer_model=effective_doc_chunk_tokenizer_model,
             embedding_query_instruction=effective_embedding_query_instruction,
+            embedding_max_length=effective_embedding_max_length,
             synthesis_input_token_budget=effective_synthesis_input_token_budget,
             search_mode=effective_search_mode,
             iterative_reader_version=effective_iterative_reader_version,
@@ -769,6 +774,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "doc_chunk_overlap_tokens": effective_doc_chunk_overlap_tokens,
             "doc_chunk_tokenizer_model": effective_doc_chunk_tokenizer_model,
             "embedding_query_instruction": effective_embedding_query_instruction,
+            "embedding_batch_size": effective_embedding_batch_size,
+            "embedding_max_length": effective_embedding_max_length,
             "ingested_chunks": ingested_chunks,
             "expected_cache_type": row.get("expected_cache_type", ""),
             "expected_from_cache": row.get("expected_from_cache", ""),
@@ -926,6 +933,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "doc_chunk_overlap_tokens": effective_doc_chunk_overlap_tokens,
         "doc_chunk_tokenizer_model": effective_doc_chunk_tokenizer_model,
         "embedding_query_instruction": effective_embedding_query_instruction,
+        "embedding_batch_size": effective_embedding_batch_size,
+        "embedding_max_length": effective_embedding_max_length,
         "synthesis_input_token_budget": effective_synthesis_input_token_budget,
         "cache_save_interval": args.cache_save_interval,
         "row_order": args.row_order,

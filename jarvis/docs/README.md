@@ -72,6 +72,7 @@ also need partial download files and cache overhead. Override with
 inspected the node manually.
 The client threshold is scratch free space, not Slurm RAM. The dispatcher client
 job requests 32 GB RAM by default; smaller LongBench chunk profiles can require
+`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1` inside `CLIENT_CMD` plus
 `CLIENT_MEM=64G` or `CLIENT_MEM=96G` on the outer client submission command.
 
 Expected persistent storage for the current explicit Qwen LongBench-v2 profile:

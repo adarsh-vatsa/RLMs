@@ -87,7 +87,8 @@ The `client` line above is a scratch free-space check, not the Slurm RAM
 allocation. The dispatcher submits benchmark client jobs with 32 GB RAM. Smaller
 token chunks and higher overlap increase chunk count, duplicated chunk text,
 tokenizer offset maps, embeddings, metadata, and FAISS state held by the client.
-If a smaller chunk profile is OOM-killed, raise the client Slurm memory or use a
+If a smaller chunk profile is OOM-killed, set
+`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`, raise the client Slurm memory, or use a
 less aggressive chunk-count profile.
 
 Override only if you know the model is already cached or you intentionally want a
@@ -362,6 +363,8 @@ OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMALL_SMOKE_URL" \
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a long-context multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1
+export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
@@ -579,13 +582,15 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_MEM=96G \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1
+export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.50
 export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=4
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
-export SEMANTIC_CACHE_SCAN_MAX_TOKENS=1024
+export SEMANTIC_CACHE_SCAN_MAX_TOKENS=1536
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
@@ -597,7 +602,7 @@ export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"ena
 uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_param_search.csv \
-  --sample-size 9 \
+  --sample-size 3 \
   --min-token-count 50000 \
   --max-token-count 200000 \
   --selection-strategy random \
@@ -617,10 +622,15 @@ uv run python long_bench_v2/run_benchmark.py \
 ```
 
 `CLIENT_MEM=96G` raises the dispatcher client allocation above the 32 GB default.
-The `10000/2000` token chunk profile above can exceed 32 GB on long-context
-samples because it creates many more overlapping chunks than larger profiles such
-as `20000/4000`. If Slurm reports `oom_kill`, confirm the memory limit and peak
-RSS:
+`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1` keeps the local Qwen embedding forward
+pass to one chunk at a time; the built-in default is 16 and can OOM on CPU with
+long chunks. `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192` keeps the default amount
+of each chunk visible to the embedding model. Lower it only if batch size 1 and a
+larger `CLIENT_MEM` still OOM, because lower values can weaken FAISS ranking when
+the relevant evidence appears late in a chunk. The `10000/2000` token chunk
+profile above can exceed 32 GB on long-context samples because it creates many
+more overlapping chunks than larger profiles such as `20000/4000`. If Slurm
+reports `oom_kill`, confirm the memory limit and peak RSS:
 
 ```bash
 sacct -j <client_job_id> --format=JobID,JobName,State,ExitCode,MaxRSS,ReqMem,Elapsed
@@ -682,6 +692,8 @@ uv run python long_bench_v2/run_benchmark.py \
 The main knobs to edit in the one command above are the sample token band,
 `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`,
 `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS`,
+`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE`,
+`SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH`,
 `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO`, `SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO`,
 `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`, `SEMANTIC_CACHE_SCAN_MAX_CHUNKS`,
 `SEMANTIC_CACHE_SCAN_MAX_TOKENS`,
@@ -715,8 +727,11 @@ LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=96G \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a long-context multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1
+export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
@@ -848,15 +863,19 @@ tail -n 200 "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
 Likely causes:
 
 - The client Slurm allocation is still the dispatcher default of 32 GB.
+- The local embedding model is still using the default embedding batch size of
+  16 chunks per CPU forward pass.
 - `SEMANTIC_CACHE_DOC_CHUNK_TOKENS` is low and
   `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS` is high, increasing chunk count and
   duplicated text.
 - The sampled suite includes 50k-200k token contexts, so ingest, tokenizer
   offsets, embeddings, metadata, and FAISS state are all larger.
 
-Rerun only the client job with a larger `CLIENT_MEM` value, or use a less
-chunk-heavy profile such as `12000/3000` or `20000/4000`. The vLLM service jobs
-can stay running.
+Rerun only the client job with `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`, a larger
+`CLIENT_MEM` value, or a less chunk-heavy profile such as `12000/3000` or
+`20000/4000`. If the traceback still points inside `EmbeddingEngine.encode` after
+batch size 1, lower `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH` to `4096` as a memory
+tradeoff. The vLLM service jobs can stay running.
 
 If the benchmark imports fail, fix the client environment and rerun only the
 client job. The vLLM service jobs can stay running.

@@ -82,6 +82,8 @@ def _env_float(name: str, default: float) -> float:
 EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 RERANKER_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 EMBEDDING_DIM = 1024
+EMBEDDING_BATCH_SIZE = _env_int("SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE", 16)
+EMBEDDING_MAX_LENGTH = _env_int("SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH", 8192)
 EXECUTOR_MODEL = "claude-sonnet-4-20250514"
 EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
 OPENROUTER_EXECUTOR_MODEL = "anthropic/claude-sonnet-4.5"
@@ -1379,7 +1381,11 @@ class EmbeddingEngine:
     """Qwen3-Embedding-0.6B: instruction-aware embeddings with 32K context."""
 
     def __init__(self):
-        print("  [EMBED] Loading Qwen3-Embedding-0.6B...")
+        print(
+            "  [EMBED] Loading Qwen3-Embedding-0.6B "
+            f"(batch_size={max(1, int(EMBEDDING_BATCH_SIZE))}, "
+            f"max_length={max(1, int(EMBEDDING_MAX_LENGTH))})..."
+        )
         from transformers import AutoModel, AutoTokenizer
         import torch
 
@@ -1400,12 +1406,13 @@ class EmbeddingEngine:
         """Encode texts with optional instruction prefix using masked mean pooling."""
         if instruction:
             texts = [f"Instruct: {instruction}\nQuery: {t}" for t in texts]
-        batch_size = 16
+        batch_size = max(1, int(EMBEDDING_BATCH_SIZE))
+        max_length = max(1, int(EMBEDDING_MAX_LENGTH))
         all_embs = []
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             inputs = self.tokenizer(batch, padding=True, truncation=True,
-                                     max_length=8192, return_tensors="pt").to(self.device)
+                                     max_length=max_length, return_tensors="pt").to(self.device)
             with self.torch.no_grad():
                 outputs = self.model(**inputs)
                 # Use attention-masked mean pooling. First-token pooling can collapse
@@ -1833,6 +1840,7 @@ class SemanticCacheController:
         token_chunk_size: int = 0,
         token_overlap: int = 0,
         tokenizer_model: str = "",
+        embedding_max_length: int = 0,
     ) -> str:
         """Compute a deterministic identity for the active search document set."""
         hasher = hashlib.sha256()
@@ -1844,6 +1852,7 @@ class SemanticCacheController:
                 f"token_chunk_size={token_chunk_size}\n"
                 f"token_overlap={token_overlap}\n"
                 f"tokenizer_model={tokenizer_model}\n"
+                f"embedding_max_length={embedding_max_length}\n"
             ).encode("utf-8")
         )
         for file_path in txt_files:
@@ -2516,6 +2525,7 @@ class SemanticCacheController:
             token_chunk_size=token_chunk_size,
             token_overlap=token_overlap,
             tokenizer_model=tokenizer_model,
+            embedding_max_length=max(1, int(EMBEDDING_MAX_LENGTH)),
         )
 
         print(f"  [INGEST] Found {len(txt_files)} documents")
@@ -3359,6 +3369,8 @@ class SemanticCacheController:
             "knowledge_facts": len(self.knowledge),
             "embedding_model": EMBEDDING_MODEL,
             "embedding_dim": EMBEDDING_DIM,
+            "embedding_batch_size": max(1, int(EMBEDDING_BATCH_SIZE)),
+            "embedding_max_length": max(1, int(EMBEDDING_MAX_LENGTH)),
             "data_scope_hash": self.data_scope_hash,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         }
@@ -3520,6 +3532,8 @@ class SemanticCacheController:
             "knowledge_facts": 0,
             "embedding_model": EMBEDDING_MODEL,
             "embedding_dim": EMBEDDING_DIM,
+            "embedding_batch_size": max(1, int(EMBEDDING_BATCH_SIZE)),
+            "embedding_max_length": max(1, int(EMBEDDING_MAX_LENGTH)),
             "data_scope_hash": self.data_scope_hash,
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),

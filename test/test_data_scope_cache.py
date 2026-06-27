@@ -219,6 +219,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 token_chunk_size=6000,
                 token_overlap=600,
                 tokenizer_model="model-a",
+                embedding_max_length=8192,
             )
             changed_token_scope = controller._get_data_scope_hash(
                 docs_dir,
@@ -229,10 +230,23 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 token_chunk_size=8000,
                 token_overlap=800,
                 tokenizer_model="model-a",
+                embedding_max_length=8192,
+            )
+            changed_embedding_scope = controller._get_data_scope_hash(
+                docs_dir,
+                [doc_path],
+                chunk_unit="tokens",
+                chunk_size=10000,
+                overlap=1000,
+                token_chunk_size=6000,
+                token_overlap=600,
+                tokenizer_model="model-a",
+                embedding_max_length=4096,
             )
 
         self.assertNotEqual(char_scope, token_scope)
         self.assertNotEqual(token_scope, changed_token_scope)
+        self.assertNotEqual(token_scope, changed_embedding_scope)
 
     def test_retrieval_falls_back_to_faiss_when_reranker_returns_no_results(self):
         controller = make_controller()

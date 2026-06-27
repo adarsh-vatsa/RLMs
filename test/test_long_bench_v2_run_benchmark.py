@@ -195,6 +195,8 @@ class FakeScs:
     DOCUMENT_CHUNK_OVERLAP_TOKENS = 600
     DOCUMENT_CHUNK_TOKENIZER_MODEL = "fake-tokenizer"
     EMBEDDING_QUERY_INSTRUCTION = "fake embedding instruction"
+    EMBEDDING_BATCH_SIZE = 2
+    EMBEDDING_MAX_LENGTH = 4096
     SYNTHESIS_INPUT_TOKEN_BUDGET = 60000
     SYNTHESIS_MAX_CHUNKS = 5
     MCQ_PROMPT_STYLE = "strict"
@@ -257,6 +259,8 @@ def _reset_fake_controller():
     FakeScs.ITERATIVE_MEMORY_MAX_CHARS = 16000
     FakeScs.SCAN_ORDER = "faiss_ranked"
     FakeScs.EMBEDDING_QUERY_INSTRUCTION = "fake embedding instruction"
+    FakeScs.EMBEDDING_BATCH_SIZE = 2
+    FakeScs.EMBEDDING_MAX_LENGTH = 4096
     FakeScs.reranker_calls = 0
 
 
@@ -379,6 +383,16 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             ["original", "exact"],
             embedding_query_instruction="custom retrieval instruction",
         )
+        changed_embedding_max_length = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            embedding_max_length=4096,
+        )
         changed_input_budget = resolve_cache_namespace(
             "suite-sha",
             "source-sha",
@@ -479,6 +493,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertNotEqual(first, changed_prompt_style)
         self.assertNotEqual(first, changed_token_chunks)
         self.assertNotEqual(first, changed_embedding_instruction)
+        self.assertNotEqual(first, changed_embedding_max_length)
         self.assertNotEqual(first, changed_input_budget)
         self.assertNotEqual(first, changed_scan_config)
         self.assertNotEqual(changed_scan_config, changed_iterative_reader_version)
@@ -674,6 +689,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["doc_chunk_overlap_tokens"], 600)
         self.assertEqual(manifest["doc_chunk_tokenizer_model"], "fake-tokenizer")
         self.assertEqual(manifest["embedding_query_instruction"], "fake embedding instruction")
+        self.assertEqual(manifest["embedding_batch_size"], 2)
+        self.assertEqual(manifest["embedding_max_length"], 4096)
         self.assertEqual(manifest["synthesis_input_token_budget"], 60000)
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
         self.assertEqual(manifest["cache_save_interval"], 2)
@@ -690,6 +707,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertIn("search_ms", bridge_rows[0])
         self.assertEqual(bridge_rows[0]["doc_chunk_tokens"], 6000)
         self.assertEqual(bridge_rows[0]["embedding_query_instruction"], "fake embedding instruction")
+        self.assertEqual(bridge_rows[0]["embedding_batch_size"], 2)
+        self.assertEqual(bridge_rows[0]["embedding_max_length"], 4096)
         self.assertEqual(bridge_rows[0]["synthesis_packed_chunk_count"], 3)
         self.assertEqual(bridge_rows[0]["synthesis_dropped_chunk_count"], 1)
         self.assertEqual(bridge_rows[0]["synthesis_selected_chunk_indices"], [0, 1, 2])
