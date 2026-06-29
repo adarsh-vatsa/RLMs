@@ -373,6 +373,21 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         self.assertNotIn("benchmark", default_prompt.lower())
         self.assertNotEqual(strict_prompt, default_prompt)
 
+    def test_invalid_mcq_prompt_style_normalizes_to_default(self):
+        original_style = scs.MCQ_PROMPT_STYLE
+        try:
+            scs.MCQ_PROMPT_STYLE = "strict"
+            strict_prompt = scs._mcq_system_prompt()
+            scs.MCQ_PROMPT_STYLE = "not-a-style"
+            invalid_prompt = scs._mcq_system_prompt()
+            default_prompt = scs._normalize_mcq_prompt_style("not-a-style", warn=False)
+        finally:
+            scs.MCQ_PROMPT_STYLE = original_style
+
+        self.assertEqual(default_prompt, "default")
+        self.assertNotEqual(invalid_prompt, strict_prompt)
+        self.assertIn("best-supported option", invalid_prompt)
+
     def test_synthesis_source_text_can_be_trimmed_to_input_budget(self):
         short_source = "short evidence"
         short_trimmed, short_info = scs._trim_source_text_for_input_budget(
@@ -517,7 +532,7 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
             def consensus_verify(self, query, context, result, model):
                 return {"consensus": "AGREED", "divergent_facts": []}
 
-            def store(self, query, context, result, model_used="unknown"):
+            def store(self, query, context, result, model_used="unknown", consensus_info=None):
                 self.stored = result
 
             def _apply_context_collapse_guard(self, result, query, source_context=""):

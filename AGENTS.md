@@ -24,7 +24,6 @@ Use this file as a compact index. Read the linked source files only when the tas
 - `Reranker`: local cross-encoder relevance gate for document retrieval.
 - `ExecutionMetrics`: cache/API/cost/provenance counters.
 - `SemanticCacheController`: cache lookup, document retrieval, synthesis, grounding, consensus, fact extraction, save/load, and corpus validation.
-- `CachePreWarmer`: programmatic cache saturation over query templates and corpus chunks.
 - `Router`: dispatches simple extraction-style tasks to evaluator-class models and complex synthesis to executor-class models.
 - `AutonomousAgent`: framework-agnostic cached query facade.
 

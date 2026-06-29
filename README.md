@@ -10,7 +10,7 @@ A production-grade semantic caching system that makes autonomous LLM agent execu
 | **Context Collapse Guard** | Prevents oversized cache returns from degrading agent reasoning — ephemeral tagging + recursive parallel summarization |
 | **Source Provenance** | Every cached entry is grounded against source text + independently verified by a second LLM (consensus) |
 | **Knowledge Extraction** | Decomposes answers into `(subject, relation, object)` triples, FAISS-indexed for cross-query reuse |
-| **Cache Pre-Warming** | Programmatic Day-1 sweep eliminates cold-start — cache is saturated before any human query |
+| **Batch Cache Saturation** | Programmatic query sweeps can populate cache state before interactive use |
 | **Corpus Namespace Isolation** | Multi-domain deployment (legal, finance, medical) with isolated FAISS indices, caches, and knowledge graphs |
 | **Heterogeneous Routing** | Dispatches simple tasks to Haiku ($0.25/MTok), complex to Sonnet ($3/MTok) |
 
@@ -99,7 +99,7 @@ python epstein_search.py --interactive
 
 | File | Description |
 |------|-------------|
-| `semantic_cache_system.py` | Core library — embeddings, FAISS, reranker, cache controller, pre-warmer, router, agent |
+| `semantic_cache_system.py` | Core library — embeddings, FAISS, reranker, cache controller, router, agent |
 | `epstein_search.py` | Domain client — Epstein court document search using the core library |
 | `system_architecture.md` | Full architecture documentation with scenarios and use cases |
 | `paper_draft.tex` | LaTeX research paper draft |

@@ -3,7 +3,7 @@
 > **File**: [`semantic_cache_system.py`](semantic_cache_system.py)
 > **Dependencies**: `transformers`, `torch`, `faiss-cpu`, `anthropic`, `python-dotenv`, `numpy`
 > **Local Models**: `Qwen3-Embedding-0.6B` (596M params, 1024-dim embeddings), `Qwen3-Reranker-0.6B` (yes/no cross-encoder)
-> **API Models**: `claude-sonnet-4-5` (execution/synthesis), `claude-haiku-4-5` (evaluation/sniper/consensus/knowledge extraction)
+> **API Models**: `claude-sonnet-4-20250514` (execution/synthesis), `claude-haiku-4-5-20251001` (evaluation/sniper/consensus/knowledge extraction)
 > **Python**: 3.9+
 
 ---
@@ -67,7 +67,7 @@ Note: LLM Sniper runs on the semantic branch. The knowledge branch currently use
 ## Core Infrastructure Components
 
 ### 0a. EmbeddingEngine (Qwen3-Embedding-0.6B)
-**Lines 73–125** · Local 596M-parameter embedding model.
+Local 596M-parameter embedding model.
 
 | Property | Value |
 |----------|-------|
@@ -94,7 +94,7 @@ encode_documents(["The defendant was charged with..."])
 ---
 
 ### 0b. FAISSIndex
-**Lines 132–195** · Vector similarity search replacing brute-force numpy.
+Vector similarity search replacing brute-force numpy.
 
 - `IndexFlatIP` (inner product on L2-normalized vectors = exact cosine similarity)
 - **Lazy import**: FAISS is imported on first use (`_ensure_faiss()`) to avoid segfault conflicts with `transformers` on Apple Silicon
@@ -107,7 +107,7 @@ encode_documents(["The defendant was charged with..."])
 ---
 
 ### 0c. Reranker (Qwen3-Reranker-0.6B)
-**Lines 202–268** · Cross-encoder that sits between the Vector Dragnet and LLM Synthesis.
+Cross-encoder that sits between the Vector Dragnet and LLM Synthesis.
 
 - **Architecture**: Generative cross-encoder using `AutoModelForCausalLM`
 - **Scoring**: Extracts `yes`/`no` token log-probabilities → `softmax → P(yes)` = relevance score
@@ -126,7 +126,7 @@ encode_documents(["The defendant was charged with..."])
 ## Cache Components
 
 ### 1. ExecutionMetrics
-**Lines 274–363** · Tracks every API call, cache event, cost, and provenance result.
+Tracks every API call, cache event, cost, and provenance result.
 
 | Counter | What |
 |---------|------|
@@ -141,17 +141,17 @@ encode_documents(["The defendant was charged with..."])
 ---
 
 ### 2. SemanticCacheController
-**Lines 369–1429** · The core engine. Contains 14 distinct mechanisms:
+The core engine. Contains 14 distinct mechanisms:
 
 #### 2a. Hash Bucketing (`_get_chunk_hash`)
-**Line 429** · MD5 hash of the source data chunk.
+MD5 hash of the source data chunk.
 - Guarantees cache entries are never compared across different source documents
 - Prevents cross-document hallucination
 
 > **Scenario**: An agent sweeps 10,000 court documents asking "Did this party commit fraud?" on each one. Page 42 says "Yes" and Page 99 says "No". Without hash bucketing, the cache might return Page 42's answer for Page 99's query because the *questions* are identical — only the data differs. The hash ensures each page's answers stay isolated.
 
 #### 2b. Exact Match (inside `check()`)
-**Line 784** · Free O(N) string scan within the bucket.
+Free O(N) string scan within the bucket.
 - Case-insensitive `.lower()` comparison
 - Zero API cost, instant return
 
@@ -168,7 +168,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 > **Scenario**: Two RULER `qa_basic` samples ask the same question text about Scott Derrickson, but each sample has a different context and a different correct document index. A query-only exact match would return the first answer for the second sample. The data-scope gate treats the second sample as a miss unless its cached answer was produced from the same active document set.
 
 #### 2c. Vector Dragnet (`_vector_dragnet`)
-**Line 444** · Qwen3-Embedding-0.6B + FAISS for local similarity search.
+Qwen3-Embedding-0.6B + FAISS for local similarity search.
 - 1024-dim embeddings via `encode_single()` (attention-masked mean pooling, instruction-aware)
 - Cosine similarity via FAISS `IndexFlatIP` on L2-normalized vectors
 - Returns Top-K (default: 5) candidates above 0.3 threshold
@@ -177,7 +177,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 > **Scenario**: On Monday, the agent asks "What is the MRR?" On Wednesday, a different analyst triggers "Report the Monthly Recurring Revenue figure." Exact match fails (different words), but the Dragnet catches high cosine similarity (~0.91) and passes both to the Sniper for evaluation.
 
 #### 2d. LLM Sniper (`_llm_sniper_evaluate`)
-**Line 472** · Sends Top-K candidates to `claude-haiku-4-5` for semantic equivalence.
+Sends Top-K candidates to `claude-haiku-4-5` for semantic equivalence.
 - Structured JSON prompt: "Does the new query ask for the EXACT same information?"
 - Returns `{"hit": true/false, "id": index}`
 - **Cost**: ~$0.0001 per evaluation
@@ -187,7 +187,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 > **Scenario (Critical Rejection)**: "Show logs that INCLUDE timeout errors" vs. "Show logs that EXCLUDE timeout errors" — vector similarity is ~0.95, but Haiku catches the logical inversion → correct miss, prevents serving the opposite answer. This is the scenario that breaks every pure-vector cache.
 
 #### 2e. Parallel Sniper Chunking (`_parallel_sniper_evaluate`)
-**Line 539** · Prevents evaluator Context Rot at scale.
+Prevents evaluator Context Rot at scale.
 - If candidates exceed `PARALLEL_BATCH_SIZE` (5), chunks them into batches
 - Fires all batches via `ThreadPoolExecutor` simultaneously
 - First batch to return `{"hit": true}` wins; remaining futures cancelled
@@ -196,7 +196,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 > **Scenario**: After 6 months of operation, a financial cache has 100,000 entries. A new query about "Q3 revenue" matches 500 near-miss candidates via vector search. Stuffing 500 options into a single Haiku prompt would cause attention degradation ("Lost in the Middle"). Instead, the system chunks them into 100 batches of 5 and fires 100 parallel Haiku calls — all return in ~500ms with zero accuracy loss.
 
 #### 2f. Context Collapse Guard (`_apply_context_collapse_guard`)
-**Line 642** · Two protection tiers:
+Two protection tiers:
 
 | Result size | Behavior | Flag |
 |-------------|----------|------|
@@ -209,7 +209,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 > **Scenario (Terminal Overflow)**: An RLM sweeps 10,000 documents asking for "summarize the legal risks." Each sub-agent returns a paragraph. When the root LLM wakes up, `results` contains ~1M tokens. Without the guard, the root LLM tries to read the terminal and crashes from context overflow. With the guard, each cached result is compressed to ~200 tokens before returning.
 
 #### 2g. Recursive Parallel Summarization (`_recursive_summarize`)
-**Line 701** · Logarithmic compression of oversized results.
+Logarithmic compression of oversized results.
 - Chunks oversized text into ~1000-token pieces
 - Summarizes each chunk via **parallel** Haiku sub-agent calls
 - **Truly recursive**: checks if joined summary still exceeds threshold → recurses
@@ -220,7 +220,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 > **Scenario**: A previous agent run produced a 100K-token due diligence report and cached it. A new query hits the cache and retrieves it. The system splits it into 25 chunks of 4K tokens each. 25 parallel Haiku calls each produce ~200 tokens → 5,000 token joined summary. Still too large. Recurse: split into 2 chunks → 2 parallel calls → ~400 token final summary. Total: 2 recursive levels, all parallel. The agent receives a crisp summary instead of a context-destroying wall of text.
 
 #### 2h. Source Provenance & Grounding (`_grounding_check`)
-**Line 586** · Zero-cost fact verification via regex.
+Zero-cost fact verification via regex.
 - Extracts quantitative facts from result via regex:
   - Dollar amounts (`$12.4M`, `$500K`)
   - Percentages (`4.2%`, `112%`)
@@ -236,24 +236,25 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 > **Scenario (PARTIAL)**: The LLM says "ARR grew from $12.4M to $15.1M." The source contains `$12.4M` but not `$15.1M` → `PARTIAL`. The first figure is verified; the second needs human review.
 
 #### 2i. Multi-Model Consensus on Write (`consensus_verify`)
-**Line 901** · Every cache write is verified by a second model.
+Every cache write is verified by a second model.
 
 - After the primary model (Sonnet) generates an answer, Haiku independently answers the same query
 - Quantitative facts are extracted from both answers via regex
 - If both models produce the same numbers → `consensus: AGREED`
-- If they diverge → `consensus: DISPUTED`, divergent facts surfaced
+- If they diverge → `consensus: DISPUTED`, divergent facts surfaced and stored with the cache entry
+- Consensus currently annotates the write path; it does not block cache writes.
 - **Cost**: ~$0.0001 per write (one extra Haiku call)
 
 **Why consensus must be continuous, not one-time:**
 
-The cache updates results on every subsequent cache miss. If we ran consensus only on the "first write," every subsequent miss would enter the cache unverified. Since the architecture generates new writes constantly — through cold misses, pre-warming sweeps (100+ entries at once), and recursive summarization intermediates — consensus must be a **property of the write path**, not a one-time ceremony. Every entry earns its trust at write-time, whether it's the first query or the ten-thousandth.
+The cache updates results on every subsequent cache miss. If we ran consensus only on the "first write," every subsequent miss would enter the cache unverified. Since the architecture generates new writes constantly — through cold misses, batch sweeps, and recursive summarization intermediates — consensus must be a **property of the write path**, not a one-time ceremony. Every new entry can carry its write-time consensus result, whether it is the first query or the ten-thousandth.
 
 > **Scenario (AGREED)**: Sonnet extracts "ARR is $12.4M" from a financial filing. Haiku independently answers the same query and also says "$12.4M." The facts match → `AGREED`. The number is now triple-verified: grounded in source text AND confirmed by two independent models.
 >
-> **Scenario (DISPUTED)**: Sonnet says "revenue grew by 23%." Haiku says "revenue grew by 18%." The divergent fact `["23%"]` is surfaced → the system can flag for human review, re-extract with a more explicit prompt, or hold the entry in a `DISPUTED` state until resolved.
+> **Scenario (DISPUTED)**: Sonnet says "revenue grew by 23%." Haiku says "revenue grew by 18%." The divergent fact `["23%"]` is surfaced and persisted with the entry → the downstream system can flag for human review or re-extract with a more explicit prompt.
 
 #### 2j. Store with Provenance (`store`)
-**Line 853** · Each cache entry contains:
+Each cache entry contains:
 ```python
 {
     "query": str,            # The original query text
@@ -262,6 +263,7 @@ The cache updates results on every subsequent cache miss. If we ran consensus on
     "source_context": str,   # Original source text for verification
     "model_used": str,       # Which model generated this result
     "grounding_info": dict,  # Pre-computed grounding verification
+    "consensus_info": dict,  # Optional write-time consensus result
     "sources": list,         # Source document references
 }
 ```
@@ -271,7 +273,7 @@ On store, the system also:
 2. Triggers knowledge extraction (see 2k)
 
 #### 2k. Knowledge Extraction on Write (`_extract_facts`)
-**Line 983** · Decomposes answers into atomic triples for cross-query reuse.
+Decomposes answers into atomic triples for cross-query reuse.
 
 On every cache write, the evaluator model (Haiku) decomposes the synthesized answer into **atomic (subject, relation, object) triples**. Each triple is independently embedded and indexed in a separate FAISS knowledge index.
 
@@ -306,16 +308,16 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 ### Retrieval Layer (New)
 
 #### 2l. Document Ingestion (`ingest`)
-**Line 1036** · Chunks documents → embeds → builds FAISS doc index.
+Chunks documents → embeds → builds FAISS doc index.
 
 - Reads `.txt` files from a directory
-- Chunks into ~3000-character pieces with 200-character overlap at sentence boundaries
+- Chunks into 10,000-character pieces with 1,000-character overlap by default, or token-bounded chunks when `SEMANTIC_CACHE_DOC_CHUNK_TOKENS` is set
 - Encodes all chunks via `encode_documents()` (Qwen3, no instruction prefix)
 - Builds `doc_index` (FAISS) with per-chunk metadata (filename, chunk_index, text, etc.)
-- Persists via `save_doc_index()` which writes `index.faiss`, `metadata.json`, `chunks.json`, and `corpus_config.json`
+- Document chunks are rebuilt by `ingest()` for active runs; cache persistence is handled by `save()` / `load()`.
 
 #### 2m. Document Retrieval (`retrieve`)
-**Line 1077** · FAISS dragnet with optional Qwen3-Reranker relevance gate.
+FAISS dragnet with optional Qwen3-Reranker relevance gate.
 
 1. Encode query via `encode_query()` (with instruction prefix)
 2. FAISS search for top-20 candidates (~130ms)
@@ -325,7 +327,7 @@ Now "Who was Maxwell's lawyer?" hits the knowledge index → serves cached answe
 6. If the reranker returns too few results, backfill from the FAISS ranking and record retrieval telemetry
 7. In iterative LongBench/Jarvis mode, call `retrieve(..., use_reranker=False)` and preserve the FAISS ranking as the priority scan order
 
-`ingest()` defaults to rebuilding the active document index for the provided directory with 4,000-character chunks and 500-character overlap. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
+`ingest()` defaults to rebuilding the active document index for the provided directory with 10,000-character chunks and 1,000-character overlap. Callers that intentionally build a corpus incrementally can opt into append-style ingestion with `reset_index=False`.
 
 > **Why reranker has a relevance gate**: Unlike the Sniper (which checks semantic equivalence of cache queries), the Reranker checks *relevance* of documents to a query. The 0.20 threshold keeps irrelevant documents filtered while avoiding evidence starvation on long-context benchmark chunks where reranker scores are not perfectly calibrated.
 
@@ -349,7 +351,7 @@ The iterative reader is an opt-in LongBench/Jarvis path for long-context MCQ row
 This path stores the final answer with the cumulative memory ledger and supporting chunk metadata rather than a giant concatenated source context.
 
 #### 2n. Full Search Pipeline (`search`)
-**Line 1130** · The main entry point for domain-specific clients.
+The main entry point for domain-specific clients.
 
 ```
 search("What charges did Maxwell face?")
@@ -375,7 +377,7 @@ search("What charges did Maxwell face?")
 ### Persistence Layer (New)
 
 #### 2o. Save (`save`)
-**Line 1257** · Persists the full system state:
+Persists the full system state:
 - `corpus_config.json` — namespace identity (corpus_id, domain, counts, model info, timestamps)
 - `cache_entries.json` — all cached query→answer pairs with embeddings
 - `knowledge.json` — all extracted (subject, relation, object) triples
@@ -383,7 +385,7 @@ search("What charges did Maxwell face?")
 - `knowledge_idx/` — FAISS index of knowledge triple embeddings
 
 #### 2p. Load (`load`)
-**Line 1306** · Restores full system state with validation:
+Restores full system state with validation:
 - **Corpus identity validation**: If the controller has a `corpus_id`, it must match the stored config. Mismatches are **refused** (prevents cross-namespace contamination).
 - Loads document FAISS index (supports both `doc_idx/` subdirectory and root-level layout)
 - Loads cache entries and rebuilds cache FAISS index if missing
@@ -423,21 +425,8 @@ The `corpus_id` is purely infrastructural — it **NEVER enters any LLM prompt**
 
 ---
 
-### 3. CachePreWarmer
-**Lines 1433–1488** · Solves the cold-start problem.
-
-- Takes an agent, a corpus (list of chunks), and a list of template queries
-- Programmatically sweeps every query × chunk combination
-- Populates the cache before any human touches the system
-
-> **Scenario**: A PE firm uploads a 50-page financial model at 8am. The system immediately deploys a pre-warming sweep with template queries: "What is the ARR?", "What is the EBITDA?", "What is the churn rate?", etc., across every page. By 8:10am, the cache is 100% saturated. When the analyst logs in at 8:15am, every question they ask is an instant, deterministic cache hit — zero latency, zero hallucination risk.
->
-> **Scenario (Epstein files)**: 10,000 court documents are uploaded. The pre-warmer sweeps with templates: "List all individuals mentioned", "Extract all dates", "Identify financial transactions", "Flag references to locations." The cache is saturated within hours. Every subsequent analyst query about names, dates, or locations hits the cache instantly with grounded, verified facts.
-
----
-
-### 4. Router
-**Lines 1494–1513** · Heterogeneous model dispatch.
+### 3. Router
+Heterogeneous model dispatch.
 
 - Keyword heuristic: `classify`, `extract`, `find`, `count`, `list` → Haiku ($0.25/MTok)
 - Everything else → Sonnet ($3/MTok)
@@ -449,8 +438,8 @@ Current routing is intentionally simple. Production and benchmark work should tr
 
 ---
 
-### 5. AutonomousAgent
-**Lines 1519–1597** · The transparent cache interceptor.
+### 4. AutonomousAgent
+The transparent cache interceptor.
 
 - `cached_query(query, context)` replaces direct API calls
 - Framework-agnostic: works for RLMs, LangChain, AutoGen, or any custom agent
@@ -461,7 +450,7 @@ Current routing is intentionally simple. Production and benchmark work should tr
 
 ---
 
-### 6. Domain Client Pattern (epstein_search.py)
+### 5. Domain Client Pattern (epstein_search.py)
 
 The library is designed for domain-agnostic reuse. Each domain client is a thin wrapper (~150–600 lines) that imports the core system and adds domain-specific config:
 
@@ -501,10 +490,10 @@ The same library can serve: legal filings, financial documents, medical records,
 | `SCAN_EMPTY_LEDGER_FALLBACK_RATIO` | 1.0 | Extra scan ratio used only when the evidence ledger is empty |
 | `ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` | 60000 | Input-token budget for empty, invalid, or needs-more-context packed fallback |
 | `ITERATIVE_MEMORY_MAX_CHARS` | 16000 | Character cap for cumulative iterative memory prose |
-| `ITERATIVE_READER_VERSION` | 7 | Namespace version for iterative reader semantics |
+| `ITERATIVE_READER_VERSION` | 8 | Namespace version for iterative reader semantics |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
-| `EXECUTOR_MODEL` | `claude-sonnet-4-5` | Primary synthesis model |
-| `EVALUATOR_MODEL` | `claude-haiku-4-5` | Sniper, consensus, knowledge extraction |
+| `EXECUTOR_MODEL` | `claude-sonnet-4-20250514` | Primary synthesis model |
+| `EVALUATOR_MODEL` | `claude-haiku-4-5-20251001` | Sniper, consensus, knowledge extraction |
 | `TOP_K_CANDIDATES` | 5 | Max vector search results for cache lookup |
 | `PARALLEL_BATCH_SIZE` | 5 | Max candidates per Sniper evaluation call |
 | `EPHEMERAL_TOKEN_THRESHOLD` | 2,000 | Flag results above this as ephemeral |
@@ -563,7 +552,7 @@ Any corpus, any size. The agent only ever sees bounded context windows, but the 
 #### 3. Hallucination Firewall (Provenance + Grounding)
 Every cached result is verified at write-time against its source text. Numbers, dollar amounts, and percentages must appear in the original document or they get flagged `INFERRED`. In high-stakes domains, this turns a probabilistic system into a deterministic lookup — the cache doesn't guess, it serves verified facts.
 
-**Human-in-the-Loop Extension**: At the end of each pre-warming run, the system can surface all `INFERRED` and `PARTIAL` results to a human reviewer via the terminal for manual verification before they enter the production cache. One review pass → permanent correctness.
+**Human-in-the-Loop Extension**: At the end of a batch extraction run, the system can surface all `INFERRED` and `PARTIAL` results to a human reviewer via the terminal for manual verification before they enter the production cache. One review pass → permanent correctness.
 
 #### 4. Cost Collapse (O(N) → O(1))
 The cache eliminates redundant API calls entirely. The Sniper evaluator uses Haiku (~$0.0001/call) to prevent Sonnet calls (~$0.01). A single Sonnet call costs ~100 Haiku evaluations. And honestly, Haiku might be overkill — a fine-tuned tiny model or even a deterministic classifier could replace the Sniper at near-zero cost for well-defined domains.
@@ -571,8 +560,8 @@ The cache eliminates redundant API calls entirely. The Sniper evaluator uses Hai
 #### 5. Deterministic Reproducibility
 For regulated industries (finance, healthcare, government), you need to prove your AI gave the same answer when asked the same question twice. Without a cache, LLMs are non-deterministic even at temperature=0 (due to floating-point batching). The cache guarantees identical outputs for equivalent queries — producing an auditable, reproducible record of every computation.
 
-#### 6. Cold-Start Elimination
-Standard caches start empty and take weeks/months to saturate via organic user queries. Pre-warming eliminates this: the system is profitable from Minute 1. An RLM pre-warming sweep generates the redundancy needed to saturate the cache in a single session.
+#### 6. Cold-Start Reduction
+Standard caches start empty and take weeks/months to saturate via organic user queries. Programmatic batch sweeps can generate the redundancy needed to populate useful cache state in a single session.
 
 #### 7. Context Rot Immunity
 Even models with 1M token windows (Gemini) suffer from attention degradation on information buried in the middle. This architecture guarantees that every sub-query operates on a small, focused chunk with full attention fidelity — regardless of how large the total corpus is.
@@ -588,20 +577,20 @@ Corpus-level namespace isolation means one installation can serve legal, financi
 ### Domain Applications
 
 #### Finance & Private Equity
-- **10-K / Annual Report Sweeps**: Pre-warm with "ARR?", "EBITDA?", "Churn?", "Gross Margin?" across every page. Analysts get instant, grounded, deterministic answers.
+- **10-K / Annual Report Sweeps**: Run template questions like "ARR?", "EBITDA?", "Churn?", "Gross Margin?" across every page. Analysts get instant, grounded, deterministic answers once those entries are cached.
 - **Due Diligence**: Sweep a target company's filings. Lock in every number. The cache becomes a verified, queryable database of the target's financials.
 - **Multi-Portfolio Consistency**: A PE firm analyzing 50 portfolio companies. Same template queries across all 50 → massive cache saturation. Cross-company comparisons use identical extraction methodology.
 - **Hallucination-Proof Numerical Stability**: The grounding check ensures "$12.4M" actually appears in the source. The cache turns the LLM into a deterministic database lookup for quantitative data.
 
 #### Legal & Investigation
 - **Mass Document Review**: Sweeping 10,000+ court filings, contracts, or depositions with template queries. Extract parties, dates, obligations, risk clauses.
-- **Epstein Files / FOIA Dumps**: Pre-warm with "List individuals mentioned", "Extract dates", "Identify financial transactions", "Flag travel references." The cache becomes an instant, searchable index of the entire corpus.
+- **Epstein Files / FOIA Dumps**: Sweep with "List individuals mentioned", "Extract dates", "Identify financial transactions", "Flag travel references." The cache becomes a searchable index of the corpus.
 - **Contract Comparison**: Same extraction queries across hundreds of vendor contracts. The cache catches identical boilerplate and only pays for genuinely unique clauses.
 - **E-Discovery**: Reduce review costs by 90%+ when thousands of documents contain similar language. The Sniper prevents false matches on legally critical distinctions.
 
 #### Medical & Clinical Research
 - **Clinical Trial Data**: Sweeping patient records with "What was the dosage?", "What adverse events occurred?", "What was the outcome?" The grounding check is critical — you **cannot** hallucinate a drug dosage.
-- **Literature Review**: Processing thousands of papers. Pre-warm with "What methodology was used?", "What dataset?", "What were the results?" The cache ensures consistent extraction across the entire corpus.
+- **Literature Review**: Processing thousands of papers. Sweep with "What methodology was used?", "What dataset?", "What were the results?" The cache ensures consistent extraction across the entire corpus.
 - **Diagnostic Support**: Repeated queries about symptoms and conditions. The cache locks in verified diagnostic criteria, preventing hallucination on medical facts.
 
 #### Software Engineering
@@ -611,13 +600,13 @@ Corpus-level namespace isolation means one installation can serve legal, financi
 - **CI/CD Test Determinism**: When running automated test suites that rely on LLM outputs, the cache ensures identical results between runs. No more flaky tests from LLM non-determinism.
 
 #### Compliance & Audit
-- **Regulatory Scanning**: Sweep policy documents against compliance checklists ("Does this policy address data retention?", "Is there a breach notification clause?"). Pre-warm the cache with the full regulatory checklist → instant compliance reports for new policies.
+- **Regulatory Scanning**: Sweep policy documents against compliance checklists ("Does this policy address data retention?", "Is there a breach notification clause?"). Cached checklist results enable faster compliance reports for new policies.
 - **Audit Trail**: Every cache entry records the model used, the source text, and the grounding status. This creates a permanent, verifiable audit trail of every AI-generated conclusion.
 - **Cross-Jurisdiction Consistency**: The same compliance queries applied to policies from 50 different jurisdictions. The cache ensures methodological consistency across all reviews.
 
 #### Intelligence & OSINT
 - **Open Source Intelligence**: Processing massive amounts of public records, social media posts, or news articles with extraction templates. High redundancy → rapid cache saturation.
-- **Pattern Detection**: Pre-warm with entity extraction queries across a large corpus. The cached, grounded entity graph becomes a searchable intelligence database.
+- **Pattern Detection**: Run entity extraction queries across a large corpus. The cached, grounded entity graph becomes a searchable intelligence database.
 
 #### Multi-Tenant / Organizational
 - **Shared Org-Level Cache**: Every user in an organization benefits from every other user's queries. The first analyst who asks "What is Q3 revenue?" pays full price. Every subsequent analyst across the firm gets it free and grounded.
@@ -639,7 +628,7 @@ Corpus-level namespace isolation means one installation can serve legal, financi
 | 2 | Parallel Top-K Chunking for evaluator Context Rot immunity | **Novel** |
 | 3 | Context Collapse Guard (ephemeral + recursive summarization) | **Novel** |
 | 4 | Truly recursive parallel summarization (logarithmic compression) | **Novel** |
-| 5 | Programmatic Cache Pre-Warming (Day-1 saturation via agent sweep) | **Novel** |
+| 5 | Programmatic Batch Cache Saturation | **Novel** |
 | 6 | Source Provenance & Grounding Verification (zero-cost regex check) | **Novel** |
 | 7 | Multi-Model Consensus on Write (continuous verification via Haiku) | **Novel** |
 | 8 | Knowledge Extraction & Fact Indexing ($(s,r,o)$ triples in FAISS) | **Novel** |

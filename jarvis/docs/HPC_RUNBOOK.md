@@ -570,9 +570,9 @@ evaluator: http://<evaluator-node>:8001/v1
 
 Start with a sampled LongBench-v2 run to verify the services, cache reuse, and
 scoring path before submitting a larger job. This command generates a bounded
-random source-linked suite first, producing 9 rows across the original, exact,
-and semantic variants. Keep parameter experiments in this one block so each run
-has a single command to compare.
+domain-balanced source-linked suite first, with one source group per eligible
+domain in the token band, then scores only the `original` rows. Keep parameter
+experiments in this one block so each run has a single command to compare.
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -603,9 +603,10 @@ uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_param_search.csv \
   --sample-size 3 \
+  --samples-per-domain 1 \
+  --selection-strategy random \
   --min-token-count 50000 \
   --max-token-count 200000 \
-  --selection-strategy random \
   --seed 0 && \
 uv run python long_bench_v2/run_benchmark.py \
   --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_param_search.csv \
@@ -648,6 +649,13 @@ tail -f "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
 
 When this finishes, inspect the generated artifact paths printed in the client
 log. They should point under `benchmark_artifacts/longbench_v2/...`.
+
+For domain-targeted diagnostics, add `--domains "<domain name>"` to the
+`sample_csv.py` call rather than changing the benchmark runner. For example,
+use `--domains "Long In-context Learning"` when isolating long in-context
+learning failures.
+
+`--samples-per-domain` overrides `--sample-size`.
 
 The sampled validation command resets only this selected cache namespace. Keep
 that reset while testing retrieval or synthesis changes; otherwise exact and

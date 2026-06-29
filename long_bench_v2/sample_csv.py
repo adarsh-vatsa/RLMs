@@ -46,6 +46,10 @@ def parse_row_types(value: str) -> tuple[str, ...]:
     return row_types
 
 
+def parse_csv_values(value: str) -> tuple[str, ...]:
+    return tuple(part.strip() for part in value.split(",") if part.strip())
+
+
 def _token_count(row: dict) -> int | None:
     raw = (row.get("token_count") or "").strip()
     if not raw:
@@ -64,9 +68,13 @@ def sample_rows(
     min_token_count: int = 0,
     max_token_count: int = 0,
     selection_strategy: str = DEFAULT_SELECTION_STRATEGY,
+    domains: Sequence[str] = (),
+    samples_per_domain: int = 0,
 ) -> list[dict]:
     if sample_size < 0:
         raise ValueError("sample_size must be non-negative")
+    if samples_per_domain < 0:
+        raise ValueError("samples_per_domain must be non-negative")
     if min_token_count < 0:
         raise ValueError("min_token_count must be non-negative")
     if max_token_count < 0:
@@ -77,20 +85,39 @@ def sample_rows(
         raise ValueError("selection_strategy must be random, shortest, or longest")
 
     row_type_set = set(row_types)
+    domain_filter = {domain.strip() for domain in domains if domain.strip()}
     source_ids_by_type: dict[str, set[str]] = {row_type: set() for row_type in row_types}
     rows_by_source: dict[str, list[dict]] = {}
+    source_domain_sets: dict[str, set[str]] = {}
     for row in rows:
         row_type = row.get("row_type", "")
         source_id = row.get("source_id", "")
         if row_type in row_type_set and source_id:
             source_ids_by_type[row_type].add(source_id)
             rows_by_source.setdefault(source_id, []).append(row)
+            domain = row.get("domain", "").strip()
+            if domain:
+                source_domain_sets.setdefault(source_id, set()).add(domain)
 
     missing_row_types = [row_type for row_type, source_ids in source_ids_by_type.items() if not source_ids]
     if missing_row_types:
         raise ValueError(f"Input CSV has no rows for row types: {', '.join(missing_row_types)}")
 
     eligible_source_ids = set.intersection(*source_ids_by_type.values()) if source_ids_by_type else set()
+    source_domains: dict[str, str] = {}
+    for source_id in sorted(eligible_source_ids):
+        source_domain_set = source_domain_sets.get(source_id, set())
+        if len(source_domain_set) > 1:
+            details = ", ".join(sorted(source_domain_set))
+            raise ValueError(f"source_id {source_id} spans multiple domains: {details}")
+        source_domains[source_id] = next(iter(source_domain_set), "")
+    if domain_filter:
+        eligible_source_ids = {
+            source_id
+            for source_id in eligible_source_ids
+            if source_domains.get(source_id, "") in domain_filter
+        }
+
     source_token_counts: dict[str, int] = {}
     if min_token_count > 0 or max_token_count > 0 or selection_strategy in {"shortest", "longest"}:
         for source_id in sorted(eligible_source_ids):
@@ -120,42 +147,76 @@ def sample_rows(
             if source_token_counts.get(source_id, max_token_count + 1) <= max_token_count
         }
 
-    if sample_size > len(eligible_source_ids):
+    def choose_source_ids(source_ids: list[str], count: int, rng: random.Random) -> list[str]:
+        if selection_strategy == "shortest":
+            ordered_source_ids = sorted(
+                source_ids,
+                key=lambda source_id: (source_token_counts.get(source_id, 0), source_id),
+            )
+            return ordered_source_ids[:count]
+        if selection_strategy == "longest":
+            ordered_source_ids = sorted(
+                source_ids,
+                key=lambda source_id: (-source_token_counts.get(source_id, 0), source_id),
+            )
+            return ordered_source_ids[:count]
+        return rng.sample(sorted(source_ids), count)
+
+    rng = random.Random(seed)
+    if samples_per_domain > 0:
+        source_ids_by_domain: dict[str, list[str]] = {}
+        for source_id in sorted(eligible_source_ids):
+            domain = source_domains.get(source_id, "")
+            if domain:
+                source_ids_by_domain.setdefault(domain, []).append(source_id)
+        if not source_ids_by_domain:
+            raise ValueError("No eligible source_ids remain after domain filtering")
+        undersized_domains = {
+            domain: len(source_ids)
+            for domain, source_ids in source_ids_by_domain.items()
+            if len(source_ids) < samples_per_domain
+        }
+        if undersized_domains:
+            details = ", ".join(
+                f"{domain}={count}" for domain, count in sorted(undersized_domains.items())
+            )
+            raise ValueError(
+                f"Requested {samples_per_domain} source-linked samples per domain, "
+                f"but these domains have fewer eligible source_ids: {details}"
+            )
+        selected_source_ids = {
+            source_id
+            for domain in sorted(source_ids_by_domain)
+            for source_id in choose_source_ids(
+                source_ids_by_domain[domain],
+                samples_per_domain,
+                rng,
+            )
+        }
+    elif sample_size > len(eligible_source_ids):
         raise ValueError(
             f"Requested {sample_size} source-linked samples, but only {len(eligible_source_ids)} "
             f"source_ids have all requested row types: {', '.join(row_types)}"
         )
-
-    if selection_strategy == "shortest":
-        ordered_source_ids = sorted(
-            eligible_source_ids,
-            key=lambda source_id: (source_token_counts.get(source_id, 0), source_id),
-        )
-        selected_source_ids = set(ordered_source_ids[:sample_size])
-    elif selection_strategy == "longest":
-        ordered_source_ids = sorted(
-            eligible_source_ids,
-            key=lambda source_id: (-source_token_counts.get(source_id, 0), source_id),
-        )
-        selected_source_ids = set(ordered_source_ids[:sample_size])
     else:
-        rng = random.Random(seed)
-        selected_source_ids = set(rng.sample(sorted(eligible_source_ids), sample_size))
+        selected_source_ids = set(choose_source_ids(sorted(eligible_source_ids), sample_size, rng))
+
     sampled_rows = [
         row
         for row in rows
         if row.get("row_type", "") in row_type_set and row.get("source_id", "") in selected_source_ids
     ]
 
+    selected_source_count = len(selected_source_ids)
     counts = Counter(row.get("row_type", "") for row in sampled_rows)
     bad_counts = {
         row_type: counts.get(row_type, 0)
         for row_type in row_types
-        if counts.get(row_type, 0) != sample_size
+        if counts.get(row_type, 0) != selected_source_count
     }
     if bad_counts:
         details = ", ".join(f"{row_type}={count}" for row_type, count in sorted(bad_counts.items()))
-        raise ValueError(f"Sample is not balanced at {sample_size} rows per type: {details}")
+        raise ValueError(f"Sample is not balanced at {selected_source_count} rows per type: {details}")
 
     return sampled_rows
 
@@ -176,11 +237,27 @@ def print_row_type_summary(rows: list[dict]) -> None:
         print(f"{row_type.ljust(row_type_width)}  {str(count).rjust(count_width)}")
 
 
+def print_domain_summary(rows: list[dict]) -> None:
+    counts = Counter(row.get("domain", "") or "<blank>" for row in rows)
+    if not counts:
+        print("[LONGBENCH-V2] Domain summary: <empty>")
+        return
+
+    summary_rows = sorted(counts.items())
+    domain_width = max(len("domain"), *(len(domain) for domain, _ in summary_rows))
+    count_width = max(len("count"), *(len(str(count)) for _, count in summary_rows))
+    print("[LONGBENCH-V2] Domain summary:")
+    print(f"{'domain'.ljust(domain_width)}  {'count'.rjust(count_width)}")
+    print(f"{'-' * domain_width}  {'-' * count_width}")
+    for domain, count in summary_rows:
+        print(f"{domain.ljust(domain_width)}  {str(count).rjust(count_width)}")
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Sample a balanced LongBench-v2 CSV suite")
     parser.add_argument("--input-path", type=Path, default=DEFAULT_INPUT_PATH)
     parser.add_argument("--output-path", type=Path, default=DEFAULT_OUTPUT_PATH)
-    parser.add_argument("--sample-size", type=int, default=10, help="Rows to keep per row type. Default: 10")
+    parser.add_argument("--sample-size", type=int, default=10, help="Source groups to sample. Default: 10")
     parser.add_argument(
         "--min-token-count",
         type=int,
@@ -204,10 +281,25 @@ def main(argv: Sequence[str] | None = None) -> None:
         default=",".join(DEFAULT_ROW_TYPES),
         help="Comma-separated row types to sample together by source_id. Default: original,exact,semantic",
     )
+    parser.add_argument(
+        "--domains",
+        default="",
+        help="Comma-separated domain values to sample from. Empty means all domains.",
+    )
+    parser.add_argument(
+        "--samples-per-domain",
+        type=int,
+        default=0,
+        help=(
+            "When greater than 0, sample this many source groups from each eligible domain. "
+            "This overrides --sample-size."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0, help="Random seed for reproducible sampling. Default: 0")
     args = parser.parse_args(argv)
 
     row_types = parse_row_types(args.row_types)
+    domains = parse_csv_values(args.domains)
     rows = _read_rows(args.input_path)
     sampled_rows = sample_rows(
         rows,
@@ -217,10 +309,13 @@ def main(argv: Sequence[str] | None = None) -> None:
         min_token_count=args.min_token_count,
         max_token_count=args.max_token_count,
         selection_strategy=args.selection_strategy,
+        domains=domains,
+        samples_per_domain=args.samples_per_domain,
     )
     _write_rows(args.output_path, sampled_rows)
     print(f"[LONGBENCH-V2] Wrote {len(sampled_rows)} rows to {args.output_path}")
     print_row_type_summary(sampled_rows)
+    print_domain_summary(sampled_rows)
 
 
 if __name__ == "__main__":

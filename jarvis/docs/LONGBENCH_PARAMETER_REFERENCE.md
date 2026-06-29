@@ -92,6 +92,12 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 - `--selection-strategy`: Strategy for selecting eligible source groups.
   `random` is the most realistic small-sample strategy, while `shortest` is mainly useful for fast smoke tests.
 
+- `--domains`: Comma-separated LongBench domain values to sample from.
+  Use this for targeted diagnostics, such as isolating `Long In-context Learning`.
+
+- `--samples-per-domain`: Domain-balanced sampling mode.
+  When greater than `0`, this samples that many source groups from each eligible domain and overrides `--sample-size`.
+
 - `--seed`: Random seed for reproducible sampling.
   Keep it fixed when comparing parameter changes.
 

@@ -255,11 +255,13 @@ python long_bench_v2/sample_csv.py \
 
 Useful options:
 
-- `--sample-size N`: number of rows to keep per row type. Default: `10`.
+- `--sample-size N`: number of source groups to sample before row-type expansion. Default: `10`.
 - `--min-token-count N`: only sample source groups at or above this `token_count`. Default: `0`, meaning no floor.
 - `--max-token-count N`: only sample source groups at or below this `token_count`. Default: `0`, meaning no cap.
 - `--selection-strategy random|shortest|longest`: choose eligible source groups randomly, shortest-first, or longest-first. Default: `random`.
 - `--row-types TYPES`: comma-separated row types to sample together by `source_id`. Default: `original,exact,semantic`.
+- `--domains DOMAINS`: comma-separated `domain` values to sample from. Empty means all domains.
+- `--samples-per-domain N`: when greater than `0`, sample this many source groups from each eligible domain instead of using `--sample-size`.
 - `--seed N`: random seed for reproducible samples. Default: `0`.
 
 For staged longer-context testing, create separate named random samples by token
@@ -292,6 +294,20 @@ python long_bench_v2/sample_csv.py \
   --sample-size 18 \
   --min-token-count 120000 \
   --max-token-count 240000 \
+  --selection-strategy random \
+  --seed 0
+```
+
+For domain-targeted diagnostics, filter by the LongBench `domain` column:
+
+```bash
+python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_licl_6.csv \
+  --sample-size 6 \
+  --domains "Long In-context Learning" \
+  --min-token-count 50000 \
+  --max-token-count 200000 \
   --selection-strategy random \
   --seed 0
 ```
@@ -368,8 +384,8 @@ Useful options:
 - `--evaluator-model MODEL`: model assigned to cache verification/fact extraction calls. Default: `claude-haiku-4-5`.
 - `--openrouter-base-url URL`: OpenRouter-compatible base URL. Default: `https://openrouter.ai/api/v1`.
 - `--top-k N`: packed-mode FAISS retrieval candidates. Jarvis iterative mode ignores this flag and computes FAISS top-N from the scan budget. Default: `10`.
-- `--rerank-top N`: packed-mode compatibility argument. In Jarvis iterative mode, the reranker is not instantiated or used. Default: `3`.
-- `--synthesis-max-chunks N`: packed-mode synthesis limit. In iterative mode, scan breadth is controlled by the scan min/max ratio band and absolute scan floors/caps. Default: `3` for this runner.
+- `--rerank-top N`: packed-mode reranker result cap. In Jarvis iterative mode, the reranker is not instantiated or used; artifacts keep the raw value and set `rerank_top_effective` to `null`. Default: `3`.
+- `--synthesis-max-chunks N`: packed-mode synthesis limit. In iterative mode, scan breadth is controlled by the scan min/max ratio band and absolute scan floors/caps. Default: `3` for this runner; this CLI default intentionally overrides the `semantic_cache_system.py` module env default of `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5`.
 - `--row-order input|source_grouped`: execution order. Default: `source_grouped`, so rows with the same `source_id` run adjacent to reduce repeated ingest work.
 - `--cache-save-interval N`: save cache state every N rows in cache mode, plus a final save. Default: `10`; use `1` for per-row saves.
 - `--disable-reranker`: skip the reranker in packed mode. Jarvis iterative mode already bypasses the reranker.
@@ -378,7 +394,7 @@ Useful options:
 
 The LongBench-v2 runner intentionally reduces retrieval breadth for speed while keeping the full source document indexed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For Jarvis LongBench-v2 runs, use `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000` as the current speed/quality balance. This keeps the full document indexed as token-bounded chunks while reducing chunk count versus the higher-recall `6000/600` profile. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
 
-For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects one chunk per call and maintains a cumulative memory ledger before either early-stopping or running a final adjudication call. The ledger stores additive chunk-referenced memory updates, query/target facts, option-code mappings, current `best_choice`, rationale, bounded open questions, visited chunks, and parse failures. Many-shot relation examples are kept in `code_mappings` only when they use one of the current option codes. Final adjudication sees the completed ledger only, treats `best_choice` as a prior rather than authority, and returns JSON with `answer`, `reason`, and `needs_more_context`. If the ledger is empty, final adjudication is invalid, or final adjudication asks for more context, the reader uses a bounded packed fallback that can see the inspected chunks again. The manifest records the token chunk config, search mode, scan min/max ratio band, memory cap, fallback settings, reader version, and scan order. Bridge rows add row-level visited chunk count, memory char/update/fact/mapping/open-question counts, parse-failure count, early-stop reason, final adjudication answer/reason/raw response, packed fallback reason, supporting chunk indices, and the cumulative ledger.
+For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects one chunk per call and maintains a cumulative memory ledger before either early-stopping or running a final adjudication call. The ledger stores additive chunk-referenced memory updates, query/target facts, option-code mappings, current `best_choice`, rationale, bounded open questions, visited chunks, and parse failures. Many-shot relation examples are kept in `code_mappings` only when they use one of the current option codes. Final adjudication sees the completed ledger only, treats `best_choice` as a prior rather than authority, and returns JSON with `answer`, `reason`, and `needs_more_context`. If the ledger is empty, final adjudication is invalid, or final adjudication asks for more context, the reader uses a bounded packed fallback that can see the inspected chunks again. The manifest records the token chunk config, MCQ prompt style and output cap, search mode, scan min/max ratio band, memory cap, fallback settings, reader version, scan order, and packed-mode reranker config. Cache namespaces include the behavior-affecting values so incompatible runs do not share persisted answers. Bridge rows add row-level visited chunk count, memory char/update/fact/mapping/open-question counts, parse-failure count, early-stop reason, final adjudication answer/reason/raw response, packed fallback reason, supporting chunk indices, effective top-k/rerank-top fields, and the cumulative ledger.
 
 Recommended balanced Jarvis LongBench-v2 profile:
 
@@ -413,7 +429,7 @@ uv run python long_bench_v2/run_benchmark.py \
   ...
 ```
 
-Packed-mode reranker memory can be tuned without changing benchmark semantics:
+Packed-mode reranker memory and relevance behavior can be tuned:
 
 ```bash
 SEMANTIC_CACHE_RERANKER_BATCH_SIZE=2
@@ -423,8 +439,12 @@ SEMANTIC_CACHE_RERANKER_MAX_LENGTH=4096
 The default reranker batch size is `4`, and the default max length is `8192`.
 Qwen3 reranking uses only the final-position logits when the installed
 Transformers model exposes `logits_to_keep`; this avoids materializing full
-sequence vocabulary logits for every candidate. These settings do not affect
-Jarvis iterative LongBench runs.
+sequence vocabulary logits for every candidate. `SEMANTIC_CACHE_RERANKER_MAX_LENGTH`,
+`SEMANTIC_CACHE_RERANKER_THRESHOLD`, and `SEMANTIC_CACHE_MIN_RERANKED_RESULTS`
+are recorded in artifacts and included in packed-mode cache namespaces because
+they can affect selected evidence. `SEMANTIC_CACHE_RERANKER_BATCH_SIZE` is
+recorded as operational metadata. These settings do not affect Jarvis iterative
+LongBench runs.
 
 ## STEP 7 - Run RLM Baseline
 

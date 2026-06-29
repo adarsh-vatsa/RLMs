@@ -12,6 +12,7 @@ from long_bench_v2.run_benchmark import (
     answer_correct,
     build_arg_parser,
     build_cache_reuse_manifest,
+    build_effective_config,
     build_query,
     filter_suite_rows,
     load_context_by_source_id,
@@ -141,7 +142,7 @@ class FakeController:
                 "synthesis_packed_chunk_count": 3,
                 "synthesis_dropped_chunk_count": 1,
                 "synthesis_selected_chunk_indices": [0, 1, 2],
-                "iterative_reader_version": 7,
+                "iterative_reader_version": 8,
                 "iterative_memory_max_chars": 16000,
                 "iterative_scan_total_chunks": 10,
                 "iterative_scan_early_stop_min_chunks": fake_early_stop_min,
@@ -197,11 +198,16 @@ class FakeScs:
     EMBEDDING_QUERY_INSTRUCTION = "fake embedding instruction"
     EMBEDDING_BATCH_SIZE = 2
     EMBEDDING_MAX_LENGTH = 4096
+    RERANKER_RELEVANCE_THRESHOLD = 0.42
+    RERANKER_BATCH_SIZE = 2
+    RERANKER_MAX_LENGTH = 4096
+    MIN_RERANKED_RESULTS = 4
     SYNTHESIS_INPUT_TOKEN_BUDGET = 60000
     SYNTHESIS_MAX_CHUNKS = 5
+    MCQ_SYNTHESIS_MAX_TOKENS = 8
     MCQ_PROMPT_STYLE = "strict"
     SEARCH_MODE = "iterative"
-    ITERATIVE_READER_VERSION = 7
+    ITERATIVE_READER_VERSION = 8
     SCAN_MIN_CHUNK_RATIO = 0.30
     SCAN_MAX_CHUNK_RATIO = 0.50
     SCAN_MIN_CHUNKS = 3
@@ -248,7 +254,7 @@ def _reset_fake_controller():
     FakeScs.SYNTHESIS_MAX_CHUNKS = 5
     FakeScs.MCQ_PROMPT_STYLE = "strict"
     FakeScs.SEARCH_MODE = "iterative"
-    FakeScs.ITERATIVE_READER_VERSION = 7
+    FakeScs.ITERATIVE_READER_VERSION = 8
     FakeScs.SCAN_MIN_CHUNK_RATIO = 0.30
     FakeScs.SCAN_MAX_CHUNK_RATIO = 0.50
     FakeScs.SCAN_MIN_CHUNKS = 3
@@ -261,6 +267,11 @@ def _reset_fake_controller():
     FakeScs.EMBEDDING_QUERY_INSTRUCTION = "fake embedding instruction"
     FakeScs.EMBEDDING_BATCH_SIZE = 2
     FakeScs.EMBEDDING_MAX_LENGTH = 4096
+    FakeScs.RERANKER_RELEVANCE_THRESHOLD = 0.42
+    FakeScs.RERANKER_BATCH_SIZE = 2
+    FakeScs.RERANKER_MAX_LENGTH = 4096
+    FakeScs.MIN_RERANKED_RESULTS = 4
+    FakeScs.MCQ_SYNTHESIS_MAX_TOKENS = 8
     FakeScs.reranker_calls = 0
 
 
@@ -360,6 +371,75 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             5,
             ["original", "exact"],
             mcq_prompt_style="strict",
+        )
+        changed_mcq_max_tokens = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            mcq_synthesis_max_tokens=8,
+        )
+        changed_reranker_threshold = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            reranker_relevance_threshold=0.42,
+            reranker_max_length=8192,
+            min_reranked_results=5,
+        )
+        changed_reranker_max_length = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            reranker_relevance_threshold=0.20,
+            reranker_max_length=4096,
+            min_reranked_results=5,
+        )
+        changed_min_reranked_results = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            reranker_relevance_threshold=0.20,
+            reranker_max_length=8192,
+            min_reranked_results=7,
+        )
+        reranker_disabled = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            reranker_disabled=True,
+        )
+        reranker_disabled_with_ignored_knobs = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            99,
+            ["original", "exact"],
+            reranker_disabled=True,
+            reranker_relevance_threshold=0.99,
+            reranker_max_length=123,
+            min_reranked_results=99,
         )
         changed_token_chunks = resolve_cache_namespace(
             "suite-sha",
@@ -491,6 +571,12 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertNotEqual(first, changed_synthesis)
         self.assertNotEqual(first, changed_extra_body)
         self.assertNotEqual(first, changed_prompt_style)
+        self.assertNotEqual(first, changed_mcq_max_tokens)
+        self.assertNotEqual(first, changed_reranker_threshold)
+        self.assertNotEqual(first, changed_reranker_max_length)
+        self.assertNotEqual(first, changed_min_reranked_results)
+        self.assertNotEqual(first, reranker_disabled)
+        self.assertEqual(reranker_disabled, reranker_disabled_with_ignored_knobs)
         self.assertNotEqual(first, changed_token_chunks)
         self.assertNotEqual(first, changed_embedding_instruction)
         self.assertNotEqual(first, changed_embedding_max_length)
@@ -554,6 +640,27 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(cold["run_start_type"], "cold_start")
         self.assertEqual(cold["cache_hit_rate"], 0.5)
         self.assertEqual(warm["run_start_type"], "warm_start")
+
+    def test_build_effective_config_centralizes_artifact_and_namespace_fields(self):
+        _reset_fake_controller()
+        args = build_arg_parser().parse_args(["--synthesis-max-chunks", "4", "--rerank-top", "2"])
+
+        config = build_effective_config(FakeScs, args)
+        artifact_fields = config["artifact_fields"]
+        namespace_kwargs = config["namespace_kwargs"]
+
+        self.assertEqual(FakeScs.SYNTHESIS_MAX_CHUNKS, 4)
+        self.assertEqual(artifact_fields["synthesis_max_chunks"], 4)
+        self.assertEqual(artifact_fields["mcq_prompt_style"], "strict")
+        self.assertEqual(artifact_fields["mcq_synthesis_max_tokens"], 8)
+        self.assertEqual(artifact_fields["reranker_batch_size"], 2)
+        self.assertTrue(artifact_fields["reranker_disabled"])
+        self.assertIsNone(artifact_fields["rerank_top_effective"])
+        self.assertEqual(config["search_top_k"], 0)
+        self.assertEqual(config["search_rerank_top"], 0)
+        self.assertEqual(namespace_kwargs["synthesis_max_chunks"], 4)
+        self.assertEqual(namespace_kwargs["mcq_synthesis_max_tokens"], 8)
+        self.assertNotIn("reranker_batch_size", namespace_kwargs)
 
     def test_normalize_llm_args_keeps_anthropic_default_and_maps_openrouter_and_local(self):
         anthropic = type(
@@ -665,14 +772,16 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(len(FakeController.ingest_calls), 2)
         self.assertEqual([row["case_id"] for row in bridge_rows], ["row_1__original", "row_1__exact", "row_2__original"])
         self.assertTrue(all(call["top_k"] == 0 for call in FakeController.search_calls))
-        self.assertTrue(all(call["rerank_top"] == 2 for call in FakeController.search_calls))
+        self.assertTrue(all(call["rerank_top"] == 0 for call in FakeController.search_calls))
         self.assertEqual(manifest["synthesis_max_chunks"], 4)
         self.assertEqual(manifest["top_k"], 10)
         self.assertIsNone(manifest["top_k_effective"])
         self.assertTrue(manifest["iterative_top_k_ignored"])
         self.assertEqual(manifest["rerank_top"], 2)
+        self.assertIsNone(manifest["rerank_top_effective"])
+        self.assertTrue(manifest["iterative_rerank_top_ignored"])
         self.assertEqual(manifest["search_mode"], "iterative")
-        self.assertEqual(manifest["iterative_reader_version"], 7)
+        self.assertEqual(manifest["iterative_reader_version"], 8)
         self.assertEqual(manifest["scan_min_chunk_ratio"], 0.30)
         self.assertEqual(manifest["scan_max_chunk_ratio"], 0.50)
         self.assertEqual(manifest["scan_min_chunks"], 3)
@@ -691,8 +800,13 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["embedding_query_instruction"], "fake embedding instruction")
         self.assertEqual(manifest["embedding_batch_size"], 2)
         self.assertEqual(manifest["embedding_max_length"], 4096)
+        self.assertEqual(manifest["reranker_relevance_threshold"], 0.42)
+        self.assertEqual(manifest["reranker_batch_size"], 2)
+        self.assertEqual(manifest["reranker_max_length"], 4096)
+        self.assertEqual(manifest["min_reranked_results"], 4)
         self.assertEqual(manifest["synthesis_input_token_budget"], 60000)
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
+        self.assertEqual(manifest["mcq_synthesis_max_tokens"], 8)
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
         self.assertEqual(
@@ -716,7 +830,15 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["top_k"], 10)
         self.assertIsNone(bridge_rows[0]["top_k_effective"])
         self.assertTrue(bridge_rows[0]["iterative_top_k_ignored"])
-        self.assertEqual(bridge_rows[0]["iterative_reader_version"], 7)
+        self.assertEqual(bridge_rows[0]["rerank_top"], 2)
+        self.assertIsNone(bridge_rows[0]["rerank_top_effective"])
+        self.assertTrue(bridge_rows[0]["iterative_rerank_top_ignored"])
+        self.assertEqual(bridge_rows[0]["mcq_synthesis_max_tokens"], 8)
+        self.assertEqual(bridge_rows[0]["reranker_relevance_threshold"], 0.42)
+        self.assertEqual(bridge_rows[0]["reranker_batch_size"], 2)
+        self.assertEqual(bridge_rows[0]["reranker_max_length"], 4096)
+        self.assertEqual(bridge_rows[0]["min_reranked_results"], 4)
+        self.assertEqual(bridge_rows[0]["iterative_reader_version"], 8)
         self.assertEqual(bridge_rows[0]["scan_min_chunk_ratio"], 0.30)
         self.assertEqual(bridge_rows[0]["scan_max_chunk_ratio"], 0.50)
         self.assertEqual(bridge_rows[0]["scan_empty_ledger_fallback_ratio"], 1.0)

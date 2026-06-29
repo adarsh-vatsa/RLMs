@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -431,6 +432,100 @@ class LongBenchV2CsvExportTests(unittest.TestCase):
 
         self.assertEqual({row["source_id"] for row in sampled}, {"row_1", "row_4"})
         self.assertEqual(len(sampled), 6)
+
+    def test_sample_rows_filters_by_domain(self):
+        rows = []
+        source_domains = {
+            "row_1": ("Single-Document QA", "100"),
+            "row_2": ("Multi-Document QA", "200"),
+            "row_3": ("Single-Document QA", "300"),
+        }
+        for source_id, (domain, token_count) in source_domains.items():
+            for row_type in ["original", "exact", "semantic"]:
+                rows.append({
+                    "case_id": f"{source_id}__{row_type}",
+                    "source_id": source_id,
+                    "row_type": row_type,
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": "ctx",
+                    "token_count": token_count,
+                    "expected_cache_type": row_type,
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": domain,
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                })
+
+        sampled = sample_rows(
+            rows,
+            sample_size=2,
+            row_types=("original", "exact", "semantic"),
+            seed=0,
+            selection_strategy="shortest",
+            domains=("Single-Document QA",),
+        )
+
+        self.assertEqual({row["source_id"] for row in sampled}, {"row_1", "row_3"})
+        self.assertEqual({row["domain"] for row in sampled}, {"Single-Document QA"})
+        self.assertEqual(len(sampled), 6)
+
+    def test_sample_rows_can_balance_by_domain(self):
+        rows = []
+        source_domains = {
+            "row_1": ("Single-Document QA", "100"),
+            "row_2": ("Single-Document QA", "300"),
+            "row_3": ("Multi-Document QA", "200"),
+            "row_4": ("Multi-Document QA", "400"),
+        }
+        for source_id, (domain, token_count) in source_domains.items():
+            for row_type in ["original", "exact", "semantic"]:
+                rows.append({
+                    "case_id": f"{source_id}__{row_type}",
+                    "source_id": source_id,
+                    "row_type": row_type,
+                    "is_scored": "true",
+                    "setup_case_id": "",
+                    "context_id": "ctx",
+                    "token_count": token_count,
+                    "expected_cache_type": row_type,
+                    "expected_from_cache": "false",
+                    "depends_on_case_id": "",
+                    "domain": domain,
+                    "sub_domain": "Synthetic",
+                    "difficulty": "easy",
+                    "length": "short",
+                    "question": "Which option is correct?",
+                    "choice_A": "Alpha",
+                    "choice_B": "Beta",
+                    "choice_C": "Gamma",
+                    "choice_D": "Delta",
+                    "answer": "A",
+                })
+
+        sampled = sample_rows(
+            rows,
+            sample_size=99,
+            row_types=("original", "exact", "semantic"),
+            seed=0,
+            selection_strategy="shortest",
+            samples_per_domain=1,
+        )
+
+        self.assertEqual({row["source_id"] for row in sampled}, {"row_1", "row_3"})
+        self.assertEqual(len(sampled), 6)
+        self.assertEqual(
+            Counter(row["domain"] for row in sampled),
+            {"Single-Document QA": 3, "Multi-Document QA": 3},
+        )
 
 
 if __name__ == "__main__":

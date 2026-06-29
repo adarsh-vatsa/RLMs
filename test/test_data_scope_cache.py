@@ -559,6 +559,58 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertFalse(any(item["code"] == "abi" for item in mappings))
         self.assertFalse(any(item["code"] == "abr" for item in mappings))
 
+    def test_relation_ledger_requires_mapping_before_accepting_best_choice(self):
+        query = (
+            "Document: entity0 Astar is a entity1 New Zealand personality.\n\n"
+            "Question: Only considering the given document, what is the relation type "
+            "between entity0 and entity1?\n\n"
+            "Choices:\n"
+            "A. aaa\n"
+            "B. acy\n"
+            "C. abt\n"
+            "D. aah\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        ledger = scs._new_evidence_ledger(query)
+        unsupported_decision = {
+            "status": "answer_found",
+            "target_facts": ["Code acy corresponds to nationality."],
+            "best_choice": "B",
+            "best_choice_rationale": "acy is the standard nationality code",
+            "open_questions": [],
+            "needs_more_context": False,
+        }
+
+        scs._update_evidence_ledger(ledger, unsupported_decision, chunk_index=3, query=query)
+
+        self.assertIsNone(ledger["best_choice"])
+        self.assertEqual(ledger["best_choice_rationale"], "")
+        self.assertFalse(
+            any("acy corresponds" in item["note"].lower() for item in ledger["target_facts"])
+        )
+        self.assertTrue(any("relation code acy" in note for note in ledger["open_questions"]))
+
+        supported_decision = {
+            "status": "answer_found",
+            "code_mappings": [
+                {
+                    "code": "acy",
+                    "relation": "nationality",
+                    "example": "entity0 Example Person -> entity1 Example Country",
+                }
+            ],
+            "best_choice": "B",
+            "best_choice_rationale": "acy is demonstrated by a person-country example",
+            "open_questions": [],
+            "needs_more_context": False,
+        }
+
+        scs._update_evidence_ledger(ledger, supported_decision, chunk_index=4, query=query)
+
+        self.assertEqual(ledger["best_choice"], "B")
+        self.assertEqual(ledger["best_choice_rationale"], "acy is demonstrated by a person-country example")
+        self.assertEqual(ledger["code_mappings"][0]["code"], "acy")
+
     def test_iterative_inspector_uses_compact_json_contract(self):
         controller = make_controller()
         captured = {}
@@ -597,6 +649,57 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertNotIn("confidence", captured["system"])
         self.assertIn("never replace them with entities from demonstrations", captured["system"])
         self.assertIn("Current relation option codes", captured["messages"][0]["content"])
+
+    def test_relation_early_stop_requires_mapping_for_selected_code(self):
+        query = (
+            "Document: entity0 Astar is a entity1 New Zealand personality.\n\n"
+            "Question: Only considering the given document, what is the relation type "
+            "between entity0 and entity1?\n\n"
+            "Choices:\n"
+            "A. aaa\n"
+            "B. acy\n"
+            "C. abt\n"
+            "D. aah\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        ledger = scs._new_evidence_ledger(query)
+        ledger["best_choice"] = "B"
+        decision = {
+            "status": "answer_found",
+            "best_choice": "B",
+            "open_questions": [],
+            "needs_more_context": False,
+        }
+
+        should_stop, reason = scs._should_stop_iterative_scan(
+            decision=decision,
+            ledger=ledger,
+            visited_count=4,
+            min_chunks=1,
+            comparative_required_count=4,
+            comparative_query=False,
+            query=query,
+        )
+
+        self.assertFalse(should_stop)
+        self.assertEqual(reason, "relation_code_mapping_missing")
+
+        ledger["code_mappings"] = [
+            {"chunk_index": 1, "code": "acy", "relation": "nationality", "example": "person-country example"}
+        ]
+
+        should_stop, reason = scs._should_stop_iterative_scan(
+            decision=decision,
+            ledger=ledger,
+            visited_count=4,
+            min_chunks=1,
+            comparative_required_count=4,
+            comparative_query=False,
+            query=query,
+        )
+
+        self.assertTrue(should_stop)
+        self.assertEqual(reason, "answer_found")
 
     def test_final_adjudication_scores_raw_notes_without_best_choice_fallback(self):
         controller = make_controller()
@@ -706,11 +809,12 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ]
         stored = {}
 
-        def fake_store(query, context, result, model_used="unknown", sources=None):
+        def fake_store(query, context, result, model_used="unknown", sources=None, consensus_info=None):
             stored["query"] = query
             stored["context"] = context
             stored["result"] = result
             stored["sources"] = sources
+            stored["consensus_info"] = consensus_info
 
         with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
             scs, "SCAN_MAX_CHUNK_RATIO", 0.0
@@ -728,6 +832,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["iterative_scan_inspector_call_count"], 2)
         self.assertEqual(result["retrieval"]["iterative_scan_final_adjudication_call_count"], 0)
         self.assertEqual(stored["result"], "B")
+        self.assertEqual(stored["consensus_info"], {"consensus": "AGREED"})
         self.assertIn("evidence_ledger", stored["context"])
 
     def test_iterative_search_runs_final_adjudication_when_no_early_stop(self):
@@ -900,6 +1005,68 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["iterative_scan_final_reason"], "ledger notes support B")
         self.assertIsNone(result["retrieval"]["iterative_scan_final_raw_response"])
         packed_fallback.assert_not_called()
+
+    def test_iterative_search_uses_packed_fallback_when_relation_final_lacks_mapping(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, {"chunk_index": 0}), (0.86, {"chunk_index": 1})]
+        )
+        controller._doc_chunks = ["target relation evidence", "more target evidence"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
+        inspections = [
+            {
+                "status": "partial",
+                "memory_update": "The target relation looks like nationality, but no code demonstration is present.",
+                "target_facts": ["entity0 Astar is a entity1 New Zealand personality."],
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "memory_update": "Still no explicit demonstration for the candidate codes.",
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+        ]
+        query = (
+            "Document: entity0 Astar is a entity1 New Zealand personality.\n\n"
+            "Question: Only considering the given document, what is the relation type "
+            "between entity0 and entity1?\n\n"
+            "Choices:\n"
+            "A. aaa\n"
+            "B. acy\n"
+            "C. abt\n"
+            "D. aah\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
+            controller,
+            "_finalize_iterative_answer",
+            return_value=("B", {"answer": "B", "reason": "nationality maps to acy"}),
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", return_value=("D", {"answer": "D"})
+        ) as packed_fallback, patch.object(
+            controller, "consensus_verify", return_value={"consensus": "AGREED"}
+        ), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative(query, top_k=2, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "D")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_adjudication_call_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 1)
+        self.assertEqual(
+            result["retrieval"]["iterative_scan_packed_fallback_reason"],
+            "relation_code_mapping_missing",
+        )
+        self.assertEqual(result["retrieval"]["iterative_scan_stop_reason"], "relation_code_mapping_missing")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_answer"], "B")
+        packed_fallback.assert_called_once()
 
     def test_iterative_search_uses_packed_fallback_when_final_needs_more_context(self):
         controller = make_controller()

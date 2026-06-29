@@ -264,6 +264,11 @@ def resolve_cache_namespace(
     synthesis_max_chunks: int = 0,
     openai_compatible_extra_body: dict | None = None,
     mcq_prompt_style: str = "default",
+    mcq_synthesis_max_tokens: int = 0,
+    reranker_disabled: bool = False,
+    reranker_relevance_threshold: float = 0.0,
+    reranker_max_length: int = 0,
+    min_reranked_results: int = 0,
     doc_chunk_size: int = 0,
     doc_chunk_overlap: int = 0,
     doc_chunk_tokens: int = 0,
@@ -288,11 +293,29 @@ def resolve_cache_namespace(
     row_type_sig = "-".join(sorted({row_type.lower() for row_type in row_types if row_type}))
     extra_body_sig = json.dumps(openai_compatible_extra_body or {}, sort_keys=True)
     normalized_search_mode = (_coerce_text(search_mode) or "packed").lower()
+    namespace_reranker_disabled = bool(reranker_disabled) if normalized_search_mode != "iterative" else False
     namespace_top_k = 0 if normalized_search_mode == "iterative" else top_k
-    namespace_rerank_top = 0 if normalized_search_mode == "iterative" else rerank_top
+    namespace_rerank_top = (
+        0 if normalized_search_mode == "iterative" or namespace_reranker_disabled else rerank_top
+    )
     namespace_synthesis_max_chunks = 0 if normalized_search_mode == "iterative" else synthesis_max_chunks
     namespace_synthesis_input_budget = (
         0 if normalized_search_mode == "iterative" else synthesis_input_token_budget
+    )
+    namespace_reranker_relevance_threshold = (
+        reranker_relevance_threshold
+        if normalized_search_mode != "iterative" and not namespace_reranker_disabled
+        else 0.0
+    )
+    namespace_reranker_max_length = (
+        reranker_max_length
+        if normalized_search_mode != "iterative" and not namespace_reranker_disabled
+        else 0
+    )
+    namespace_min_reranked_results = (
+        min_reranked_results
+        if normalized_search_mode != "iterative" and not namespace_reranker_disabled
+        else 0
     )
     namespace_iterative_reader_version = (
         iterative_reader_version if normalized_search_mode == "iterative" else 0
@@ -312,6 +335,9 @@ def resolve_cache_namespace(
             f"{llm_provider}\n{executor_model}\n{evaluator_model}\n"
             f"{namespace_top_k}\n{namespace_rerank_top}\n{namespace_synthesis_max_chunks}\n{row_type_sig}\n"
             f"{extra_body_sig}\n{mcq_prompt_style}\n"
+            f"{mcq_synthesis_max_tokens}\n"
+            f"{namespace_reranker_disabled}\n{namespace_reranker_relevance_threshold}\n"
+            f"{namespace_reranker_max_length}\n{namespace_min_reranked_results}\n"
             f"{doc_chunk_size}\n{doc_chunk_overlap}\n{doc_chunk_tokens}\n"
             f"{doc_chunk_overlap_tokens}\n{doc_chunk_tokenizer_model}\n"
             f"{embedding_query_instruction}\n{embedding_max_length}\n"
@@ -427,6 +453,102 @@ def build_cache_reuse_manifest(
     }
 
 
+def build_effective_config(scs, args: argparse.Namespace) -> dict:
+    mcq_style_normalizer = getattr(scs, "_normalize_mcq_prompt_style", None)
+    if callable(mcq_style_normalizer):
+        mcq_prompt_style = mcq_style_normalizer(
+            getattr(scs, "MCQ_PROMPT_STYLE", "default"),
+            warn=False,
+        )
+    else:
+        mcq_prompt_style = _coerce_text(getattr(scs, "MCQ_PROMPT_STYLE", "default")) or "default"
+
+    scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
+    doc_chunk_tokens = int(getattr(scs, "DOCUMENT_CHUNK_TOKENS", 0))
+    doc_chunk_tokenizer_model = _coerce_text(getattr(scs, "DOCUMENT_CHUNK_TOKENIZER_MODEL", ""))
+    if doc_chunk_tokens > 0 and not doc_chunk_tokenizer_model:
+        doc_chunk_tokenizer_model = args.executor_model
+
+    search_mode = _coerce_text(getattr(scs, "SEARCH_MODE", "packed")) or "packed"
+    reranker_disabled = bool(args.disable_reranker or search_mode == "iterative")
+    rerank_top_effective = None if reranker_disabled else args.rerank_top
+
+    artifact_fields = {
+        "top_k": args.top_k,
+        "top_k_effective": None if search_mode == "iterative" else args.top_k,
+        "iterative_top_k_ignored": search_mode == "iterative",
+        "rerank_top": args.rerank_top,
+        "rerank_top_effective": rerank_top_effective,
+        "iterative_rerank_top_ignored": search_mode == "iterative",
+        "synthesis_max_chunks": int(scs.SYNTHESIS_MAX_CHUNKS),
+        "mcq_prompt_style": mcq_prompt_style,
+        "mcq_synthesis_max_tokens": int(getattr(scs, "MCQ_SYNTHESIS_MAX_TOKENS", 0)),
+        "search_mode": search_mode,
+        "iterative_reader_version": int(getattr(scs, "ITERATIVE_READER_VERSION", 0)),
+        "scan_min_chunk_ratio": float(getattr(scs, "SCAN_MIN_CHUNK_RATIO", 0.0)),
+        "scan_max_chunk_ratio": float(getattr(scs, "SCAN_MAX_CHUNK_RATIO", 0.0)),
+        "scan_min_chunks": int(getattr(scs, "SCAN_MIN_CHUNKS", 0)),
+        "scan_max_chunks": int(getattr(scs, "SCAN_MAX_CHUNKS", 0)),
+        "scan_max_tokens": int(getattr(scs, "SCAN_MAX_TOKENS", 0)),
+        "scan_empty_ledger_fallback_ratio": float(getattr(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 0.0)),
+        "iterative_packed_fallback_input_token_budget": int(
+            getattr(scs, "ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET", 0)
+        ),
+        "iterative_memory_max_chars": int(getattr(scs, "ITERATIVE_MEMORY_MAX_CHARS", 0)),
+        "scan_order": _coerce_text(getattr(scs, "SCAN_ORDER", "")),
+        "doc_chunk_size": int(getattr(scs, "DOCUMENT_CHUNK_SIZE", 0)),
+        "doc_chunk_overlap": int(getattr(scs, "DOCUMENT_CHUNK_OVERLAP", 0)),
+        "doc_chunk_tokens": doc_chunk_tokens,
+        "doc_chunk_overlap_tokens": int(getattr(scs, "DOCUMENT_CHUNK_OVERLAP_TOKENS", 0)),
+        "doc_chunk_tokenizer_model": doc_chunk_tokenizer_model,
+        "embedding_query_instruction": _coerce_text(getattr(scs, "EMBEDDING_QUERY_INSTRUCTION", "")),
+        "embedding_batch_size": int(getattr(scs, "EMBEDDING_BATCH_SIZE", 0)),
+        "embedding_max_length": int(getattr(scs, "EMBEDDING_MAX_LENGTH", 0)),
+        "reranker_relevance_threshold": float(getattr(scs, "RERANKER_RELEVANCE_THRESHOLD", 0.0)),
+        "reranker_batch_size": int(getattr(scs, "RERANKER_BATCH_SIZE", 0)),
+        "reranker_max_length": int(getattr(scs, "RERANKER_MAX_LENGTH", 0)),
+        "min_reranked_results": int(getattr(scs, "MIN_RERANKED_RESULTS", 0)),
+        "synthesis_input_token_budget": int(getattr(scs, "SYNTHESIS_INPUT_TOKEN_BUDGET", 0)),
+        "reranker_disabled": reranker_disabled,
+    }
+    namespace_kwargs = {
+        "synthesis_max_chunks": artifact_fields["synthesis_max_chunks"],
+        "mcq_prompt_style": artifact_fields["mcq_prompt_style"],
+        "mcq_synthesis_max_tokens": artifact_fields["mcq_synthesis_max_tokens"],
+        "reranker_disabled": artifact_fields["reranker_disabled"],
+        "reranker_relevance_threshold": artifact_fields["reranker_relevance_threshold"],
+        "reranker_max_length": artifact_fields["reranker_max_length"],
+        "min_reranked_results": artifact_fields["min_reranked_results"],
+        "doc_chunk_size": artifact_fields["doc_chunk_size"],
+        "doc_chunk_overlap": artifact_fields["doc_chunk_overlap"],
+        "doc_chunk_tokens": artifact_fields["doc_chunk_tokens"],
+        "doc_chunk_overlap_tokens": artifact_fields["doc_chunk_overlap_tokens"],
+        "doc_chunk_tokenizer_model": artifact_fields["doc_chunk_tokenizer_model"],
+        "embedding_query_instruction": artifact_fields["embedding_query_instruction"],
+        "embedding_max_length": artifact_fields["embedding_max_length"],
+        "synthesis_input_token_budget": artifact_fields["synthesis_input_token_budget"],
+        "search_mode": artifact_fields["search_mode"],
+        "iterative_reader_version": artifact_fields["iterative_reader_version"],
+        "scan_min_chunk_ratio": artifact_fields["scan_min_chunk_ratio"],
+        "scan_max_chunk_ratio": artifact_fields["scan_max_chunk_ratio"],
+        "scan_min_chunks": artifact_fields["scan_min_chunks"],
+        "scan_max_chunks": artifact_fields["scan_max_chunks"],
+        "scan_max_tokens": artifact_fields["scan_max_tokens"],
+        "scan_empty_ledger_fallback_ratio": artifact_fields["scan_empty_ledger_fallback_ratio"],
+        "iterative_packed_fallback_input_token_budget": artifact_fields[
+            "iterative_packed_fallback_input_token_budget"
+        ],
+        "iterative_memory_max_chars": artifact_fields["iterative_memory_max_chars"],
+        "scan_order": artifact_fields["scan_order"],
+    }
+    return {
+        "artifact_fields": artifact_fields,
+        "namespace_kwargs": namespace_kwargs,
+        "search_top_k": 0 if search_mode == "iterative" else args.top_k,
+        "search_rerank_top": rerank_top_effective or 0,
+    }
+
+
 def _snapshot_metrics(metrics) -> dict[str, float]:
     return metrics.get_totals()
 
@@ -537,35 +659,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         extra_body_config_getter = getattr(scs, "get_openai_compatible_extra_body_config", None)
         if callable(extra_body_config_getter):
             openai_compatible_extra_body_config = extra_body_config_getter(redact=True)
-    effective_mcq_prompt_style = _coerce_text(getattr(scs, "MCQ_PROMPT_STYLE", "default")) or "default"
-    scs.SYNTHESIS_MAX_CHUNKS = args.synthesis_max_chunks
-    effective_doc_chunk_size = int(getattr(scs, "DOCUMENT_CHUNK_SIZE", 0))
-    effective_doc_chunk_overlap = int(getattr(scs, "DOCUMENT_CHUNK_OVERLAP", 0))
-    effective_doc_chunk_tokens = int(getattr(scs, "DOCUMENT_CHUNK_TOKENS", 0))
-    effective_doc_chunk_overlap_tokens = int(getattr(scs, "DOCUMENT_CHUNK_OVERLAP_TOKENS", 0))
-    effective_doc_chunk_tokenizer_model = _coerce_text(getattr(scs, "DOCUMENT_CHUNK_TOKENIZER_MODEL", ""))
-    if effective_doc_chunk_tokens > 0 and not effective_doc_chunk_tokenizer_model:
-        effective_doc_chunk_tokenizer_model = args.executor_model
-    effective_embedding_query_instruction = _coerce_text(
-        getattr(scs, "EMBEDDING_QUERY_INSTRUCTION", "")
-    )
-    effective_embedding_batch_size = int(getattr(scs, "EMBEDDING_BATCH_SIZE", 0))
-    effective_embedding_max_length = int(getattr(scs, "EMBEDDING_MAX_LENGTH", 0))
-    effective_synthesis_input_token_budget = int(getattr(scs, "SYNTHESIS_INPUT_TOKEN_BUDGET", 0))
-    effective_synthesis_max_chunks = int(scs.SYNTHESIS_MAX_CHUNKS)
-    effective_search_mode = _coerce_text(getattr(scs, "SEARCH_MODE", "packed")) or "packed"
-    effective_iterative_reader_version = int(getattr(scs, "ITERATIVE_READER_VERSION", 0))
-    effective_scan_min_chunk_ratio = float(getattr(scs, "SCAN_MIN_CHUNK_RATIO", 0.0))
-    effective_scan_max_chunk_ratio = float(getattr(scs, "SCAN_MAX_CHUNK_RATIO", 0.0))
-    effective_scan_min_chunks = int(getattr(scs, "SCAN_MIN_CHUNKS", 0))
-    effective_scan_max_chunks = int(getattr(scs, "SCAN_MAX_CHUNKS", 0))
-    effective_scan_max_tokens = int(getattr(scs, "SCAN_MAX_TOKENS", 0))
-    effective_scan_empty_ledger_fallback_ratio = float(getattr(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 0.0))
-    effective_iterative_packed_fallback_input_token_budget = int(
-        getattr(scs, "ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET", 0)
-    )
-    effective_iterative_memory_max_chars = int(getattr(scs, "ITERATIVE_MEMORY_MAX_CHARS", 0))
-    effective_scan_order = _coerce_text(getattr(scs, "SCAN_ORDER", ""))
+    effective_config = build_effective_config(scs, args)
+    effective_fields = effective_config["artifact_fields"]
 
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
@@ -578,28 +673,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             row_types=row_types,
             llm_provider=args.llm_provider,
             evaluator_model=args.evaluator_model,
-            synthesis_max_chunks=args.synthesis_max_chunks,
             openai_compatible_extra_body=openai_compatible_extra_body_config,
-            mcq_prompt_style=effective_mcq_prompt_style,
-            doc_chunk_size=effective_doc_chunk_size,
-            doc_chunk_overlap=effective_doc_chunk_overlap,
-            doc_chunk_tokens=effective_doc_chunk_tokens,
-            doc_chunk_overlap_tokens=effective_doc_chunk_overlap_tokens,
-            doc_chunk_tokenizer_model=effective_doc_chunk_tokenizer_model,
-            embedding_query_instruction=effective_embedding_query_instruction,
-            embedding_max_length=effective_embedding_max_length,
-            synthesis_input_token_budget=effective_synthesis_input_token_budget,
-            search_mode=effective_search_mode,
-            iterative_reader_version=effective_iterative_reader_version,
-            scan_min_chunk_ratio=effective_scan_min_chunk_ratio,
-            scan_max_chunk_ratio=effective_scan_max_chunk_ratio,
-            scan_min_chunks=effective_scan_min_chunks,
-            scan_max_chunks=effective_scan_max_chunks,
-            scan_max_tokens=effective_scan_max_tokens,
-            scan_empty_ledger_fallback_ratio=effective_scan_empty_ledger_fallback_ratio,
-            iterative_packed_fallback_input_token_budget=effective_iterative_packed_fallback_input_token_budget,
-            iterative_memory_max_chars=effective_iterative_memory_max_chars,
-            scan_order=effective_scan_order,
+            **effective_config["namespace_kwargs"],
         )
         cache_state_root = (
             Path(args.cache_state_root)
@@ -619,23 +694,28 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
     print(f"[LONGBENCH-V2] Row types: {row_types}")
     print(f"[LONGBENCH-V2] Row order: {args.row_order}")
     print(f"[LONGBENCH-V2] Mode: {args.mode}")
-    if effective_search_mode == "iterative":
+    if effective_fields["search_mode"] == "iterative":
         print(
             "[LONGBENCH-V2] Retrieval config: "
             "search_mode=iterative, "
-            f"scan_min_ratio={effective_scan_min_chunk_ratio}, "
-            f"scan_max_ratio={effective_scan_max_chunk_ratio}, "
-            f"scan_min={effective_scan_min_chunks}, "
-            f"scan_max={effective_scan_max_chunks}, scan_max_tokens={effective_scan_max_tokens}, "
-            f"empty_ledger_fallback_ratio={effective_scan_empty_ledger_fallback_ratio}, "
-            f"memory_max_chars={effective_iterative_memory_max_chars}, "
-            f"reader_version={effective_iterative_reader_version}"
+            f"scan_min_ratio={effective_fields['scan_min_chunk_ratio']}, "
+            f"scan_max_ratio={effective_fields['scan_max_chunk_ratio']}, "
+            f"scan_min={effective_fields['scan_min_chunks']}, "
+            f"scan_max={effective_fields['scan_max_chunks']}, "
+            f"scan_max_tokens={effective_fields['scan_max_tokens']}, "
+            f"empty_ledger_fallback_ratio={effective_fields['scan_empty_ledger_fallback_ratio']}, "
+            f"memory_max_chars={effective_fields['iterative_memory_max_chars']}, "
+            f"reader_version={effective_fields['iterative_reader_version']}"
         )
     else:
         print(
             "[LONGBENCH-V2] Retrieval config: "
             f"top_k={args.top_k}, rerank_top={args.rerank_top}, "
-            f"synthesis_max_chunks={args.synthesis_max_chunks}, search_mode={effective_search_mode}"
+            f"reranker_disabled={effective_fields['reranker_disabled']}, "
+            f"reranker_threshold={effective_fields['reranker_relevance_threshold']}, "
+            f"reranker_max_length={effective_fields['reranker_max_length']}, "
+            f"synthesis_max_chunks={effective_fields['synthesis_max_chunks']}, "
+            f"search_mode={effective_fields['search_mode']}"
         )
     print(f"[LONGBENCH-V2] Output dir: {out_dir}")
     if cache_state_enabled:
@@ -644,7 +724,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
     shared_embedder = scs.EmbeddingEngine()
-    shared_reranker = None if args.disable_reranker or effective_search_mode == "iterative" else scs.Reranker()
+    shared_reranker = None if effective_fields["reranker_disabled"] else scs.Reranker()
 
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
@@ -708,11 +788,10 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         query = build_query(row)
         before = _snapshot_metrics(controller.metrics)
         t0 = time.time()
-        search_top_k = 0 if effective_search_mode == "iterative" else args.top_k
         output = controller.search(
             query,
-            top_k=search_top_k,
-            rerank_top=args.rerank_top,
+            top_k=effective_config["search_top_k"],
+            rerank_top=effective_config["search_rerank_top"],
             synthesize=True,
             cache_read=cache_state_enabled,
         )
@@ -752,30 +831,7 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "token_count": row.get("token_count", ""),
             "context_chars": len(row.get("context", "")),
             "context_token_estimate": estimate_context_tokens(row),
-            "top_k": args.top_k,
-            "top_k_effective": None if effective_search_mode == "iterative" else args.top_k,
-            "iterative_top_k_ignored": effective_search_mode == "iterative",
-            "rerank_top": args.rerank_top,
-            "synthesis_max_chunks": effective_synthesis_max_chunks,
-            "search_mode": effective_search_mode,
-            "iterative_reader_version": effective_iterative_reader_version,
-            "scan_min_chunk_ratio": effective_scan_min_chunk_ratio,
-            "scan_max_chunk_ratio": effective_scan_max_chunk_ratio,
-            "scan_min_chunks": effective_scan_min_chunks,
-            "scan_max_chunks": effective_scan_max_chunks,
-            "scan_max_tokens": effective_scan_max_tokens,
-            "scan_empty_ledger_fallback_ratio": effective_scan_empty_ledger_fallback_ratio,
-            "iterative_packed_fallback_input_token_budget": effective_iterative_packed_fallback_input_token_budget,
-            "iterative_memory_max_chars": effective_iterative_memory_max_chars,
-            "scan_order": effective_scan_order,
-            "doc_chunk_size": effective_doc_chunk_size,
-            "doc_chunk_overlap": effective_doc_chunk_overlap,
-            "doc_chunk_tokens": effective_doc_chunk_tokens,
-            "doc_chunk_overlap_tokens": effective_doc_chunk_overlap_tokens,
-            "doc_chunk_tokenizer_model": effective_doc_chunk_tokenizer_model,
-            "embedding_query_instruction": effective_embedding_query_instruction,
-            "embedding_batch_size": effective_embedding_batch_size,
-            "embedding_max_length": effective_embedding_max_length,
+            **effective_fields,
             "ingested_chunks": ingested_chunks,
             "expected_cache_type": row.get("expected_cache_type", ""),
             "expected_from_cache": row.get("expected_from_cache", ""),
@@ -910,35 +966,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "openai_compat_extra_body": openai_compatible_extra_body_config,
         "executor_model": args.executor_model,
         "evaluator_model": args.evaluator_model,
-        "top_k": args.top_k,
-        "top_k_effective": None if effective_search_mode == "iterative" else args.top_k,
-        "iterative_top_k_ignored": effective_search_mode == "iterative",
-        "rerank_top": args.rerank_top,
-        "synthesis_max_chunks": effective_synthesis_max_chunks,
-        "mcq_prompt_style": effective_mcq_prompt_style,
-        "search_mode": effective_search_mode,
-        "iterative_reader_version": effective_iterative_reader_version,
-        "scan_min_chunk_ratio": effective_scan_min_chunk_ratio,
-        "scan_max_chunk_ratio": effective_scan_max_chunk_ratio,
-        "scan_min_chunks": effective_scan_min_chunks,
-        "scan_max_chunks": effective_scan_max_chunks,
-        "scan_max_tokens": effective_scan_max_tokens,
-        "scan_empty_ledger_fallback_ratio": effective_scan_empty_ledger_fallback_ratio,
-        "iterative_packed_fallback_input_token_budget": effective_iterative_packed_fallback_input_token_budget,
-        "iterative_memory_max_chars": effective_iterative_memory_max_chars,
-        "scan_order": effective_scan_order,
-        "doc_chunk_size": effective_doc_chunk_size,
-        "doc_chunk_overlap": effective_doc_chunk_overlap,
-        "doc_chunk_tokens": effective_doc_chunk_tokens,
-        "doc_chunk_overlap_tokens": effective_doc_chunk_overlap_tokens,
-        "doc_chunk_tokenizer_model": effective_doc_chunk_tokenizer_model,
-        "embedding_query_instruction": effective_embedding_query_instruction,
-        "embedding_batch_size": effective_embedding_batch_size,
-        "embedding_max_length": effective_embedding_max_length,
-        "synthesis_input_token_budget": effective_synthesis_input_token_budget,
+        **effective_fields,
         "cache_save_interval": args.cache_save_interval,
         "row_order": args.row_order,
-        "reranker_disabled": bool(args.disable_reranker or effective_search_mode == "iterative"),
         "row_types_requested": row_types,
         "max_rows": args.max_rows,
         "rows_selected": len(bridge_rows),

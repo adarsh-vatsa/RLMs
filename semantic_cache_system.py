@@ -30,8 +30,6 @@ from dotenv import load_dotenv
 # Environment Setup
 # ---------------------------------------------------------------------------
 
-#dotenv_path = '/Users/zeitgeist/research/RLMs/.env'
-#load_dotenv(dotenv_path)
 load_dotenv()  # loads .env from current/project directory
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic").strip().lower()
 def _default_api_key_env_for_provider(provider: str) -> str | None:
@@ -76,6 +74,21 @@ def _env_float(name: str, default: float) -> float:
         print(f"[CONFIG] Ignoring invalid {name}={value!r}; using {default}")
         return default
 
+
+VALID_MCQ_PROMPT_STYLES = {"default", "strict"}
+
+
+def _normalize_mcq_prompt_style(value: str | None, *, warn: bool = True) -> str:
+    style = str(value or "default").strip().lower() or "default"
+    if style in VALID_MCQ_PROMPT_STYLES:
+        return style
+    if warn:
+        print(
+            f"[CONFIG] Ignoring invalid SEMANTIC_CACHE_MCQ_PROMPT_STYLE={value!r}; "
+            "using 'default'"
+        )
+    return "default"
+
 # ---------------------------------------------------------------------------
 # Model Config
 # ---------------------------------------------------------------------------
@@ -86,8 +99,6 @@ EMBEDDING_BATCH_SIZE = _env_int("SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE", 16)
 EMBEDDING_MAX_LENGTH = _env_int("SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH", 8192)
 EXECUTOR_MODEL = "claude-sonnet-4-20250514"
 EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
-OPENROUTER_EXECUTOR_MODEL = "anthropic/claude-sonnet-4.5"
-OPENROUTER_EVALUATOR_MODEL = "anthropic/claude-haiku-4.5"
 OPENAI_COMPAT_EXECUTOR_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 OPENAI_COMPAT_EVALUATOR_MODEL = "mistralai/Mistral-Small-24B-Instruct-2501"
 if LLM_PROVIDER == "openai_compatible":
@@ -113,7 +124,7 @@ MIN_RERANKED_RESULTS = _env_int("SEMANTIC_CACHE_MIN_RERANKED_RESULTS", 5)
 SYNTHESIS_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS", 5)
 SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SYNTHESIS_MAX_TOKENS", 512)
 MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 32)
-MCQ_PROMPT_STYLE = os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default").strip().lower() or "default"
+MCQ_PROMPT_STYLE = _normalize_mcq_prompt_style(os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default"))
 SYNTHESIS_INPUT_TOKEN_BUDGET = _env_int("SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET", 0)
 SEARCH_MODE = os.getenv("SEMANTIC_CACHE_SEARCH_MODE", "packed").strip().lower() or "packed"
 if SEARCH_MODE not in {"packed", "iterative"}:
@@ -125,7 +136,7 @@ SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 SCAN_ORDER = "faiss_ranked"
-ITERATIVE_READER_VERSION = 7
+ITERATIVE_READER_VERSION = 8
 ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
@@ -491,7 +502,8 @@ def _coerce_bool(value) -> bool:
 
 
 def _mcq_system_prompt() -> str:
-    if MCQ_PROMPT_STYLE == "strict":
+    style = _normalize_mcq_prompt_style(MCQ_PROMPT_STYLE, warn=False)
+    if style == "strict":
         return (
             "You are solving a long-context multiple-choice question using ONLY the "
             "provided documents. The query includes choices A, B, C, and D. Silently "
@@ -911,16 +923,45 @@ def _relation_choice_codes(query: str) -> set[str]:
     return codes
 
 
-def _filter_relation_notes_for_query(notes: list[str], query: str | None) -> list[str]:
-    codes = _relation_choice_codes(query or "")
-    if not codes:
-        return notes
-    filtered: list[str] = []
-    for note in notes:
-        text = str(note or "").lower()
-        if any(re.search(rf"\b{re.escape(code)}\b", text) for code in codes):
-            filtered.append(note)
-    return filtered
+def _relation_choice_code_by_letter(query: str) -> dict[str, str]:
+    if not _is_relation_type_query(query):
+        return {}
+    candidate_codes = _relation_choice_codes(query)
+    codes_by_letter: dict[str, str] = {}
+    for letter, choice_text in _extract_choice_texts(query).items():
+        normalized = choice_text.strip().lower()
+        if normalized in candidate_codes:
+            codes_by_letter[letter] = normalized
+    return codes_by_letter
+
+
+def _relation_code_for_answer(query: str | None, answer: str | None) -> str:
+    choice = _normalize_choice_letter(answer)
+    if not choice:
+        return ""
+    return _relation_choice_code_by_letter(query or "").get(choice, "")
+
+
+def _ledger_has_mapping_for_relation_answer(ledger: dict, query: str | None, answer: str | None) -> bool:
+    code = _relation_code_for_answer(query, answer)
+    if not code:
+        return False
+    for mapping in ledger.get("code_mappings") or []:
+        if not isinstance(mapping, dict):
+            continue
+        if str(mapping.get("code") or "").strip().lower() == code:
+            return True
+    return False
+
+
+def _relation_answer_mapping_fallback_reason(ledger: dict, query: str | None, answer: str | None) -> str:
+    if not _is_relation_type_query(query or ""):
+        return ""
+    if not _normalize_choice_letter(answer):
+        return ""
+    if _ledger_has_mapping_for_relation_answer(ledger, query, answer):
+        return ""
+    return "relation_code_mapping_missing"
 
 
 def _relation_target_entities(query: str) -> list[str]:
@@ -1089,6 +1130,21 @@ def _normalize_target_fact(item, *, chunk_index: int | None, default_source: str
     return {"source": source, "chunk_index": normalized_chunk_index, "note": note}
 
 
+def _looks_like_relation_code_mapping_fact(note: str, query: str | None) -> bool:
+    candidate_codes = _relation_choice_codes(query or "")
+    if not candidate_codes:
+        return False
+    text = str(note or "").lower()
+    if not any(re.search(rf"\b{re.escape(code)}\b", text) for code in candidate_codes):
+        return False
+    return bool(
+        re.search(
+            r"\b(corresponds?|maps?|mapped|mapping|means|meaning|standard code|code for|relation code)\b",
+            text,
+        )
+    )
+
+
 def _normalize_code_mapping(item, *, chunk_index: int, query: str | None) -> dict | None:
     candidate_codes = sorted(_relation_choice_codes(query or ""))
     relation_query = bool(candidate_codes)
@@ -1192,6 +1248,7 @@ def _update_evidence_ledger(
     ledger.setdefault("visited_chunks", [])
     ledger.setdefault("best_choice", None)
     ledger.setdefault("best_choice_rationale", "")
+    missing_relation_mapping_question = ""
 
     if chunk_index not in ledger["visited_chunks"]:
         ledger["visited_chunks"].append(chunk_index)
@@ -1231,6 +1288,8 @@ def _update_evidence_ledger(
             target_fact_items.append(value)
     for item in target_fact_items:
         fact = _normalize_target_fact(item, chunk_index=chunk_index)
+        if fact and _looks_like_relation_code_mapping_fact(fact.get("note", ""), query):
+            continue
         _append_unique_dict(ledger["target_facts"], fact, fields=("source", "chunk_index", "note"), limit=64)
 
     mapping_items: list = []
@@ -1245,29 +1304,44 @@ def _update_evidence_ledger(
         _append_unique_dict(ledger["code_mappings"], mapping, fields=("chunk_index", "code", "example"), limit=64)
 
     if any(key in decision for key in ("best_choice", "supported_choice", "answer", "choice")):
-        ledger["best_choice"] = _normalize_choice_letter(
+        proposed_choice = _normalize_choice_letter(
             decision.get("best_choice")
             or decision.get("supported_choice")
             or decision.get("answer")
             or decision.get("choice")
         )
+        if proposed_choice:
+            if _is_relation_type_query(query or "") and not _ledger_has_mapping_for_relation_answer(
+                ledger,
+                query,
+                proposed_choice,
+            ):
+                proposed_code = _relation_code_for_answer(query, proposed_choice)
+                if proposed_code:
+                    missing_relation_mapping_question = (
+                        f"Need an explicit demonstration mapping for relation code {proposed_code} "
+                        f"before choosing {proposed_choice}."
+                    )
+            else:
+                ledger["best_choice"] = proposed_choice
 
     rationale = _bounded_text(
         decision.get("best_choice_rationale") or decision.get("rationale") or decision.get("reason"),
         limit=800,
     )
-    if rationale:
+    if rationale and not missing_relation_mapping_question:
         ledger["best_choice_rationale"] = rationale
 
     if "open_questions" in decision:
         ledger["open_questions"] = _dedupe_open_questions(_coerce_note_list(decision.get("open_questions")), limit=5)
+    if missing_relation_mapping_question:
+        ledger["open_questions"] = _dedupe_open_questions(
+            [*(ledger.get("open_questions") or []), missing_relation_mapping_question],
+            limit=5,
+        )
 
     _trim_iterative_memory(ledger)
     return ledger
-
-
-def _ledger_has_unresolved_contradictions(ledger: dict, choice: str | None) -> bool:
-    return bool(ledger.get("open_questions"))
 
 
 def _query_requires_comparative_scan(query: str) -> bool:
@@ -1308,7 +1382,10 @@ def _iterative_task_guidance(query: str) -> str:
             "candidate relation codes; discard unrelated demonstration codes. Store "
             "those examples in code_mappings, not generic prose. If the target "
             "document appears, record the target entity relation facts in "
-            f"target_facts.{code_guidance}"
+            "target_facts. Do not put guessed code meanings in target_facts. Only "
+            "set best_choice when code_mappings contain an explicit, entity-type-compatible "
+            "demonstration for that answer's code; otherwise keep best_choice null "
+            f"and needs_more_context true.{code_guidance}"
         )
     if re.search(r"(?i)\b(symboli[sz]e|theme|novel|literary|meaning)\b", text):
         return (
@@ -1331,6 +1408,7 @@ def _should_stop_iterative_scan(
     min_chunks: int,
     comparative_required_count: int,
     comparative_query: bool,
+    query: str | None = None,
 ) -> tuple[bool, str]:
     decision = decision if isinstance(decision, dict) else {}
     if visited_count < max(1, int(min_chunks)):
@@ -1348,6 +1426,9 @@ def _should_stop_iterative_scan(
         return False, "needs_more_context"
     if ledger.get("open_questions"):
         return False, "open_questions_remain"
+    relation_mapping_reason = _relation_answer_mapping_fallback_reason(ledger, query, choice)
+    if relation_mapping_reason:
+        return False, relation_mapping_reason
     return True, "answer_found"
 
 
@@ -1662,7 +1743,6 @@ class ExecutionMetrics:
         self.parallel_chunk_evaluations = 0   # How many times we used parallel chunking
         self.ephemeral_retrievals = 0         # Large results served but not appended
         self.recursive_summarizations = 0     # Oversized results chunked/summarized
-        self.pre_warm_entries = 0             # Entries added during pre-warming
         self.grounded_results = 0             # Results verified against source text
         self.partial_results = 0              # Results partially grounded
         self.inferred_results = 0             # Results not found in source (potential hallucination)
@@ -1716,63 +1796,6 @@ class ExecutionMetrics:
             "total_tokens": total_input_tokens + total_output_tokens,
             "cost": total_cost,
         }
-
-    def print_summary(self):
-        duration = (self.end_time or time.time()) - (self.start_time or time.time())
-        totals = self.get_totals()
-        total_cost = totals["cost"]
-        total_calls = totals["calls"]
-        total_cache_events = self.exact_hits + self.semantic_hits + self.knowledge_hits
-        total_queries = total_cache_events + self.cache_misses
-
-        print(f"\n{'='*65}")
-        print(f"  TWO-STAGE SEMANTIC CACHE — EXECUTION SUMMARY")
-        print(f"{'='*65}")
-        print(f"  Time Elapsed           : {duration:.2f}s")
-        print(f"  Total Queries Processed: {total_queries}")
-        print(f"  Total API Calls Made   : {total_calls}")
-        print(f"  Total API Cost         : ${total_cost:.6f}")
-        print(f"{'─'*65}")
-        print(f"  CACHE PERFORMANCE")
-        print(f"    Exact Hits           : {self.exact_hits}")
-        print(f"    Semantic Hits (Sniper): {self.semantic_hits}")
-        print(f"    Knowledge Hits       : {self.knowledge_hits}")
-        print(f"    Cache Misses         : {self.cache_misses}")
-        if total_queries > 0:
-            hit_rate = (total_cache_events / total_queries) * 100
-            print(f"    Overall Hit Rate     : {hit_rate:.1f}%")
-        print(f"{'─'*65}")
-        print(f"  ADVANCED FEATURES")
-        print(f"    Parallel Chunk Evals : {self.parallel_chunk_evaluations}")
-        print(f"    Ephemeral Retrievals : {self.ephemeral_retrievals}")
-        print(f"    Recursive Summarize  : {self.recursive_summarizations}")
-        print(f"    Pre-Warmed Entries   : {self.pre_warm_entries}")
-        print(f"    Knowledge Verifier   : {self.knowledge_verifier_calls} calls")
-        if self.knowledge_verifier_calls > 0:
-            print(f"      Allowed / Rejected : {self.knowledge_verifier_allowed} / {self.knowledge_verifier_rejected}")
-        print(f"{'─'*65}")
-        total_provenance = self.grounded_results + self.partial_results + self.inferred_results
-        print(f"  SOURCE PROVENANCE")
-        print(f"    Grounded (verified)  : {self.grounded_results}")
-        print(f"    Partially Grounded   : {self.partial_results}")
-        print(f"    Inferred (unverified): {self.inferred_results}")
-        if total_provenance > 0:
-            grounded_pct = (self.grounded_results / total_provenance) * 100
-            print(f"    Grounding Rate       : {grounded_pct:.1f}%")
-        total_consensus = self.consensus_agreed + self.consensus_disputed
-        print(f"    Consensus Agreed     : {self.consensus_agreed}")
-        print(f"    Consensus Disputed   : {self.consensus_disputed}")
-        if total_consensus > 0:
-            agree_pct = (self.consensus_agreed / total_consensus) * 100
-            print(f"    Consensus Rate       : {agree_pct:.1f}%")
-        print(f"{'─'*65}")
-        print(f"  COST BREAKDOWN BY MODEL")
-        for model, data in self.stats.items():
-            if data['calls'] > 0:
-                print(f"    {model}:")
-                print(f"      Calls: {data['calls']}  |  Tokens: {data['input_tokens']}in / {data['output_tokens']}out  |  Cost: ${data['cost']:.6f}")
-        print(f"{'='*65}\n")
-
 
 # ============================================================================
 # 2. SEMANTIC CACHE CONTROLLER — The core Two-Stage engine
@@ -2328,8 +2351,15 @@ class SemanticCacheController:
     # ------------------------------------------------------------------
     # STORE — Add a new entry to the cache
     # ------------------------------------------------------------------
-    def store(self, query: str, context: str, result: str, model_used: str = "unknown",
-              sources: List[dict] = None):
+    def store(
+        self,
+        query: str,
+        context: str,
+        result: str,
+        model_used: str = "unknown",
+        sources: List[dict] = None,
+        consensus_info: dict | None = None,
+    ):
         """Store a query-result pair with source provenance and knowledge extraction."""
         chunk_hash = self._get_chunk_hash(context)
         data_scope_hash = self.data_scope_hash or chunk_hash
@@ -2356,6 +2386,8 @@ class SemanticCacheController:
             "grounding_info": grounding_info,
             "data_scope_hash": data_scope_hash,
         }
+        if consensus_info is not None:
+            entry["consensus_info"] = consensus_info
         self.cache[chunk_hash].append(entry)
 
         # Knowledge extraction — decompose answer into (subj, rel, obj) triples
@@ -2734,7 +2766,11 @@ class SemanticCacheController:
             "for facts about the target question/document. code_mappings must be an array "
             "of objects with code, relation, and example. For relation tasks, include only "
             "code_mappings whose code is one of the current option codes. best_choice must "
-            "be A, B, C, D, or null, reflecting all inspected chunks so far. "
+            "be A, B, C, D, or null, reflecting all inspected chunks so far. For "
+            "relation-code tasks, set best_choice only when an explicit code_mappings "
+            "entry supports that answer's code with an entity-type-compatible "
+            "demonstration; do not infer code meanings from code names, target facts, "
+            "or external schemas. "
             "open_questions must contain only currently "
             "unresolved critical questions and must be at most three items. Use [] for "
             "empty lists. Do not quote long passages. Do not explain outside JSON. Use "
@@ -2788,12 +2824,17 @@ class SemanticCacheController:
             "every choice A, B, C, and D from the cumulative memory, target_facts, "
             "code_mappings, rationale, and open_questions. For many-shot "
             "relation tasks, use code_mappings only when their relation code is one of "
-            "the current choice codes. Return keys: answer, reason, needs_more_context. "
+            "the current choice codes. A relation-code answer is grounded only when "
+            "code_mappings contain that exact code with an entity-type-compatible "
+            "demonstration. Do not infer code meanings from target_facts, code names, "
+            "or external schemas. If no explicit mapping supports the selected code, "
+            "set needs_more_context=true. Return keys: answer, reason, needs_more_context. "
             "answer must be A, B, C, or D."
         )
         adjudication_payload = {
             "choices": choice_texts,
             "relation_choice_codes": relation_codes,
+            "relation_choice_code_by_letter": _relation_choice_code_by_letter(query),
             "ledger_best_choice_prior": ledger.get("best_choice"),
             "iterative_memory_ledger": ledger,
         }
@@ -2836,7 +2877,11 @@ class SemanticCacheController:
             "adjudication was empty, invalid, or asked for more context. Re-evaluate every "
             "choice from the completed memory ledger and packed inspected chunks below. Treat the "
             "ledger as noisy notes, not as a final answer. Use only these materials and "
-            "the question choices. Return only one answer letter: A, B, C, or D."
+            "the question choices. For relation-code tasks, choose a code only when "
+            "the inspected chunks contain explicit demonstrations for that code and "
+            "the demonstration is compatible with the target entity types. Do not use "
+            "external schemas or guessed code meanings. Return only one answer letter: "
+            "A, B, C, or D."
         )
         source_text, pack_info = _pack_sources_for_input_budget(
             query=query,
@@ -2959,6 +3004,7 @@ class SemanticCacheController:
                 min_chunks=early_stop_min_chunks,
                 comparative_required_count=scan_budget,
                 comparative_query=comparative_query,
+                query=query,
             )
             stop_reason = reason
             if should_stop:
@@ -2974,6 +3020,10 @@ class SemanticCacheController:
                 answer, final_decision = self._finalize_iterative_answer(query, ledger)
                 final_adjudication_call_count = 1
                 needs_fallback, fallback_reason = _final_decision_needs_packed_fallback(answer, final_decision)
+                relation_fallback_reason = _relation_answer_mapping_fallback_reason(ledger, query, answer)
+                if relation_fallback_reason:
+                    needs_fallback = True
+                    fallback_reason = relation_fallback_reason
                 if needs_fallback:
                     packed_fallback_reason = fallback_reason
                     answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
@@ -3086,7 +3136,14 @@ class SemanticCacheController:
             self._last_retrieval_info.update(iterative_info)
 
         consensus = self.consensus_verify(query, source_context, answer, EXECUTOR_MODEL)
-        self.store(query, source_context, answer, model_used=EXECUTOR_MODEL, sources=selected_sources)
+        self.store(
+            query,
+            source_context,
+            answer,
+            model_used=EXECUTOR_MODEL,
+            sources=selected_sources,
+            consensus_info=consensus,
+        )
 
         return {
             "query": query,
@@ -3343,7 +3400,14 @@ class SemanticCacheController:
 
         # ── Stage 3: Verify and cache ──
         consensus = self.consensus_verify(query, source_text, answer, model)
-        self.store(query, source_text, answer, model_used=model, sources=selected_sources)
+        self.store(
+            query,
+            source_text,
+            answer,
+            model_used=model,
+            sources=selected_sources,
+            consensus_info=consensus,
+        )
 
         return {
             "query": query, "answer": answer,
@@ -3514,79 +3578,8 @@ class SemanticCacheController:
             print(f"  [CACHE] Loaded {total} entries, {len(self.knowledge)} facts")
         return total > 0
 
-    def save_doc_index(self, path: Path):
-        """Save document FAISS index, chunks, and corpus config (after ingest)."""
-        path = Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        if self.doc_index:
-            self.doc_index.save(path)
-        if hasattr(self, '_doc_chunks'):
-            with open(path / "chunks.json", "w") as f:
-                json.dump(self._doc_chunks, f)
-        # Write corpus identity
-        config = {
-            "corpus_id": self.corpus_id,
-            "corpus_domain": self.corpus_domain,
-            "doc_vectors": self.doc_index.total if self.doc_index else 0,
-            "cache_entries": 0,
-            "knowledge_facts": 0,
-            "embedding_model": EMBEDDING_MODEL,
-            "embedding_dim": EMBEDDING_DIM,
-            "embedding_batch_size": max(1, int(EMBEDDING_BATCH_SIZE)),
-            "embedding_max_length": max(1, int(EMBEDDING_MAX_LENGTH)),
-            "data_scope_hash": self.data_scope_hash,
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        }
-        self.corpus_config = config
-        with open(path / "corpus_config.json", "w") as f:
-            json.dump(config, f, indent=2)
-        print(f"  [INDEX] Saved doc index to {path} (corpus: {self.corpus_id})")
 # ============================================================================
-# 3. CACHE PRE-WARMER — Programmatic Day-1 saturation
-# ============================================================================
-class CachePreWarmer:
-    """Populate cache entries by sweeping corpus chunks with template queries."""
-
-    def __init__(self, agent):
-        """
-        Args:
-            agent: An AutonomousAgent instance whose cached_query() method
-                   we call to populate the cache.
-        """
-        self.agent = agent
-
-    def warm(self, corpus_chunks: list, sweep_queries: list):
-        """
-        Programmatically sweep the corpus to saturate the cache.
-
-        Args:
-            corpus_chunks: List of document text chunks.
-            sweep_queries: List of query templates to run against each chunk.
-        """
-        total = len(corpus_chunks) * len(sweep_queries)
-        print(f"\n{'─'*65}")
-        print(f"  [PRE-WARMER] Starting programmatic cache warming...")
-        print(f"  [PRE-WARMER] {len(corpus_chunks)} chunks × {len(sweep_queries)} queries = {total} operations")
-        print(f"{'─'*65}")
-
-        count = 0
-        for i, chunk in enumerate(corpus_chunks):
-            if not chunk.strip():
-                continue
-            for query in sweep_queries:
-                count += 1
-                print(f"\n  [PRE-WARM {count}/{total}] chunk={i}, query='{query[:50]}...'")
-                self.agent.cached_query(query, chunk)
-                time.sleep(0.5)  # Rate limit protection
-
-        self.agent.metrics.pre_warm_entries = self.agent.cache.get_total_entries()
-        print(f"\n  [PRE-WARMER] ✓ Complete. Cache now holds {self.agent.metrics.pre_warm_entries} entries.")
-        print(f"{'─'*65}\n")
-
-
-# ============================================================================
-# 4. HETEROGENEOUS MODEL ROUTER
+# 3. HETEROGENEOUS MODEL ROUTER
 # ============================================================================
 class Router:
     """Simple keyword router for evaluator-class versus executor-class calls."""
@@ -3601,7 +3594,7 @@ class Router:
 
 
 # ============================================================================
-# 5. AUTONOMOUS AGENT — The transparent interceptor
+# 4. AUTONOMOUS AGENT — The transparent interceptor
 # ============================================================================
 class AutonomousAgent:
     """Minimal agent facade that routes queries through the semantic cache."""
@@ -3646,7 +3639,7 @@ class AutonomousAgent:
         consensus = self.cache.consensus_verify(query, context, result, model)
 
         # Store in cache with source provenance + consensus result
-        self.cache.store(query, context, result, model_used=model)
+        self.cache.store(query, context, result, model_used=model, consensus_info=consensus)
 
         # Apply Context Collapse Guard to the fresh result too
         guarded = self.cache._apply_context_collapse_guard(result, query, source_context=context)
