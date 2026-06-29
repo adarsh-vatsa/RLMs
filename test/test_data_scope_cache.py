@@ -635,7 +635,11 @@ class DataScopedSearchCacheTests(unittest.TestCase):
             scs, "create_llm_message", side_effect=fake_create_llm_message
         ):
             parsed = controller._inspect_iterative_chunk(
-                "Document: entity0 A is entity1 B.\nQuestion: relation type between entity0 and entity1?",
+                (
+                    "Document: entity0 A is entity1 B.\n"
+                    "Question: what is the relation type between entity0 and entity1?\n\n"
+                    "Choices:\nA. aaa\nB. abb\nC. acc\nD. add"
+                ),
                 scs._new_evidence_ledger(),
                 {"text": "chunk text", "metadata": {"chunk_index": 4}},
             )
@@ -648,7 +652,78 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertIn("best_choice must be A, B, C, D, or null", captured["system"])
         self.assertNotIn("confidence", captured["system"])
         self.assertIn("never replace them with entities from demonstrations", captured["system"])
-        self.assertIn("Current relation option codes", captured["messages"][0]["content"])
+        self.assertIn("Current symbolic option codes", captured["messages"][0]["content"])
+
+    def test_event_code_ledger_filters_examples_to_current_option_codes(self):
+        query = (
+            "Question: Only considering the given document, what is the event type of approach?\n\n"
+            "Choices:\n"
+            "A. aba\n"
+            "B. aai\n"
+            "C. acd\n"
+            "D. aaz\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        ledger = scs._new_evidence_ledger(query)
+        decision = {
+            "status": "partial",
+            "code_mappings": [
+                "returning -> aaz",
+                "blackouts -> aai",
+                "hired -> aew",
+            ],
+            "target_facts": ["Code aaz corresponds to movement."],
+        }
+
+        scs._update_evidence_ledger(ledger, decision, chunk_index=5, query=query)
+
+        self.assertEqual([item["code"] for item in ledger["code_mappings"]], ["aaz", "aai"])
+        self.assertFalse(any(item["code"] == "aew" for item in ledger["code_mappings"]))
+        self.assertFalse(
+            any("corresponds" in item["note"].lower() for item in ledger["target_facts"])
+        )
+        self.assertTrue(
+            any("Current answer option symbolic codes" in item["note"] for item in ledger["target_facts"])
+        )
+
+    def test_event_code_ledger_requires_mapping_before_accepting_best_choice(self):
+        query = (
+            "Question: Only considering the given document, what is the event type of approach?\n\n"
+            "Choices:\n"
+            "A. aba\n"
+            "B. aai\n"
+            "C. acd\n"
+            "D. aaz\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        ledger = scs._new_evidence_ledger(query)
+        unsupported_decision = {
+            "status": "answer_found",
+            "best_choice": "D",
+            "best_choice_rationale": "aaz is plausible for approach",
+            "open_questions": [],
+            "needs_more_context": False,
+        }
+
+        scs._update_evidence_ledger(ledger, unsupported_decision, chunk_index=0, query=query)
+
+        self.assertIsNone(ledger["best_choice"])
+        self.assertEqual(ledger["best_choice_rationale"], "")
+        self.assertTrue(any("symbolic code aaz" in note for note in ledger["open_questions"]))
+
+        supported_decision = {
+            "status": "answer_found",
+            "code_mappings": [{"code": "aaz", "relation": "movement event", "example": "returning -> aaz"}],
+            "best_choice": "D",
+            "best_choice_rationale": "aaz has an explicit compatible demonstration",
+            "open_questions": [],
+            "needs_more_context": False,
+        }
+
+        scs._update_evidence_ledger(ledger, supported_decision, chunk_index=3, query=query)
+
+        self.assertEqual(ledger["best_choice"], "D")
+        self.assertEqual(ledger["best_choice_rationale"], "aaz has an explicit compatible demonstration")
 
     def test_relation_early_stop_requires_mapping_for_selected_code(self):
         query = (
@@ -686,6 +761,55 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         ledger["code_mappings"] = [
             {"chunk_index": 1, "code": "acy", "relation": "nationality", "example": "person-country example"}
+        ]
+
+        should_stop, reason = scs._should_stop_iterative_scan(
+            decision=decision,
+            ledger=ledger,
+            visited_count=4,
+            min_chunks=1,
+            comparative_required_count=4,
+            comparative_query=False,
+            query=query,
+        )
+
+        self.assertTrue(should_stop)
+        self.assertEqual(reason, "answer_found")
+
+    def test_event_code_early_stop_requires_mapping_for_selected_code(self):
+        query = (
+            "Question: Only considering the given document, what is the event type of approach?\n\n"
+            "Choices:\n"
+            "A. aba\n"
+            "B. aai\n"
+            "C. acd\n"
+            "D. aaz\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        ledger = scs._new_evidence_ledger(query)
+        ledger["best_choice"] = "D"
+        decision = {
+            "status": "answer_found",
+            "best_choice": "D",
+            "open_questions": [],
+            "needs_more_context": False,
+        }
+
+        should_stop, reason = scs._should_stop_iterative_scan(
+            decision=decision,
+            ledger=ledger,
+            visited_count=4,
+            min_chunks=1,
+            comparative_required_count=4,
+            comparative_query=False,
+            query=query,
+        )
+
+        self.assertFalse(should_stop)
+        self.assertEqual(reason, "symbolic_code_mapping_missing")
+
+        ledger["code_mappings"] = [
+            {"chunk_index": 1, "code": "aaz", "relation": "movement event", "example": "returning -> aaz"}
         ]
 
         should_stop, reason = scs._should_stop_iterative_scan(
@@ -1067,6 +1191,115 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["iterative_scan_stop_reason"], "relation_code_mapping_missing")
         self.assertEqual(result["retrieval"]["iterative_scan_final_answer"], "B")
         packed_fallback.assert_called_once()
+
+    def test_iterative_search_uses_packed_fallback_when_event_code_final_lacks_mapping(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, {"chunk_index": 0}), (0.86, {"chunk_index": 1})]
+        )
+        controller._doc_chunks = ["target event document", "many-shot examples without target code"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
+        inspections = [
+            {
+                "status": "partial",
+                "memory_update": "The target event is approach, but no matching code demo appears.",
+                "target_facts": ["approach is the target event."],
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "memory_update": "Examples contain other option codes only.",
+                "code_mappings": [{"code": "aai", "relation": "blackouts", "example": "blackouts -> aai"}],
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+        ]
+        query = (
+            "Question: Only considering the given document, what is the event type of approach?\n\n"
+            "Choices:\n"
+            "A. aba\n"
+            "B. aai\n"
+            "C. acd\n"
+            "D. aaz\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(controller, "_inspect_iterative_chunk", side_effect=inspections), patch.object(
+            controller,
+            "_finalize_iterative_answer",
+            return_value=("D", {"answer": "D", "reason": "aaz seems plausible"}),
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", return_value=("B", {"answer": "B"})
+        ) as packed_fallback, patch.object(
+            controller, "consensus_verify", return_value={"consensus": "AGREED"}
+        ), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative(query, top_k=2, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "B")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_adjudication_call_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 1)
+        self.assertEqual(
+            result["retrieval"]["iterative_scan_packed_fallback_reason"],
+            "symbolic_code_mapping_missing",
+        )
+        self.assertEqual(result["retrieval"]["iterative_scan_stop_reason"], "symbolic_code_mapping_missing")
+        self.assertEqual(result["retrieval"]["iterative_scan_final_answer"], "D")
+        packed_fallback.assert_called_once()
+
+    def test_iterative_ordering_query_scans_faiss_subset_in_document_order(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [
+                (0.91, {"chunk_index": 2}),
+                (0.86, {"chunk_index": 0}),
+                (0.82, {"chunk_index": 1}),
+            ]
+        )
+        controller._doc_chunks = ["first narrative evidence", "second narrative evidence", "third narrative evidence"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(3)]
+        seen_chunk_indices = []
+
+        def fake_inspect(query, ledger, result):
+            seen_chunk_indices.append(result["metadata"]["chunk_index"])
+            return {
+                "status": "partial",
+                "memory_update": f"visited chunk {result['metadata']['chunk_index']}",
+                "best_choice": None,
+                "needs_more_context": True,
+            }
+
+        query = (
+            "Question: Which order of the narratives is correct?\n\n"
+            "Choices:\n"
+            "A. 123\n"
+            "B. 132\n"
+            "C. 213\n"
+            "D. 321\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 1.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 1.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(controller, "_inspect_iterative_chunk", side_effect=fake_inspect), patch.object(
+            controller, "_finalize_iterative_answer", return_value=("A", {"answer": "A", "reason": "ordered"})
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
+        ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative(query, top_k=3, rerank_top=1, synthesize=True)
+
+        self.assertEqual(seen_chunk_indices, [0, 1, 2])
+        self.assertEqual(result["answer"], "A")
 
     def test_iterative_search_uses_packed_fallback_when_final_needs_more_context(self):
         controller = make_controller()

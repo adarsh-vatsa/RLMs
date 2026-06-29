@@ -135,8 +135,8 @@ SCAN_MAX_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO", 0.50)
 SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
-SCAN_ORDER = "faiss_ranked"
-ITERATIVE_READER_VERSION = 8
+SCAN_ORDER = "faiss_ranked_ordering_document_order"
+ITERATIVE_READER_VERSION = 9
 ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
@@ -910,8 +910,18 @@ def _is_relation_type_query(query: str) -> bool:
     return bool(re.search(r"(?is)\brelation type\b.*\bentity\d+\b", query or ""))
 
 
-def _relation_choice_codes(query: str) -> set[str]:
-    if not _is_relation_type_query(query):
+def _is_symbolic_code_query(query: str) -> bool:
+    text = query or ""
+    if not re.search(r"(?is)\b(?:relation|event)\s+type\b", text):
+        return False
+    choices = _extract_choice_texts(text)
+    if len(choices) < 2:
+        return False
+    return all(re.fullmatch(r"[a-z]{2,8}", choice.strip().lower()) for choice in choices.values())
+
+
+def _symbolic_choice_codes(query: str) -> set[str]:
+    if not _is_symbolic_code_query(query):
         return set()
     codes: set[str] = set()
     for choice_text in _extract_choice_texts(query).values():
@@ -923,16 +933,35 @@ def _relation_choice_codes(query: str) -> set[str]:
     return codes
 
 
-def _relation_choice_code_by_letter(query: str) -> dict[str, str]:
+def _relation_choice_codes(query: str) -> set[str]:
     if not _is_relation_type_query(query):
+        return set()
+    return _symbolic_choice_codes(query)
+
+
+def _symbolic_choice_code_by_letter(query: str) -> dict[str, str]:
+    if not _is_symbolic_code_query(query):
         return {}
-    candidate_codes = _relation_choice_codes(query)
+    candidate_codes = _symbolic_choice_codes(query)
     codes_by_letter: dict[str, str] = {}
     for letter, choice_text in _extract_choice_texts(query).items():
         normalized = choice_text.strip().lower()
         if normalized in candidate_codes:
             codes_by_letter[letter] = normalized
     return codes_by_letter
+
+
+def _relation_choice_code_by_letter(query: str) -> dict[str, str]:
+    if not _is_relation_type_query(query):
+        return {}
+    return _symbolic_choice_code_by_letter(query)
+
+
+def _symbolic_code_for_answer(query: str | None, answer: str | None) -> str:
+    choice = _normalize_choice_letter(answer)
+    if not choice:
+        return ""
+    return _symbolic_choice_code_by_letter(query or "").get(choice, "")
 
 
 def _relation_code_for_answer(query: str | None, answer: str | None) -> str:
@@ -942,8 +971,8 @@ def _relation_code_for_answer(query: str | None, answer: str | None) -> str:
     return _relation_choice_code_by_letter(query or "").get(choice, "")
 
 
-def _ledger_has_mapping_for_relation_answer(ledger: dict, query: str | None, answer: str | None) -> bool:
-    code = _relation_code_for_answer(query, answer)
+def _ledger_has_mapping_for_symbolic_answer(ledger: dict, query: str | None, answer: str | None) -> bool:
+    code = _symbolic_code_for_answer(query, answer)
     if not code:
         return False
     for mapping in ledger.get("code_mappings") or []:
@@ -954,6 +983,13 @@ def _ledger_has_mapping_for_relation_answer(ledger: dict, query: str | None, ans
     return False
 
 
+def _ledger_has_mapping_for_relation_answer(ledger: dict, query: str | None, answer: str | None) -> bool:
+    code = _relation_code_for_answer(query, answer)
+    if not code:
+        return False
+    return _ledger_has_mapping_for_symbolic_answer(ledger, query, answer)
+
+
 def _relation_answer_mapping_fallback_reason(ledger: dict, query: str | None, answer: str | None) -> str:
     if not _is_relation_type_query(query or ""):
         return ""
@@ -962,6 +998,29 @@ def _relation_answer_mapping_fallback_reason(ledger: dict, query: str | None, an
     if _ledger_has_mapping_for_relation_answer(ledger, query, answer):
         return ""
     return "relation_code_mapping_missing"
+
+
+def _symbolic_answer_mapping_fallback_reason(ledger: dict, query: str | None, answer: str | None) -> str:
+    if _is_relation_type_query(query or ""):
+        return _relation_answer_mapping_fallback_reason(ledger, query, answer)
+    if not _is_symbolic_code_query(query or ""):
+        return ""
+    if not _normalize_choice_letter(answer):
+        return ""
+    if _ledger_has_mapping_for_symbolic_answer(ledger, query, answer):
+        return ""
+    return "symbolic_code_mapping_missing"
+
+
+def _is_ordering_query(query: str | None) -> bool:
+    text = query or ""
+    choices = _extract_choice_texts(text)
+    numeric_choices = len(choices) >= 2 and all(
+        re.fullmatch(r"\d{2,12}", choice.strip()) for choice in choices.values()
+    )
+    if not numeric_choices:
+        return False
+    return bool(re.search(r"(?is)\b(order|chronolog|sequence|narratives?)\b", text))
 
 
 def _relation_target_entities(query: str) -> list[str]:
@@ -1010,6 +1069,16 @@ def _query_target_facts(query: str | None) -> list[dict]:
     if question:
         facts.append({"source": "query", "chunk_index": None, "note": f"Target question: {question}"})
 
+    if _is_symbolic_code_query(query):
+        codes = sorted(_symbolic_choice_codes(query))
+        if codes:
+            facts.append(
+                {
+                    "source": "query",
+                    "chunk_index": None,
+                    "note": f"Current answer option symbolic codes: {', '.join(codes)}",
+                }
+            )
     if _is_relation_type_query(query):
         entities = _relation_target_entities(query)
         if entities:
@@ -1130,8 +1199,8 @@ def _normalize_target_fact(item, *, chunk_index: int | None, default_source: str
     return {"source": source, "chunk_index": normalized_chunk_index, "note": note}
 
 
-def _looks_like_relation_code_mapping_fact(note: str, query: str | None) -> bool:
-    candidate_codes = _relation_choice_codes(query or "")
+def _looks_like_symbolic_code_mapping_fact(note: str, query: str | None) -> bool:
+    candidate_codes = _symbolic_choice_codes(query or "")
     if not candidate_codes:
         return False
     text = str(note or "").lower()
@@ -1139,15 +1208,15 @@ def _looks_like_relation_code_mapping_fact(note: str, query: str | None) -> bool
         return False
     return bool(
         re.search(
-            r"\b(corresponds?|maps?|mapped|mapping|means|meaning|standard code|code for|relation code)\b",
+            r"\b(corresponds?|maps?|mapped|mapping|means|meaning|standard code|code for|relation code|event code|type code)\b",
             text,
         )
     )
 
 
 def _normalize_code_mapping(item, *, chunk_index: int, query: str | None) -> dict | None:
-    candidate_codes = sorted(_relation_choice_codes(query or ""))
-    relation_query = bool(candidate_codes)
+    candidate_codes = sorted(_symbolic_choice_codes(query or ""))
+    symbolic_query = bool(candidate_codes)
     if isinstance(item, dict):
         code = str(item.get("code") or item.get("relation_code") or "").strip().lower()
         relation = _bounded_text(item.get("relation") or item.get("meaning") or item.get("label"), limit=240)
@@ -1159,14 +1228,14 @@ def _normalize_code_mapping(item, *, chunk_index: int, query: str | None) -> dic
             if re.search(rf"\b{re.escape(candidate)}\b", text.lower()):
                 code = candidate
                 break
-        if not code and not relation_query:
+        if not code and not symbolic_query:
             match = re.search(r"\b([a-z]{2,8})\b", text.lower())
             code = match.group(1) if match else ""
         relation = ""
         example = text
     if not code:
         return None
-    if relation_query and code not in candidate_codes:
+    if symbolic_query and code not in candidate_codes:
         return None
     return {
         "chunk_index": int(chunk_index),
@@ -1248,7 +1317,7 @@ def _update_evidence_ledger(
     ledger.setdefault("visited_chunks", [])
     ledger.setdefault("best_choice", None)
     ledger.setdefault("best_choice_rationale", "")
-    missing_relation_mapping_question = ""
+    missing_symbolic_mapping_question = ""
 
     if chunk_index not in ledger["visited_chunks"]:
         ledger["visited_chunks"].append(chunk_index)
@@ -1288,7 +1357,7 @@ def _update_evidence_ledger(
             target_fact_items.append(value)
     for item in target_fact_items:
         fact = _normalize_target_fact(item, chunk_index=chunk_index)
-        if fact and _looks_like_relation_code_mapping_fact(fact.get("note", ""), query):
+        if fact and _looks_like_symbolic_code_mapping_fact(fact.get("note", ""), query):
             continue
         _append_unique_dict(ledger["target_facts"], fact, fields=("source", "chunk_index", "note"), limit=64)
 
@@ -1311,15 +1380,17 @@ def _update_evidence_ledger(
             or decision.get("choice")
         )
         if proposed_choice:
-            if _is_relation_type_query(query or "") and not _ledger_has_mapping_for_relation_answer(
+            fallback_reason = _symbolic_answer_mapping_fallback_reason(
                 ledger,
                 query,
                 proposed_choice,
-            ):
-                proposed_code = _relation_code_for_answer(query, proposed_choice)
+            )
+            if fallback_reason:
+                proposed_code = _symbolic_code_for_answer(query, proposed_choice)
                 if proposed_code:
-                    missing_relation_mapping_question = (
-                        f"Need an explicit demonstration mapping for relation code {proposed_code} "
+                    code_label = "relation code" if fallback_reason == "relation_code_mapping_missing" else "symbolic code"
+                    missing_symbolic_mapping_question = (
+                        f"Need an explicit demonstration mapping for {code_label} {proposed_code} "
                         f"before choosing {proposed_choice}."
                     )
             else:
@@ -1329,14 +1400,14 @@ def _update_evidence_ledger(
         decision.get("best_choice_rationale") or decision.get("rationale") or decision.get("reason"),
         limit=800,
     )
-    if rationale and not missing_relation_mapping_question:
+    if rationale and not missing_symbolic_mapping_question:
         ledger["best_choice_rationale"] = rationale
 
     if "open_questions" in decision:
         ledger["open_questions"] = _dedupe_open_questions(_coerce_note_list(decision.get("open_questions")), limit=5)
-    if missing_relation_mapping_question:
+    if missing_symbolic_mapping_question:
         ledger["open_questions"] = _dedupe_open_questions(
-            [*(ledger.get("open_questions") or []), missing_relation_mapping_question],
+            [*(ledger.get("open_questions") or []), missing_symbolic_mapping_question],
             limit=5,
         )
 
@@ -1348,7 +1419,8 @@ def _query_requires_comparative_scan(query: str) -> bool:
     return bool(
         re.search(
             r"(?i)\b(best|trade[- ]?off|compare|comparison|combination|overall|between|among|"
-            r"which method|which option|which approach|multi[- ]?document|papers?)\b",
+            r"which method|which option|which approach|which order|chronolog|sequence|narratives?|"
+            r"multi[- ]?document|papers?)\b",
             query or "",
         )
     )
@@ -1365,27 +1437,41 @@ def _final_decision_needs_packed_fallback(answer: str | None, decision: dict | N
 
 def _iterative_task_guidance(query: str) -> str:
     text = query or ""
-    if _is_relation_type_query(text):
-        codes = sorted(_relation_choice_codes(text))
+    if _is_symbolic_code_query(text):
+        codes = sorted(_symbolic_choice_codes(text))
         code_guidance = (
-            f" Current candidate relation codes are: {', '.join(codes)}."
+            f" Current candidate symbolic codes are: {', '.join(codes)}."
             if codes
             else ""
         )
+        relation_guidance = ""
+        if _is_relation_type_query(text):
+            relation_guidance = (
+                " The question's entities are the target; never replace them with "
+                "entities from demonstrations."
+            )
         return (
-            "This may be a many-shot relation task. Chunks can contain "
-            "demonstration examples, answer letters, and symbolic relation codes. "
-            "The question's entities are the target; never replace them with entities "
-            "from demonstrations. Do not discard demonstrations just because they do "
-            "not directly answer the target question. Extract compact relation "
+            "This may be a many-shot symbolic-code task. Chunks can contain "
+            "demonstration examples, answer letters, and symbolic relation or event "
+            f"type codes.{relation_guidance} Do not discard demonstrations just "
+            "because they do not directly answer the target question. Extract compact "
             "examples or option-code mappings only when they use one of the current "
-            "candidate relation codes; discard unrelated demonstration codes. Store "
-            "those examples in code_mappings, not generic prose. If the target "
-            "document appears, record the target entity relation facts in "
-            "target_facts. Do not put guessed code meanings in target_facts. Only "
-            "set best_choice when code_mappings contain an explicit, entity-type-compatible "
-            "demonstration for that answer's code; otherwise keep best_choice null "
+            "candidate symbolic codes; discard unrelated demonstration codes. Store "
+            "those examples in code_mappings, not generic prose. For dense many-shot "
+            "chunks, include at most eight compact mappings and prioritize current "
+            "option codes over exhaustive summaries. If the target document appears, "
+            "record target-specific facts in target_facts. Do not put guessed code "
+            "meanings in target_facts. Only set best_choice when code_mappings "
+            "contain an explicit, compatible demonstration for that answer's code; "
+            "otherwise keep best_choice null "
             f"and needs_more_context true.{code_guidance}"
+        )
+    if _is_ordering_query(text):
+        return (
+            "This is an ordering task. Preserve compact time/order evidence for each "
+            "numbered narrative and include chunk_index references. Do not choose an "
+            "answer unless the ledger can support the relative order of every numbered "
+            "item in one option."
         )
     if re.search(r"(?i)\b(symboli[sz]e|theme|novel|literary|meaning)\b", text):
         return (
@@ -1426,9 +1512,9 @@ def _should_stop_iterative_scan(
         return False, "needs_more_context"
     if ledger.get("open_questions"):
         return False, "open_questions_remain"
-    relation_mapping_reason = _relation_answer_mapping_fallback_reason(ledger, query, choice)
-    if relation_mapping_reason:
-        return False, relation_mapping_reason
+    symbolic_mapping_reason = _symbolic_answer_mapping_fallback_reason(ledger, query, choice)
+    if symbolic_mapping_reason:
+        return False, symbolic_mapping_reason
     return True, "answer_found"
 
 
@@ -2753,8 +2839,8 @@ class SemanticCacheController:
         metadata = result.get("metadata") or {}
         chunk_index = self._result_chunk_index(result, len(ledger.get("visited_chunks", [])))
         task_guidance = _iterative_task_guidance(query)
-        relation_codes = sorted(_relation_choice_codes(query))
-        relation_code_text = ", ".join(relation_codes) if relation_codes else "none"
+        symbolic_codes = sorted(_symbolic_choice_codes(query))
+        symbolic_code_text = ", ".join(symbolic_codes) if symbolic_codes else "none"
         system_prompt = (
             "You are a cumulative evidence ledger updater for a long-context multiple-choice "
             "question. Use ONLY the current chunk and the existing ledger. Return ONLY "
@@ -2764,11 +2850,11 @@ class SemanticCacheController:
             "answer_found. memory_update is an additive note for this chunk, not a full "
             "rewrite of prior memory. target_facts must be an array of strings or objects "
             "for facts about the target question/document. code_mappings must be an array "
-            "of objects with code, relation, and example. For relation tasks, include only "
+            "of objects with code, relation, and example. For symbolic-code tasks, include only "
             "code_mappings whose code is one of the current option codes. best_choice must "
             "be A, B, C, D, or null, reflecting all inspected chunks so far. For "
-            "relation-code tasks, set best_choice only when an explicit code_mappings "
-            "entry supports that answer's code with an entity-type-compatible "
+            "symbolic-code tasks, set best_choice only when an explicit code_mappings "
+            "entry supports that answer's code with a compatible "
             "demonstration; do not infer code meanings from code names, target facts, "
             "or external schemas. "
             "open_questions must contain only currently "
@@ -2780,7 +2866,7 @@ class SemanticCacheController:
         )
         user_content = (
             f"Question and choices:\n{query}\n\n"
-            f"Current relation option codes, if any:\n{relation_code_text}\n\n"
+            f"Current symbolic option codes, if any:\n{symbolic_code_text}\n\n"
             f"Existing evidence ledger:\n{json.dumps(ledger, ensure_ascii=False)}\n\n"
             f"Chunk metadata:\n{json.dumps(metadata, ensure_ascii=False)}\n\n"
             f"Chunk text:\n{result.get('text', '')}"
@@ -2815,26 +2901,31 @@ class SemanticCacheController:
 
     def _finalize_iterative_answer(self, query: str, ledger: dict) -> tuple[str, dict]:
         choice_texts = _extract_choice_texts(query)
-        relation_codes = sorted(_relation_choice_codes(query))
+        symbolic_codes = sorted(_symbolic_choice_codes(query))
         system_prompt = (
             _mcq_system_prompt()
             + " For this final adjudication, override the output format and return ONLY "
             "one compact JSON object. You receive the completed iterative ledger only, "
             "not raw chunks. Treat ledger.best_choice as a prior, not authority. Re-score "
             "every choice A, B, C, and D from the cumulative memory, target_facts, "
-            "code_mappings, rationale, and open_questions. For many-shot "
-            "relation tasks, use code_mappings only when their relation code is one of "
-            "the current choice codes. A relation-code answer is grounded only when "
-            "code_mappings contain that exact code with an entity-type-compatible "
-            "demonstration. Do not infer code meanings from target_facts, code names, "
-            "or external schemas. If no explicit mapping supports the selected code, "
-            "set needs_more_context=true. Return keys: answer, reason, needs_more_context. "
+            "code_mappings, rationale, and open_questions. For many-shot symbolic-code "
+            "tasks, use code_mappings only when their code is one of the current choice "
+            "codes. A symbolic-code answer is grounded only when code_mappings contain "
+            "that exact code with a compatible demonstration. Do not infer code meanings "
+            "from target_facts, code names, external schemas, or priors. If no explicit "
+            "mapping supports the selected code, set needs_more_context=true. For "
+            "ordering tasks, build a chronological table from the ledger before choosing "
+            "and set needs_more_context=true when any numbered item lacks order support. "
+            "Return keys: answer, reason, needs_more_context. "
             "answer must be A, B, C, or D."
         )
         adjudication_payload = {
             "choices": choice_texts,
-            "relation_choice_codes": relation_codes,
+            "symbolic_choice_codes": symbolic_codes,
+            "symbolic_choice_code_by_letter": _symbolic_choice_code_by_letter(query),
+            "relation_choice_codes": sorted(_relation_choice_codes(query)),
             "relation_choice_code_by_letter": _relation_choice_code_by_letter(query),
+            "ordering_task": _is_ordering_query(query),
             "ledger_best_choice_prior": ledger.get("best_choice"),
             "iterative_memory_ledger": ledger,
         }
@@ -2963,6 +3054,15 @@ class SemanticCacheController:
             results,
             total_chunks=total_chunks,
         )
+        if _is_ordering_query(query):
+            def document_order_key(item: dict) -> int:
+                chunk_index = self._result_chunk_index(item, None)
+                return chunk_index if chunk_index is not None else 10**9
+
+            scan_results = sorted(
+                scan_results,
+                key=document_order_key,
+            )
         scan_results = scan_results[:faiss_top_n]
         ledger = _new_evidence_ledger(query)
         comparative_query = _query_requires_comparative_scan(query)
@@ -3020,10 +3120,10 @@ class SemanticCacheController:
                 answer, final_decision = self._finalize_iterative_answer(query, ledger)
                 final_adjudication_call_count = 1
                 needs_fallback, fallback_reason = _final_decision_needs_packed_fallback(answer, final_decision)
-                relation_fallback_reason = _relation_answer_mapping_fallback_reason(ledger, query, answer)
-                if relation_fallback_reason:
+                symbolic_fallback_reason = _symbolic_answer_mapping_fallback_reason(ledger, query, answer)
+                if symbolic_fallback_reason:
                     needs_fallback = True
-                    fallback_reason = relation_fallback_reason
+                    fallback_reason = symbolic_fallback_reason
                 if needs_fallback:
                     packed_fallback_reason = fallback_reason
                     answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
