@@ -552,8 +552,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1091669.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1091670.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1092201.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1092202.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -582,7 +582,7 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_MEM=64G \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
-export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=4
 export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
