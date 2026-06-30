@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run benchmark/client commands inside a Slurm CPU allocation.
+# Run benchmark/client commands inside a Slurm client allocation.
 
 #SBATCH --job-name=rlms-client
 #SBATCH --time=12:00:00

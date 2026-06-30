@@ -97,6 +97,8 @@ RERANKER_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 EMBEDDING_DIM = 1024
 EMBEDDING_BATCH_SIZE = _env_int("SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE", 16)
 EMBEDDING_MAX_LENGTH = _env_int("SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH", 8192)
+EMBEDDING_DEVICE = os.getenv("SEMANTIC_CACHE_EMBEDDING_DEVICE", "cpu").strip().lower() or "cpu"
+EMBEDDING_DTYPE = os.getenv("SEMANTIC_CACHE_EMBEDDING_DTYPE", "float32").strip().lower() or "float32"
 EXECUTOR_MODEL = "claude-sonnet-4-20250514"
 EVALUATOR_MODEL = "claude-haiku-4-5-20251001"
 OPENAI_COMPAT_EXECUTOR_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
@@ -1544,26 +1546,69 @@ def create_llm_message(**kwargs):
 # 0a. EMBEDDING ENGINE — Qwen3-Embedding-0.6B (596M params, 1024-dim)
 # ============================================================================
 
+
+def _resolve_embedding_device(torch_module) -> str:
+    requested = EMBEDDING_DEVICE
+    if requested == "auto":
+        return "cuda" if torch_module.cuda.is_available() else "cpu"
+    if requested == "cpu":
+        return "cpu"
+    if requested.startswith("cuda"):
+        if not torch_module.cuda.is_available():
+            raise RuntimeError("SEMANTIC_CACHE_EMBEDDING_DEVICE requests CUDA, but torch.cuda.is_available() is false")
+        return requested
+    raise ValueError(f"unsupported SEMANTIC_CACHE_EMBEDDING_DEVICE={EMBEDDING_DEVICE!r}; use cpu, cuda, cuda:N, or auto")
+
+
+def _resolve_embedding_dtype(torch_module, device: str):
+    requested = EMBEDDING_DTYPE
+    if requested == "auto":
+        if device.startswith("cuda"):
+            if hasattr(torch_module.cuda, "is_bf16_supported") and torch_module.cuda.is_bf16_supported():
+                return torch_module.bfloat16, "bfloat16"
+            return torch_module.float16, "float16"
+        return torch_module.float32, "float32"
+
+    dtype_by_name = {
+        "float32": torch_module.float32,
+        "fp32": torch_module.float32,
+        "float16": torch_module.float16,
+        "fp16": torch_module.float16,
+        "bfloat16": torch_module.bfloat16,
+        "bf16": torch_module.bfloat16,
+    }
+    if requested not in dtype_by_name:
+        raise ValueError(f"unsupported SEMANTIC_CACHE_EMBEDDING_DTYPE={EMBEDDING_DTYPE!r}; use float32, float16, bfloat16, or auto")
+    canonical = {
+        "fp32": "float32",
+        "fp16": "float16",
+        "bf16": "bfloat16",
+    }.get(requested, requested)
+    return dtype_by_name[requested], canonical
+
+
 class EmbeddingEngine:
     """Qwen3-Embedding-0.6B: instruction-aware embeddings with 32K context."""
 
     def __init__(self):
-        print(
-            "  [EMBED] Loading Qwen3-Embedding-0.6B "
-            f"(batch_size={max(1, int(EMBEDDING_BATCH_SIZE))}, "
-            f"max_length={max(1, int(EMBEDDING_MAX_LENGTH))})..."
-        )
         from transformers import AutoModel, AutoTokenizer
         import torch
 
+        self.device = _resolve_embedding_device(torch)
+        self.torch_dtype, self.torch_dtype_name = _resolve_embedding_dtype(torch, self.device)
+        print(
+            "  [EMBED] Loading Qwen3-Embedding-0.6B "
+            f"(batch_size={max(1, int(EMBEDDING_BATCH_SIZE))}, "
+            f"max_length={max(1, int(EMBEDDING_MAX_LENGTH))}, "
+            f"device={self.device}, dtype={self.torch_dtype_name})..."
+        )
         self.tokenizer = AutoTokenizer.from_pretrained(
             EMBEDDING_MODEL, trust_remote_code=True
         )
         self.model = AutoModel.from_pretrained(
-            EMBEDDING_MODEL, trust_remote_code=True, torch_dtype=torch.float32
+            EMBEDDING_MODEL, trust_remote_code=True, torch_dtype=self.torch_dtype
         )
         self.model.eval()
-        self.device = "cpu"
         self.model.to(self.device)
         self.torch = torch
         param_count = sum(p.numel() for p in self.model.parameters())
@@ -1591,7 +1636,7 @@ class EmbeddingEngine:
                 counts = mask.sum(dim=1).clamp_min(1e-9)
                 embs = summed / counts
                 embs = embs / embs.norm(dim=1, keepdim=True)
-            all_embs.append(embs.cpu().numpy())
+            all_embs.append(embs.float().cpu().numpy())
             if len(texts) > batch_size and (i + batch_size) % 100 == 0:
                 print(f"    Embedded {min(i + batch_size, len(texts))}/{len(texts)} chunks...")
         return np.vstack(all_embs).astype("float32")
@@ -3535,6 +3580,10 @@ class SemanticCacheController:
             "embedding_dim": EMBEDDING_DIM,
             "embedding_batch_size": max(1, int(EMBEDDING_BATCH_SIZE)),
             "embedding_max_length": max(1, int(EMBEDDING_MAX_LENGTH)),
+            "embedding_device": EMBEDDING_DEVICE,
+            "embedding_dtype": EMBEDDING_DTYPE,
+            "embedding_device_effective": getattr(self.embedder, "device", EMBEDDING_DEVICE),
+            "embedding_dtype_effective": getattr(self.embedder, "torch_dtype_name", EMBEDDING_DTYPE),
             "data_scope_hash": self.data_scope_hash,
             "updated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         }

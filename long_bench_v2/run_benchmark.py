@@ -504,6 +504,8 @@ def build_effective_config(scs, args: argparse.Namespace) -> dict:
         "embedding_query_instruction": _coerce_text(getattr(scs, "EMBEDDING_QUERY_INSTRUCTION", "")),
         "embedding_batch_size": int(getattr(scs, "EMBEDDING_BATCH_SIZE", 0)),
         "embedding_max_length": int(getattr(scs, "EMBEDDING_MAX_LENGTH", 0)),
+        "embedding_device": _coerce_text(getattr(scs, "EMBEDDING_DEVICE", "")),
+        "embedding_dtype": _coerce_text(getattr(scs, "EMBEDDING_DTYPE", "")),
         "reranker_relevance_threshold": float(getattr(scs, "RERANKER_RELEVANCE_THRESHOLD", 0.0)),
         "reranker_batch_size": int(getattr(scs, "RERANKER_BATCH_SIZE", 0)),
         "reranker_max_length": int(getattr(scs, "RERANKER_MAX_LENGTH", 0)),
@@ -724,6 +726,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
     shared_embedder = scs.EmbeddingEngine()
+    effective_fields["embedding_device_effective"] = _coerce_text(
+        getattr(shared_embedder, "device", effective_fields["embedding_device"])
+    )
+    effective_fields["embedding_dtype_effective"] = _coerce_text(
+        getattr(shared_embedder, "torch_dtype_name", effective_fields["embedding_dtype"])
+    )
     shared_reranker = None if effective_fields["reranker_disabled"] else scs.Reranker()
 
     prediction_rows: list[dict] = []

@@ -15,7 +15,7 @@ source "$SCRIPT_DIR/lib/env.sh"
 usage() {
   cat <<'EOF'
 Usage:
-  bash jarvis/run.sh submit <small-smoke|executor|evaluator|smoke|client|download-small-smoke|download-executor|download-evaluator|download-all|cleanup>
+  bash jarvis/run.sh submit <small-smoke|executor|evaluator|smoke|client|client-gpu|download-small-smoke|download-executor|download-evaluator|download-all|cleanup>
 
 Common commands:
   JARVIS_STORAGE_MODE=scratch PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs bash jarvis/run.sh submit small-smoke
@@ -26,10 +26,12 @@ Common commands:
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit download-all
   CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
   CLIENT_MEM=96G CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
+  CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client-gpu
 
 Direct sbatch is also supported if you pass resources and JARVIS_SCRIPT_DIR yourself:
   sbatch --partition=gpu-l40s --gres=gpu:l40s:4 --export=ALL,JARVIS_SCRIPT_DIR=/path/to/adarsh-rlms/jarvis,MODE=executor /path/to/adarsh-rlms/jarvis/run.sh
   sbatch --partition=compute-short --export=ALL,JARVIS_SCRIPT_DIR=/path/to/adarsh-rlms/jarvis,MODE=client /path/to/adarsh-rlms/jarvis/run.sh
+  sbatch --partition=gpu-l40s --gres=gpu:l40s:1 --export=ALL,JARVIS_SCRIPT_DIR=/path/to/adarsh-rlms/jarvis,MODE=client-gpu /path/to/adarsh-rlms/jarvis/run.sh
 
 Do not run service modes directly on the login node.
 EOF
@@ -99,6 +101,18 @@ submit_mode() {
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=client \
         "$SCRIPT_DIR/run_client.sh"
       ;;
+    client-gpu)
+      sbatch \
+        --partition=gpu-l40s \
+        --gres=gpu:l40s:1 \
+        --cpus-per-task=8 \
+        --mem="${CLIENT_MEM:-96G}" \
+        --time=12:00:00 \
+        --job-name=rlms-client-gpu \
+        --output="$PROJECT_LOG_DIR/%x-%j.out" \
+        --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=client-gpu \
+        "$SCRIPT_DIR/run_client.sh"
+      ;;
     download-small-smoke|download-executor|download-evaluator|download-smoke|download-all)
       sbatch \
         --partition=compute-short \
@@ -138,7 +152,7 @@ delegate_inside_slurm() {
     executor|evaluator|smoke|small-smoke)
       exec bash "$SCRIPT_DIR/serve_vllm.sh"
       ;;
-    client)
+    client|client-gpu)
       exec bash "$SCRIPT_DIR/run_client.sh"
       ;;
     download-small-smoke|download-executor|download-evaluator|download-smoke|download-all)

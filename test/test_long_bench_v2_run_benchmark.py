@@ -198,6 +198,8 @@ class FakeScs:
     EMBEDDING_QUERY_INSTRUCTION = "fake embedding instruction"
     EMBEDDING_BATCH_SIZE = 2
     EMBEDDING_MAX_LENGTH = 4096
+    EMBEDDING_DEVICE = "cuda"
+    EMBEDDING_DTYPE = "auto"
     RERANKER_RELEVANCE_THRESHOLD = 0.42
     RERANKER_BATCH_SIZE = 2
     RERANKER_MAX_LENGTH = 4096
@@ -267,6 +269,8 @@ def _reset_fake_controller():
     FakeScs.EMBEDDING_QUERY_INSTRUCTION = "fake embedding instruction"
     FakeScs.EMBEDDING_BATCH_SIZE = 2
     FakeScs.EMBEDDING_MAX_LENGTH = 4096
+    FakeScs.EMBEDDING_DEVICE = "cuda"
+    FakeScs.EMBEDDING_DTYPE = "auto"
     FakeScs.RERANKER_RELEVANCE_THRESHOLD = 0.42
     FakeScs.RERANKER_BATCH_SIZE = 2
     FakeScs.RERANKER_MAX_LENGTH = 4096
@@ -800,6 +804,10 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["embedding_query_instruction"], "fake embedding instruction")
         self.assertEqual(manifest["embedding_batch_size"], 2)
         self.assertEqual(manifest["embedding_max_length"], 4096)
+        self.assertEqual(manifest["embedding_device"], "cuda")
+        self.assertEqual(manifest["embedding_dtype"], "auto")
+        self.assertEqual(manifest["embedding_device_effective"], "cuda")
+        self.assertEqual(manifest["embedding_dtype_effective"], "auto")
         self.assertEqual(manifest["reranker_relevance_threshold"], 0.42)
         self.assertEqual(manifest["reranker_batch_size"], 2)
         self.assertEqual(manifest["reranker_max_length"], 4096)
@@ -823,6 +831,10 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["embedding_query_instruction"], "fake embedding instruction")
         self.assertEqual(bridge_rows[0]["embedding_batch_size"], 2)
         self.assertEqual(bridge_rows[0]["embedding_max_length"], 4096)
+        self.assertEqual(bridge_rows[0]["embedding_device"], "cuda")
+        self.assertEqual(bridge_rows[0]["embedding_dtype"], "auto")
+        self.assertEqual(bridge_rows[0]["embedding_device_effective"], "cuda")
+        self.assertEqual(bridge_rows[0]["embedding_dtype_effective"], "auto")
         self.assertEqual(bridge_rows[0]["synthesis_packed_chunk_count"], 3)
         self.assertEqual(bridge_rows[0]["synthesis_dropped_chunk_count"], 1)
         self.assertEqual(bridge_rows[0]["synthesis_selected_chunk_indices"], [0, 1, 2])

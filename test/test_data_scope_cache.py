@@ -114,6 +114,48 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(seen["instruction"], "custom evidence instruction")
         self.assertEqual(embedding.shape, (1, 2))
 
+    def test_embedding_device_cuda_requires_available_cuda(self):
+        class FakeCuda:
+            @staticmethod
+            def is_available():
+                return False
+
+        fake_torch = types.SimpleNamespace(cuda=FakeCuda)
+
+        with patch.object(scs, "EMBEDDING_DEVICE", "cuda"):
+            with self.assertRaisesRegex(RuntimeError, "CUDA"):
+                scs._resolve_embedding_device(fake_torch)
+
+    def test_embedding_device_auto_uses_cuda_when_available(self):
+        class FakeCuda:
+            @staticmethod
+            def is_available():
+                return True
+
+        fake_torch = types.SimpleNamespace(cuda=FakeCuda)
+
+        with patch.object(scs, "EMBEDDING_DEVICE", "auto"):
+            self.assertEqual(scs._resolve_embedding_device(fake_torch), "cuda")
+
+    def test_embedding_dtype_auto_prefers_bfloat16_on_cuda(self):
+        class FakeCuda:
+            @staticmethod
+            def is_bf16_supported():
+                return True
+
+        fake_torch = types.SimpleNamespace(
+            cuda=FakeCuda,
+            float32="float32",
+            float16="float16",
+            bfloat16="bfloat16",
+        )
+
+        with patch.object(scs, "EMBEDDING_DTYPE", "auto"):
+            dtype, name = scs._resolve_embedding_dtype(fake_torch, "cuda")
+
+        self.assertEqual(dtype, "bfloat16")
+        self.assertEqual(name, "bfloat16")
+
     def test_exact_hits_are_limited_to_active_data_scope(self):
         query = "same question"
         controller = make_controller()

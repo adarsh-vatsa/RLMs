@@ -9,6 +9,10 @@ Each item is intentionally short so it can be used while tuning one run at a tim
   default of 32 GB RAM. This is separate from the runbook's client scratch
   free-space check.
 
+- `bash adarsh-rlms/jarvis/run.sh submit client-gpu`: Uses one L40S for the
+  benchmark client. Use this with `SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda` when
+  local embedding ingest is the bottleneck.
+
 - `CLIENT_MEM=64G` or `CLIENT_MEM=96G`: Use this on the outer dispatcher command
   when smaller chunk profiles are OOM-killed. The benchmark client holds
   overlapping chunk text, tokenizer offset maps, embeddings, metadata, and FAISS
@@ -22,10 +26,18 @@ Each item is intentionally short so it can be used while tuning one run at a tim
 - `SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION`: Instruction prepended before query embedding.
   For LongBench, use a benchmark evidence instruction rather than a legal-domain retrieval instruction.
 
+- `SEMANTIC_CACHE_EMBEDDING_DEVICE`: Device for the local embedding model. The
+  default is `cpu`. Use `cuda` only inside a GPU client allocation; CUDA requests
+  fail clearly when no CUDA device is available.
+
+- `SEMANTIC_CACHE_EMBEDDING_DTYPE`: Dtype for the local embedding model. The
+  default is `float32`. Use `auto` with CUDA to select reduced precision for
+  faster ingest and lower GPU memory use.
+
 - `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE`: Number of chunks the local embedding
-  model processes per CPU forward pass during ingest. The default is `16`;
-  use `1` or `2` when long chunks OOM. This changes memory and throughput, not
-  intended retrieval behavior.
+  model processes per forward pass during ingest. The default is `16`; use `1`
+  or `2` when long chunks OOM. This changes memory and throughput, not intended
+  retrieval behavior.
 
 - `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH`: Maximum token length passed to the
   embedding model for each chunk. The default is `8192`. Lowering it reduces

@@ -81,6 +81,7 @@ small-smoke:         60 GB free required
 evaluator/smoke:    160 GB free required
 download-all:       350 GB free required
 client:              30 GB free required
+client-gpu:          30 GB free required
 ```
 
 The `client` line above is a scratch free-space check, not the Slurm RAM
@@ -88,8 +89,9 @@ allocation. The dispatcher submits benchmark client jobs with 32 GB RAM. Smaller
 token chunks and higher overlap increase chunk count, duplicated chunk text,
 tokenizer offset maps, embeddings, metadata, and FAISS state held by the client.
 If a smaller chunk profile is OOM-killed, set
-`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`, raise the client Slurm memory, or use a
-less aggressive chunk-count profile.
+`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`, use `submit client-gpu` for CUDA
+embeddings, raise the client Slurm memory, or use a less aggressive chunk-count
+profile.
 
 Override only if you know the model is already cached or you intentionally want a
 lower threshold:
@@ -582,7 +584,9 @@ WAIT_FOR_ENDPOINTS=1 \
 CLIENT_MEM=96G \
 CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
-export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=8
+export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
+export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1
 export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
@@ -619,32 +623,35 @@ uv run python long_bench_v2/run_benchmark.py \
   --row-types original \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-param-search-iterative-scan-strict-mcq' \
-  bash adarsh-rlms/jarvis/run.sh submit client
+  bash adarsh-rlms/jarvis/run.sh submit client-gpu
 ```
 
-`CLIENT_MEM=96G` raises the dispatcher client allocation above the 32 GB default.
-`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1` keeps the local Qwen embedding forward
-pass to one chunk at a time; the built-in default is 16 and can OOM on CPU with
-long chunks. `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192` keeps the default amount
-of each chunk visible to the embedding model. Lower it only if batch size 1 and a
-larger `CLIENT_MEM` still OOM, because lower values can weaken FAISS ranking when
-the relevant evidence appears late in a chunk. The `10000/2000` token chunk
-profile above can exceed 32 GB on long-context samples because it creates many
-more overlapping chunks than larger profiles such as `20000/4000`. If Slurm
-reports `oom_kill`, confirm the memory limit and peak RSS:
+`submit client-gpu` gives the benchmark client one L40S for local embeddings.
+`SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda` makes a missing CUDA runtime fail clearly
+instead of silently falling back to CPU, and `SEMANTIC_CACHE_EMBEDDING_DTYPE=auto`
+uses CUDA-friendly reduced precision. `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1` is
+the safest first GPU profile for 8192-token embedding forwards; raise it only
+after the first GPU run proves stable. `CLIENT_MEM=96G` keeps enough host RAM for
+chunk text, tokenizer offset maps, embeddings, metadata, and FAISS state.
+`SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192` keeps the default amount of each chunk
+visible to the embedding model. Lower it only if batch size 1 still OOMs, because
+lower values can weaken FAISS ranking when the relevant evidence appears late in
+a chunk. If Slurm reports `oom_kill`, confirm the memory limit and peak RSS:
 
 ```bash
 sacct -j <client_job_id> --format=JobID,JobName,State,ExitCode,MaxRSS,ReqMem,Elapsed
 ```
 
 Use `CLIENT_MEM=64G` first if queue pressure matters; use `CLIENT_MEM=96G` when
-testing smaller chunks or higher overlap against 50k-200k token samples.
+testing smaller chunks, higher overlap, or GPU embeddings against 50k-200k token
+samples.
 
 Monitor:
 
 ```bash
 squeue -u "$USER"
 tail -f "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
+tail -f "$PROJECT_LOG_DIR"/rlms-client-gpu-<client_job_id>.out
 ```
 
 When this finishes, inspect the generated artifact paths printed in the client
@@ -879,11 +886,12 @@ Likely causes:
 - The sampled suite includes 50k-200k token contexts, so ingest, tokenizer
   offsets, embeddings, metadata, and FAISS state are all larger.
 
-Rerun only the client job with `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`, a larger
+Rerun only the client job with `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`,
+`SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda` through `submit client-gpu`, a larger
 `CLIENT_MEM` value, or a less chunk-heavy profile such as `12000/3000` or
 `20000/4000`. If the traceback still points inside `EmbeddingEngine.encode` after
-batch size 1, lower `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH` to `4096` as a memory
-tradeoff. The vLLM service jobs can stay running.
+batch size 1 on GPU, lower `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH` to `4096` as a
+memory tradeoff. The vLLM service jobs can stay running.
 
 If the benchmark imports fail, fix the client environment and rerun only the
 client job. The vLLM service jobs can stay running.

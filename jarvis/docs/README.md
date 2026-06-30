@@ -74,6 +74,8 @@ The client threshold is scratch free space, not Slurm RAM. The dispatcher client
 job requests 32 GB RAM by default; smaller LongBench chunk profiles can require
 `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1` inside `CLIENT_CMD` plus
 `CLIENT_MEM=64G` or `CLIENT_MEM=96G` on the outer client submission command.
+Use `submit client-gpu` with `SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda` when local
+embedding ingest is the bottleneck.
 
 Expected persistent storage for the current explicit Qwen LongBench-v2 profile:
 
@@ -265,6 +267,7 @@ bash adarsh-rlms/jarvis/run.sh submit executor
 bash adarsh-rlms/jarvis/run.sh submit evaluator
 bash adarsh-rlms/jarvis/run.sh submit smoke
 bash adarsh-rlms/jarvis/run.sh submit client
+bash adarsh-rlms/jarvis/run.sh submit client-gpu
 bash adarsh-rlms/jarvis/run.sh submit download-small-smoke
 bash adarsh-rlms/jarvis/run.sh submit download-all
 bash adarsh-rlms/jarvis/run.sh submit cleanup
@@ -278,6 +281,7 @@ executor:  gpu-l40s, gpu:l40s:4, Llama 3.3 70B, tensor parallel 4
 evaluator: gpu-l40s, gpu:l40s:2, Mistral Small 24B, tensor parallel 2
 smoke:     gpu-l40s, gpu:l40s:2, one shared endpoint
 client:    compute-short, no GPU, benchmark/client command only
+client-gpu: gpu-l40s, gpu:l40s:1, benchmark/client command with CUDA available
 download:  compute-short, no GPU, prefetch model weights into the configured cache root
 cleanup:   gpu-l40s by default, inspect or clean node-local Jarvis scratch
 ```
