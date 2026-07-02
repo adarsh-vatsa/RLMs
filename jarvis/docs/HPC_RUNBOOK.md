@@ -554,8 +554,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1092201.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1092202.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1093341.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1093340.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -586,12 +586,12 @@ CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
 export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
 export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
-export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=8
 export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
 export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.50
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.80
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=4
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=1536
@@ -606,7 +606,7 @@ export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"ena
 uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_param_search.csv \
-  --sample-size 3 \
+  --sample-size 1 \
   --samples-per-domain 3 \
   --selection-strategy random \
   --min-token-count 50000 \
