@@ -138,7 +138,7 @@ SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 SCAN_ORDER = "faiss_ranked_ordering_document_order"
-ITERATIVE_READER_VERSION = 9
+ITERATIVE_READER_VERSION = 10
 ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
@@ -985,6 +985,20 @@ def _ledger_has_mapping_for_symbolic_answer(ledger: dict, query: str | None, ans
     return False
 
 
+def _mapped_symbolic_codes(ledger: dict, query: str | None) -> set[str]:
+    candidate_codes = _symbolic_choice_codes(query or "")
+    if not candidate_codes:
+        return set()
+    mapped_codes: set[str] = set()
+    for mapping in ledger.get("code_mappings") or []:
+        if not isinstance(mapping, dict):
+            continue
+        code = str(mapping.get("code") or "").strip().lower()
+        if code in candidate_codes:
+            mapped_codes.add(code)
+    return mapped_codes
+
+
 def _ledger_has_mapping_for_relation_answer(ledger: dict, query: str | None, answer: str | None) -> bool:
     code = _relation_code_for_answer(query, answer)
     if not code:
@@ -1014,6 +1028,49 @@ def _symbolic_answer_mapping_fallback_reason(ledger: dict, query: str | None, an
     return "symbolic_code_mapping_missing"
 
 
+def _symbolic_code_contrast_required(ledger: dict, query: str | None, answer: str | None) -> bool:
+    if not _is_symbolic_code_query(query or ""):
+        return False
+    selected_code = _symbolic_code_for_answer(query, answer)
+    if not selected_code:
+        return False
+    mapped_codes = _mapped_symbolic_codes(ledger, query)
+    return selected_code in mapped_codes and bool(mapped_codes - {selected_code})
+
+
+def _has_text(value) -> bool:
+    if isinstance(value, dict):
+        return any(_has_text(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_text(item) for item in value)
+    return bool(_bounded_text(value))
+
+
+def _symbolic_code_contrast_fallback_reason(
+    ledger: dict,
+    query: str | None,
+    answer: str | None,
+    decision: dict | None,
+) -> str:
+    if not _symbolic_code_contrast_required(ledger, query, answer):
+        return ""
+    reason = "relation_code_contrast_missing" if _is_relation_type_query(query or "") else "symbolic_code_contrast_missing"
+    decision = decision if isinstance(decision, dict) else {}
+    selected_code = _symbolic_code_for_answer(query, answer)
+    decision_selected_code = str(decision.get("selected_code") or "").strip().lower()
+    if decision_selected_code != selected_code:
+        return reason
+    if not _has_text(decision.get("selected_code_evidence")):
+        return reason
+    rejected_code_evidence = decision.get("rejected_code_evidence")
+    if not isinstance(rejected_code_evidence, dict):
+        return reason
+    for code in sorted(_mapped_symbolic_codes(ledger, query) - {selected_code}):
+        if not _has_text(rejected_code_evidence.get(code)):
+            return reason
+    return ""
+
+
 def _is_ordering_query(query: str | None) -> bool:
     text = query or ""
     choices = _extract_choice_texts(text)
@@ -1023,6 +1080,75 @@ def _is_ordering_query(query: str | None) -> bool:
     if not numeric_choices:
         return False
     return bool(re.search(r"(?is)\b(order|chronolog|sequence|narratives?)\b", text))
+
+
+def _ordering_sequence_for_answer(query: str | None, answer: str | None) -> str:
+    choice = _normalize_choice_letter(answer)
+    if not choice:
+        return ""
+    sequence = _extract_choice_texts(query or "").get(choice, "").strip()
+    return sequence if re.fullmatch(r"\d{2,12}", sequence) else ""
+
+
+def _normalize_ordering_sequence(value) -> str:
+    text = str(value or "").strip()
+    if re.fullmatch(r"\d{2,12}", text):
+        return text
+    sequence = "".join(re.findall(r"\d", text))
+    return sequence if re.fullmatch(r"\d{2,12}", sequence) else ""
+
+
+def _ordering_evidence_items(value) -> set[str]:
+    if not isinstance(value, dict):
+        return set()
+    return {
+        item
+        for key, evidence in value.items()
+        for item in [str(key).strip()]
+        if re.fullmatch(r"\d+", item) and _has_text(evidence)
+    }
+
+
+def _ordering_pairwise_edges(value) -> set[str]:
+    edges: set[str] = set()
+    if isinstance(value, str):
+        entries = re.split(r"[,;\n]+", value)
+    elif isinstance(value, list):
+        entries = value
+    else:
+        return edges
+    for entry in entries:
+        numbers = re.findall(r"\d+", str(entry or ""))
+        if len(numbers) >= 2:
+            edges.add(f"{numbers[0]}<{numbers[1]}")
+    return edges
+
+
+def _ordering_decision_fallback_reason(query: str | None, answer: str | None, decision: dict | None) -> str:
+    if not _is_ordering_query(query):
+        return ""
+    selected_sequence = _ordering_sequence_for_answer(query, answer)
+    if not selected_sequence:
+        return "ordering_sequence_missing"
+    decision = decision if isinstance(decision, dict) else {}
+    chosen_sequence = _normalize_ordering_sequence(
+        decision.get("chosen_sequence") or decision.get("sequence") or decision.get("order")
+    )
+    if chosen_sequence != selected_sequence:
+        return "ordering_sequence_mismatch"
+    evidence_items = _ordering_evidence_items(decision.get("ordering_evidence"))
+    if not set(selected_sequence).issubset(evidence_items):
+        return "ordering_evidence_incomplete"
+    pairwise_edges = _ordering_pairwise_edges(
+        decision.get("pairwise_order") or decision.get("pairwise_ordering")
+    )
+    required_edges = {
+        f"{selected_sequence[index]}<{selected_sequence[index + 1]}"
+        for index in range(len(selected_sequence) - 1)
+    }
+    if not required_edges.issubset(pairwise_edges):
+        return "ordering_evidence_incomplete"
+    return ""
 
 
 def _relation_target_entities(query: str) -> list[str]:
@@ -1428,12 +1554,28 @@ def _query_requires_comparative_scan(query: str) -> bool:
     )
 
 
-def _final_decision_needs_packed_fallback(answer: str | None, decision: dict | None) -> tuple[bool, str]:
+def _final_decision_needs_packed_fallback(
+    answer: str | None,
+    decision: dict | None,
+    *,
+    query: str | None = None,
+    ledger: dict | None = None,
+) -> tuple[bool, str]:
     if not _normalize_choice_letter(answer):
         return True, "invalid_final_answer"
     decision = decision if isinstance(decision, dict) else {}
     if _coerce_bool(decision.get("needs_more_context")):
         return True, "final_adjudication_needs_more_context"
+    ordering_reason = _ordering_decision_fallback_reason(query, answer, decision)
+    if ordering_reason:
+        return True, ordering_reason
+    if ledger is not None:
+        symbolic_mapping_reason = _symbolic_answer_mapping_fallback_reason(ledger, query, answer)
+        if symbolic_mapping_reason:
+            return True, symbolic_mapping_reason
+        symbolic_contrast_reason = _symbolic_code_contrast_fallback_reason(ledger, query, answer, decision)
+        if symbolic_contrast_reason:
+            return True, symbolic_contrast_reason
     return False, ""
 
 
@@ -1517,6 +1659,10 @@ def _should_stop_iterative_scan(
     symbolic_mapping_reason = _symbolic_answer_mapping_fallback_reason(ledger, query, choice)
     if symbolic_mapping_reason:
         return False, symbolic_mapping_reason
+    if _is_ordering_query(query):
+        return False, "ordering_final_adjudication_required"
+    if _symbolic_code_contrast_required(ledger, query, choice):
+        return False, "symbolic_code_final_adjudication_required"
     return True, "answer_found"
 
 
@@ -2961,13 +3107,24 @@ class SemanticCacheController:
             "mapping supports the selected code, set needs_more_context=true. For "
             "ordering tasks, build a chronological table from the ledger before choosing "
             "and set needs_more_context=true when any numbered item lacks order support. "
-            "Return keys: answer, reason, needs_more_context. "
+            "For symbolic-code tasks with more than one mapped candidate code, return "
+            "selected_code, selected_code_evidence, and rejected_code_evidence keyed by "
+            "each other mapped candidate code. For ordering tasks, return chosen_sequence, "
+            "ordering_evidence keyed by narrative number, and pairwise_order entries like "
+            "'2<4' for adjacent steps in the chosen sequence. "
+            "Return keys: answer, reason, needs_more_context, plus the applicable "
+            "symbolic-code or ordering keys. "
             "answer must be A, B, C, or D."
         )
         adjudication_payload = {
             "choices": choice_texts,
             "symbolic_choice_codes": symbolic_codes,
             "symbolic_choice_code_by_letter": _symbolic_choice_code_by_letter(query),
+            "mapped_symbolic_codes": sorted(_mapped_symbolic_codes(ledger, query)),
+            "symbolic_code_contrast_required": any(
+                _symbolic_code_contrast_required(ledger, query, choice)
+                for choice in choice_texts
+            ),
             "relation_choice_codes": sorted(_relation_choice_codes(query)),
             "relation_choice_code_by_letter": _relation_choice_code_by_letter(query),
             "ordering_task": _is_ordering_query(query),
@@ -3015,8 +3172,11 @@ class SemanticCacheController:
             "ledger as noisy notes, not as a final answer. Use only these materials and "
             "the question choices. For relation-code tasks, choose a code only when "
             "the inspected chunks contain explicit demonstrations for that code and "
-            "the demonstration is compatible with the target entity types. Do not use "
-            "external schemas or guessed code meanings. Return only one answer letter: "
+            "the demonstration is compatible with the target entity types; if multiple "
+            "candidate codes have demonstrations, compare them against the target before "
+            "choosing. For ordering tasks, choose only a numeric sequence whose adjacent "
+            "steps are supported by explicit time/order evidence. Do not use "
+            "external schemas, guessed code meanings, or unsupported chronology. Return only one answer letter: "
             "A, B, C, or D."
         )
         source_text, pack_info = _pack_sources_for_input_budget(
@@ -3164,11 +3324,12 @@ class SemanticCacheController:
             if _ledger_has_useful_memory(ledger):
                 answer, final_decision = self._finalize_iterative_answer(query, ledger)
                 final_adjudication_call_count = 1
-                needs_fallback, fallback_reason = _final_decision_needs_packed_fallback(answer, final_decision)
-                symbolic_fallback_reason = _symbolic_answer_mapping_fallback_reason(ledger, query, answer)
-                if symbolic_fallback_reason:
-                    needs_fallback = True
-                    fallback_reason = symbolic_fallback_reason
+                needs_fallback, fallback_reason = _final_decision_needs_packed_fallback(
+                    answer,
+                    final_decision,
+                    query=query,
+                    ledger=ledger,
+                )
                 if needs_fallback:
                     packed_fallback_reason = fallback_reason
                     answer, packed_fallback_decision = self._fallback_iterative_packed_answer(

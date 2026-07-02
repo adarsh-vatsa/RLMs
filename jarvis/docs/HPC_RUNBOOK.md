@@ -687,12 +687,17 @@ ratio-based scan budget and inspects those chunks in FAISS-ranked order.
 `SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0` leaves the ratio-based maximum uncapped by an
 absolute chunk count. If the normal scan produces no useful observations,
 `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0` allows scanning the
-remaining chunks. If final ledger adjudication is empty, invalid, or asks for
-more context, the reader falls back to a bounded packed synthesis call under
-`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`. The cumulative
-memory text is bounded by `SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`; if it
-exceeds the cap, old prose updates are trimmed while structured facts, mappings,
-best choice, and parse failures are preserved.
+remaining chunks. If final ledger adjudication is empty, invalid, asks for more
+context, lacks required ordering evidence, or lacks required symbolic-code
+contrast, the reader falls back to a bounded packed synthesis call under
+`SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET`. Ordering rows
+require a chosen sequence, evidence for each numbered narrative, and adjacent
+pairwise order support. Symbolic-code rows with multiple mapped candidate option
+codes require selected-code evidence and rejection evidence for each other mapped
+code before the ledger-only final answer is accepted. The cumulative memory text
+is bounded by `SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`; if it exceeds the cap,
+old prose updates are trimmed while structured facts, mappings, best choice, and
+parse failures are preserved.
 
 If rows still take too long, lower the ratio band first:
 

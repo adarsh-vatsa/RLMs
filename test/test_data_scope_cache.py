@@ -867,6 +867,150 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertTrue(should_stop)
         self.assertEqual(reason, "answer_found")
 
+    def test_symbolic_code_early_stop_defers_when_competing_mappings_exist(self):
+        query = (
+            "Document: entity0 Break the Silence is an album by entity2 van Canto.\n\n"
+            "Question: Only considering the given document, what is the relation type "
+            "between entity0 and entity2?\n\n"
+            "Choices:\n"
+            "A. abk\n"
+            "B. abp\n"
+            "C. aaf\n"
+            "D. acd\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        ledger = scs._new_evidence_ledger(query)
+        ledger["best_choice"] = "B"
+        ledger["code_mappings"] = [
+            {"chunk_index": 1, "code": "abp", "relation": "album by band", "example": "Album X by Band Y"},
+            {"chunk_index": 2, "code": "abk", "relation": "album by artist", "example": "Album Z by Artist W"},
+        ]
+        decision = {
+            "status": "answer_found",
+            "best_choice": "B",
+            "open_questions": [],
+            "needs_more_context": False,
+        }
+
+        should_stop, reason = scs._should_stop_iterative_scan(
+            decision=decision,
+            ledger=ledger,
+            visited_count=4,
+            min_chunks=1,
+            comparative_required_count=4,
+            comparative_query=False,
+            query=query,
+        )
+
+        self.assertFalse(should_stop)
+        self.assertEqual(reason, "symbolic_code_final_adjudication_required")
+
+    def test_final_decision_requires_relation_code_contrast_when_competing_mappings_exist(self):
+        query = (
+            "Document: entity0 Break the Silence is an album by entity2 van Canto.\n\n"
+            "Question: Only considering the given document, what is the relation type "
+            "between entity0 and entity2?\n\n"
+            "Choices:\n"
+            "A. abk\n"
+            "B. abp\n"
+            "C. aaf\n"
+            "D. acd\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        ledger = scs._new_evidence_ledger(query)
+        ledger["code_mappings"] = [
+            {"chunk_index": 1, "code": "abp", "relation": "album by band", "example": "Album X by Band Y"},
+            {"chunk_index": 2, "code": "abk", "relation": "album by artist", "example": "Album Z by Artist W"},
+        ]
+        incomplete_decision = {
+            "answer": "B",
+            "reason": "abp maps to album by band",
+            "needs_more_context": False,
+            "selected_code": "abp",
+            "selected_code_evidence": ["Album X by Band Y -> abp"],
+        }
+
+        needs_fallback, reason = scs._final_decision_needs_packed_fallback(
+            "B",
+            incomplete_decision,
+            query=query,
+            ledger=ledger,
+        )
+
+        self.assertTrue(needs_fallback)
+        self.assertEqual(reason, "relation_code_contrast_missing")
+
+        complete_decision = {
+            **incomplete_decision,
+            "rejected_code_evidence": {
+                "abk": "abk examples use individual artists rather than band entities."
+            },
+        }
+
+        needs_fallback, reason = scs._final_decision_needs_packed_fallback(
+            "B",
+            complete_decision,
+            query=query,
+            ledger=ledger,
+        )
+
+        self.assertFalse(needs_fallback)
+        self.assertEqual(reason, "")
+
+    def test_final_decision_requires_ordering_sequence_evidence(self):
+        query = (
+            "Question: Put the narratives in chronological order.\n\n"
+            "Choices:\n"
+            "A. 1234\n"
+            "B. 4123\n"
+            "C. 4213\n"
+            "D. 4132\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+        incomplete_decision = {
+            "answer": "B",
+            "reason": "4 starts the current timeline.",
+            "needs_more_context": False,
+            "chosen_sequence": "4123",
+            "ordering_evidence": {
+                "4": "Current timeline opens first.",
+                "1": "First 1974 event.",
+                "2": "Later discovery.",
+            },
+            "pairwise_order": ["4<1", "1<2"],
+        }
+
+        needs_fallback, reason = scs._final_decision_needs_packed_fallback(
+            "B",
+            incomplete_decision,
+            query=query,
+            ledger={},
+        )
+
+        self.assertTrue(needs_fallback)
+        self.assertEqual(reason, "ordering_evidence_incomplete")
+
+        complete_decision = {
+            **incomplete_decision,
+            "ordering_evidence": {
+                "4": "Current timeline opens first.",
+                "1": "May 1974 event.",
+                "2": "After the 1974 events.",
+                "3": "Summer 1974 event after narrative 1.",
+            },
+            "pairwise_order": ["4<1", "1<2", "2<3"],
+        }
+
+        needs_fallback, reason = scs._final_decision_needs_packed_fallback(
+            "B",
+            complete_decision,
+            query=query,
+            ledger={},
+        )
+
+        self.assertFalse(needs_fallback)
+        self.assertEqual(reason, "")
+
     def test_final_adjudication_scores_raw_notes_without_best_choice_fallback(self):
         controller = make_controller()
         ledger = scs._new_evidence_ledger()
@@ -1332,7 +1476,22 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
             scs, "SCAN_MAX_CHUNKS", 0
         ), patch.object(controller, "_inspect_iterative_chunk", side_effect=fake_inspect), patch.object(
-            controller, "_finalize_iterative_answer", return_value=("A", {"answer": "A", "reason": "ordered"})
+            controller,
+            "_finalize_iterative_answer",
+            return_value=(
+                "A",
+                {
+                    "answer": "A",
+                    "reason": "ordered",
+                    "chosen_sequence": "123",
+                    "ordering_evidence": {
+                        "1": "first narrative evidence",
+                        "2": "second narrative evidence",
+                        "3": "third narrative evidence",
+                    },
+                    "pairwise_order": ["1<2", "2<3"],
+                },
+            ),
         ), patch.object(
             controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
         ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
