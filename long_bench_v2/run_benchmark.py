@@ -376,14 +376,23 @@ def aggregate_bridge_row_totals(rows: list[dict]) -> dict[str, float]:
     total_calls = sum(int(row.get("delta_calls", 0) or 0) for row in rows)
     total_input_tokens = sum(int(row.get("delta_input_tokens", 0) or 0) for row in rows)
     total_output_tokens = sum(int(row.get("delta_output_tokens", 0) or 0) for row in rows)
+    total_context_token_estimate = sum(int(row.get("context_token_estimate", 0) or 0) for row in rows)
     total_cost = sum(float(row.get("delta_cost_usd", 0.0) or 0.0) for row in rows)
     return {
         "calls": total_calls,
         "input_tokens": total_input_tokens,
         "output_tokens": total_output_tokens,
         "total_tokens": total_input_tokens + total_output_tokens,
+        "context_token_estimate": total_context_token_estimate,
         "cost": total_cost,
     }
+
+
+def pct_savings(baseline_value: int | float, used_value: int | float) -> float | None:
+    baseline = float(baseline_value or 0)
+    if baseline == 0:
+        return None
+    return round(((baseline - float(used_value)) / baseline) * 100.0, 6)
 
 
 def build_eval_report(run_dir: Path, bridge_rows: list[dict], manifest: dict) -> dict:
@@ -877,6 +886,9 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "iterative_scan_faiss_top_n": retrieval.get("iterative_scan_faiss_top_n"),
             "iterative_scan_faiss_result_count": retrieval.get("iterative_scan_faiss_result_count"),
             "iterative_scan_empty_ledger_fallback_used": retrieval.get("iterative_scan_empty_ledger_fallback_used"),
+            "iterative_scan_extra_scan_used": retrieval.get("iterative_scan_extra_scan_used"),
+            "iterative_scan_extra_scan_reason": retrieval.get("iterative_scan_extra_scan_reason"),
+            "iterative_scan_extra_scan_chunk_count": retrieval.get("iterative_scan_extra_scan_chunk_count"),
             "iterative_scan_packed_fallback_used": retrieval.get("iterative_scan_packed_fallback_used"),
             "iterative_scan_early_stop": retrieval.get("iterative_scan_early_stop"),
             "iterative_scan_stop_reason": retrieval.get("iterative_scan_stop_reason"),
@@ -996,6 +1008,12 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "total_input_tokens": totals["input_tokens"],
         "total_output_tokens": totals["output_tokens"],
         "total_tokens": totals["total_tokens"],
+        "total_dataset_context_token_estimate": totals["context_token_estimate"],
+        "input_token_savings_vs_context": totals["context_token_estimate"] - totals["input_tokens"],
+        "input_token_savings_percent": pct_savings(
+            totals["context_token_estimate"],
+            totals["input_tokens"],
+        ),
         "total_estimated_cost_usd": round(totals["cost"], 8),
     }
     manifest["cache_reuse"] = build_cache_reuse_manifest(

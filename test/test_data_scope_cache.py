@@ -990,7 +990,7 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertTrue(needs_fallback)
         self.assertEqual(reason, "ordering_evidence_incomplete")
 
-        complete_decision = {
+        pairwise_without_evidence = {
             **incomplete_decision,
             "ordering_evidence": {
                 "4": "Current timeline opens first.",
@@ -999,6 +999,31 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                 "3": "Summer 1974 event after narrative 1.",
             },
             "pairwise_order": ["4<1", "1<2", "2<3"],
+        }
+
+        needs_fallback, reason = scs._final_decision_needs_packed_fallback(
+            "B",
+            pairwise_without_evidence,
+            query=query,
+            ledger={},
+        )
+
+        self.assertTrue(needs_fallback)
+        self.assertEqual(reason, "ordering_evidence_incomplete")
+
+        complete_decision = {
+            **incomplete_decision,
+            "ordering_evidence": {
+                "4": "Current timeline opens first.",
+                "1": "May 1974 event.",
+                "2": "After the 1974 events.",
+                "3": "Summer 1974 event after narrative 1.",
+            },
+            "pairwise_order": {
+                "4<1": "The current framing event precedes the 1974 memories.",
+                "1<2": "Narrative 2 occurs after the 1974 discovery.",
+                "2<3": "Narrative 3 is later than narrative 2.",
+            },
         }
 
         needs_fallback, reason = scs._final_decision_needs_packed_fallback(
@@ -1069,6 +1094,61 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         self.assertEqual(answer, "")
         self.assertEqual(decision["answer"], "")
+
+    def test_iterative_packed_fallback_uses_structured_letter_contract(self):
+        controller = make_controller()
+        captured = {}
+
+        class FakeUsage:
+            input_tokens = 10
+            output_tokens = 5
+
+        class FakeResponse:
+            usage = FakeUsage()
+            content = [types.SimpleNamespace(text='{"answer":"C","reason":"packed chunks support C"}')]
+
+        def fake_create_llm_message(**kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+        with patch.object(scs, "MCQ_SYNTHESIS_MAX_TOKENS", 8), patch.object(
+            scs, "create_llm_message", side_effect=fake_create_llm_message
+        ):
+            answer, decision = controller._fallback_iterative_packed_answer(
+                "Question: Which option?\n\nChoices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta",
+                [{"text": "gamma evidence", "metadata": {"chunk_index": 0}}],
+                ledger=scs._new_evidence_ledger(),
+                reason="ordering_sequence_mismatch",
+            )
+
+        self.assertEqual(answer, "C")
+        self.assertEqual(decision["answer"], "C")
+        self.assertEqual(decision["reason"], "packed chunks support C")
+        self.assertEqual(captured["max_tokens"], 32)
+        self.assertIn("compact JSON object", captured["system"])
+
+    def test_iterative_packed_fallback_does_not_return_prose_as_answer(self):
+        controller = make_controller()
+
+        class FakeUsage:
+            input_tokens = 10
+            output_tokens = 5
+
+        class FakeResponse:
+            usage = FakeUsage()
+            content = [types.SimpleNamespace(text="Based on the provided documents and memory")]
+
+        with patch.object(scs, "create_llm_message", return_value=FakeResponse()):
+            answer, decision = controller._fallback_iterative_packed_answer(
+                "Question: Which option?\n\nChoices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta",
+                [{"text": "ambiguous evidence", "metadata": {"chunk_index": 0}}],
+                ledger=scs._new_evidence_ledger(),
+                reason="ordering_sequence_mismatch",
+            )
+
+        self.assertEqual(answer, "")
+        self.assertEqual(decision["answer"], "")
+        self.assertIn("Based on", decision["raw_response"])
 
     def test_iterative_comparative_query_requires_scan_budget_before_stop(self):
         ledger = scs._new_evidence_ledger()
@@ -1235,6 +1315,94 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(result["retrieval"]["iterative_scan_target_fact_count"], 2)
         self.assertEqual(result["retrieval"]["iterative_scan_code_mapping_count"], 1)
         self.assertEqual(result["retrieval"]["iterative_scan_packed_fallback_call_count"], 0)
+
+    def test_iterative_search_extends_scan_for_symbolic_code_ambiguity(self):
+        controller = make_controller()
+        controller.doc_index = FakeSearchIndex(
+            [
+                (0.91, {"chunk_index": 0}),
+                (0.86, {"chunk_index": 1}),
+                (0.82, {"chunk_index": 2}),
+                (0.79, {"chunk_index": 3}),
+            ]
+        )
+        controller._doc_chunks = ["abk examples", "abp examples", "other examples", "more abp examples"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(4)]
+        inspections = [
+            {
+                "status": "partial",
+                "memory_update": "album-by examples for abk",
+                "code_mappings": [{"code": "abk", "relation": "album by", "example": "Album A by Artist B"}],
+                "best_choice": "A",
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "memory_update": "album-by examples for abp",
+                "code_mappings": [{"code": "abp", "relation": "album by", "example": "Album C by Band D"}],
+                "best_choice": None,
+                "open_questions": ["Need to resolve abk versus abp."],
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "memory_update": "unrelated examples",
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+            {
+                "status": "partial",
+                "memory_update": "more compatible abp examples",
+                "code_mappings": [{"code": "abp", "relation": "album by band", "example": "Album E by Band F"}],
+                "best_choice": None,
+                "needs_more_context": True,
+            },
+        ]
+        query = (
+            "Document: entity0 Break the Silence is an album by entity2 van Canto.\n\n"
+            "Question: Only considering the given document, what is the relation type "
+            "between entity0 and entity2?\n\n"
+            "Choices:\n"
+            "A. abk\n"
+            "B. abp\n"
+            "C. aaf\n"
+            "D. acd\n\n"
+            "Return only the single best answer choice letter: A, B, C, or D."
+        )
+
+        final_decision = {
+            "answer": "B",
+            "reason": "abp has the compatible band examples",
+            "needs_more_context": False,
+            "selected_code": "abp",
+            "selected_code_evidence": "abp maps album-by band examples.",
+            "rejected_code_evidence": {"abk": "abk examples are less compatible with the target band relation."},
+        }
+
+        with patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 0.50
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            scs, "SCAN_MAX_CHUNKS", 0
+        ), patch.object(scs, "SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0), patch.object(
+            controller, "_inspect_iterative_chunk", side_effect=inspections
+        ), patch.object(
+            controller, "_finalize_iterative_answer", return_value=("B", final_decision)
+        ), patch.object(
+            controller, "_fallback_iterative_packed_answer", side_effect=AssertionError("packed fallback should not run")
+        ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative(query, top_k=4, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "B")
+        self.assertEqual(result["retrieval"]["iterative_scan_budget"], 2)
+        self.assertEqual(result["retrieval"]["iterative_scan_inspector_call_count"], 4)
+        self.assertTrue(result["retrieval"]["iterative_scan_extra_scan_used"])
+        self.assertEqual(
+            result["retrieval"]["iterative_scan_extra_scan_reason"],
+            "symbolic_code_extra_scan_required",
+        )
+        self.assertEqual(result["retrieval"]["iterative_scan_extra_scan_chunk_count"], 2)
 
     def test_iterative_search_uses_packed_fallback_when_ledger_stays_empty(self):
         controller = make_controller()
@@ -1489,7 +1657,10 @@ class DataScopedSearchCacheTests(unittest.TestCase):
                         "2": "second narrative evidence",
                         "3": "third narrative evidence",
                     },
-                    "pairwise_order": ["1<2", "2<3"],
+                    "pairwise_order": {
+                        "1<2": "first narrative evidence precedes second narrative evidence",
+                        "2<3": "second narrative evidence precedes third narrative evidence",
+                    },
                 },
             ),
         ), patch.object(

@@ -815,6 +815,10 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["synthesis_input_token_budget"], 60000)
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
         self.assertEqual(manifest["mcq_synthesis_max_tokens"], 8)
+        self.assertEqual(manifest["total_dataset_context_token_estimate"], 300)
+        self.assertEqual(manifest["total_input_tokens"], 30)
+        self.assertEqual(manifest["input_token_savings_vs_context"], 270)
+        self.assertEqual(manifest["input_token_savings_percent"], 90.0)
         self.assertEqual(manifest["cache_save_interval"], 2)
         self.assertEqual(manifest["timing_summary"]["cache_save_count"], 2)
         self.assertEqual(

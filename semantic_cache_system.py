@@ -138,7 +138,7 @@ SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 SCAN_ORDER = "faiss_ranked_ordering_document_order"
-ITERATIVE_READER_VERSION = 10
+ITERATIVE_READER_VERSION = 11
 ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
@@ -1109,18 +1109,37 @@ def _ordering_evidence_items(value) -> set[str]:
     }
 
 
+def _normalize_ordering_edge(value) -> str:
+    numbers = re.findall(r"\d+", str(value or ""))
+    if len(numbers) < 2:
+        return ""
+    return f"{numbers[0]}<{numbers[1]}"
+
+
 def _ordering_pairwise_edges(value) -> set[str]:
     edges: set[str] = set()
-    if isinstance(value, str):
-        entries = re.split(r"[,;\n]+", value)
+    if isinstance(value, dict):
+        for edge, evidence in value.items():
+            normalized = _normalize_ordering_edge(edge)
+            if normalized and _has_text(evidence):
+                edges.add(normalized)
+        return edges
     elif isinstance(value, list):
         entries = value
     else:
         return edges
     for entry in entries:
-        numbers = re.findall(r"\d+", str(entry or ""))
-        if len(numbers) >= 2:
-            edges.add(f"{numbers[0]}<{numbers[1]}")
+        if not isinstance(entry, dict):
+            continue
+        edge = _normalize_ordering_edge(entry.get("edge") or entry.get("order"))
+        if not edge:
+            before = entry.get("before") or entry.get("first")
+            after = entry.get("after") or entry.get("second")
+            if before is not None and after is not None:
+                edge = _normalize_ordering_edge(f"{before}<{after}")
+        evidence = entry.get("evidence") or entry.get("support") or entry.get("reason")
+        if edge and _has_text(evidence):
+            edges.add(edge)
     return edges
 
 
@@ -1577,6 +1596,32 @@ def _final_decision_needs_packed_fallback(
         if symbolic_contrast_reason:
             return True, symbolic_contrast_reason
     return False, ""
+
+
+def _iterative_extra_scan_reason(ledger: dict, query: str | None, *, visited_count: int, total_chunks: int) -> str:
+    if int(visited_count) >= int(total_chunks):
+        return ""
+    if _is_ordering_query(query):
+        return "ordering_extra_scan_required"
+    if _is_symbolic_code_query(query or ""):
+        if len(_mapped_symbolic_codes(ledger, query)) > 1:
+            return "symbolic_code_extra_scan_required"
+        if ledger.get("open_questions"):
+            return "symbolic_code_open_questions_extra_scan"
+    return ""
+
+
+def _fallback_reason_allows_extra_scan(reason: str | None) -> bool:
+    return str(reason or "") in {
+        "final_adjudication_needs_more_context",
+        "relation_code_mapping_missing",
+        "symbolic_code_mapping_missing",
+        "relation_code_contrast_missing",
+        "symbolic_code_contrast_missing",
+        "ordering_sequence_missing",
+        "ordering_sequence_mismatch",
+        "ordering_evidence_incomplete",
+    }
 
 
 def _iterative_task_guidance(query: str) -> str:
@@ -3110,8 +3155,9 @@ class SemanticCacheController:
             "For symbolic-code tasks with more than one mapped candidate code, return "
             "selected_code, selected_code_evidence, and rejected_code_evidence keyed by "
             "each other mapped candidate code. For ordering tasks, return chosen_sequence, "
-            "ordering_evidence keyed by narrative number, and pairwise_order entries like "
-            "'2<4' for adjacent steps in the chosen sequence. "
+            "ordering_evidence keyed by narrative number, and pairwise_order as an object "
+            "keyed by adjacent edges like '2<4', with each value explaining the time/order "
+            "evidence for that edge. "
             "Return keys: answer, reason, needs_more_context, plus the applicable "
             "symbolic-code or ordering keys. "
             "answer must be A, B, C, or D."
@@ -3176,7 +3222,8 @@ class SemanticCacheController:
             "candidate codes have demonstrations, compare them against the target before "
             "choosing. For ordering tasks, choose only a numeric sequence whose adjacent "
             "steps are supported by explicit time/order evidence. Do not use "
-            "external schemas, guessed code meanings, or unsupported chronology. Return only one answer letter: "
+            "external schemas, guessed code meanings, or unsupported chronology. Return ONLY "
+            "one compact JSON object with keys answer and reason. answer must be one of "
             "A, B, C, or D."
         )
         source_text, pack_info = _pack_sources_for_input_budget(
@@ -3188,7 +3235,7 @@ class SemanticCacheController:
         )
         response = create_llm_message(
             model=EXECUTOR_MODEL,
-            max_tokens=max(1, MCQ_SYNTHESIS_MAX_TOKENS),
+            max_tokens=max(32, MCQ_SYNTHESIS_MAX_TOKENS),
             temperature=0,
             system=system_prompt,
             messages=[
@@ -3202,12 +3249,15 @@ class SemanticCacheController:
                     ),
                 }
             ],
+            response_format=_json_response_format(),
         )
         self.metrics.record_call(EXECUTOR_MODEL, response.usage.input_tokens, response.usage.output_tokens)
         raw_text = response.content[0].text
-        answer = _normalize_choice_letter(raw_text) or raw_text.strip()
+        parsed = _extract_llm_json_object(raw_text) or {}
+        answer = _normalize_choice_letter(parsed.get("answer")) or _normalize_choice_letter(raw_text) or ""
         decision = {
             "answer": answer,
+            "reason": _bounded_text(parsed.get("reason"), limit=800),
             "raw_response": _bounded_text(raw_text, limit=800),
             "fallback_reason": reason,
             **pack_info,
@@ -3281,18 +3331,11 @@ class SemanticCacheController:
         packed_fallback_decision = None
         packed_fallback_reason = None
         empty_ledger_fallback_used = False
+        extra_scan_used = False
+        extra_scan_reason = None
 
-        for result in scan_results:
-            if inspector_call_count >= scan_budget:
-                if _ledger_has_useful_memory(ledger):
-                    stop_reason = "scan_budget_exhausted"
-                    break
-                if inspector_call_count >= empty_ledger_fallback_budget:
-                    stop_reason = "empty_ledger_fallback_exhausted"
-                    break
-                empty_ledger_fallback_used = True
-                stop_reason = "empty_ledger_fallback_scanning"
-
+        def inspect_result(result: dict) -> dict:
+            nonlocal inspector_call_count
             chunk_index = self._result_chunk_index(result, inspector_call_count)
             decision = self._inspect_iterative_chunk(query, ledger, result)
             inspector_call_count += 1
@@ -3302,6 +3345,32 @@ class SemanticCacheController:
                 chunk_index=chunk_index if chunk_index is not None else -1,
                 query=query,
             )
+            return decision
+
+        for result in scan_results:
+            if inspector_call_count >= scan_budget:
+                if _ledger_has_useful_memory(ledger):
+                    reason = _iterative_extra_scan_reason(
+                        ledger,
+                        query,
+                        visited_count=inspector_call_count,
+                        total_chunks=len(scan_results),
+                    )
+                    if reason and inspector_call_count < len(scan_results):
+                        extra_scan_used = True
+                        extra_scan_reason = extra_scan_reason or reason
+                        stop_reason = reason
+                    else:
+                        stop_reason = "scan_budget_exhausted"
+                        break
+                else:
+                    if inspector_call_count >= empty_ledger_fallback_budget:
+                        stop_reason = "empty_ledger_fallback_exhausted"
+                        break
+                    empty_ledger_fallback_used = True
+                    stop_reason = "empty_ledger_fallback_scanning"
+
+            decision = inspect_result(result)
             should_stop, reason = _should_stop_iterative_scan(
                 decision=decision,
                 ledger=ledger,
@@ -3331,15 +3400,37 @@ class SemanticCacheController:
                     ledger=ledger,
                 )
                 if needs_fallback:
-                    packed_fallback_reason = fallback_reason
-                    answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
-                        query,
-                        inspected_results,
-                        ledger=ledger,
-                        reason=fallback_reason,
-                    )
-                    packed_fallback_call_count = 1
-                    stop_reason = fallback_reason
+                    if (
+                        not extra_scan_used
+                        and inspector_call_count < len(scan_results)
+                        and _fallback_reason_allows_extra_scan(fallback_reason)
+                    ):
+                        extra_scan_used = True
+                        extra_scan_reason = extra_scan_reason or f"{fallback_reason}_extra_scan"
+                        stop_reason = extra_scan_reason
+                        while inspector_call_count < len(scan_results):
+                            inspect_result(scan_results[inspector_call_count])
+                        inspected_results = scan_results[:inspector_call_count]
+                        answer, final_decision = self._finalize_iterative_answer(query, ledger)
+                        final_adjudication_call_count += 1
+                        needs_fallback, fallback_reason = _final_decision_needs_packed_fallback(
+                            answer,
+                            final_decision,
+                            query=query,
+                            ledger=ledger,
+                        )
+                    if not needs_fallback:
+                        packed_fallback_reason = None
+                    else:
+                        packed_fallback_reason = fallback_reason
+                        answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
+                            query,
+                            inspected_results,
+                            ledger=ledger,
+                            reason=fallback_reason,
+                        )
+                        packed_fallback_call_count = 1
+                        stop_reason = fallback_reason
             else:
                 packed_fallback_reason = "empty_ledger"
                 answer, packed_fallback_decision = self._fallback_iterative_packed_answer(
@@ -3405,6 +3496,11 @@ class SemanticCacheController:
             "iterative_scan_faiss_top_n": faiss_top_n,
             "iterative_scan_faiss_result_count": faiss_result_count,
             "iterative_scan_empty_ledger_fallback_used": empty_ledger_fallback_used,
+            "iterative_scan_extra_scan_used": extra_scan_used,
+            "iterative_scan_extra_scan_reason": extra_scan_reason,
+            "iterative_scan_extra_scan_chunk_count": (
+                max(0, inspector_call_count - scan_budget) if extra_scan_used else 0
+            ),
             "iterative_scan_packed_fallback_used": packed_fallback_call_count > 0,
             "iterative_scan_early_stop": early_stop,
             "iterative_scan_stop_reason": stop_reason,

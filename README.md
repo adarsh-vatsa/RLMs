@@ -80,7 +80,9 @@ centralized pricing map in `semantic_cache_system.py`:
 
 These are explicit Anthropic-style reference rates, not live billing API values.
 Run-level totals in each benchmark `manifest.json` use the same estimated token
-pricing.
+pricing. LongBench-v2 cache manifests also record the selected rows'
+`total_dataset_context_token_estimate` plus positive input-token savings and
+savings percentage against that estimate.
 
 ### Epstein Court Document Search (Domain Client Example)
 
