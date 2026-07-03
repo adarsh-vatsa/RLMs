@@ -554,8 +554,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1093341.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1093340.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1093722.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1093723.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -586,7 +586,7 @@ CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
 export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
 export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
-export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=8
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=4
 export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
@@ -607,10 +607,10 @@ uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_param_search.csv \
   --sample-size 1 \
-  --samples-per-domain 3 \
+  --samples-per-domain 1 \
   --selection-strategy random \
-  --min-token-count 50000 \
-  --max-token-count 200000 \
+  --min-token-count 1800000 \
+  --max-token-count 2500000 \
   --seed 0 && \
 uv run python long_bench_v2/run_benchmark.py \
   --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_param_search.csv \
@@ -620,7 +620,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
-  --row-types original \
+  --row-types original,exact,semantic \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-param-search-iterative-scan-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client-gpu
