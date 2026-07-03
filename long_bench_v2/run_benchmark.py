@@ -287,6 +287,8 @@ def resolve_cache_namespace(
     scan_empty_ledger_fallback_ratio: float = 0.0,
     iterative_packed_fallback_input_token_budget: int = 0,
     iterative_memory_max_chars: int = 0,
+    iterative_batch_max_chunks: int = 1,
+    iterative_batch_input_token_budget: int = 0,
     scan_order: str = "",
 ) -> tuple[str, str]:
     dataset_signature = _build_dataset_signature(selected_rows)
@@ -329,6 +331,12 @@ def resolve_cache_namespace(
     namespace_iterative_memory_max_chars = (
         iterative_memory_max_chars if normalized_search_mode == "iterative" else 0
     )
+    namespace_iterative_batch_max_chunks = (
+        iterative_batch_max_chunks if normalized_search_mode == "iterative" else 1
+    )
+    namespace_iterative_batch_input_token_budget = (
+        iterative_batch_input_token_budget if normalized_search_mode == "iterative" else 0
+    )
     digest = hashlib.sha256(
         (
             f"{suite_csv_sha256}\n{source_json_sha256}\n{dataset_signature}\n"
@@ -347,6 +355,8 @@ def resolve_cache_namespace(
             f"{scan_max_tokens}\n{namespace_scan_empty_ledger_fallback_ratio}\n"
             f"{namespace_iterative_packed_fallback_input_token_budget}\n"
             f"{namespace_iterative_memory_max_chars}\n"
+            f"{namespace_iterative_batch_max_chunks}\n"
+            f"{namespace_iterative_batch_input_token_budget}\n"
             f"{namespace_iterative_reader_version}\n{scan_order}"
         ).encode("utf-8")
     ).hexdigest()[:16]
@@ -377,6 +387,12 @@ def aggregate_bridge_row_totals(rows: list[dict]) -> dict[str, float]:
     total_input_tokens = sum(int(row.get("delta_input_tokens", 0) or 0) for row in rows)
     total_output_tokens = sum(int(row.get("delta_output_tokens", 0) or 0) for row in rows)
     total_context_token_estimate = sum(int(row.get("context_token_estimate", 0) or 0) for row in rows)
+    unique_source_context: dict[str, int] = {}
+    for row in rows:
+        source_key = _coerce_text(row.get("source_id")) or _coerce_text(row.get("case_id")) or str(len(unique_source_context))
+        if source_key not in unique_source_context:
+            unique_source_context[source_key] = int(row.get("context_token_estimate", 0) or 0)
+    total_unique_source_context_estimate = sum(unique_source_context.values())
     total_cost = sum(float(row.get("delta_cost_usd", 0.0) or 0.0) for row in rows)
     return {
         "calls": total_calls,
@@ -384,6 +400,7 @@ def aggregate_bridge_row_totals(rows: list[dict]) -> dict[str, float]:
         "output_tokens": total_output_tokens,
         "total_tokens": total_input_tokens + total_output_tokens,
         "context_token_estimate": total_context_token_estimate,
+        "unique_source_context_token_estimate": total_unique_source_context_estimate,
         "cost": total_cost,
     }
 
@@ -504,6 +521,10 @@ def build_effective_config(scs, args: argparse.Namespace) -> dict:
             getattr(scs, "ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET", 0)
         ),
         "iterative_memory_max_chars": int(getattr(scs, "ITERATIVE_MEMORY_MAX_CHARS", 0)),
+        "iterative_batch_max_chunks": int(getattr(scs, "ITERATIVE_BATCH_MAX_CHUNKS", 1)),
+        "iterative_batch_input_token_budget": int(
+            getattr(scs, "ITERATIVE_BATCH_INPUT_TOKEN_BUDGET", 0)
+        ),
         "scan_order": _coerce_text(getattr(scs, "SCAN_ORDER", "")),
         "doc_chunk_size": int(getattr(scs, "DOCUMENT_CHUNK_SIZE", 0)),
         "doc_chunk_overlap": int(getattr(scs, "DOCUMENT_CHUNK_OVERLAP", 0)),
@@ -550,6 +571,8 @@ def build_effective_config(scs, args: argparse.Namespace) -> dict:
             "iterative_packed_fallback_input_token_budget"
         ],
         "iterative_memory_max_chars": artifact_fields["iterative_memory_max_chars"],
+        "iterative_batch_max_chunks": artifact_fields["iterative_batch_max_chunks"],
+        "iterative_batch_input_token_budget": artifact_fields["iterative_batch_input_token_budget"],
         "scan_order": artifact_fields["scan_order"],
     }
     return {
@@ -716,6 +739,8 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             f"scan_max_tokens={effective_fields['scan_max_tokens']}, "
             f"empty_ledger_fallback_ratio={effective_fields['scan_empty_ledger_fallback_ratio']}, "
             f"memory_max_chars={effective_fields['iterative_memory_max_chars']}, "
+            f"batch_max_chunks={effective_fields['iterative_batch_max_chunks']}, "
+            f"batch_input_token_budget={effective_fields['iterative_batch_input_token_budget']}, "
             f"reader_version={effective_fields['iterative_reader_version']}"
         )
     else:
@@ -895,6 +920,11 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
             "iterative_scan_selected_chunk_indices": retrieval.get("iterative_scan_selected_chunk_indices"),
             "iterative_scan_supporting_chunk_indices": retrieval.get("iterative_scan_supporting_chunk_indices"),
             "iterative_scan_inspector_call_count": retrieval.get("iterative_scan_inspector_call_count"),
+            "iterative_batching_enabled": retrieval.get("iterative_batching_enabled"),
+            "iterative_scan_inspector_llm_call_count": retrieval.get("iterative_scan_inspector_llm_call_count"),
+            "iterative_scan_batch_count": retrieval.get("iterative_scan_batch_count"),
+            "iterative_scan_batch_sizes": retrieval.get("iterative_scan_batch_sizes"),
+            "iterative_scan_batch_fallback_count": retrieval.get("iterative_scan_batch_fallback_count"),
             "iterative_scan_final_adjudication_call_count": retrieval.get("iterative_scan_final_adjudication_call_count"),
             "iterative_scan_packed_fallback_call_count": retrieval.get("iterative_scan_packed_fallback_call_count"),
             "iterative_scan_packed_fallback_reason": retrieval.get("iterative_scan_packed_fallback_reason"),
@@ -1008,6 +1038,20 @@ def run_longbench_benchmark(args: argparse.Namespace) -> None:
         "total_input_tokens": totals["input_tokens"],
         "total_output_tokens": totals["output_tokens"],
         "total_tokens": totals["total_tokens"],
+        "full_context_query_baseline_input_tokens": totals["context_token_estimate"],
+        "input_token_savings_vs_full_context_query_baseline": totals["context_token_estimate"] - totals["input_tokens"],
+        "input_token_savings_percent_vs_full_context_query_baseline": pct_savings(
+            totals["context_token_estimate"],
+            totals["input_tokens"],
+        ),
+        "unique_source_context_token_estimate": totals["unique_source_context_token_estimate"],
+        "input_token_savings_vs_unique_source_context": (
+            totals["unique_source_context_token_estimate"] - totals["input_tokens"]
+        ),
+        "input_token_savings_percent_vs_unique_source_context": pct_savings(
+            totals["unique_source_context_token_estimate"],
+            totals["input_tokens"],
+        ),
         "total_dataset_context_token_estimate": totals["context_token_estimate"],
         "input_token_savings_vs_context": totals["context_token_estimate"] - totals["input_tokens"],
         "input_token_savings_percent": pct_savings(

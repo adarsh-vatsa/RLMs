@@ -341,7 +341,7 @@ The iterative reader is an opt-in LongBench/Jarvis path for long-context MCQ row
 2. The early-stop minimum is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO)`, at least `SEMANTIC_CACHE_SCAN_MIN_CHUNKS`.
 3. The scan budget is `ceil(total_chunks * SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO)`, no more than total chunks, and optionally capped by `SEMANTIC_CACHE_SCAN_MAX_CHUNKS` unless that cap is `0`.
 4. The controller asks FAISS for enough top-N chunks to cover the normal scan budget and any fallback/extra-scan coverage, then inspects them in FAISS-ranked order.
-5. The executor inspects one chunk per call and returns strict JSON with an additive `memory_update`, target facts, option-code mappings, current `best_choice`, rationale, bounded open questions, and whether more context is needed.
+5. The executor inspects token-budgeted batches of chunks and returns strict JSON with per-chunk additive `memory_update`, target facts, option-code mappings, current `best_choice`, rationale, bounded open questions, and whether more context is needed.
 6. The controller maintains a cumulative memory ledger with chunk-referenced updates, structured target facts, relation `code_mappings`, current best choice, visited chunks, and bounded parse-failure telemetry. For many-shot relation tasks, mappings are retained only when they use relation codes present in the current answer options.
 7. Early stop is allowed only after the minimum chunk count when the inspector reports `status=answer_found`, a valid `best_choice`, no critical open questions, and no need for more context. Comparative questions must inspect the full FAISS-ranked scan budget first. Ordering rows and symbolic-code rows with competing mapped option codes defer to final adjudication instead of accepting an inspector answer directly.
 8. If the normal scan budget produces no useful ledger memory, the reader can continue toward `SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO` before giving up on iterative evidence extraction. Reduced-budget scans also continue over the remaining available chunks when an ordering row still needs chronology coverage or a symbolic-code row has competing mapped codes/open code questions.
@@ -490,7 +490,9 @@ The same library can serve: legal filings, financial documents, medical records,
 | `SCAN_EMPTY_LEDGER_FALLBACK_RATIO` | 1.0 | Extra FAISS coverage ratio used for empty-ledger and conditional extra scans |
 | `ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET` | 60000 | Input-token budget for empty, invalid, or needs-more-context packed fallback |
 | `ITERATIVE_MEMORY_MAX_CHARS` | 16000 | Character cap for cumulative iterative memory prose |
-| `ITERATIVE_READER_VERSION` | 11 | Namespace version for iterative reader semantics |
+| `ITERATIVE_BATCH_MAX_CHUNKS` | 3 | Maximum chunks packed into one iterative inspector request |
+| `ITERATIVE_BATCH_INPUT_TOKEN_BUDGET` | 50000 | Estimated input-token budget for each iterative inspector batch |
+| `ITERATIVE_READER_VERSION` | 12 | Namespace version for iterative reader semantics |
 | `EMBEDDING_DIM` | 1024 | Embedding vector dimension |
 | `EXECUTOR_MODEL` | `claude-sonnet-4-20250514` | Primary synthesis model |
 | `EVALUATOR_MODEL` | `claude-haiku-4-5-20251001` | Sniper, consensus, knowledge extraction |

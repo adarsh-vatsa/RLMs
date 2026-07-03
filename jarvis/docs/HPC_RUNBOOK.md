@@ -377,6 +377,8 @@ export SEMANTIC_CACHE_SCAN_MAX_TOKENS=768
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
+export SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS=3
+export SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET=50000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 
 uv run python long_bench_v2/sample_csv.py \
@@ -598,6 +600,8 @@ export SEMANTIC_CACHE_SCAN_MAX_TOKENS=1536
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
+export SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS=3
+export SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET=50000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -698,7 +702,10 @@ require a chosen sequence, evidence for each numbered narrative, and adjacent
 pairwise order evidence keyed by edges such as `2<4`. Symbolic-code rows with
 multiple mapped candidate option codes require selected-code evidence and
 rejection evidence for each other mapped code before the ledger-only final answer
-is accepted. The cumulative memory text
+is accepted. `SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS=3` lets the iterative
+inspector pack up to three scan chunks into one executor call, subject to
+`SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET=50000`; set the max chunks to
+`1` to restore the older one-chunk-per-call behavior. The cumulative memory text
 is bounded by `SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS`; if it exceeds the cap,
 old prose updates are trimmed while structured facts, mappings, best choice, and
 parse failures are preserved.
@@ -766,6 +773,8 @@ export SEMANTIC_CACHE_SCAN_MAX_TOKENS=768
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
+export SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS=3
+export SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET=50000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"

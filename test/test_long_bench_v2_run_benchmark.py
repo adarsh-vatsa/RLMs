@@ -9,6 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from long_bench_v2.run_benchmark import (
+    aggregate_bridge_row_totals,
     answer_correct,
     build_arg_parser,
     build_cache_reuse_manifest,
@@ -158,6 +159,11 @@ class FakeController:
                 "iterative_scan_selected_chunk_indices": list(range(fake_early_stop_min)),
                 "iterative_scan_supporting_chunk_indices": [1],
                 "iterative_scan_inspector_call_count": fake_early_stop_min,
+                "iterative_batching_enabled": True,
+                "iterative_scan_inspector_llm_call_count": 1,
+                "iterative_scan_batch_count": 1,
+                "iterative_scan_batch_sizes": [fake_early_stop_min],
+                "iterative_scan_batch_fallback_count": 0,
                 "iterative_scan_final_adjudication_call_count": 0,
                 "iterative_scan_packed_fallback_call_count": 0,
                 "iterative_scan_packed_fallback_reason": None,
@@ -218,6 +224,8 @@ class FakeScs:
     SCAN_EMPTY_LEDGER_FALLBACK_RATIO = 1.0
     ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = 60000
     ITERATIVE_MEMORY_MAX_CHARS = 16000
+    ITERATIVE_BATCH_MAX_CHUNKS = 3
+    ITERATIVE_BATCH_INPUT_TOKEN_BUDGET = 50000
     SCAN_ORDER = "faiss_ranked"
     SemanticCacheController = FakeController
     ExecutionMetrics = FakeMetrics
@@ -280,6 +288,41 @@ def _reset_fake_controller():
 
 
 class LongBenchV2RunBenchmarkTests(unittest.TestCase):
+    def test_aggregate_totals_tracks_query_and_unique_source_context(self):
+        rows = [
+            {
+                "source_id": "source_1",
+                "context_token_estimate": 100,
+                "delta_calls": 1,
+                "delta_input_tokens": 60,
+                "delta_output_tokens": 5,
+                "delta_cost_usd": 0.01,
+            },
+            {
+                "source_id": "source_1",
+                "context_token_estimate": 100,
+                "delta_calls": 0,
+                "delta_input_tokens": 0,
+                "delta_output_tokens": 0,
+                "delta_cost_usd": 0.0,
+            },
+            {
+                "source_id": "source_2",
+                "context_token_estimate": 200,
+                "delta_calls": 1,
+                "delta_input_tokens": 50,
+                "delta_output_tokens": 7,
+                "delta_cost_usd": 0.02,
+            },
+        ]
+
+        totals = aggregate_bridge_row_totals(rows)
+
+        self.assertEqual(totals["context_token_estimate"], 400)
+        self.assertEqual(totals["unique_source_context_token_estimate"], 300)
+        self.assertEqual(totals["input_tokens"], 110)
+        self.assertEqual(totals["output_tokens"], 12)
+
     def test_load_suite_rows_resolves_context_from_source_json(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -547,6 +590,28 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
             iterative_memory_max_chars=32000,
             scan_order="faiss_ranked",
         )
+        changed_iterative_batch_config = resolve_cache_namespace(
+            "suite-sha",
+            "source-sha",
+            rows,
+            "model-a",
+            20,
+            5,
+            ["original", "exact"],
+            search_mode="iterative",
+            iterative_reader_version=5,
+            scan_min_chunk_ratio=0.30,
+            scan_max_chunk_ratio=0.50,
+            scan_min_chunks=3,
+            scan_max_chunks=0,
+            scan_max_tokens=768,
+            scan_empty_ledger_fallback_ratio=1.0,
+            iterative_packed_fallback_input_token_budget=60000,
+            iterative_memory_max_chars=16000,
+            iterative_batch_max_chunks=3,
+            iterative_batch_input_token_budget=50000,
+            scan_order="faiss_ranked",
+        )
         iterative_with_legacy_args = resolve_cache_namespace(
             "suite-sha",
             "source-sha",
@@ -588,6 +653,7 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertNotEqual(first, changed_scan_config)
         self.assertNotEqual(changed_scan_config, changed_iterative_reader_version)
         self.assertNotEqual(changed_scan_config, changed_iterative_memory_max)
+        self.assertNotEqual(changed_scan_config, changed_iterative_batch_config)
         self.assertEqual(changed_scan_config, iterative_with_legacy_args)
 
     def test_parse_choice_and_answer_correct(self):
@@ -657,6 +723,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(artifact_fields["synthesis_max_chunks"], 4)
         self.assertEqual(artifact_fields["mcq_prompt_style"], "strict")
         self.assertEqual(artifact_fields["mcq_synthesis_max_tokens"], 8)
+        self.assertEqual(artifact_fields["iterative_batch_max_chunks"], 3)
+        self.assertEqual(artifact_fields["iterative_batch_input_token_budget"], 50000)
         self.assertEqual(artifact_fields["reranker_batch_size"], 2)
         self.assertTrue(artifact_fields["reranker_disabled"])
         self.assertIsNone(artifact_fields["rerank_top_effective"])
@@ -664,6 +732,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(config["search_rerank_top"], 0)
         self.assertEqual(namespace_kwargs["synthesis_max_chunks"], 4)
         self.assertEqual(namespace_kwargs["mcq_synthesis_max_tokens"], 8)
+        self.assertEqual(namespace_kwargs["iterative_batch_max_chunks"], 3)
+        self.assertEqual(namespace_kwargs["iterative_batch_input_token_budget"], 50000)
         self.assertNotIn("reranker_batch_size", namespace_kwargs)
 
     def test_normalize_llm_args_keeps_anthropic_default_and_maps_openrouter_and_local(self):
@@ -794,6 +864,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["scan_empty_ledger_fallback_ratio"], 1.0)
         self.assertEqual(manifest["iterative_packed_fallback_input_token_budget"], 60000)
         self.assertEqual(manifest["iterative_memory_max_chars"], 16000)
+        self.assertEqual(manifest["iterative_batch_max_chunks"], 3)
+        self.assertEqual(manifest["iterative_batch_input_token_budget"], 50000)
         self.assertEqual(manifest["scan_order"], "faiss_ranked")
         self.assertTrue(manifest["reranker_disabled"])
         self.assertEqual(manifest["doc_chunk_size"], 10000)
@@ -816,6 +888,12 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["mcq_prompt_style"], "strict")
         self.assertEqual(manifest["mcq_synthesis_max_tokens"], 8)
         self.assertEqual(manifest["total_dataset_context_token_estimate"], 300)
+        self.assertEqual(manifest["full_context_query_baseline_input_tokens"], 300)
+        self.assertEqual(manifest["input_token_savings_vs_full_context_query_baseline"], 270)
+        self.assertEqual(manifest["input_token_savings_percent_vs_full_context_query_baseline"], 90.0)
+        self.assertEqual(manifest["unique_source_context_token_estimate"], 200)
+        self.assertEqual(manifest["input_token_savings_vs_unique_source_context"], 170)
+        self.assertEqual(manifest["input_token_savings_percent_vs_unique_source_context"], 85.0)
         self.assertEqual(manifest["total_input_tokens"], 30)
         self.assertEqual(manifest["input_token_savings_vs_context"], 270)
         self.assertEqual(manifest["input_token_savings_percent"], 90.0)
@@ -858,6 +936,8 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_rows[0]["scan_min_chunk_ratio"], 0.30)
         self.assertEqual(bridge_rows[0]["scan_max_chunk_ratio"], 0.50)
         self.assertEqual(bridge_rows[0]["scan_empty_ledger_fallback_ratio"], 1.0)
+        self.assertEqual(bridge_rows[0]["iterative_batch_max_chunks"], 3)
+        self.assertEqual(bridge_rows[0]["iterative_batch_input_token_budget"], 50000)
         self.assertEqual(bridge_rows[0]["iterative_scan_total_chunks"], 10)
         self.assertEqual(bridge_rows[0]["iterative_scan_early_stop_min_chunks"], 3)
         self.assertEqual(bridge_rows[0]["iterative_scan_budget"], 5)
@@ -871,6 +951,11 @@ class LongBenchV2RunBenchmarkTests(unittest.TestCase):
         self.assertIsNone(bridge_rows[0]["iterative_scan_final_reason"])
         self.assertIsNone(bridge_rows[0]["iterative_scan_final_raw_response"])
         self.assertEqual(bridge_rows[0]["iterative_scan_supporting_chunk_indices"], [1])
+        self.assertTrue(bridge_rows[0]["iterative_batching_enabled"])
+        self.assertEqual(bridge_rows[0]["iterative_scan_inspector_llm_call_count"], 1)
+        self.assertEqual(bridge_rows[0]["iterative_scan_batch_count"], 1)
+        self.assertEqual(bridge_rows[0]["iterative_scan_batch_sizes"], [3])
+        self.assertEqual(bridge_rows[0]["iterative_scan_batch_fallback_count"], 0)
         self.assertEqual(bridge_rows[0]["iterative_scan_useful_memory_count"], 1)
         self.assertEqual(bridge_rows[0]["iterative_memory_max_chars"], 16000)
         self.assertEqual(bridge_rows[0]["iterative_scan_memory_char_count"], 29)

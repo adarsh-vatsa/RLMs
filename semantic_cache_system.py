@@ -137,8 +137,10 @@ SCAN_MAX_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO", 0.50)
 SCAN_MIN_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MIN_CHUNKS", 3)
 SCAN_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_SCAN_MAX_CHUNKS", 0)
 SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
+ITERATIVE_BATCH_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS", 3)
+ITERATIVE_BATCH_INPUT_TOKEN_BUDGET = _env_int("SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET", 50000)
 SCAN_ORDER = "faiss_ranked_ordering_document_order"
-ITERATIVE_READER_VERSION = 11
+ITERATIVE_READER_VERSION = 12
 ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
@@ -3071,13 +3073,32 @@ class SemanticCacheController:
 
         return ordered, resolved_total_chunks, len(ordered)
 
-    def _inspect_iterative_chunk(self, query: str, ledger: dict, result: dict) -> dict:
-        metadata = result.get("metadata") or {}
-        chunk_index = self._result_chunk_index(result, len(ledger.get("visited_chunks", [])))
+    def _iterative_inspector_system_prompt(self, query: str, *, batched: bool = False) -> str:
         task_guidance = _iterative_task_guidance(query)
-        symbolic_codes = sorted(_symbolic_choice_codes(query))
-        symbolic_code_text = ", ".join(symbolic_codes) if symbolic_codes else "none"
-        system_prompt = (
+        if batched:
+            return (
+                "You are a cumulative evidence ledger updater for a long-context multiple-choice "
+                "question. Use ONLY the current chunks and the existing ledger. Return ONLY "
+                "one valid compact JSON object with key chunk_updates. chunk_updates must be an "
+                "array with one object per input chunk, in the same order. Each update object must "
+                "use exactly these keys: chunk_index, status, memory_update, target_facts, "
+                "code_mappings, best_choice, best_choice_rationale, open_questions, "
+                "needs_more_context. status must be no_update, partial, or answer_found. "
+                "memory_update is an additive note for that chunk, not a full rewrite of prior "
+                "memory. target_facts must be an array of strings or objects for facts about the "
+                "target question/document. code_mappings must be an array of objects with code, "
+                "relation, and example. For symbolic-code tasks, include only code_mappings whose "
+                "code is one of the current option codes. best_choice must be A, B, C, D, or null, "
+                "reflecting the existing ledger plus updates through that chunk. For symbolic-code "
+                "tasks, set best_choice only when an explicit code_mappings entry supports that "
+                "answer's code with a compatible demonstration; do not infer code meanings from "
+                "code names, target facts, or external schemas. open_questions must contain only "
+                "currently unresolved critical questions and must be at most three items. Use [] "
+                "for empty lists. Do not quote long passages. Do not explain outside JSON. Use "
+                "status=partial when a chunk updates memory but does not yet prove one choice. "
+                + task_guidance
+            )
+        return (
             "You are a cumulative evidence ledger updater for a long-context multiple-choice "
             "question. Use ONLY the current chunk and the existing ledger. Return ONLY "
             "one valid compact JSON object. Use exactly these keys: status, memory_update, "
@@ -3100,9 +3121,102 @@ class SemanticCacheController:
             "choice. "
             + task_guidance
         )
+
+    def _iterative_symbolic_code_text(self, query: str) -> str:
+        symbolic_codes = sorted(_symbolic_choice_codes(query))
+        return ", ".join(symbolic_codes) if symbolic_codes else "none"
+
+    def _iterative_chunk_payload(self, result: dict, fallback_idx: int) -> dict:
+        metadata = dict(result.get("metadata") or {})
+        chunk_index = self._result_chunk_index(result, fallback_idx)
+        metadata["chunk_index"] = chunk_index
+        return {
+            "chunk_index": chunk_index,
+            "metadata": metadata,
+            "text": result.get("text", ""),
+        }
+
+    def _iterative_batch_user_content(self, query: str, ledger: dict, results: list[dict]) -> str:
+        chunks = [
+            self._iterative_chunk_payload(result, idx)
+            for idx, result in enumerate(results)
+        ]
+        return (
+            f"Question and choices:\n{query}\n\n"
+            f"Current symbolic option codes, if any:\n{self._iterative_symbolic_code_text(query)}\n\n"
+            f"Existing evidence ledger:\n{json.dumps(ledger, ensure_ascii=False)}\n\n"
+            f"Chunks:\n{json.dumps(chunks, ensure_ascii=False)}"
+        )
+
+    def _pack_iterative_inspection_batch(
+        self,
+        *,
+        query: str,
+        ledger: dict,
+        results: list[dict],
+        system_prompt: str,
+    ) -> list[dict]:
+        max_chunks = max(1, int(ITERATIVE_BATCH_MAX_CHUNKS))
+        input_budget = int(ITERATIVE_BATCH_INPUT_TOKEN_BUDGET)
+        batch: list[dict] = []
+        for result in results[:max_chunks]:
+            candidate = [*batch, result]
+            user_content = self._iterative_batch_user_content(query, ledger, candidate)
+            estimated_tokens = _estimate_llm_input_tokens(f"{system_prompt}\n\n{user_content}")
+            if input_budget > 0 and batch and estimated_tokens > input_budget:
+                break
+            batch = candidate
+            if input_budget > 0 and len(batch) == 1 and estimated_tokens > input_budget:
+                break
+        return batch
+
+    def _inspect_iterative_chunk_batch(self, query: str, ledger: dict, results: list[dict]) -> list[dict] | None:
+        if not results:
+            return []
+        system_prompt = self._iterative_inspector_system_prompt(query, batched=True)
+        user_content = self._iterative_batch_user_content(query, ledger, results)
+        response = create_llm_message(
+            model=EXECUTOR_MODEL,
+            max_tokens=max(1, SCAN_MAX_TOKENS),
+            temperature=0,
+            system=system_prompt,
+            messages=[{"role": "user", "content": user_content}],
+            response_format=_json_response_format(),
+        )
+        self.metrics.record_call(EXECUTOR_MODEL, response.usage.input_tokens, response.usage.output_tokens)
+        raw_text = response.content[0].text
+        parsed = _extract_llm_json_object(raw_text)
+        updates = parsed.get("chunk_updates") if isinstance(parsed, dict) else None
+        if not isinstance(updates, list):
+            return None
+
+        updates_by_index: dict[int, dict] = {}
+        for update in updates:
+            if not isinstance(update, dict):
+                return None
+            raw_index = update.get("chunk_index")
+            if isinstance(raw_index, str) and raw_index.isdigit():
+                raw_index = int(raw_index)
+            if not isinstance(raw_index, int):
+                return None
+            update["chunk_index"] = raw_index
+            updates_by_index[raw_index] = update
+
+        decisions: list[dict] = []
+        for idx, result in enumerate(results):
+            chunk_index = self._result_chunk_index(result, idx)
+            if chunk_index not in updates_by_index:
+                return None
+            decisions.append(updates_by_index[chunk_index])
+        return decisions
+
+    def _inspect_iterative_chunk(self, query: str, ledger: dict, result: dict) -> dict:
+        metadata = result.get("metadata") or {}
+        chunk_index = self._result_chunk_index(result, len(ledger.get("visited_chunks", [])))
+        system_prompt = self._iterative_inspector_system_prompt(query)
         user_content = (
             f"Question and choices:\n{query}\n\n"
-            f"Current symbolic option codes, if any:\n{symbolic_code_text}\n\n"
+            f"Current symbolic option codes, if any:\n{self._iterative_symbolic_code_text(query)}\n\n"
             f"Existing evidence ledger:\n{json.dumps(ledger, ensure_ascii=False)}\n\n"
             f"Chunk metadata:\n{json.dumps(metadata, ensure_ascii=False)}\n\n"
             f"Chunk text:\n{result.get('text', '')}"
@@ -3322,6 +3436,10 @@ class SemanticCacheController:
         ledger = _new_evidence_ledger(query)
         comparative_query = _query_requires_comparative_scan(query)
         inspector_call_count = 0
+        inspector_llm_call_count = 0
+        batch_count = 0
+        batch_sizes: list[int] = []
+        batch_fallback_count = 0
         final_adjudication_call_count = 0
         packed_fallback_call_count = 0
         early_stop = False
@@ -3333,21 +3451,74 @@ class SemanticCacheController:
         empty_ledger_fallback_used = False
         extra_scan_used = False
         extra_scan_reason = None
+        batching_enabled = max(1, int(ITERATIVE_BATCH_MAX_CHUNKS)) > 1
+        batch_system_prompt = self._iterative_inspector_system_prompt(query, batched=True)
 
-        def inspect_result(result: dict) -> dict:
-            nonlocal inspector_call_count
-            chunk_index = self._result_chunk_index(result, inspector_call_count)
-            decision = self._inspect_iterative_chunk(query, ledger, result)
-            inspector_call_count += 1
-            _update_evidence_ledger(
-                ledger,
-                decision,
-                chunk_index=chunk_index if chunk_index is not None else -1,
-                query=query,
-            )
-            return decision
+        def inspect_next_batch(limit_index: int | None = None) -> tuple[bool, str, dict | None]:
+            nonlocal inspector_call_count, inspector_llm_call_count, batch_count, batch_fallback_count
+            limit = len(scan_results) if limit_index is None else min(len(scan_results), int(limit_index))
+            remaining = scan_results[inspector_call_count:limit]
+            if not remaining:
+                return False, stop_reason, None
 
-        for result in scan_results:
+            if batching_enabled:
+                batch = self._pack_iterative_inspection_batch(
+                    query=query,
+                    ledger=ledger,
+                    results=remaining,
+                    system_prompt=batch_system_prompt,
+                )
+            else:
+                batch = remaining[:1]
+            if not batch:
+                return False, stop_reason, None
+
+            decisions = None
+            if batching_enabled and len(batch) > 1:
+                batch_count += 1
+                batch_sizes.append(len(batch))
+                inspector_llm_call_count += 1
+                decisions = self._inspect_iterative_chunk_batch(query, ledger, batch)
+                if decisions is None:
+                    batch_fallback_count += 1
+
+            if decisions is None:
+                decisions = []
+                for result in batch:
+                    inspector_llm_call_count += 1
+                    decisions.append(self._inspect_iterative_chunk(query, ledger, result))
+
+            batch_should_stop = False
+            batch_stop_reason = stop_reason
+            stop_decision = None
+            for result, decision in zip(batch, decisions):
+                chunk_index = self._result_chunk_index(result, inspector_call_count)
+                inspector_call_count += 1
+                _update_evidence_ledger(
+                    ledger,
+                    decision,
+                    chunk_index=chunk_index if chunk_index is not None else -1,
+                    query=query,
+                )
+                should_stop, reason = _should_stop_iterative_scan(
+                    decision=decision,
+                    ledger=ledger,
+                    visited_count=inspector_call_count,
+                    min_chunks=early_stop_min_chunks,
+                    comparative_required_count=scan_budget,
+                    comparative_query=comparative_query,
+                    query=query,
+                )
+                if should_stop:
+                    batch_should_stop = True
+                    batch_stop_reason = reason
+                    stop_decision = decision
+                elif not batch_should_stop:
+                    batch_stop_reason = reason
+            return batch_should_stop, batch_stop_reason, stop_decision
+
+        while inspector_call_count < len(scan_results):
+            allowed_limit = min(scan_budget, len(scan_results))
             if inspector_call_count >= scan_budget:
                 if _ledger_has_useful_memory(ledger):
                     reason = _iterative_extra_scan_reason(
@@ -3360,6 +3531,7 @@ class SemanticCacheController:
                         extra_scan_used = True
                         extra_scan_reason = extra_scan_reason or reason
                         stop_reason = reason
+                        allowed_limit = len(scan_results)
                     else:
                         stop_reason = "scan_budget_exhausted"
                         break
@@ -3369,21 +3541,18 @@ class SemanticCacheController:
                         break
                     empty_ledger_fallback_used = True
                     stop_reason = "empty_ledger_fallback_scanning"
+                    allowed_limit = min(empty_ledger_fallback_budget, len(scan_results))
 
-            decision = inspect_result(result)
-            should_stop, reason = _should_stop_iterative_scan(
-                decision=decision,
-                ledger=ledger,
-                visited_count=inspector_call_count,
-                min_chunks=early_stop_min_chunks,
-                comparative_required_count=scan_budget,
-                comparative_query=comparative_query,
-                query=query,
-            )
+            before_count = inspector_call_count
+            should_stop, reason, decision = inspect_next_batch(allowed_limit)
+            if inspector_call_count == before_count:
+                break
             stop_reason = reason
             if should_stop:
                 answer = _normalize_choice_letter(
-                    decision.get("best_choice") or decision.get("supported_choice") or ledger.get("best_choice")
+                    (decision or {}).get("best_choice")
+                    or (decision or {}).get("supported_choice")
+                    or ledger.get("best_choice")
                 )
                 early_stop = True
                 break
@@ -3409,7 +3578,10 @@ class SemanticCacheController:
                         extra_scan_reason = extra_scan_reason or f"{fallback_reason}_extra_scan"
                         stop_reason = extra_scan_reason
                         while inspector_call_count < len(scan_results):
-                            inspect_result(scan_results[inspector_call_count])
+                            before_count = inspector_call_count
+                            inspect_next_batch(len(scan_results))
+                            if inspector_call_count == before_count:
+                                break
                         inspected_results = scan_results[:inspector_call_count]
                         answer, final_decision = self._finalize_iterative_answer(query, ledger)
                         final_adjudication_call_count += 1
@@ -3507,6 +3679,13 @@ class SemanticCacheController:
             "iterative_scan_selected_chunk_indices": visited_indices,
             "iterative_scan_supporting_chunk_indices": supporting_indices,
             "iterative_scan_inspector_call_count": inspector_call_count,
+            "iterative_batching_enabled": batching_enabled,
+            "iterative_batch_max_chunks": int(ITERATIVE_BATCH_MAX_CHUNKS),
+            "iterative_batch_input_token_budget": int(ITERATIVE_BATCH_INPUT_TOKEN_BUDGET),
+            "iterative_scan_inspector_llm_call_count": inspector_llm_call_count,
+            "iterative_scan_batch_count": batch_count,
+            "iterative_scan_batch_sizes": batch_sizes,
+            "iterative_scan_batch_fallback_count": batch_fallback_count,
             "iterative_scan_final_adjudication_call_count": final_adjudication_call_count,
             "iterative_scan_packed_fallback_call_count": packed_fallback_call_count,
             "iterative_scan_packed_fallback_reason": packed_fallback_reason,

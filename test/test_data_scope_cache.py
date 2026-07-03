@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 import tempfile
@@ -96,6 +97,11 @@ def make_entry(query, result, scope=None):
 
 
 class DataScopedSearchCacheTests(unittest.TestCase):
+    def setUp(self):
+        self._iterative_batch_patch = patch.object(scs, "ITERATIVE_BATCH_MAX_CHUNKS", 1)
+        self._iterative_batch_patch.start()
+        self.addCleanup(self._iterative_batch_patch.stop)
+
     def test_embedding_query_uses_configured_instruction(self):
         engine = scs.EmbeddingEngine.__new__(scs.EmbeddingEngine)
         seen = {}
@@ -695,6 +701,200 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertNotIn("confidence", captured["system"])
         self.assertIn("never replace them with entities from demonstrations", captured["system"])
         self.assertIn("Current symbolic option codes", captured["messages"][0]["content"])
+
+    def test_iterative_batch_inspector_uses_chunk_updates_contract(self):
+        controller = make_controller()
+        captured = {}
+
+        class FakeUsage:
+            input_tokens = 30
+            output_tokens = 9
+
+        class FakeResponse:
+            usage = FakeUsage()
+            content = [
+                types.SimpleNamespace(
+                    text=json.dumps(
+                        {
+                            "chunk_updates": [
+                                {
+                                    "chunk_index": 4,
+                                    "status": "partial",
+                                    "memory_update": "chunk four evidence",
+                                    "target_facts": [],
+                                    "code_mappings": [],
+                                    "best_choice": None,
+                                    "best_choice_rationale": "",
+                                    "open_questions": ["need another chunk"],
+                                    "needs_more_context": True,
+                                },
+                                {
+                                    "chunk_index": 5,
+                                    "status": "answer_found",
+                                    "memory_update": "chunk five proves A",
+                                    "target_facts": ["A is supported"],
+                                    "code_mappings": [],
+                                    "best_choice": "A",
+                                    "best_choice_rationale": "chunk five proves A",
+                                    "open_questions": [],
+                                    "needs_more_context": False,
+                                },
+                            ]
+                        }
+                    )
+                )
+            ]
+
+        def fake_create_llm_message(**kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+        results = [
+            {"text": "chunk four", "metadata": {"chunk_index": 4}},
+            {"text": "chunk five", "metadata": {"chunk_index": 5}},
+        ]
+        with patch.object(scs, "SCAN_MAX_TOKENS", 768), patch.object(
+            scs, "create_llm_message", side_effect=fake_create_llm_message
+        ):
+            decisions = controller._inspect_iterative_chunk_batch(
+                "Question: Which option?\n\nChoices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta",
+                scs._new_evidence_ledger(),
+                results,
+            )
+
+        self.assertEqual([decision["chunk_index"] for decision in decisions], [4, 5])
+        self.assertEqual(captured["max_tokens"], 768)
+        self.assertIn("chunk_updates", captured["system"])
+        self.assertIn("Chunks:", captured["messages"][0]["content"])
+
+    def test_iterative_batch_packing_respects_max_chunks_and_keeps_oversized_single_chunk(self):
+        controller = make_controller()
+        query = "Question: Which option?\n\nChoices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta"
+        ledger = scs._new_evidence_ledger(query)
+        system_prompt = controller._iterative_inspector_system_prompt(query, batched=True)
+        results = [
+            {"text": "short chunk", "metadata": {"chunk_index": 0}},
+            {"text": "second short chunk", "metadata": {"chunk_index": 1}},
+            {"text": "third short chunk", "metadata": {"chunk_index": 2}},
+        ]
+
+        with patch.object(scs, "ITERATIVE_BATCH_MAX_CHUNKS", 2), patch.object(
+            scs, "ITERATIVE_BATCH_INPUT_TOKEN_BUDGET", 100000
+        ):
+            batch = controller._pack_iterative_inspection_batch(
+                query=query,
+                ledger=ledger,
+                results=results,
+                system_prompt=system_prompt,
+            )
+
+        self.assertEqual(len(batch), 2)
+
+        with patch.object(scs, "ITERATIVE_BATCH_MAX_CHUNKS", 3), patch.object(
+            scs, "ITERATIVE_BATCH_INPUT_TOKEN_BUDGET", 1
+        ):
+            batch = controller._pack_iterative_inspection_batch(
+                query=query,
+                ledger=ledger,
+                results=results,
+                system_prompt=system_prompt,
+            )
+
+        self.assertEqual(len(batch), 1)
+
+    def test_iterative_search_batches_chunks_and_stops_before_next_batch(self):
+        controller = make_controller()
+        query = (
+            "Question: What outcome is supported?\n\n"
+            "Choices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta"
+        )
+        controller.doc_index = FakeSearchIndex(
+            [
+                (0.91, {"chunk_index": 0}),
+                (0.86, {"chunk_index": 1}),
+                (0.82, {"chunk_index": 2}),
+                (0.79, {"chunk_index": 3}),
+            ]
+        )
+        controller._doc_chunks = ["alpha", "beta", "gamma", "delta"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(4)]
+        batch_decisions = [
+            {
+                "chunk_index": 0,
+                "status": "answer_found",
+                "memory_update": "alpha proves A",
+                "best_choice": "A",
+                "best_choice_rationale": "alpha proves A",
+                "open_questions": [],
+                "needs_more_context": False,
+            },
+            {"chunk_index": 1, "status": "partial", "memory_update": "beta extra", "needs_more_context": True},
+            {"chunk_index": 2, "status": "partial", "memory_update": "gamma extra", "needs_more_context": True},
+        ]
+
+        with patch.object(scs, "ITERATIVE_BATCH_MAX_CHUNKS", 3), patch.object(
+            scs, "ITERATIVE_BATCH_INPUT_TOKEN_BUDGET", 100000
+        ), patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 1.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            controller, "_inspect_iterative_chunk_batch", return_value=batch_decisions
+        ), patch.object(
+            controller, "_finalize_iterative_answer", side_effect=AssertionError("finalizer should not run")
+        ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative(query, top_k=4, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "A")
+        self.assertEqual(result["retrieval"]["iterative_scan_inspector_call_count"], 3)
+        self.assertEqual(result["retrieval"]["iterative_scan_inspector_llm_call_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_batch_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_batch_sizes"], [3])
+        self.assertEqual(result["retrieval"]["iterative_scan_batch_fallback_count"], 0)
+
+    def test_iterative_search_falls_back_to_single_chunk_when_batch_parse_fails(self):
+        controller = make_controller()
+        query = (
+            "Question: What outcome is supported?\n\n"
+            "Choices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta"
+        )
+        controller.doc_index = FakeSearchIndex(
+            [(0.91, {"chunk_index": 0}), (0.86, {"chunk_index": 1})]
+        )
+        controller._doc_chunks = ["alpha", "beta"]
+        controller._doc_chunk_metadata = [{"chunk_index": idx} for idx in range(2)]
+        inspections = [
+            {
+                "status": "answer_found",
+                "memory_update": "alpha proves A",
+                "best_choice": "A",
+                "best_choice_rationale": "alpha proves A",
+                "open_questions": [],
+                "needs_more_context": False,
+            },
+            {"status": "partial", "memory_update": "beta extra", "needs_more_context": True},
+        ]
+
+        with patch.object(scs, "ITERATIVE_BATCH_MAX_CHUNKS", 2), patch.object(
+            scs, "ITERATIVE_BATCH_INPUT_TOKEN_BUDGET", 100000
+        ), patch.object(scs, "SCAN_MIN_CHUNK_RATIO", 0.0), patch.object(
+            scs, "SCAN_MAX_CHUNK_RATIO", 1.0
+        ), patch.object(scs, "SCAN_MIN_CHUNKS", 1), patch.object(
+            controller, "_inspect_iterative_chunk_batch", return_value=None
+        ), patch.object(
+            controller, "_inspect_iterative_chunk", side_effect=inspections
+        ), patch.object(
+            controller, "_finalize_iterative_answer", side_effect=AssertionError("finalizer should not run")
+        ), patch.object(controller, "consensus_verify", return_value={"consensus": "AGREED"}), patch.object(
+            controller, "store"
+        ):
+            result = controller._search_iterative(query, top_k=2, rerank_top=1, synthesize=True)
+
+        self.assertEqual(result["answer"], "A")
+        self.assertEqual(result["retrieval"]["iterative_scan_inspector_call_count"], 2)
+        self.assertEqual(result["retrieval"]["iterative_scan_inspector_llm_call_count"], 3)
+        self.assertEqual(result["retrieval"]["iterative_scan_batch_count"], 1)
+        self.assertEqual(result["retrieval"]["iterative_scan_batch_fallback_count"], 1)
 
     def test_event_code_ledger_filters_examples_to_current_option_codes(self):
         query = (
