@@ -574,7 +574,7 @@ evaluator: http://<evaluator-node>:8001/v1
 
 Start with a sampled LongBench-v2 run to verify the services, cache reuse, and
 scoring path before submitting a larger job. This command generates a bounded
-domain-balanced source-linked suite first, with one source group per eligible
+domain-balanced source-linked suite first, with three source groups per eligible
 domain in the token band, then scores only the `original` rows. Keep parameter
 experiments in this one block so each run has a single command to compare.
 
@@ -592,15 +592,15 @@ export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=2
 export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000
 export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=2000
-export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.25
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.60
+export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.50
+export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.65
 export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=4
 export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
 export SEMANTIC_CACHE_SCAN_MAX_TOKENS=1536
 export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
 export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
 export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
-export SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS=4
+export SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS=3
 export SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET=50000
 export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
 export SEMANTIC_CACHE_MCQ_PROMPT_STYLE=strict
@@ -634,8 +634,8 @@ uv run python long_bench_v2/run_benchmark.py \
 `SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda` makes a missing CUDA runtime fail clearly
 instead of silently falling back to CPU, and `SEMANTIC_CACHE_EMBEDDING_DTYPE=auto`
 uses CUDA-friendly reduced precision. `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1` is
-the safest first GPU profile for 8192-token embedding forwards; raise it only
-after the first GPU run proves stable. `CLIENT_MEM=96G` keeps enough host RAM for
+the safest fallback for 8192-token embedding forwards if the active batch size
+of `2` OOMs. `CLIENT_MEM=96G` keeps enough host RAM for
 chunk text, tokenizer offset maps, embeddings, metadata, and FAISS state.
 `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192` keeps the default amount of each chunk
 visible to the embedding model. Lower it only if batch size 1 still OOMs, because
@@ -675,18 +675,18 @@ prompt profile is `strict`, which asks the executor to reject choices that are
 too narrow, too broad, partially supported, or unsupported before returning a
 single letter.
 
-The default profile above is the current accuracy-first LongBench/Jarvis path.
-FAISS ranks likely chunks first, then the executor inspects chunks one at a time
-and carries a cumulative memory ledger forward. The ledger keeps additive
-chunk-referenced notes, target facts, option-code mappings, the current
+The profile above is the current balanced LongBench/Jarvis parameter-search path.
+FAISS ranks likely chunks first, then the executor inspects chunks in batches of
+up to three and carries a cumulative memory ledger forward. The ledger keeps
+additive chunk-referenced notes, target facts, option-code mappings, the current
 `best_choice`, rationale, and up to five open questions. For many-shot relation
 rows, examples are retained in `code_mappings` only when they use one of the
 relation codes present in the current answer options. The scan budget is
 adaptive:
 `SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.50` means early stop is not allowed until
 at least 50% of chunks have been inspected, while
-`SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0` means this diagnostic profile scans
-all chunks if no answer is found. The reader asks FAISS for the
+`SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=0.65` means this profile initially scans at
+most 65% of chunks if no answer is found. The reader asks FAISS for the
 ratio-based scan budget and inspects those chunks in FAISS-ranked order.
 `SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0` leaves the ratio-based maximum uncapped by an
 absolute chunk count. If the normal scan produces no useful observations,
