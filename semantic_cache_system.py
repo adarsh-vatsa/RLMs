@@ -140,7 +140,7 @@ SCAN_MAX_TOKENS = _env_int("SEMANTIC_CACHE_SCAN_MAX_TOKENS", 768)
 ITERATIVE_BATCH_MAX_CHUNKS = _env_int("SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS", 3)
 ITERATIVE_BATCH_INPUT_TOKEN_BUDGET = _env_int("SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET", 50000)
 SCAN_ORDER = "faiss_ranked_ordering_document_order"
-ITERATIVE_READER_VERSION = 12
+ITERATIVE_READER_VERSION = 13
 ITERATIVE_MEMORY_MAX_CHARS = _env_int("SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS", 16000)
 SCAN_EMPTY_LEDGER_FALLBACK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO", 1.0)
 ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET = _env_int(
@@ -568,9 +568,19 @@ def _trim_source_text_for_input_budget(
     else:
         char_budget = max(1, math.floor(len(source_text) * source_budget / max(source_tokens, 1)))
         marker = "\n\n[TRUNCATED TO FIT SYNTHESIS INPUT TOKEN BUDGET]"
-        trimmed = source_text[: max(0, char_budget - len(marker))].rstrip()
-        if trimmed:
-            trimmed += marker
+        body_char_budget = max(0, char_budget - len(marker))
+        trimmed_body = source_text[:body_char_budget].rstrip()
+        trimmed = f"{trimmed_body}{marker}" if trimmed_body else ""
+        while trimmed and _estimate_llm_input_tokens(
+            f"{system_prompt}\n\n{user_prefix}{trimmed}"
+        ) > input_token_budget:
+            estimated_overflow = (
+                _estimate_llm_input_tokens(f"{system_prompt}\n\n{user_prefix}{trimmed}")
+                - input_token_budget
+            )
+            body_char_budget = max(0, body_char_budget - max(1, estimated_overflow * 3))
+            trimmed_body = source_text[:body_char_budget].rstrip()
+            trimmed = f"{trimmed_body}{marker}" if trimmed_body else ""
 
     info["synthesis_source_truncated"] = True
     info["synthesis_estimated_input_tokens_after"] = _estimate_llm_input_tokens(
@@ -760,11 +770,13 @@ def _pack_sources_for_input_budget(
     results: list[dict],
     source_limit: int,
     input_token_budget: int,
+    user_prefix: str | None = None,
 ) -> tuple[str, dict]:
     selected_texts: list[str] = []
     selected_indices: list[int] = []
     dropped_count = 0
-    user_prefix = f"Query: {query}\n\nDocuments:\n"
+    if user_prefix is None:
+        user_prefix = f"Query: {query}\n\nDocuments:\n"
 
     fixed_tokens = _estimate_llm_input_tokens(f"{system_prompt}\n\n{user_prefix}")
     separator = "\n\n---\n\n"
@@ -3340,12 +3352,19 @@ class SemanticCacheController:
             "one compact JSON object with keys answer and reason. answer must be one of "
             "A, B, C, or D."
         )
+        user_prefix = (
+            f"Fallback reason: {reason or 'unspecified'}\n\n"
+            f"Query: {query}\n\n"
+            f"Completed iterative memory ledger:\n{json.dumps(ledger or {}, ensure_ascii=False)}\n\n"
+            "Documents:\n"
+        )
         source_text, pack_info = _pack_sources_for_input_budget(
             query=query,
             system_prompt=system_prompt,
             results=scan_results,
             source_limit=len(scan_results),
             input_token_budget=ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET,
+            user_prefix=user_prefix,
         )
         response = create_llm_message(
             model=EXECUTOR_MODEL,
@@ -3355,12 +3374,7 @@ class SemanticCacheController:
             messages=[
                 {
                     "role": "user",
-                    "content": (
-                        f"Fallback reason: {reason or 'unspecified'}\n\n"
-                        f"Query: {query}\n\n"
-                        f"Completed iterative memory ledger:\n{json.dumps(ledger or {}, ensure_ascii=False)}\n\n"
-                        f"Documents:\n{source_text}"
-                    ),
+                    "content": f"{user_prefix}{source_text}",
                 }
             ],
             response_format=_json_response_format(),

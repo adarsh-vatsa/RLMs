@@ -1350,6 +1350,38 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertEqual(decision["answer"], "")
         self.assertIn("Based on", decision["raw_response"])
 
+    def test_iterative_packed_fallback_budgets_the_complete_prompt(self):
+        controller = make_controller()
+        captured = {}
+
+        class FakeUsage:
+            input_tokens = 10
+            output_tokens = 5
+
+        class FakeResponse:
+            usage = FakeUsage()
+            content = [types.SimpleNamespace(text='{"answer":"C","reason":"supported"}')]
+
+        def fake_create_llm_message(**kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+        ledger = scs._new_evidence_ledger()
+        ledger["memory"] = "remembered evidence " * 100
+        budget = 2000
+        with patch.object(scs, "ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET", budget), patch.object(
+            scs, "create_llm_message", side_effect=fake_create_llm_message
+        ):
+            controller._fallback_iterative_packed_answer(
+                "Question: Which option?\n\nChoices:\nA. Alpha\nB. Beta\nC. Gamma\nD. Delta",
+                [{"text": "gamma evidence " * 2000, "metadata": {"chunk_index": 0}}],
+                ledger=ledger,
+                reason="final_adjudication_needs_more_context",
+            )
+
+        complete_prompt = f"{captured['system']}\n\n{captured['messages'][0]['content']}"
+        self.assertLessEqual(scs._estimate_llm_input_tokens(complete_prompt), budget)
+
     def test_iterative_comparative_query_requires_scan_budget_before_stop(self):
         ledger = scs._new_evidence_ledger()
         decision = {
