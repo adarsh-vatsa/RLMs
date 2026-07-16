@@ -556,8 +556,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1098584.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1098585.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1098785.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1098786.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -624,7 +624,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
-  --row-types original \
+  --row-types original,exact,semantic \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-l40s-param-search-iterative-scan-strict-mcq' \
   bash adarsh-rlms/jarvis/run.sh submit client-gpu
