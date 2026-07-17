@@ -556,8 +556,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1098785.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1098786.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1098947.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1098948.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"

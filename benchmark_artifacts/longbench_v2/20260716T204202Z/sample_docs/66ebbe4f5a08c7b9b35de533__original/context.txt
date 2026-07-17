@@ -1,0 +1,1171 @@
+\section{Introduction}
+
+Large Language Models (LLMs)~\cite{brown2020language, chowdhery2022palm, kaplan2020scaling, scao2022bloom, touvron2023llama, zeng2022glm, Claude} have garnered widespread attention for their remarkable proficiency in various linguistic tasks such as text summarization\cite{NIPS2015_afdec700, volske-etal-2017-tl, xsum-emnlp, li-etal-2022-csl}, question answering~\cite{hendrycks2020measuring, kwiatkowski2019natural, bras_Gao_Choi_2020}, and role-playing conversations~\cite{tu2024charactereval, zhou2023characterglm, shao2023characterllm}. 
+
+Furthermore, their potential in addressing complex problems requiring mathematical reasoning~\cite{metamath,wang2023mathshepherd,wizardmath} has expanded their applicability across real-world missions~\cite{liu2023agentbench,bai2023longbench}.
+
+
+
+Despite these advances, optimizing LLMs to excel simultaneously in language understanding and mathematical problem-solving presents a notable challenge. 
+
+The prevalent reinforcement learning from human feedback (RLHF) approach primarily enhances text generation based on reward models reflecting human preferences~\cite{touvron2023llama, ouyang2022training, touvron2023llama2}. 
+
+Although this method boosts the quality of the generated text, it often overlooks the accuracy and logical coherence essential for solving mathematical problems, leading to a discrepancy in performance known as the "alignment tax"\cite{askell2021general} when applied to mathematical reasoning (refer to Table~\ref{tab:first table}). 
+
+Conversely, attempts to bolster LLMs’ mathematical capabilities typically entail supervised fine-tuning (SFT) that inadvertently diminishes their linguistic versatility, posing a dilemma for practical applications of LLM systems~\cite{2023internlm,metamath,wizardmath,yue2023mammoth}.
+
+
+
+\vpara{Pipeline: Self-Critique.}
+
+This paper introduces a novel approach aimed at enhancing LLMs' linguistic and mathematical skills without compromising one for the other. 
+
+Our strategy deviates from traditional RLHF by incorporating a Math-Critique model derived from the LLM, which evaluates its mathematical outputs. 
+
+This self-critique mechanism enables the model to learn from AI-generated feedback specifically tailored to mathematical content~\cite{bai2022constitutional, lee2023rlaif}. Our methodology comprises two primary phases:
+
+
+
+\begin{itemize}[leftmargin=*,itemsep=0pt,parsep=0.2em,topsep=0.2em,partopsep=0.0em]
+
+\item \textbf{Stage 1: Rejective Fine-tuning (RFT)}~\cite{yuan2023scaling-mathrft} employs a rejection sampling technique, wherein responses failing to meet Math-Critique standards are discarded, while the rest undergo further fine-tuning. This stage aims to enhance the model's accuracy and consistency in mathematical responses while ensuring diversity among the selected answers.
+
+\item \textbf{Stage 2: Direct Preference Optimization (DPO)}~\cite{rafailov2023direct} extends the improvement process by directly learning from pairs of correct and incorrect answers, further refined through Math-Critique, focusing on the most challenging questions from the previous stage.
+
+\end{itemize}
+
+
+
+\vpara{Benchmark: \textsc{MathUserEval}.}
+
+To accurately assess LLMs’ capabilities in solving real-world mathematical problems, we develop the \textsc{MathUserEval} dataset. 
+
+It features a diverse range of questions, extending beyond academic exercises to include practical application scenarios, thereby better-reflecting user needs compared to traditional academic math datasets~\cite{zhao2020ape210k,wang-etal-2017-deep-math23,cobbe2021training}. 
+
+We leverage both GPT-4-turbo and our Math-Critique model for comprehensive scoring.
+
+
+
+In summary, our contributions include:
+
+
+
+\begin{itemize}[leftmargin=*,itemsep=0pt,parsep=0.2em,topsep=0.2em,partopsep=0.0em]
+
+\item The introduction of the Self-Critique pipeline, a novel framework that elevates both the mathematical and linguistic capabilities of LLMs through self-generated feedback, thereby eliminating the need for external supervisory models and manual annotations. This approach has been validated on a ChatGLM3-32B model, achieving unparalleled performance on the \textsc{MathUserEval}, Ape210k~\cite{zhao2020ape210k}, MATH~\cite{hendrycks2020measuring}, and the linguistic tasks of AlignBench~\cite{liu2023alignbench}.
+
+
+
+\item The creation of the \textsc{MathUserEval} benchmark, tailored to assess LLMs on complex, open-ended mathematical queries relevant to real-world applications, setting a new standard in evaluating practical mathematical reasoning capabilities.
+
+
+
+\item A detailed analysis of the key factors contributing to enhancing mathematical proficiency through the Self-Critique pipeline, offering insights into future directions for autonomous model improvement.
+
+\end{itemize}
+
+
+
+\section{Related Work}
+
+
+
+\vpara{LLM for Math Problem-Solving.}
+
+Various approaches have been explored to enhance the mathematical problem-solving abilities of language models. Prompting Methods, initiated by Chain of Thought prompting~\cite{wei2023chainofthought,cheng2023blackbox}, have been refined for detailed reasoning, with enhancements from~\cite{yao2023tree,besta2023graph,yang2023large}. Supervised Fine-tuning and Reinforcement Learning (RL) are also pivotal, with high-quality supervisory data from works like~\cite{wizardmath,yuan2023scaling-mathrft,abel-math,metamath,yue2023mammoth,zhang2024sciglm} directly improving capabilities. RL's potential in general domains is shown by~\cite{openai2023gpt4,touvron2023llama,deepseekai2024deepseek,lightman2023lets-verify,wizardmath,wang2023mathshepherd}, despite challenges in applying the DPO algorithm~\cite{rafailov2023direct} for mathematical tasks. For a detailed comparison with similar works, refer to Table~\ref{tab:compare}.
+
+
+
+
+
+\vpara{Mathematical Evaluation.}
+
+Complex reasoning tasks, such as mathematics, are key indicators of language model capabilities~\cite{koncel2016mawps, polu2020generative, hendrycks2021measuring-math, fu2023chain}. The GSM8k~\cite{cobbe2021training} and MATH~\cite{hendrycks2021measuring-math} datasets are widely used benchmarks. Some sets~\cite{ling2017program,zhong2023agieval} focus on pure math prowess, while others~\cite{mishra2022numglue,suzgun2022challenging} combine math with other abilities. In Chinese, CM17k~\cite{qin-etal-2021-neural}, CARP~\cite{zhang2023evaluating}, Math23K~\cite{wang-etal-2017-deep-math23} and CMath~\cite{wei2023cmath} target elementary and middle school math, while AgiEval~\cite{zhong2023agieval} and GaoKaoBench~\cite{Zhang2023EvaluatingTP-gaokaobench} present exam-level challenges. However, these datasets are in fixed formats, and simple perturbations can significantly impact performance~\cite{kumar2021adversarial, zhou2023mathattack}. Thus, performance on these datasets must reflect real-world user questions. For detailed comparisons with similar benchmarks, refer to Table~\ref{tab:compare-benchmark}.
+
+
+
+\section{Math-Critique: A General Critic for Math}
+
+
+
+\vpara{Definition.}
+
+We propose Math-Critique, an evaluation model inspired by large models used for assessment~\cite{ke2023critiquellm,zheng2023judging}. It scores mathematical responses based on questions and reference answers, providing explanatory analysis and a score from 1 to 10. Unlike traditional reward models, Math-Critique enhances judgment accuracy by incorporating reference answers and explanatory analysis inspired by thought chains. Responses are categorized into four types: entirely incorrect (1–2), partially correct methodology with errors (3–5), accurate conclusion with flawed methodology (6–8), and wholly correct (9–10). Math-Critique can be defined as: 
+
+
+
+$$ \texttt{MC}(\text{Q}, \text{R}, \text{A}) \rightarrow (\text{Critique}, \text{Score}) $$
+
+
+
+Q is the question, R is the reference answer, and A is the evaluated answer. We used two evaluation methods: average score evaluation, computing the mean critique scores, and hard-split evaluation, classifying answers as passing or failing based on a correctness threshold and then calculating the proportion of correct answers.
+
+
+
+\vpara{Data Collection.}
+
+Our construction method involves the following steps:
+
+\begin{itemize}[leftmargin=*,itemsep=0pt,parsep=0.2em,topsep=0.2em,partopsep=0.0em]
+
+\item  We designed the scoring rules and intervals for mathematical responses.
+
+\item  We filtered a dataset from the training data, including questions, reference answers, and model responses. We utilized model sampling answers from multiple sources, including different versions of ChatGLM and other models.
+
+\item  We employed CritiqueLLM~\cite{ke2023critiquellm} to annotate the dataset, selecting annotations that represented the best and worst scoring extremes from these models, and directly used these \textbf{pseudo tags} for training. This step generated a total of 10k annotated data entries.
+
+\item For results with scores in the middle range, we selected a portion for \textbf{manual annotation} into four categories and then mapped these outcomes to a 10-point scale, generating 5k annotated data. We also divided an 800-sample test set into the same method. 
+
+\end{itemize}
+
+
+
+\section{The Self-Critique Pipeline}
+
+\vpara{Overview.}
+
+Based on the construction method of Math-Critique, this section introduces the \textbf{Self-Critique} pipeline. This pipeline is a weakly supervised iterative training method for enhancing mathematical abilities originating from a single model. Initially, we train a Math-Critique model using the base model and concurrently train a basic Chat Model using the fundamental SFT dataset. Subsequently, we employ the Math-Critique model to supervise the fine-tuning of the Chat Model through rejection sampling. The outcome of this step can serve as a new base model to update both the Math-Critique model and the rejection sampling supervised fine-tuning model. Building upon these steps, our final action involves utilizing the latest Math-Critique model to sample contrast data and then proceeding with DPO training. In the following formula, we use \texttt{MC} to represent \texttt{MathCritique}.
+
+
+
+In these steps, the data construction for the Math-critique-base involves a small amount of manual annotation. However, this batch of annotations is a one-time effort, as only this batch of annotated data is needed as a bootstrap for the remaining iterations. After that, inference and automatic model filtering can complete all remaining steps. Replacing manual annotation with inference can significantly reduce the time required for each iteration from the base model to the final chat model. 
+
+
+
+
+
+\subsection{Stage 1: Rejective Fine-tuning}
+
+We utilized a rejection sampling method based on Math-Critique.  We found that both the sampling range and the model influence the outcomes during the rejection sampling process. Specifically, we designed the following sampling principles:
+
+\begin{itemize}[leftmargin=*,itemsep=0pt,parsep=0.2em,topsep=0.2em,partopsep=0.0em]
+
+\item  Pre-deduplication: Cluster question embeddings from the training set and evenly sample across categories, ensuring a diverse range of questions without repetition.
+
+\item  Post-sampling deduplication: We conducted a selection process after 5-10 sampling iterations based on the results from Math-Critique. After essential deduplication, we chose the responses only in cases where there were correct and incorrect responses to the same question.
+
+\end{itemize}
+
+
+
+Following the process outlined above, we have obtained the Critique-RFT dataset:
+
+\begin{align*}
+
+D_{\text{RFT}} = \left\{ (q_i, a_{ij}) \,|
+
+\begin{array}{l}\, \frac{1}{n} \sum_{x} \texttt{MC}(a_{ix}) < 1 \,  \\ \text{and } \texttt{MC}(a_{ij}) > \text{correct-bound} \end{array} \right\}
+
+\end{align*}
+
+
+
+In this dataset, $q_i$ denotes the ith sampled question, with each question undergoing $n$ samplings. $a_{ij}$ represents the jth response to the ith question. $\texttt{MC}$ refers to Math-Critique score. 'correct bound' denotes the minimum acceptable score for a correct answer, generally set at 0.7.
+
+
+
+\subsection{Stage 2: Direct Preference Optimization}
+
+
+
+We employed the DPO method to enhance model capabilities after Critique RFT. The primary advantages are its simplicity in constructing data flows, stability, and speed during training. The DPO method directly compares the correct and incorrect answers to the same question. In our approach, both answers are sampled from the model post-RFT, which we found to be critically important. 
+
+
+
+
+
+Our DPO data filtering process is similar to Critique RFT, with the sole difference being the construction method of DPO training pairs. For the selection of DPO pairs, under the premise that there is at least one correct and one incorrect answer, we choose the data pair with the most significant difference in Math-Critique scoring results.
+
+
+
+Following the process outlined above, we have obtained the Critique-DPO dataset:
+
+
+
+\[
+
+D_{\text{DPO}} = \left\{ (q_i, a_{\text{c}}, a_{\text{r}}) \middle| 
+
+\begin{array}{l}
+
+\frac{1}{n} \sum_{x} \texttt{MC}(a_{ix}) < 1, \\
+
+\texttt{MC}(a_{\text{c}}) > \text{correct-bound}, \\
+
+\texttt{MC}(a_{\text{r}}) < \text{rejected-bound}
+
+\end{array} \right\}
+
+\]
+
+
+
+
+
+
+
+In this dataset, each element is a tuple, where $q_i$ is the ith sampled question. For every question $q_i$, sampled $n$ responses, each denoted by $a_{ix}$. The Math-Critique (\texttt{MC}) score is computed for each response $a_{ix}$, and the average of these scores must be less than 1. The chosen answer for each question, $a_{c}$, is the one that exceeds the 'correct-bound', which is a predetermined threshold indicating a satisfactory level of correctness, often set above a specific value. Conversely, $a_{r}$ represents the answer that falls below the 'rejected-bound', which is the threshold below which answers are considered incorrect or unsatisfactory. 
+
+
+
+
+
+
+
+
+
+
+
+\subsection{Training}
+
+
+
+%我们的整个流程都是使用ChatGLM模型进行的。
+
+
+
+
+
+\vpara{Math-Critique Training}
+
+We employ the base model of ChatGLM3-32B~\cite{zeng2022glm,du2022glm} as the initial Math-Critique base model. After each iteration, the model currently refined through SFT (Supervised Finetuning) or Critique RFT will be used as the base. We use a learning rate 3e-6 and a batch size 128. 
+
+
+
+
+
+\vpara{Critique-RFT Training}
+
+During the Critique RFT phase, each of our finetuning iterations includes the datasets from previous stages after deduplication, which also encompasses the initial sft dataset. We merge $D_{\text{RFT}}$ and $D_{\text{SFT }}$ in this phase. The $D_{\text{SFT }}$ dataset encompasses many routine tasks and can be substituted with an open-source instruction finetuning dataset. To eliminate the potential interference of this dataset on the final results, we compared the impact of including or excluding the sft data in our ablation study. We finetune a base LLM model $\pi_\theta$  by standard max-loglikelihood loss. In this stage, we use a learning rate 2e-5 and finetune for 8000 steps with a batch size of 64.
+
+
+
+\begin{figure*}
+
+    \centering
+
+    \includegraphics[width=.9\linewidth]{figures/main-example.pdf}
+
+    \label{fig:main-example}
+
+    \vspace{-3mm}
+
+    \caption{Training data examples. The data we generate is divided into two categories, originating from the questions and references within existing datasets. We have constructed separate data for RFT and pairwise DPO training.}
+
+    \vspace{-2mm}
+
+\end{figure*}
+
+
+
+
+
+\vpara{Critique-DPO Training}
+
+During the Critique-DPO phase, it was observed that the direct use of DPO loss led to instability in the training process. To mitigate this issue, a cross-entropy loss for the chosen answer was introduced as a regularization term to the total loss. 
+
+The loss function we used is:
+
+\begin{align*}
+
+& \mathcal{L}_{\rm DPO}(\pi_\theta; \pi_{ref}) = -\mathbb{E}_{(q_i, a_{\rm cho}, a_{\rm rej})\sim \mathcal{D_{\text{DPO}}}} \\
+
+& \left[ \log \sigma \left( \beta \log \frac{\pi_\theta(a_{\rm cho} | q_i)}{\pi_{ref}(a_{\rm cho} | q_i)} - \beta \log \frac{\pi_\theta(a_{\rm rej} | q_i)}{\pi_{ref}(a_{\rm rej} | q_i)} \right) \right]
+
+\end{align*}
+
+\begin{align*}
+
+\mathcal{L}_{\rm CE}(\pi_\theta; \pi_{ref}) = -\mathbb{E}_{(q_i,a_{\rm cho})\sim \mathcal{D}}\left[  \log \left( \pi_{\theta}(a_{\rm cho} | q_i) \right) \right]
+
+\end{align*}
+
+\begin{align*}
+
+& \mathcal{L}_{\text{merge}} = \lambda \cdot \mathcal{L}_{\rm DPO} + \mathcal{L}_{\rm CE}
+
+\end{align*}
+
+ In this context, $\lambda$ represents the coefficient of the cross-entropy loss for the chosen answer in the total loss. Commonly, we experiment with values in \{0.5, 1, 1.5\}. Another critical coefficient is $\beta$, which measures the penalty intensity of DPO for incorrect answers. Owing to the addition of a regularization term, the value of this coefficient is higher than that of the standard DPO, with our testing range for this value being \{0.5, 1, 2\}. Besides these, the overall learning rate is set at 1e-6. The experimental section will report the optimal results under these coefficient settings. We train 500 steps with a batch size of 64 in this stage.
+
+ 
+
+\input{table/matheval}
+
+
+
+
+
+\section{\textsc{MathUserEval}: Benchmarking LLMs' Math Reasoning in Application}
+
+
+
+\textsc{MathUserEval} is a test set designed for real-use scenarios, addressing user concerns and more challenging mathematical problems. Some data originates from university examination questions, while others come from simulated dialogues. In the latter, annotators posed math-related questions using large models based on their daily experiences and observations.
+
+
+
+Based on the distribution of the collected data, we divided the test set into two main categories, Elementary and Advanced, and eight sub-categories. Given that Calculate  Applications are less challenging and closely aligned with the scope of previous public datasets, we selected fewer questions from this category.  The quantity of questions in each of these categories is as shown in Table~\ref{tab:matheval}. All questions are posed in an open-ended format. Possible answers include a single number, multiple numbers, or mathematical expressions.
+
+
+
+We offer two evaluation methods: GPT-4-1106-Preview~\cite{openai2023gpt4,liu2023alignbench,zheng2023judging} evaluation and Math-Critique evaluation. The former adopts the alignbench~\cite{liu2023alignbench} evaluation method for a more accurate, fair, and accessible approach; the latter uses the Math-Critique method described earlier.
+
+
+
+\section{Experiment}
+
+\subsection{Data Collection}
+
+
+
+The primary sources of our data collection include public datasets and publicly available middle school and university examination questions. We selected English data prompts from the GSM8k and MATH training sets, using the original dataset responses as standard answers. We used the provided answer formats as the common answers for publicly available middle school and university exam questions without further processing. Details of our training data are provided in Appendix~\ref{app:data collection}.
+
+
+
+\input{table/main-result}
+
+\begin{table*}[t]
+
+\caption{Main Result. \textmd{All results reported are the highest achieved in zero-shot or few-shot settings and are based on greedy decoding. The best models are marked in \textbf{bold} and the {\ul underline} signifies the second best model.}}
+
+\vspace{-3mm}
+
+\label{table:main-result}
+
+% \renewcommand\arraystretch{1.05}
+
+% \footnotesize
+
+\centering
+
+
+
+\renewcommand\tabcolsep{0.7pt}
+
+\renewcommand\arraystretch{.9}
+
+\resizebox{\textwidth}{!}{
+
+\begin{threeparttable}
+
+\begin{tabular}{@{}lp{1.2cm}<{\centering}p{1.2cm}<{\centering}p{1.7cm}<{\centering}p{1.7cm}<{\centering}p{1.3cm}<{\centering}p{1.3cm}<{\centering}p{1.2cm}<{\centering}p{1.2cm}<{\centering}p{1.2cm}<{\centering}p{1.8cm}<{\centering}p{1.5cm}<{\centering}@{}}
+
+\toprule
+
+\multirow{3}{*}{Models}                           & \multirow{3}{*}{\#params} & \multicolumn{5}{c}{Chinese}                                                                       & \multicolumn{3}{c}{English}                                                                                             & \multicolumn{2}{c}{General}       \\ \cmidrule(lr){3-7} \cmidrule(lr){8-10} \cmidrule(l){11-12} 
+
+                                                  &                           & \multicolumn{3}{c}{MathUserEval}              & \multirow{2}{*}{Ape210k} & \multirow{2}{*}{Cmath} & \multirow{2}{*}{GSM8k} & \multirow{2}{*}{MATH} & \multirow{2}{*}{\begin{tabular}[c]{@{}c@{}}Hunga\\ -rian\end{tabular}} & AlignBench & \multirow{2}{*}{MT-Bench}    \\ \cmidrule(lr){3-5} \cmidrule(l){11-11} 
+
+                                                  &                           & Overall       & Elementary    & Advanced      &                          &                        &                        &                       &                                                                        & Language      \\ \midrule
+
+\footnotesize GPT-4-1106-Preview~\cite{openai2023gpt4}          & N/A                       & \textbf{5.73} & \textbf{5.07} & \textbf{6.81} & {\ul 84.2}               & \textbf{89.3}          & \textbf{93.6}          & \textbf{53.6}         & \textbf{92}                                                            & {\ul 8.29}  & \textbf{9.32}  \\
+
+\footnotesize GPT-4-0613~\cite{openai2023gpt4}                  & N/A                       & 4.14          & 3.34          & 5.33          & 83.6                     & 86.5                   & 91.4                   & 45.8                  & 68                                                                     & 7.59  & {\ul9.18}        \\
+
+\footnotesize GPT-3.5-Turbo-0613~\cite{openai2023gpt4}          & N/A                       & 3.42          & 3.04          & 4.07          & 70.4                     & 76.8                   & 78.2                   & 28.0                  & 41                                                                     & 6.82 &8.36         \\
+
+\footnotesize Claude-2~\cite{Claude}                            & N/A                       & 3.29          & 2.63          & 4.35          & 72.8                     & 80.5                   & 88.0                   & -                     & 55                                                                     & 6.78  & 8.06        \\
+
+\footnotesize GLM-4                                             & N/A                       & {\ul 5.11}    & {\ul 4.86}    & {\ul 5.43}    & \textbf{93.5}            & {\ul 89.0}             & {\ul 91.8}             & {\ul 49.0}            & {\ul 75}                                                               & \textbf{8.38} & 8.62\\ \midrule
+
+\footnotesize Skywork-13B-Math~\cite{yang2023skymath}           & 13B                       & 2.66          & 2.75          & 2.54          & 74.4                     & 77.3                   & 72.3                   & 17.0                  & 39                                                                     & 5.58        & 4.12  \\
+
+\footnotesize InternLM2-Chat~\cite{2023internlm}                & 20B                       & 3.25          & 3.00          & 3.68          & 72.0                     & 80.7                   & 79.6                   & 34.8                  & 48                                                                     & {\ul 7.68} & {\ul8.21}   \\
+
+\footnotesize Math-InternLM2~\cite{2023internlm}                & 20B                       & 3.17          & 3.08          & 3.37          & 75.2                     & 78.5                   & {\ul 82.6}             & 37.7                  & {\ul 66}                                                               & 6.53        & 6.09  \\
+
+\footnotesize Yi-Chat~\cite{Yi}                                 & 34B                       & 2.64          & 2.49          & 2.87          & 65.1                     & 77.7                   & 76.0                   & 15.9                  & 39                                                                     & 6.18      & 6.54    \\
+
+\footnotesize DeepSeek-Chat~\cite{deepseekai2024deepseek}      & 67B                       & 3.24          & 2.76          & 3.84          & 76.7                     & 80.3                   & \textbf{84.1}          & 32.6                  & 58                                                                     & 7.11       & \textbf{8.35}   \\
+
+\footnotesize MetaMath (EN)~\cite{metamath}                     & 70B                       & -             & -             & -             & -                        & -                      & 82.3                   & 26.0                  & 35                                                                     & -            & 4.28 \\
+
+\footnotesize Qwen-Chat~\cite{bai2023qwen}                      & 72B                       & 3.87          & {\ul 3.99}    & 3.67          & 77.1                     & \textbf{88.1}          & 76.4                   & 31.8                  & 52                                                                     & 7.29       & 6.43   \\ \midrule
+
+ \footnotesize{ChatGLM3-32B-SFT-2312$^*$}      & 32B                       & 3.25          & 3.03          & 3.60          & 78.0                     & 79.8                   & 75.8                   & 29.0                  & 39                                                                     & 7.37       & 8.05   \\
+
+ \footnotesize{\qquad\qquad\qquad   + RFT}      & 32B                       & {\ul 4.01}    & 3.86          & {\ul 4.26}    & {\ul 87.0}               & 85.3                   & 82.4                   & {\ul 39.5}            & 58                                                                     & 7.42       & 8.03   \\
+
+ \footnotesize{\qquad\qquad\qquad   + RFT, DPO} & 32B                       & \textbf{4.23} \small{\textcolor{red}{+0.98}} & \textbf{4.01} \quad\small{\textcolor{red}{+0.98}} & \textbf{4.59} \quad\small{\textcolor{red}{+0.99}} & \textbf{89.4} \small{\textcolor{red}{+11.4}}            & {\ul 85.6} \small{\textcolor{red}{+5.8}} & {\ul 82.6} \small{\textcolor{red}{+6.8}} & \textbf{40.6} \small{\textcolor{red}{+11.6}} & \textbf{73} \quad\small{\textcolor{red}{+34.0}} & \textbf{7.80} \quad\small{\textcolor{red}{+0.43}}  & 8.08 \quad\small{\textcolor{red}{+0.03}}  \\ \bottomrule
+
+\end{tabular}
+
+\begin{tablenotes}
+
+% \item[*] ChatGLM3-32B-SFT-2312 is a newer version of the ChatGLM series and not identical to the model discussed in~\cite{hou2024chatglmrlhf}, despite sharing the same model size.
+
+\end{tablenotes}
+
+\end{threeparttable}
+
+}
+
+\vspace{-5mm}
+
+
+
+\end{table*}
+
+\subsection{Evaluation Setting}
+
+\vpara{Evaluation Datasets.} In our research, we primarily tested the \textsc{MathUserEval} dataset, derived from simulated dialogue records and actual exam papers, offering diverse question styles and real-world relevance. Additionally, we tested academic datasets: GSM8k~\cite{cobbe2021training} and MATH~\cite{hendrycks2021measuring-math} for English, and Ape210k~\cite{zhao2020ape210k} and Cmath~\cite{wei2023cmath} for Chinese. We also used the Hungarian National Exam~\cite{testing_language_models_on_a_held_out_high_school_national_finals_exam} as an Out-Of-Distribution test set, and the Chinese language component of AlignBench~\cite{liu2023alignbench} and full MT-Bench~\cite{zheng2023judging} to evaluate general linguistic capabilities.
+
+
+
+
+
+\vpara{Base Model.} Since we couldn't determine whether the open-source models had undergone instruction fine-tuning specifically for the math domain, we chose ChatGLM3-32B-SFT-2312 as our base model for training. This model has been thoroughly pre-trained but only partially fine-tuned with instructions. Additionally, we carefully removed all instruction data related to solving math problems.
+
+
+
+
+
+\vpara{Baselines.} Since most of our work is conducted in Chinese, we selected three categories of baselines: open-source mathematics models, open-source Chinese models, and leading proprietary models. For the open-source mathematics models, we chose SkyMath~\cite{yang2023skymath}, MetaMath~\cite{metamath}, and Internlm2-Math~\cite{2023internlm}. To effectively compare with the best Chinese models, we selected Qwen-Chat~\cite{bai2023qwen}, Yi-Chat~\cite{Yi}, DeepSeek-Chat~\cite{deepseekai2024deepseek}, and InternLM2~\cite{2023internlm}. We also report the results for GPT-4-1106-Preview, GPT-4-0613, GPT-3.5-Turbo~\cite{openai2023gpt4}, and Claude-2~\cite{Claude}.
+
+
+
+\vpara{Metrics.} For all datasets, we used the results of greedy inference performed once. For academic datasets, we report self-reported results of corresponding models and the highest zero-shot/few-shot results from the OpenCompass and \textsc{MathUserEval} websites. For the math subset of AlignBench~\cite{liu2023alignbench} and our \textsc{MathUserEval} test set, we report scoring results from GPT-4-Turbo and Math-Critique. More details on evaluation settings are in Appendix~\ref{appendix:evaluation}.
+
+
+
+
+
+\subsection{Main Results}
+
+
+
+Table~\ref{table:main-result} shows that our model scored 4.23 on \textsc{MathUserEval}, 89.4 on Ape210k, and 40.6 on MATH, surpassing all published models and achieving near-top performances on Cmath and GSM8k. Additionally, it scored 73 on the Hungarian Test, the highest among known parameter models.
+
+
+
+Using ChatGLM3-32B-SFT-2312 as our baseline, the RFT phase significantly improved performance across all math datasets, while the DPO phase enhanced performance on open-ended math problems like \textsc{MathUserEval}, the Hungarian Exam, and AlignBench. Despite minimal improvement on MT-Bench, parity was maintained, preserving English capabilities given the predominantly Chinese training data.
+
+
+
+Compared to proprietary models like OpenAI's GPT series, GLM-4 demonstrates competitive or superior performance, surpassing GPT-4-1106-Preview in the Ape210k and AlignBench benchmarks, indicating strengths in mathematical reasoning and cross-linguistic generalization.
+
+
+
+\subsection{Analysis}
+
+\input{table/32b_ablation}
+
+
+
+
+
+\vpara{Ablation of data composition.}
+
+Table~\ref{tab:32b-ablation} presents the results of ablation experiments using the Metamath~\cite{metamath} training set as a baseline. After applying Critique-RFT, we found that using only academic datasets resulted in poorer performance on real-life scenario-based \textsc{MathUserEval} and academic test sets compared to integrating real-life scenario data. Additionally, introducing English data significantly improved performance on English datasets without negatively impacting Chinese capabilities.
+
+
+
+During the Critique-DPO phase, the ablation experiments showed that adding math-specific DPO data significantly enhances mathematical capabilities compared to using general DPO data. We did not test the impact of Real scenarios and Academic data separately, as questions that the model could solve were removed in previous stages, leaving insufficient data for a complete training session.
+
+
+
+\begin{figure}[t]
+
+    \centering
+
+    \includegraphics[width=220pt]{figures/avg-passk.pdf}
+
+    \caption{The Relationship between Different Boosting Methods and Problem Difficulty. \textmd{The horizontal axis displays the average score of \textsc{MathUserEval} across 24 models (scored by GPT-4-1106-Preview), which we regard as a representation of problem difficulty. The vertical axis represents the hard-split scores of the models on these questions.}}
+
+    \label{fig:avg-hard split}
+
+    \vspace{-3mm}
+
+\end{figure}
+
+
+
+\begin{figure}[t]
+
+    \centering
+
+    \includegraphics[width=220pt]{figures/exam_vs_gsm8k-MATH.pdf}
+
+    \caption{Results of Hungarian Exam and Average Scores of GSM8k and MATH.}
+
+        \label{fig:hungarg test}
+
+    \vspace{-6mm}
+
+\end{figure}
+
+
+
+
+
+
+
+
+
+\vpara{Relationship between Different Boosting Methods and Problem Difficulty.} Figure~\ref{fig:avg-hard split} illustrates the relationship between the average accuracy of each question in \textsc{MathUserEval} across all 24 models tested (including some intermediate models) and the hard-split scores of the four GLM series models. The average accuracy is considered indicative of the question's difficulty level. The RFT step improves performance across almost all difficulty levels, with the most significant gains for questions averaging scores between 4 and 6. The DPO step mainly enhances performance on questions with average scores between 5 and 7.
+
+
+
+
+
+\vpara{Impact on general capabilities.} 
+
+To develop a general model with strong mathematical capabilities, we evaluated our results using Alignbench~\cite{liu2023alignbench}, showing our model surpasses similar baselines in Chinese language capabilities and excels compared to other Chinese mathematical and general models (Table~\ref{table:main-result}). Using MT-Bench~\cite{zheng2023judging} for English general capabilities, we found that despite over 90\% of our training data being in Chinese, our model's English performance remained largely unaffected.
+
+
+
+\input{table/critique-test}
+
+\vpara{Effectiveness of Math-Critique.}
+
+In evaluating Math-Critique's effectiveness, we annotated an 800-question test set into four categories and validated it against Chinese high school exams and \textsc{MathUserEval}. Empirical experiments showed that Math-Critique-32B outperformed GPT-3.5-Turbo in judgment accuracy and correlation with human annotations, comparable to GPT-4-0613, as shown in Table~\ref{tab:math-critique-eva}. More details are shown in Appendix~\ref{app:Effectiveness of Math-Critique}.
+
+
+
+\input{table/vs_code}
+
+\vpara{Comparsion with tool-using models.} Tool-using aids in solving difficult math problems, but fine-tuning on tool-using data harms LLM's general abilities. As shown in Table~\ref{tab:model_performance}, we tested similar-sized models using tool or code calls, including Mammoth-34B~\cite{yue2023mammoth}, Tora-34B~\cite{gou2023tora}, and Openmath-34B~\cite{toshniwal2024openmathinstruct1}, on GSM8k, MATH, and mt-bench datasets. Our model significantly surpasses these in terms of language capabilities. Although all use CodeLLaMA-34B as the base model, CodeLLaMA-34B-instruct's mt-bench score is 6.47, suggesting their lower scores might result from poor timing in external tool usage, impacting their general domain response abilities.
+
+
+
+
+
+
+
+
+
+\vpara{Out-Of-Distribution Test.} Following the Grok-1 approach, we evaluated our model's mathematical capabilities on the Hungarian national final exam~\cite{testing_language_models_on_a_held_out_high_school_national_finals_exam}, an OOD dataset with 33 questions. As shown in Figure~\ref{fig:hungarg test}, human expert evaluation revealed scores of 57 for the 32B RFT model and 73 for the DPO model. Notably, correct answers in Chinese were scored appropriately, considering the model's primary language.
+
+
+
+\vpara{Relationship between RFT and DPO phrase.} Overall, while the gains from the DPO phase may appear smaller than those from the RFT phase, this can be attributed to two main reasons. First, RFT can be seen as a simplified version of DPO without negative responses, so extensive learning during the RFT phase naturally diminishes visible gains in the subsequent DPO phase. Second, DPO substantially improves performance on Out Of Domain (OOD) test sets, such as MathUserEval and Hungarian-exam, by enhancing the model's generalization accuracy. Additionally, the DPO phase plays a critical role in consolidating the understanding of problems the model has already learned to solve, ensuring a more accurate response within the model's existing capabilities.
+
+
+
+\section{Conclusion}
+
+
+
+In this paper, we introduce Math-Critique, a method for evaluating mathematical problem correctness. We also propose Self-Critique to enhance the mathematical capabilities of language models without external supervision or manual annotations. Our experiments, conducted in English and Chinese, show that a 32B parameter model achieved state-of-the-art results among open-source models on multiple datasets and outperformed several proprietary models, including GPT-4-0613, on the \textsc{MathUserEval} test set. This method was integral to developing GLM-4, significantly improving performance on datasets such as \textsc{MathUserEval}, GSM8k, and the Hungarian test.
+
+
+
+\section{Case Study}
+
+\subsection{Case Study of Math-Critique}
+
+\input{Appendix/math-critique-example}
+
+%我们提供了几个math-critique的评分例子。在Table x和Table y的两个例子中，我们观察到模型都进行了正确的解答，但是其回答格式与标准答案并不相同，分别是：分数表达的区别，以及取未知数字母的区别。这些区别是完全等价的，但是使用传统方法评测很难对其进行正确判断。但是math-critique对这两个例子进行了正确的评分，且给出了合理的评价。
+
+%在Table z的例子中，模型在计算过程中出现错误。math-critique正确的指出了错误位置，并由于答对了小部分结果，math-critique给出了3分的得分。
+
+We have provided several examples of scoring by Math-Critique. In the examples from Table~\ref{Math-Critique Example (1)} and Table~\ref{Math-Critique Example (2)}, we observed that the model provided correct answers. However, the answer formats differed from the standard answers, specifically regarding fraction expression and the selection of unknown variables. These differences are equivalent, yet traditional evaluation methods struggle to judge them accurately. However, Math-Critique correctly scored these two examples and provided reasonable evaluations.
+
+
+
+In the example from Table~\ref{Math-Critique Example (3)}, the model made a mistake in the calculation process. Math-Critique accurately pinpointed the error location, and since the model correctly solved a part of the problem, Math-Critique awarded a score of 3 points.
+
+\subsection{Case Study of Mathematical Models}
+
+\input{Appendix/math-models-example}
+
+
+
+Here are a few comparisons between ChatGLM3-32B-Math(ChatGLM3-32B-SFT-2312 + RFT\&DPO) and other models. In the example from Table~\ref{Math Example (1)}, the problem is a math question of Chinese junior high school difficulty. During the solution process by GPT-4-0613, an error occurred in solving the equation. ChatGLM3-32B-SFT-2312 did not correctly understand the question. ChatGLM3-32B-Math correctly listed the equation and accurately solved it using the factorization method.
+
+
+
+In the example from Table~\ref{Math Example (2)}, both GPT-4-0613 and ChatGLM3-32B-Math provided the correct answers, but the difference lies in that ChatGLM3-32B-Math offered a very detailed derivation process. We believe that detailed derivation aids in understanding for users and helps prevent errors that may occur during the model's step-skipping.
+
+
+
+In the example from Table~\ref{Math Example (3)}, originating from the Hungry Test, ChatGLM3-32B-Math correctly conducted the analysis and provided the solution. In contrast, Qwen-Max, despite being accurate in most processes, made a simplification error in the expressions for S6 and S7, leading to an incorrect result despite precise calculations.
+
+
+
+\subsection{Case Study of Errors}
+
+
+
+In the first error example shown in Table~\ref{Math Error(1)}, ChatGLM3-32B-Math correctly listed the matrix equations but made a mistake in transferring terms during the complex calculation process. This led to an incorrect solution despite the overall process being correct. 
+
+
+
+In the second example shown in Table~\ref{Math Error(2)}, the question includes an image. This question originates from MATH, and although the image is provided in Asymptote code, the language model still struggles to understand the meaning of the image. This demonstrates a deficiency in our model's ability to process images. In fact, within the MATH test set, for questions that include images, our model's accuracy rate is only 23\%, significantly lower than the 40\% accuracy rate across the entire dataset.
+
+
+
+In the third example shown in Table~\ref{Math Error(3)}, we can observe certain deficiencies in the computational accuracy of the language model. In the first column of the table, the model correctly calculates the multiplication of integers and a single decimal. Still, in the second column, when calculating 424*1.06, the model incurred an error of approximately 0.2\%. This error led to subsequent calculations being incorrect due to the accumulation of errors.
+
+
+
+\section{Evaluation Settings}
+
+\label{appendix:evaluation}
+
+
+
+\subsection{Evaluation Settings for Academic Datasets}
+
+Given our focus on evaluating zero-shot capabilities, traditional methods of answer verification fail to provide accurate assessments. Consequently, we have adapted our evaluation methodology as follows:
+
+\begin{enumerate}
+
+    \item Extract the final sentence of the response (demarcated by a double newline character) or prompt the model with "Therefore, the answer is".
+
+    \item For numeric standard answers, the response undergoes the following recognition process: fractions or decimals in LaTeX format, and regular fractions, decimals, or integers. We compute the numerical result and compare it with the standard answer. A discrepancy less than (1e-6) is deemed correct.
+
+    \item For standard answers that are strings (exclusive to the MATH dataset): identify the content following "xxx is" or an equality sign, or within $boxed\{\}$. The evaluation considers whether the normalized strings match.
+
+\end{enumerate}
+
+
+
+For the English datasets GSM8k and MATH, our principle for selecting results is as follows:
+
+\begin{enumerate}
+
+    \item If the model itself reports results on these two datasets, we choose the higher of either the zero-shot or few-shot results.
+
+    \item If the model does not report its results, we utilize the results reported by OpenCompass, again selecting the higher of the zero-shot or few-shot outcomes. This applies to models such as GPT-4-0613, GPT-3.5-Turbo-0613, Yi-6B-Chat, and Qwen-Chat-7B. Should there be any omissions from the above sources, results will not be reported.
+
+\end{enumerate}
+
+
+
+For the Hungarian Exam results, we had annotators score them according to a grading standard, which is referenced from \cite{testing_language_models_on_a_held_out_high_school_national_finals_exam}. It's noted that the reported results actually sum the scores of all questions, making the total score effectively 117. To align with the reported results, we adopted this scoring method as well.
+
+
+
+With reproducibility in mind, all our results were obtained using a sampling temperature of 0 and setting the max-seq-length to 4096.
+
+
+
+
+
+\subsection{Evaluation Settings for 2023 Hungarian national high school finals in mathematics}
+
+
+
+
+
+For the Hungarian national high school finals in mathematics, we submit the model's answers to annotators for marking. For results of models not listed in ~\cite{testing_language_models_on_a_held_out_high_school_national_finals_exam}, we score them based on the answers provided in~\cite{testing_language_models_on_a_held_out_high_school_national_finals_exam} according to the scoring points. We sum the scores of all questions to present a total score. All annotations are carried out by two annotators; in case of inconsistency, a third annotator decides.
+
+
+
+Considering the general situation of multiple models, we do not restrict the language used by the language models to answer the questions. Any language used to correctly answer is considered correct. Additionally, since most questions do not restrict the form of the answer, we stipulate that answers are deemed correct as long as they retain more than one decimal place accurately or are provided in fraction form.
+
+
+
+\section{Additional Results}
+
+
+
+\subsection{Subcategory Results of MathUserEval}
+
+\input{table/matheval-result-gpt4turbo}
+
+In Table~\ref{table:matheval-GPT4-rated}, we display the results for all subsets of MathUserEval. The reported results were evaluated by GPT-4-1106-Preview, with the evaluation method consistent with AlignBench. It is noted that GPT-4-0125-Preview and GPT-4-1106-Preview still occupy the leading positions. Except for Probability, the GLM4 model's total score and individual scores surpassed GPT-4-0613. Our GLM-Math-32B w/ DPO model performed exceptionally well in the Elementary category, exceeding GPT-4-0613, but a significant gap remains in Advanced mathematics. Our Self-Critique training method showed significant progress in MathUserEval, with an overall improvement of 24\%.
+
+
+
+\subsection{Subcategory Results of Alignbench~\cite{liu2023alignbench}}
+
+\input{Appendix/alignbench_results}
+
+
+
+Table~\ref{table:alignbench-details} reports detailed results from the language capability subsection of AlignBench. Within this, we present the scores of our four models and have tested the results for Qwen-72B-Chat~\cite{bai2023qwen}, Claude-2~\cite{Claude}, and Yi-34B-Chat~\cite{Yi}. Additional results are derived from the AlignBench paper, and the results for DeepSeek are taken from its report~\cite{deepseekai2024deepseek}.
+
+
+
+\subsection{Additional Language Abilities}
+
+
+
+The paper utilized Alignbench and MTbench as representative general capability test sets for Chinese and English. These are among the most important general capability test sets for both languages. We further supplemented our analysis with tests on MMLU, Ceval, CMMLU, and ARC, famous language abilities evaluation benchmarks in Table~\ref{tab:language-performance}, confirming no significant decline in our method across a broader range of general capability tests.
+
+
+
+
+
+\begin{table*}[h!]
+
+\centering
+
+\caption{Performance comparison across different language abilities evaluation datasets.}
+
+\label{tab:language-performance}
+
+\begin{tabular}{lccccc}
+
+\toprule
+
+              & MMLU & CEVAL & CMMLU & ARC-E & ARC-C \\
+
+\midrule
+
+ChatGLM3-32B-SFT-2312           & 0.593 & 0.602 & 0.656 & 0.914 & 0.777 \\
+
+ChatGLM3-32B-SFT-2312 + RFT           & 0.659 & 0.751 & 0.793 & 0.974 & 0.924 \\
+
+ChatGLM3-32B-SFT-2312 + RFT \& DPO           & 0.665 & 0.769 & 0.793 & 0.974 & 0.922 \\
+
+\bottomrule
+
+\end{tabular}
+
+\end{table*}
+
+
+
+Notably, all additional training data we incorporated were math-related, with over 90\% being in Chinese. Hence, maintaining the English general capability performance in MTbench was in line with our objectives, as we did not claim our model to be the superior English language model, nor were we certain of language ability enhancement without relevant data addition.
+
+
+
+Regarding mathematical capabilities, our RFT and DPO versions outperformed Qwen-math in all but one math test set, Cmath, and showed an average improvement of +9.4\% and +16.4\% across all math benchmarks. Specifically, within the MathUserEval categories, we surpassed Qwen-math in 6 out of 8 categories. Additionally, our model is only half the size of Qwen-math.
+
+
+
+
+
+\subsection{Effectiveness of Math-Critique}
+
+\label{app:Effectiveness of Math-Critique}
+
+During the manual annotation process, we collected a test set of 800 questions, manually marked for correctness and procedures, forming a four-category test set. The output results of Math-Critique were mapped to these four categories as per the instructions.
+
+
+
+We validated the effectiveness of Math-Critique through empirical experiments with two evaluation methods: the accuracy of directly scoring to judge correct/incorrect results and the accuracy of judging our defined four categories. Test sets were extracted from Chinese junior and senior high school exam questions and \textsc{MathUserEval}, with experts annotated correct judgments.
+
+
+
+The results in Table~\ref{tab:math-critique-eva} indicate that our Math-Critique-32B model significantly surpasses GPT-3.5-Turbo in both judgment accuracy and correlation coefficients compared to human annotations and is essentially on par with GPT-4-0613.
+
+
+
+\section{Comparsion with other work}
+
+\label{appendix:compare}
+
+\subsection{Self-Critique Pipeline}
+
+While the thought of self-critique has been proposed, it has not been explored sufficiently in LLMs' math problem-solving improvement and real-world large-scale deployment. We provide a detailed comparison in Table~\ref{tab:compare}. Thus, our unique contributions in this work lie in realizing the idea in a real-world massively deployed LLM via several novel designs, including:
+
+
+
+\textbf{Application Domain of Math:} While previous works have broadly focused on general language capabilities, our research is the first to focus on improving mathematical problem-solving skills using self-critique methods without affecting general language abilities.
+
+
+
+\textbf{Unified and Novel Approach for Data Selection and Reward Construction:} We introduce a novel approach by uniformly using Math-Critique to select Supervised Fine-Tuning (SFT) data and construct reward signals for Reinforcement Learning (RL). This method offers higher critique precision in the mathematics domain, different from the varied strategies employed in earlier studies.
+
+
+
+\textbf{Independence from External Support:} Our approach is the first to achieve both: 1. Independence from human input and more powerful external models during training, and 2. The generation of training data and reward signals by a model that has been fine-tuned from the same foundational model. This emphasizes our method's unique capability for self-sufficiency and self-improvement.
+
+
+
+
+
+
+
+\subsection{MathUserEval Benchmark}
+
+
+
+The MathUserEval benchmark is designed to address the limitations of traditional mathematical benchmarks through:
+
+
+
+\textbf{Data Source:} Drawing from real-world user scenarios and university exams, offering a diversity closer to actual use.
+
+
+
+\textbf{Difficulty and Domain:} This course covers a wide range of mathematics, from elementary to university level, including computation, equations, calculus, probability, linear algebra, and discrete math.
+
+
+
+\textbf{Evaluation Method:} Our evaluation caters to all forms of mathematical questions besides traditional multiple-choice or exact-match fill-in-the-blanks, enabling accurate assessment of complex expressions and proof questions.
+
+
+
+\section{Data Collection}
+
+\label{app:data collection}
+
+This section introduces the specific composition of our training data. Aside from simulated dialogue annotations in our data collection process, all annotators were from the crowdsourcing team, mostly undergraduate or higher-level students majoring in science and engineering from China. Annotators were clearly informed about the data usage and received fair compensation. All annotated data underwent a second review to ensure accuracy and the absence of any ethnic issues.
+
+
+
+\subsection{Training Data for Math-Critique}
+
+
+
+
+
+
+
+Most of the data was annotated using results from CritiqueLLM during the Math-Critique training, but some data was annotated manually. For this portion, we employed a crowd-sourced annotation team. After informing them that their annotations would be used for training or publishing purposes, we paid them an hourly wage based on the local average. All of our annotators possess at least a bachelor's degree to ensure they can correctly understand the requirements of the tasks. We require annotators to provide ratings that meet Math-Critique standards based on the problems, reference answers, and model responses. Additionally, they need to rewrite the feedback content according to these criteria. 
+
+Data details are shown in Table~\ref{tab:mc train}.
+
+
+
+\begin{table}[]
+
+\centering
+
+\caption{Data distribution of Math-Critique training data.}
+
+\label{tab:mc train}
+
+\begin{tabular}{@{}cc@{}}
+
+\toprule
+
+Label Type        & Size  \\ \midrule
+
+Annotation        & 6500  \\
+
+CritiqueLLM label & 8800  \\
+
+Total             & 15300 \\ \bottomrule
+
+\end{tabular}
+
+\end{table}
+
+
+
+\subsection{Training Data for Critique RFT}
+
+
+
+
+
+
+
+In Table~\ref{tab:rft data}, We provided the data proportions used for RFT training. Most of the data comes from primary and secondary school math problems. We also supplemented the dataset with MetaMath questions to include English data and Simulated Dialog from some of our collaborating annotators. This part of the data involved inviting a group of annotators, including middle school and university students, to provide the model with math problems they encountered daily. In total, 116k math instruction data points went through the abovementioned screening process.
+
+
+
+\begin{table}[]
+
+\centering
+
+\caption{Distribution of the source dataset of training data for Critique RFT.}
+
+\label{tab:rft data}
+
+\begin{tabular}{cc}
+
+\hline
+
+Source Dataset     & Size   \\ \hline
+
+Primary          & 28597  \\
+
+Junior High      & 21303  \\
+
+Senior High      & 18917  \\
+
+College          & 4001    \\
+
+MetaMath         & 6291   \\
+
+Simulated Dialog & 37653  \\
+
+Total            & 116762 \\ \hline
+
+\end{tabular}
+
+\end{table}
+
+
+
+
+
+
+
+\subsection{Training Data for Critique DPO}
+
+
+
+
+
+
+
+As shown in Table~\ref{tab:dpo data}, after filtering our DPO data with RFT model responses and Math-Critique, 62k entries remained for DPO training. It was observed that the number of problems from primary school, middle school, and Simulated Dialog decreased the most. At this stage, we removed all data originating from academic datasets because we found that including these data did not yield any benefits and significantly affected the results of the non-academic datasets.
+
+
+
+
+
+\begin{table}[]
+
+\centering
+
+\caption{Distribution of the source dataset of training data for Critique DPO.}
+
+\label{tab:dpo data}
+
+\begin{tabular}{cc}
+
+\hline
+
+Source Dataset   & Size  \\ \hline
+
+Primary          & 23485 \\
+
+Junior High      & 11304 \\
+
+Ssenior High     & 11026 \\
+
+College          & 3801  \\
+
+Simulated Dialog & 12741 \\
+
+Total            & 62357 \\ \hline
+
+\end{tabular}
+
+\end{table}
+
+
+
+
+
+\subsection{References of MathUserEval Dataset}
+
+
+
+
+
+
+
+The standard answers for the MathUserEval dataset were all written by our crowdsourced annotation team. During the annotation process, annotators had access to example solutions from several advanced models for reference. However, annotators were required to solve the problems independently to produce the standard reference answers. All annotators in this task hold at least a bachelor's degree in mathematics or a related field.
+
+
+
+\section{Limitation and Future Work}
+
+
+
+We observed the following issues in our mathematical models, and we leave it for our future work:
+
+
+
+\vpara{Graphic thinking and drawing abilities.} Due to the limitations of being a purely linguistic model, our model has deficiencies in handling questions requiring drawing. For example, in a question from the Hungary Test, which required connecting six numbers as divisors of each other, our model correctly listed the different numbers' connecting topology but could not draw it accurately. Also, as a language model, it struggles to respond correctly to questions requiring an understanding of images. A potential solution could be integrating multimodal input and output components, an area we plan to explore further.
+
+
+
+\vpara{Precision calculation capability.} We observed that in incorrectly answered questions, if the problem required multiplication, division, or exponentiation of three or more decimal places, our model might compute with a deviation of up to 5\%. This phenomenon aligns with observations from GPT-4 models without an integrated code interpreter. This issue might be a fundamental problem to pure language models and could be mitigated but not resolved with increasing model size. Using external tools for computation or directly employing code with a code interpreter could solve this problem. However, our discussion in this paper focuses on enhancing the mathematical capabilities of pure language models, and we will endeavor to address these issues in future work.
+
+
+
+\section{Potential Risks}
+
+\textbf{Model Transparency and Interpretability:} The introduction of the self-critique pipeline may increase the complexity of the model, making its internal decision-making processes harder to understand and interpret. In public decision-making or sensitive areas (such as law and healthcare), a lack of transparency and interpretability can lead to public distrust of these systems, and it can be difficult to hold them accountable when errors occur. 
+
+
+
+\textbf{Data Privacy and Security Issues:} Improving the model's mathematical and language capabilities may require extensive data for training and validation. If the collection, storage, and processing of this data are not handled properly, it can lead to data privacy and security concerns.
+
+
+
+\textbf{AI assistant writing.}  This article uses AI-assisted writing to correct grammatical mistakes and expression errors.
+
+
+
+
+
+Rebuttal:
+
+Official Review of Submission2240 by Reviewer A1Eu
+
+Official ReviewReviewer A1Eu24 Jul 2024, 17:01 (modified: 23 Aug 2024, 08:19)Program Chairs, Senior Area Chairs, Area Chairs, Reviewers Submitted, Authors, Reviewer A1Eu, Commitment ReadersRevisions
+
+Paper Summary:
+
+This work proposes Self-Critique pipeline to solve the LLMs alignment problem. The authors started with the motivation that existing methods could not avoid the alignment tax while improving the math capabilities of LLMs. The core idea is to embed a math-critique model into the DPO training process. For validation, the work also proposes a new benchmark.
+
+Summary Of Strengths:
+
+The experimental results are good and can support the authors' claims.
+
+This work proposes a new benchmark more compatible with realistic mathematical reasoning.
+
+Summary Of Weaknesses:
+
+Only ChatGLM was chosen as the base model.
+
+More discussion could be added on whether the core ideas of the method are generalizable to other LLMs' capacity enhancement.
+
+
+
+Official Review of Submission2240 by Reviewer R5QU
+
+Official ReviewReviewer R5QU20 Jul 2024, 09:22 (modified: 23 Aug 2024, 08:19)Program Chairs, Senior Area Chairs, Area Chairs, Reviewers Submitted, Authors, Reviewer R5QU, Commitment ReadersRevisions
+
+Paper Summary:
+
+This paper proposes the Self-Critique pipeline, which involves training a Math-Critique model from the LLM itself to provide feedback without external supervision or manual annotations, followed by rejective fine-tuning and direct preference optimization over the LLM's generated outputs for data collection. Additionally, a new dataset (MATHUSEREVAL) is created to enhance LLM's mathematical problem-solving capabilities while maintaining its language ability.
+
+Summary Of Strengths:
+
+This paper proposes the Self-Critique pipeline, which involves training a Math-Critique model from the LLM itself to provide feedback without external supervision or manual annotations.
+
+A new dataset (MATHUSEREVAL) is created to enhance LLM's mathematical problem-solving capabilities while maintaining its language ability.
+
+Extensive experiments demonstrate the effectiveness of the proposed pipeline.
+
+Summary Of Weaknesses:
+
+The proposed method heavily relies on ChatGLM3-32B without exploring its applicability and performance on other LLM models. To ensure generalizability, please conduct experiments with diverse LLM models beyond ChatGLM3-32B to assess the applicability and performance of the proposed method.
+
+The self-critique mechanism may introduce bias since the feedback model is derived from the same LLM, potentially reinforcing its errors. It is suggested to enhance the transparency and interpretability of the self-critique mechanism and clarify the decision-making process and basis of each step.
+
+This paper's evaluation is focused mostly on the in-distribution generalization. It would be interesting to see the models evaluated on the out-of-distribution data, e.g. using datasets employed in [1]. References: [1] MAmmoTH: Building Math Generalist Models through Hybrid Instruction Tuning.
+
+It would also be interesting to see an ablation study over the GSM8k axis (splitting the data into subsets), similar as done in [2], to test accuracy on questions of short, medium, and long lengths. References: [2] MetaMath: Bootstrap Your Own Mathematical Questions for Large Language Models.
+
+The self-critique pipeline introduces additional complexity and increases the difficulty of training and evaluation, yet the model performance may be lower than existing state-of-the-art methods.
+
+
+
+
+
+
+
+Official Review of Submission2240 by Reviewer z6q1
+
+Official ReviewReviewer z6q120 Jul 2024, 02:52 (modified: 23 Aug 2024, 08:19)Program Chairs, Senior Area Chairs, Area Chairs, Reviewers Submitted, Authors, Reviewer z6q1, Commitment ReadersRevisions
+
+Paper Summary:
+
+This paper introduces a novel "Self-Critique" pipeline to improve mathematical problem-solving in LLMs, while maintaining their general language capabilities. The authors first develop a Math-Critique model for evaluating mathematical responses, given a problem, a correct answer, and a candidate reasoning/answer from an LLM. Then, they implement a two-stage training process for improving a given LLM (Rejective Fine-tuning and Direct Preference Optimization). The paper also introduces a new benchmark called MathUserEval for testing math problem-solving. The results show that their approach, applied to ChatGLM (a 32B parameter model), improves the base model on several datasets (including the standard MATH and GSM8k, as well as their own dataset).
+
+Summary Of Strengths:
+
+The paper proposes an interesting, natural idea of using reflection/self-critique as part of the training process, for self-improvement. The approach here focuses on math, but can naturally be applied to other settings as well in principles, by adapting prompts.
+
+The approach of training Math-Critique also moves beyond the need for the answer to a problem to be just a single number, which can be more trivially checked (previous benchmarks focus on this setting, but then have to avoid many types of questions that appear in human problems). Using an LLM to judge allows problems where the answer is a function, an expression, etc. The authors evaluate the correlation between human judgements and automated ones, finding strong signal.
+
+Summary Of Weaknesses:
+
+As a self-improvement pipeline for LLMs, the paper lacks two crucial kinds of evaluations:
+
+First, the paper doesn't compare to other self-improvement methods, only to the base model and other unimproved models. Notably, one simple method for this is STaR [1], which is already much like the RFT stage of the pipeline here. More recently, V-STaR [2] also uses DPO for fine-tuning with correct/incorrect reasoning pairs, which is already very much like the DPO stage in this paper.
+
+Besides that, as a paper that proposes a self-improvement method, the only actual result here is that it successfully boosts ChatGLM3-32B. Absolute comparisons with other base models (all of different sizes / pretraining datasets) are not very informative. Instead, I'd recommend the authors try their method on more models, since the point here is that a given model might self-improve with the critique + fine-tuning pipeline proposed here. Right now, we only get to know it works on one particular model.
+
+The paper focuses on mathematical reasoning, but in principle there no special insight in the paper about math, since the method is rather generic. It would be informative to know if the pipeline domains.
+
+Also, the new dataset, which is a focus of the paper, is only very briefly described. It's impossible to know what the authors mean by "real-world user scenarios" (Appendix E). I'm assuming the examples in the Appendix A come from this dataset. If so, several of these problems look not much different than what one could find on existing datasets, like MATH.
+
+[1] Zelikman, Eric et al. "STaR: Bootstrapping reasoning with reasoning". NeurIPS 2022 [2] Hosseini, Arian, et al. "V-STaR: Training verifiers for self-taught reasoners". arXiv preprint Feb 2024
+
+
+
+
+
+
+
+
+
+Reviewer z6q1（2）
+
+We would like to thank the reviewer for their thoughtful comments and feedback.
+
+First, the paper doesn't compare to other self-improvement methods, only to the base model and other unimproved models. Notably, one simple method for this is STaR [1], which is already much like the RFT stage of the pipeline here. More recently, V-STaR [2] also uses DPO for fine-tuning with correct/incorrect reasoning pairs, which is already very much like the DPO stage in this paper.
+
+We compared our method with math-improvement models like Skywork-Math, Math-InternLM2, and MetaMath in main results(Table 5). Our method performed better, but these comparisons weren't on the same base model. To ensure fairness, we further trained on the same base model (llama3-8b-instruct) with different enhancement methods, as shown in bellow.
+
+Our approach differs from the STaR and V-STaR methods in that we place a greater emphasis on leveraging a large volume of real-world math problems from sources such as the internet and test papers. Unlike academic datasets, these real-world problems come with reference answers of uncertain quality rather than standardized solutions. Consequently, methods like RFT and STaR (without rationalization) are limited to academic datasets. Our multi-step method effectively maximizes the utility of such corpora, achieving remarkable results.
+
+To provide a clearer comparison of different self-improvement algorithms, we conducted experiments using the llama3-8b-instruct as the base model. We sample the same size of training data on STAR and Our method and trained for 3 epoch. The experimental setup and analysis is as follows:
+
+Our methods: We gain 64.5->75.3 improvement, which is hisger than RFT and SRaR methods.
+
+llama3_8b_inst+RFT: using RFT on the academic subset of our corpus (GSM8k, Math).
+
+llama3_8b_inst+STAR w/ rationalization: In this setting, we applied the rationalization method described in the STaR paper (using reference answers as prompts) to our corpus. Reviewing our training corpus composition: GSM8k and MATH training sets, as well as Chinese test papers and internet-sourced problems. In datasets with higher quality reference answers like GSM8k and MATH, the STaR w/ rationalization method achieved performance improvements, but still slightly lower than our method. However, in other test sets with lower quality reference answers, the STaR w/ rationalization method showed little to no improvement. We speculate that this is because the model has not yet developed the capability to deduce accurate solutions from low-quality answers.
+
+Due to time constraints, we couldn't replicate V-STaR experiments on the same dataset. However, it is important to note that in V-STaR, the DPO method is employed to train the Verifier model, rather than being used directly to enhance mathematical abilities as in our work. Additionally, a potential drawback of the V-STaR approach is that their verifier still operates in a direct scoring manner, which offers less transparency and interpretability compared to math-critique.
+
+Besides that, as a paper that proposes a self-improvement method, the only actual result here is that it successfully boosts ChatGLM3-32B. Absolute comparisons with other base models (all of different sizes / pretraining datasets) are not very informative. Instead, I'd recommend the authors try their method on more models, since the point here is that a given model might self-improve with the critique + fine-tuning pipeline proposed here. Right now, we only get to know it works on one particular model.
+
+As shown in the table above, we have supplemented the results by fine-tuning the llama3-8b-instruct model using the critique + fine-tuning pipeline (with all data and the critique model based on llama3-8b-instruct), and gain 64.5->75.3 improvement AVG score. These results demonstrate that our method is equally effective when applied to the llama3-8b-instruct model.
+
+The paper focuses on mathematical reasoning, but in principle there no special insight in the paper about math, since the method is rather generic. It would be informative to know if the pipeline domains.
+
+In this paper, we primarily focus on the scenario of mathematical reasoning in our experiments. The reason for this choice is that we have observed a tendency for current mathematical enhancement methods and basic language proficiency improvement methods to be mutually exclusive. Additionally, it is relatively easier to obtain a large volume of diverse real-world mathematical data.
+
+Also, the new dataset, which is a focus of the paper, is only very briefly described. It's impossible to know what the authors mean by "real-world user scenarios" (Appendix E). I'm assuming the examples in the Appendix A come from this dataset. If so, several of these problems look not much different than what one could find on existing datasets, like MATH.
+
+Previous academic datasets such as GSM8k, MATH, and math23k have typically been derived from limited sources like specific exams or competitions. In contrast, our MathUserEval dataset, developed in collaboration with large model users, samples current expectations for solving mathematical problems using large models. This dataset features a broader range of problem difficulties (including high school, university, and interdisciplinary levels) .
+
+Another major difference compared to other datasets is that our answers' types are quite diverse. Besides a specific number, we include answers in the form of formulas, expressions, charts, etc. These answers are difficult to accurately compare using traditional benchmark evaluation methods, but our defined Math-Critique supports these more diverse types of questions.
+
+In all, we are deeply grateful for your meticulous and thorough review of our work. Your insightful suggestions have been immensely beneficial, significantly enhancing the completeness and perfection of our efforts. We hope that our responses have satisfactorily addressed your concerns. We cannot thank you enough if you could raise your score to support us.
+
+Reviewer R5QU（3）
+
+We would like to thank the reviewer for their thoughtful comments and feedback.
+
+The proposed method heavily relies on ChatGLM3-32B without exploring its applicability and performance on other LLM models. To ensure generalizability, please conduct experiments with diverse LLM models beyond ChatGLM3-32B to assess the applicability and performance of the proposed method.
+
+As shown in the table above, we have supplemented the results by fine-tuning the llama3-8b-instruct model using the critique + fine-tuning pipeline (with all data and the critique model based on llama3-8b-instruct). These results demonstrate that our method is equally effective when applied to the llama3-8b-instruct model.
+
+Our methods: We gain 64.5->75.3 improvement, which is hisger than RFT and SRaR methods.
+
+llama3_8b_inst+RFT: This denotes the results achieved using RFT on the academic subset of our corpus (GSM8k, Math).
+
+llama3_8b_inst+STAR w/ rationalization: In this setting, we applied the rationalization method described in the STaR paper (using reference answers as prompts) to our corpus.
+
+The self-critique mechanism may introduce bias since the feedback model is derived from the same LLM, potentially reinforcing its errors. It is suggested to enhance the transparency and interpretability of the self-critique mechanism and clarify the decision-making process and basis of each step.
+
+In the self-critique mechanism, the model not only provides a score or judgment but also explains the reasoning behind it. Therefore, our critique mechanism is more transparent and interpretable compared to methods like ORM and PRM. 
+
+Additionally, our approach leverages the principle mentioned in the alignment tax[1], which suggests that a model's critique capabilities are often stronger than its generation abilities. By amplifying this discrepancy through our method, we can enhance the original model's capabilities. However, it is indeed possible to introduce some unavoidable biases. We believe the main source of bias is that a critique model trained on the same base model may not be able to effectively identify the model's errors. Our designed math-critique method utilizes reference answer information to avoid potential feedback loops and crashes that could occur without external information.
+
+In practical use, disregarding our constraint of not introducing a stronger LLM, employing a more robust LLM as the critique model could potentially further mitigate this issue. For example, in the evaluation of critique model capabilities in Table 7, our tests revealed that the latest gpt-4.5-turbo model achieved an accuracy rate of 92.9%, surpassing Math-Critique-32B's 90.5%.
+
+It would also be interesting to see an ablation study over the GSM8k axis (splitting the data into subsets), similar as done in [2], to test accuracy on questions of short, medium, and long lengths. References: [2] MetaMath: Bootstrap Your Own Mathematical Questions for Large Language Models.
+
+We followed MetaMath's approach to perform an ablation study on the question length for GSM8k and MATH. While long questions remain more challenging for the model both before and after applying our method, it is evident that our method enhances performance across questions of varying lengths.
+
+The self-critique pipeline introduces additional complexity and increases the difficulty of training and evaluation, yet the model performance may be lower than existing state-of-the-art methods.
+
+Our model results are indeed lower than existing state-of-the-art methods, but our approach is based on the following two premises:
+
+We do not use more powerful LLMs like GPT to construct training data; instead, we continue training using results generated by the model itself. This is to explore the model's ability to iteratively improve on its own without stronger external assistance. As far as we know, most models utilize stronger models to construct data (e.g., MetaMath, Mammoth, DeepSeek-Math).
+
+Based on our observation that most math ability improvement methods compromise general language ability, we aim to develop a method that enhances both mathematical and general language abilities. As shown in our main result (Table 5), our language ability (AlignBench, MT-Bench) results are better compared to other math-improvement methods.
+
+[1] Ouyang et. al. 2022. Training language models to follow instructions with human feedback
+
+In all, we are deeply grateful for your meticulous and thorough review of our work. Your insightful suggestions have been immensely beneficial, significantly enhancing the completeness and perfection of our efforts. We hope that our responses have satisfactorily addressed your concerns. We cannot thank you enough if you could raise your score to support us.
+
+Reviewer A1Eu（3.5）
+
+We would like to thank the reviewer for their thoughtful comments and feedback.
+
+Only ChatGLM was chosen as the base model.
+
+As shown in the table below, we have supplemented the results by fine-tuning the llama3-8b-instruct model using the critique + fine-tuning pipeline (with all data and the critique model based on llama3-8b-instruct). These results demonstrate that our method is equally effective when applied to the llama3-8b-instruct model.
+
+llama3_8b_inst+RFT: This denotes the results achieved using RFT on the academic subset of our corpus (GSM8k, Math).
+
+llama3_8b_inst+STAR w/ rationalization: In this setting, we applied the rationalization method described in the STaR paper (using reference answers as prompts) to our corpus.
+
+More discussion could be added on whether the core ideas of the method are generalizable to other LLMs' capacity enhancement.
+
+Our method directly enhances general language ability, as evidenced by improvements from 7.38 to 7.80 in Table 19, across five out of six language ability subcategories（Fundamental Language Ability,Advanced Chinese Understanding,Open-ended Questions,Writing Ability,Task-oriented Role Play,Professional Knowledge）. This indicates our method's effectiveness in enhancing general language understanding. Additionally, Table 20 shows improved performance on traditional language benchmarks like MMLU, CEval, CMMLU, and ARC.
+
+For enhancing other LLM abilities like coding and agent capabilities, domain-specific adjustments to the Critique model are needed. For instance, a code critique model should evaluate execution results and code style. We will explore extending this method to other domains in future work.
+
+In all, we are deeply grateful for your meticulous and thorough review of our work. Your insightful suggestions have been immensely beneficial, significantly enhancing the completeness and perfection of our efforts. We hope that our responses have satisfactorily addressed your concerns. We cannot thank you enough if you could raise your score to support us.

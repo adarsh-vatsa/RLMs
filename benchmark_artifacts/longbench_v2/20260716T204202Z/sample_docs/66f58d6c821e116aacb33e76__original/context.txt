@@ -1,0 +1,1293 @@
+Article 
+iEnergy 
+ 
+ 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+Xinqi Xie1, Jun Wangkai1, Weixiang Shen2, Rui Xiong1,* 
+1 Department of Vehicle Engineering, School of Mechanical Engineering, Beijing Institute of Technology, Beijing 100081, China. 
+2 School of Science, Computing and Engineering Technologies, Swinburne University of Technology, Hawthorn, Victoria 3122, 
+Australia. 
+*Corresponding author: Rui Xiong; rxiong@bit.edu.cn 
+ 
+ABSTRACT 
+The rapid development of battery technologies requires significant time and effort to conduct experiments and obtain battery 
+characteristics. To address this challenge, this paper develops an electrochemical-thermal coupled model to simulate batteries, where 
+the model parameters will be determined by using voltage and temperature as optimization targets. A genetic algorithm is employed 
+for parameter identification and optimization. The model is validated through experiments on various battery cells under different 
+working conditions. The results demonstrate that the simulated voltage from the model achieves high accuracy with the root mean 
+square error (RMSE) ranging between 16mV and 34mV. Furthermore, a battery lifetime model is also explored by incorporating multiple 
+internal degradation mechanisms. Validation results show that the RMSE in lifetime prediction is less than 0.0024. As a result, the 
+developed models have achieved high accuracy in battery performance simulation and lifetime prediction with a certain degree of 
+generalizability, allowing for quick adaptation to other types of battery cells and thereby reducing testing costs and shortening model 
+development cycle.  
+KEYWORDS 
+Lithium-ion battery, electrochemical model, model calibration, parameter identification, lifetime prediction. 
+ 
+1 Introduction 
+ith the continuous development of industrial technology, environmental pollution and energy 
+shortages have become increasingly prominent issues[1]. Electric vehicles (EVs) provide an effective 
+solution for reducing energy consumption and carbon emissions, contributing to the strategic goals 
+of "carbon peaking" and "carbon neutrality"[2,3]. As a result, the widespread promotion of EVs has become a 
+pressing priority for driving the sustainable development of the automotive industry. Lithium-ion batteries 
+have emerged as the preferred power source for EVs due to their high specific energy, high operating voltage, 
+high energy density, long lifespan, low self-discharge rate, and environmental friendliness. However, the 
+performance and lifespan of lithium-ion batteries are influenced by various factors, such as battery design, 
+material selection, charging and discharging strategies, and operation conditions[4]. Therefore, the 
+development of battery simulation optimization techniques and lifespan prediction methods is crucial for 
+enhancing the performance and extending the service life of lithium-ion batteries. By creating mathematical 
+models and utilizing optimization algorithms, battery simulation methods enable evaluation and 
+enhancement of battery performance. This virtual testing approach significantly reduces experimental costs 
+and time while increasing the efficiency and accuracy of design processes[5].  
+However, due to the complex multi-physics coupling processes within batteries and uncertainties in 
+electrochemical reactions and material degradation, battery simulation optimization faces numerous 
+challenges[6,7]. The pseudo-two-dimensional (P2D) electrochemical model and its various modifications are 
+widely used because they capture the essential electrochemical process within the batteries, including the 
+dynamics of ion transport, electrode reactions, and charge/discharge mechanisms[8]. By considering the heat 
+generated during electrode reactions, these models evolve into electrochemical-thermal coupling models 
+that offer a more comprehensive description of battery behavior, incorporating both reaction kinetics and 
+thermodynamics[9,10]. 
+Electrochemical models are fundamentally derived from concentrated solution theory and porous 
+W 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+2 
+ 
+ 
+ 
+electrode theory[11]. They represent the internal process, such as electrochemical reactions, heat transfer, and 
+ion diffusion through partial differential equations (PDEs) and algebraic equations[12]. These models 
+effectively reflect the impact of material properties and structural design on battery performance, providing 
+insights into the internal distribution of factors such as potential and lithium-ion concentration. Moreover, 
+they exhibit greater generality than equivalent circuit models, allowing for more accurate extrapolation and 
+prediction across a wider range of operation conditions. However,  a large number of the model parameters 
+increase uncertainty, thus accurate parameter identification is essential to ensure the precision of 
+electrochemical models and successful engineering implementation[18][19]. 
+Lifespan prediction is a vital technology for ensuring the safety and reliability of batteries, particularly 
+in EVs, where battery performance and safety are of utmost important[22]. Accurate lifespan prediction 
+enables users to assess battery reliability, implement appropriate maintenance and management strategies 
+to extend battery life[23]. Based on the operating conditions and historical data of the batteries, lifespan 
+prediction methods apply degradation models to estimate battery's remaining life[24]. By predicting battery 
+lifespan, users gain insights into the aging mechanisms which affect battery performance over time. This 
+information allows for the optimization of charging and discharging strategies, reducing the rate of 
+degradation and enhancing the overall safety and reliability of the battery system[25]. Battery simulation plays 
+a key role in this process by mimicking long-term performance decay and aging processes under various 
+conditions, provides valuable data for reliability analysis and more accurate lifespan prediction[26]. 
+This paper aims to investigate the simulation optimization and lifespan prediction of lithium-ion 
+batteries. Key scientific issues: such as modeling mechanism, parameter identification, and lifespan 
+prediction, are fundamental to the study of power batteries. Research in these areas holds significant 
+theoretical and practical value, contributing to advancements in battery management technologies and 
+supporting the development of EV industries. In this study, an electrochemical-thermal coupled model was 
+developed for lithium-ion batteries, with voltage and temperature serving as optimization objectives for 
+parameter identification and model refinement. The model was validated using experimental data from 
+different battery cells under various operating conditions. Furthermore, an aging model accounting for 
+multiple internal degradation mechanisms was established[27]. The validation of both voltage response and 
+lifespan prediction simulations demonstrated that the developed models can effectively simulate battery 
+voltage and the degradation process with a certain degree of generalizability. This contributes to a deeper 
+understanding of battery behavior, allowing for more accurate predictions of battery lifespan and enhancing 
+the ability to optimize battery management strategies in real-world applications. 
+2 Experiments 
+2.1 Cell parameters 
+An 18650 cylindrical lithium-ion cells (LR1865SZ) was selected to conduct experiments in this study. 
+The specifications of the cell are shown in Table 1.  
+Table 1 Specifications of the battery cells (LR1865SZ) 
+Item 
+Value 
+Cathode Material 
+Li(Ni0.5Co0.2Mn0.3)O2 
+Nominal Capacity 
+2500mAh（0.2C Discharge） 
+Minimum Capacity 
+2400mAh（0.2C Charge） 
+Charging Voltage 
+4.20V±0.03V 
+Nominal Voltage 
+3.70V@0.2C 
+Maximum Charge Current 
+1C（2400mA） 
+Maximum Discharge Current 
+3C（7200mA） 
+Maximum Weight 
+48g 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+3 
+ 
+ 
+Allowable Charge Temperature 
+0∼45℃ 
+Allowable Discharge Temperature 
+-20∼60℃ 
+2.2 Experimental procedure 
+For the above-mentioned battery cells, four of them were used in the experiments to identify 
+inconsistencies stemming from the manufacturing process. Each cell began with capacity test at low 
+discharge rate, where the cell at the fully charged state was discharged at a discharge current of C/20 until 
+its lower cut-off voltage was reached.  This low discharge rate was employed to prevent activation of the cell's 
+dynamics, ensuring that the measured voltage reflected the open-circuit voltage (OCV) of the cell.  
+Moreover, the cells were subjected to constant current (CC) discharge tests at various rates: 1C, 1.5C, 2C, 
+and 3C, along with Dynamic Stress Test (DST). During each of these tests, the cell was first charged at a CC of 
+1C, followed by constant voltage (CV) charging until the current dropped to C/20. Then, the fully charged cell 
+was allowed to rest before being discharged to its lower cut-off voltage. Following each discharge, the cell 
+was allowed to rest again before the next charge cycle commenced. To monitor capacity degradation over 
+time, an additional low discharge rate OCV test was performed for every 100 cycles. 
+3 Simulation optimization method 
+The methodology framework of this study is depicted in Figure 1. A P2D model was employed to simulate 
+the performance of lithium-ion cells, and its parameters were identified to minimize the root mean square 
+error (RMSE) between the calculated and experimental voltages and temperatures using a genetic algorithm. 
+Subsequently, the RMSE between the calculated and experimental state of health (SOH) was minimized to 
+identify the parameters of the cell aging model.  The details are explained as follows. 
+ 
+Fig. 1 The methodology framework 
+3.1 Model development 
+A schematic diagram illustrating a lithium-ion cell is shown in Figure 2. When a current flows through 
+the cell, redox reactions are induced at the cathode and anode. During these redox reactions, lithium-ions 
+(Li⁺) are continually extracted and inserted, while electrons (e⁻) are generated or consumed correspondingly. 
+Electrons flow between the electrodes through an external circuit, while lithium ions are transported 
+between the electrodes through a porous separator[28]. To accurately describe both the internal reaction 
+processes and external characteristics, it is essential to develop a precise cell model. The modeling of lithium-
+ion cells primarily includes electrical, thermal, and aging models, which are integrated into an 
+electrochemical-thermal-aging coupled model in this paper[29]. 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+4 
+ 
+ 
+ 
+ 
+Fig. 2 Schematic diagram of a lithium-ion battery 
+3.1.1 Electrochemical model  
+This study is based on the P2D model, which was developed using electrochemical theory on a multi-
+physics simulation platform. The cathode, separator, and anode are discretized in the thickness direction, 
+while the active material is discretized in the radial direction. The governing equations are solved using the 
+finite volume method. An example of the mesh division is shown in Figure 3, where the cathode and anode 
+are each divided into four grids, the separator into three grids, and the active material into six radial grids[30]. 
+ 
+Fig.3 Mesh partitioning of the P2D model. 
+In lithium-ion cells, the concentration distribution of lithium ions in both the solid and liquid phases is 
+governed by Fick's second law.  The diffusion equation for the active material, established in spherical 
+coordinates, is given by  
+𝜕𝑐𝑠
+𝜕𝑡= 1
+𝑟2
+𝜕
+𝜕𝑟(𝐷𝑠𝑟2 𝜕𝑐𝑠
+𝜕𝑟) 
+(1) 
+where 𝑐𝑠 is the concentration of lithium ions in the solid phase, 𝑟 is the radial direction of the active material 
+particles，𝑟𝜖(0, 𝑅𝑠)，𝑅𝑠 is the radius of the active material particles, and 𝐷𝑠 is the solid-phase lithium-ion 
+diffusion coefficient. The boundary conditions are: 
+𝐷𝑠
+𝜕𝑐𝑠
+𝜕𝑟|𝑟=0 = 0 
+(2) 
+𝐷𝑠
+𝜕𝑐𝑠
+𝜕𝑟|𝑟=𝑅𝑠= −𝑗𝐿𝑖
+𝐹𝑎𝑠
+ 
+(3) 
+The diffusion of lithium ions in the liquid phase accounts for both diffusion and electro-migration, as 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+5 
+ 
+ 
+described by  
+𝜕
+𝜕𝑡(𝜀𝑐𝑒) = 𝜕
+𝜕𝑥(𝐷𝑒
+𝑒𝑓𝑓𝜕𝑐𝑒
+𝜕𝑥) + 1 −𝑡+
+0
+𝐹
+𝑗𝐿𝑖 
+(4) 
+In equation, the first term on the right-hand side represents the diffusion of lithium ions in the liquid phase, 
+and the second term accounts for the influence of electro-migration. Here, 𝑐𝑒 represents the concentration of 
+lithium ions in the liquid phase, 𝐷𝑠
+𝑒𝑓𝑓 is the effective diffusion coefficient of lithium ions in the liquid phase, 
+and 𝑡+
+0 is the transference number of lithium ions in the liquid phase. 
+The boundary conditions are: 
+𝜕𝑐𝑒
+𝜕𝑥|𝑥=0 = 0 
+(5) 
+𝜕𝑐𝑒
+𝜕𝑥|𝑥=𝐿𝑎𝑛+𝐿𝑠𝑒𝑝+𝐿𝑐𝑎= 0 
+(6) 
+𝐷𝑒
+𝑒𝑓𝑓𝜕𝑐𝑒
+𝜕𝑥|𝛿−𝜖
+𝛿+𝜖= 0 
+(7) 
+where 𝐿𝑎𝑛、𝐿𝑠𝑒𝑝、𝐿𝑐𝑎 represent the thicknesses of the anode, separator, and cathode, respectively. 𝑥= 0 
+denotes the interface between the current collector and the anode, and 𝑥= 𝐿𝑎𝑛+ 𝐿𝑠𝑒𝑝+ 𝐿𝑐𝑎 represents the 
+interface between the current collector and the cathode. 𝛿 represents the position of the separator between 
+the electrodes, and 𝜖 denotes an infinitesimal quantity. 
+The solid-phase potential along the cell thickness is described using Ohm's law as:   
+0 = 𝜕
+𝜕𝑥(𝜎𝑠
+𝑒𝑓𝑓𝜕∅𝑠
+𝜕𝑥) −𝑗𝐿𝑖−𝑎𝑑𝑙𝐶𝜕(∅𝑠−∅𝑒)
+𝜕𝑡
+ 
+(8) 
+In Equation 8, the first term on the right-hand side represents the electric field-driven term, the second term 
+accounts for the current source, including interfacial and side reactions, and the last term accounts for the 
+double-layer charging/discharging. Here,  ∅𝑠 和 ∅𝑒 are the solid-phase and liquid-phase potentials, 
+respectively, 𝑥 is the cell thickness, 𝜎𝑠
+𝑒𝑓𝑓 is the effective conductivity, 𝑎𝑑𝑙 is the specific surface area, and 𝐶 is 
+the specific capacitance (typically 0.2 F/m²). 
+The boundary conditions are 
+𝜎𝑠
+𝑒𝑓𝑓𝜕∅𝑠
+𝜕𝑥|𝑥=0 = 𝜎𝑠
+𝑒𝑓𝑓𝜕∅𝑠
+𝜕𝑥|𝑥=𝐿𝑎𝑛+𝐿𝑠𝑒𝑝+𝐿𝑐𝑎= −𝐼
+𝐴 
+(9) 
+𝜕∅𝑠
+𝜕𝑥|𝑥=𝐿𝑎𝑛= 𝜕∅𝑠
+𝜕𝑥|𝑥=𝐿𝑎𝑛+𝐿𝑠𝑒𝑝= 0 
+(10) 
+where I represent the current, and A is the area of the current collector. 
+Similarly, the liquid-phase potential is also described using Ohm's law as: 
+0 = 𝜕
+𝜕𝑥(𝑘𝑒𝑓𝑓𝜕∅𝑒
+𝜕𝑥) + 𝜕
+𝜕𝑥(𝑘𝐷
+𝑒𝑓𝑓𝜕𝑙𝑛𝑐𝑒
+𝜕𝑥) + 𝑗𝐿𝑖+ 𝑎𝑑𝑙𝐶𝜕(∅𝑠−∅𝑒)
+𝜕𝑡
+ 
+(11) 
+In Equation 11, the first term on the right-hand side represents the electro-migration term, the second term 
+accounts for the effect of the diffusion potential gradient, the third term refers to the current source, which 
+includes both the solid-liquid interface reaction and side reactions, and the final term describes the double-
+layer charging and discharging. The effective ionic conductivity, 𝑘𝑒𝑓𝑓, and the effective diffusion conductivity, 
+𝑘𝐷
+𝑒𝑓𝑓, are considered functions of lithium-ion concentration and temperature. 
+The boundary conditions are 
+𝜕∅𝑒
+𝜕𝑥|𝑥=0 = 0 
+(12) 
+𝜕∅𝑒
+𝜕𝑥|𝑥=𝐿𝑎𝑛+𝐿𝑠𝑒𝑝+𝐿𝑐𝑎= 0 
+(13) 
+(𝑘𝑒𝑓𝑓𝜕∅𝑒
+𝜕𝑥+ 𝑘𝐷
+𝑒𝑓𝑓𝜕𝑙𝑛𝑐𝑒
+𝜕𝑥) |𝛿−𝜖
+𝛿+𝜖= 0 
+(14) 
+The solid-liquid interface impedes the flow of electrons, resulting in an overpotential, as described by 
+𝜂= ∅𝑠−∅𝑒−𝑈 
+(15) 
+where ∅𝑠 represents the solid-phase potential, ∅𝑒 the liquid-phase potential, and 𝑈 the equilibrium potential. 
+The equilibrium potential is related to the lithium-ion concentration and temperature at the surface of the 
+active particles, which is determined through small-current charge/discharge experiments on half-cells, 
+representing the open-circuit potential (OCP) of the active material.  
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+6 
+ 
+ 
+ 
+The Butler–Volmer equation, which describes the kinetics of the electrochemical reactions, is expressed 
+as follows 
+𝑗𝐼𝐶= 𝑎𝑠𝑖0 {exp [𝑎𝑎𝐹
+𝑅𝑢𝑇(𝜂−𝑅𝑓
+𝑎𝑠
+𝑗𝐿𝑖)] −exp [𝑎𝑐𝐹
+𝑅𝑢𝑇(𝜂−𝑅𝑓
+𝑎𝑠
+𝑗𝐿𝑖)]} 
+(16) 
+where 𝑗𝐼𝐶 represents the volumetric current density of the reaction, 𝑎𝑠 is the specific surface area per unit 
+volume of the electrode, 𝑖0 is the exchange current density, 𝑎𝑎 and 𝑎𝑐 are the anodic and cathodic transfer 
+coefficients (typically set to 0.5), 𝑇 is the temperature, and 𝑅𝑓 is the film resistance on the surface of the active 
+material particles, which reflects the reduction in the driving force of the overpotential. The volumetric 
+current density of the electrochemical reaction, 𝑗𝐿𝑖 , includes the side reaction current, can be calculated by 
+𝑗𝐿𝑖= 𝑗𝐼𝐶+ 𝑖𝑠𝑎𝑠 
+(17) 
+where 𝑖𝑠 is the current density of the side reactions. If no side reactions occur, 𝑖𝑠= 0。 
+The exchange current density 𝑖0 reflects the difficulty of the electrode reaction and is a function of the 
+lithium-ion concentrations in the liquid phase, solid phase, and at the solid-liquid interface. It is given by 
+𝑗𝐿𝑖= 𝑗𝐼𝐶+ 𝑖𝑠𝑎𝑠 
+(18) 
+where  𝑐𝑒 is the lithium-ion concentration in the liquid phase, 𝑐𝑠,𝑚𝑎𝑥 is the maximum lithium-ion 
+concentration in the solid phase, and 𝑐𝑠,𝑒 is the lithium-ion concentration at the solid-liquid interface. 
+The terminal voltage of the cell, which is the potential difference between the cathode and anode current 
+collectors, is calculated by 
+𝑉= ∅𝑠|𝑥=𝐿−∅𝑠|𝑥=0 −𝑅𝑐𝑜𝑛𝑡𝑎𝑐𝑡
+𝐴
+𝐼 
+(19) 
+where 𝑉 is the terminal voltage, 𝐿 represents the position of the interface between the cathode and the 
+current collector, 0 denotes the position of the interface between the anode and the current collector, 𝑅𝑐𝑜𝑛𝑡𝑎𝑐𝑡 
+is the contact resistance, and A is the area of the current collector. 
+ 
+3.1.2 Thermal model 
+The thermal model is governed by the energy conservation equation, which is expressed as 
+𝐶𝑝
+𝑑𝑇
+𝑑𝑡= −ℎ𝐴𝑠(𝑇−𝑇
+∞) + 𝑞𝑖+ 𝑞𝑗+ 𝑞𝑟+ 𝑞𝑐 
+(20) 
+where 𝑇 represents the cell temperature, 𝐶𝑝 is the specific heat capacity, h is the convective heat transfer 
+coefficient between the cell and the cooling medium,𝐴𝑠 is the heat exchange area of the cell, and 𝑇
+∞ denotes 
+the temperature of the cooling medium. The terms 𝑞𝑖 , 𝑞𝑗 , 𝑞𝑟 and 𝑞𝑐 correspond to the reaction heat, Joule 
+heat, reversible entropy heat, and contact resistance heat, respectively. 
+The sum of reaction heat and Joule heat is given by: 
+𝑞𝑖+ 𝑞𝑗= 𝐴∫𝑗(∅𝑠−∅𝑒−𝑈)
+𝐿
+0
+𝑑𝑥 
+(21) 
+The expression for reversible entropy heat is: 
+𝑞𝑟= −(𝑇𝜕𝑈
+𝜕𝑇) 𝐼 
+(22) 
+where 
+𝜕𝑈
+𝜕𝑇 represents the entropy heat coefficient, which is defined as a function of the lithium-ion 
+stoichiometric ratio. 
+The expression for contact resistance heat is: 
+𝑞𝑐= 𝐼2 𝑅𝑐𝑜𝑛𝑡𝑎𝑐𝑡
+𝐴
+ 
+(23) 
+To enhance the accuracy of the model under varying temperatures, the temperature dependence of the 
+model parameters can be adjusted using the Arrhenius equation. This adjustment improves the model's 
+performance across a wide range of temperatures. The factors influenced by temperature include the effects 
+on the solid-phase diffusion coefficient of the cell's positive and negative electrodes, the exchange current 
+density, and the lithium-ion diffusion rate. The Arrhenius equation is expressed as:  
+𝜑= 𝜑𝑟𝑒𝑓exp [𝐸𝑎𝑐𝑡
+𝜑
+𝑅( 1
+𝑇𝑟𝑒𝑓
+−1
+𝑇)] 
+(24) 
+where 𝜑 represents the parameter value at the current temperature 𝑇. 𝜑𝑟𝑒𝑓 is the parameter value at the 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+7 
+ 
+ 
+reference temperature 𝑇𝑟𝑒𝑓 (typically set to 25°). C𝐸𝑎𝑐𝑡
+𝜑 is the activation energy that reflects the sensitivity of 
+the parameter to temperature changes. Temperature also affects the equilibrium potential of the electrodes. 
+At a constant temperature, the equilibrium potential is a function of the lithium-ion stoichiometric number. 
+Since both temperature and stoichiometric effects on the equilibrium potential significantly increases 
+computational complexity, for simplification the entropy heat coefficient can be used to adjust the 
+equilibrium potential of both the positive and negative electrodes: 
+𝑈𝑂𝐶𝑉(𝑇) = 𝑈𝑂𝐶𝑉,𝑟𝑒𝑓+ (𝑇−𝑇𝑟𝑒𝑓) (𝜕𝑈
+𝜕𝑇)|𝑇𝑟𝑒𝑓 
+(25) 
+where 𝑈𝑂𝐶𝑉,𝑟𝑒𝑓 is the equilibrium potential at the reference temperature 𝑇𝑟𝑒𝑓. 
+ 
+3.1.3 Electrochemical-thermal coupling model 
+The performance and aging of lithium-ion cells are highly sensitive to temperature. At low temperatures, 
+the diffusion process slows down, reducing cell performance. Under extreme high temperature, aging 
+accelerates, and also the cell faces safety risks such as thermal runaway[31]. Therefore, an electrochemical 
+model coupled with thermal effects is crucial for predicting cell performance, aging, and safety[32]. 
+The electrochemical model allows for the calculation of lithium-ion cell reactions under constant 
+temperature conditions. The thermal model can compute heat generation and temperature rise during cell 
+operation[33]. Since the reaction rates in the electrochemical system vary with temperature, the core of 
+electrochemical-thermal coupling is the adjustment of electrochemical model parameters as temperature 
+changes. When the model parameters are adjusted based on temperature, the cell's operating characteristics 
+will change, which in turn will lead to the alteration in the rate of heat generation[34]. 
+Thus, the electrochemical-thermal coupling model is developed based on the interaction between 
+electrochemical reactions and heat generation. By solving the mass, charge, and energy conservation 
+equations, along with electrochemical kinetics, the model computes lithium-ion concentrations in both the 
+solid and liquid phases, potentials in the solid and liquid phases, the volumetric current density of 
+electrochemical reactions, and cell temperature[35]. 
+ 
+3.1.4 Aging model 
+The performance of lithium-ion batteries degrades gradually with the increase in charge-discharge 
+cycles. The aging of lithium-ion batteries is primarily caused by physical factors such as thermal and 
+mechanical stress, as well as chemical factors including side reactions within the cell[36]. The aging 
+mechanisms can be classified into two major categories: Loss of Lithium Inventory (LLI) and Loss of Active 
+Material (LAM)[37]. LLI is primarily driven by the growth of the Solid Electrolyte Interphase (SEI) layer[38], 
+electrolyte decomposition, and lithium plating side reactions, whereas LAM results mainly from the 
+exfoliation of graphite in the anode, particle cracking, and the increase in resistance due to corrosion of the 
+current collectors. This study considers three aging mechanisms: SEI layer growth on the anode, Cathode 
+Electrolyte Interphase (CEI) layer growth on the cathode, and the loss of active material from both 
+electrodes[39]. 
+The rate equation for SEI layer growth is expressed as: 
+𝑗𝑆𝐸𝐼= −𝑎𝑠𝑖0,𝑆𝐸𝐼exp [−𝑎𝑐,𝑆𝐸𝐼𝐹
+𝑅𝑇
+(∅𝑠−∅𝑒−𝑈𝑆𝐸𝐼−𝑗𝐿𝑖
+𝑎𝑠
+𝑅𝑆𝐸𝐼)] 
+(26) 
+where 𝑗𝑆𝐸𝐼 is the volumetric current density of the SEI layer reaction, 𝑎𝑐,𝑆𝐸𝐼 is the charge transfer coefficient 
+of the SEI reaction, with a default value of 0.5, 𝑈𝑆𝐸𝐼 is the equilibrium potential of the SEI reaction (default 
+value: 0.4 V), 𝑅𝑆𝐸𝐼 is the product of the internal resistance of the SEI layer and its surface area, and 𝑖0,𝑆𝐸𝐼 is 
+the exchange current density, which is a function of the Ethylene Carbonate (EC) concentration at the reaction 
+surface, given by: 
+𝑖0,𝑆𝐸𝐼= 𝐹𝑘0,𝑆𝐸𝐼𝑐𝐸𝐶
+𝑠 
+(27) 
+where 𝑘0,𝑆𝐸𝐼 is the rate constant of the SEI reaction, and 𝑐𝐸𝐶
+𝑠 is the concentration of EC at the reaction surface. 
+For the EC to participate in the SEI reaction, it must diffuse through the SEI layer to reach the reaction 
+interface. The diffusion equation describing the radial distribution of EC concentration within the active 
+particles is given by: 
+𝜕𝑐𝐸𝐶
+𝜕𝑡
+= 𝐷𝐸𝐶
+𝑒𝑓𝑓𝜕2𝑐𝐸𝐶
+𝜕𝑟2  
+(28) 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+8 
+ 
+ 
+ 
+where 𝐷𝐸𝐶
+𝑒𝑓𝑓 is the effective diffusion coefficient of EC in the SEI layer, accounting for the SEI porosity 
+correction as follows: 
+𝐷𝐸𝐶
+𝑒𝑓𝑓= 𝐷𝐸𝐶(𝜀𝑆𝐸𝐼)𝑛 
+(29) 
+where  𝜀𝑆𝐸𝐼 is the porosity of the SEI layer (default value: 0.03), 𝑛 is the Bruggeman exponent, and 𝐷𝐸𝐶 is the 
+diffusion coefficient of EC in the solid phase of the SEI layer, which can be adjusted according to the Arrhenius 
+equation to account for temperature variations. 
+The SEI layer forms on the surface of anode particles, which are assumed to be spherical. Under the 
+assumption that the surface film is uniformly distributed in the thickness direction, the expression for SEI 
+layer thickness is given by: 
+𝑑𝛿𝑆𝐸𝐼
+𝑑𝑡
+= −𝑗𝑆𝐸𝐼
+2𝐹𝑎𝑠
+𝑀𝑆𝐸𝐼
+𝜌𝑆𝐸𝐼
+ 
+(30) 
+where 𝛿𝑆𝐸𝐼 is the thickness of the SEI layer, 𝑀𝑆𝐸𝐼 is the molar mass of the SEI layer (default value: 162 g/mol), 
+and 𝜌𝑆𝐸𝐼 is the density of the SEI layer (default value: 1.69 g/cm³). 
+The expression for the resistance of the SEI layer is: 
+𝑅𝑆𝐸𝐼= 𝛿𝑆𝐸𝐼
+𝑘𝑆𝐸𝐼
+𝑒𝑓𝑓 
+(31) 
+where 𝑘𝐸𝐶
+𝑒𝑓𝑓 is the effective ionic conductivity through the electrolyte in the SEI layer, which accounts for the 
+porosity correction, expressed as: 
+𝑘𝑆𝐸𝐼
+𝑒𝑓𝑓= 𝑘𝑆𝐸𝐼(𝜀𝑆𝐸𝐼)1.5#(32) 
+(32) 
+The reaction rate for the CEI layer on the cathode is expressed as:  
+𝐽𝑠,𝐶= 𝑘𝑠,𝐶𝑐𝐸𝐶,𝑠𝑐𝐿𝑖(𝑁𝑖,𝐶𝑜)𝑂2 
+(33) 
+where 𝐽𝑠,𝐶 is the reaction rate per unit area (in mol/s/m²), 𝑘𝑠,𝐶 is the reaction rate constant, which can be 
+temperature-dependent and follow the Arrhenius equation. 𝑐𝐸𝐶,𝑠 is the EC concentration on the surface of the 
+cathode's active particles, and 𝑐𝐿𝑖(𝑁𝑖,𝐶𝑜)𝑂2 represents the molar concentration of the active material in the 
+cathode. The loss rate of the active material is given by  
+𝑑𝜀𝐿𝑖(𝑁𝑖,𝐶𝑜)𝑂2
+𝑑𝑡
+= −
+𝑎𝑠𝐽𝑠,𝐶
+𝑐𝐿𝑖(𝑁𝑖,𝐶𝑜)𝑂2
+ 
+(34) 
+where 𝜀𝐿𝑖(𝑁𝑖,𝐶𝑜)𝑂2 denotes the volume fraction of active material in the electrode. The depletion of active 
+material leads to a decrease in cell capacity. The change in CEI layer thickness is described by 
+𝑑𝛿𝐶𝐸𝐼
+𝑑𝑡
+= −𝐽𝑠,𝐶
+𝑀𝐶𝐸𝐼
+𝜌𝐶𝐸𝐼
+ 
+(35) 
+where 𝛿𝐶𝐸𝐼 is the thickness of the CEI layer, 𝑀𝐶𝐸𝐼 is the molar mass of the CEI layer (default value: 162 g/mol), 
+and 𝜌𝐶𝐸𝐼 is the density of the CEI layer (default value: 1.69 g/cm³). The expression for the resistance of the 
+CEI layer is similar to that of the SEI layer, with the porosity of the CEI layer defaulted to be 0.02. 
+During the lithium-ion intercalation and deintercalation processes, the active materials undergo volume 
+and structural changes. These changes generate mechanical stress within a cell, which can lead to cracking 
+or structural damage over time and thus the gradual separation of active materials in both the cathode and 
+anode during cycling. As a result, the reduction in active material leads to a loss of lithium inventory, 
+contributing to a decrease in cell capacity. Since the rate of active material degradation due to separation is 
+related to the current, it can be described by  
+𝑑𝜀𝐴𝑀
+𝑑𝑡
+= −𝑘(𝑇)|𝑗𝐿𝑖| 
+(36) 
+where 𝜀𝐴𝑀 represents the volume fraction of active material in the electrode, and 𝑘(𝑇) is a temperature-
+dependent coefficient, which is also modeled using the Arrhenius equation. Equation 36 indicates that the 
+degradation rate of the cell increases with current. 
+3.2 Parameter identification and optimization 
+3.2.1 Parameters obtained before identification 
+While some parameters of the electrochemical model can be measured experimentally or provided by 
+cell manufacturers, others are difficult or even impossible to obtain through direct measurement. These 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+9 
+ 
+ 
+parameters can only be estimated based on the characteristics of the cell materials. To improve the model’s 
+accuracy, certain parameters must be re-identified. Given that the structural parameters of the 
+electrochemical model have clear physical significance, they can be obtained through cell disassembly as 
+shown in Table 2. 
+Table 2 Cell structural parameters obtained through cell disassembly 
+Item 
+Value 
+Outer Diameter 
+18.5 mm 
+Outer Height 
+65.2 mm 
+Wall Thickness 
+0.3 mm 
+Cathode Thickness 
+0.07 mm 
+Anode Thickness 
+0.025 mm 
+Separator Thickness 
+0.08 mm 
+Weight 
+48 g 
+ 
+3.2.2 Parameter identification 
+Due to the structural complexity of electrochemical models and the large number of parameters in the 
+models, a sensitivity analysis of the model parameters was conducted prior to parameter identification. 
+Highly sensitive parameters have a significant impact on model output and are thus easier to identify. In 
+contrast, low-sensitivity parameters exert little influence on the output, making them difficult to determine 
+through parameter identification. By focusing on the identification of highly sensitive parameters, the 
+precision and efficiency of the identification process can be significantly improved. The experimental data 
+required for parameter identification follow a principle of increasing complexity: starting with the data from 
+low current rate to high current rate tests, from normal to extreme temperature tests, and from calendar life 
+to cycle life tests. 
+The optimization objective in this study utilizes a transient response function, where the error between 
+the simulation results and target results is calculated using RMSE throughout the simulation process. 
+Transient response refers to a target response that changes over time, such as voltage or temperature 
+responses. Optimizing transient response can be viewed as an infinite multi-objective optimization problem, 
+as there is a target response for each moment in time. To address this, the transient response function is 
+transformed into a single-objective response function through integration as follows 
+𝑅𝑀𝑆𝐸𝑖= √∫
+(𝑅(𝑡)𝑖−𝑅(𝑡)𝑡𝑎𝑟𝑔𝑒𝑡,𝑖)
+2𝑑𝑡
+𝑡𝑒𝑛𝑑,𝑖
+𝑡𝑠𝑡𝑎𝑟𝑡,𝑖
+𝑡𝑒𝑛𝑑,𝑖−𝑡𝑠𝑡𝑎𝑟𝑡,𝑖
+ 
+(37) 
+where 𝑅𝑀𝑆𝐸𝑖 represents the RMSE for transient response i (e.g., voltage), 𝑅(𝑡) refers to the calculated result 
+at time t, while 𝑅(𝑡)𝑡𝑎𝑟𝑔𝑒𝑡 is the experimental result at time t. The variables 𝑡𝑠𝑡𝑎𝑟𝑡,𝑖 和 𝑡𝑒𝑛𝑑,𝑖 represent the 
+start and end times of the integration, respectively. 
+When there are multiple transient responses, such as voltage and temperature, are optimized 
+simultaneously, the objective response function can be expressed by  
+𝑓=
+∑
+𝑤𝑟,𝑖𝑅𝑀𝐸𝑆𝑖
+𝑅𝑀𝐸𝑆𝑛𝑜𝑟𝑚,𝑖
+𝑟𝑒𝑠𝑝𝑜𝑛𝑠𝑒 𝑖
+ 
+(38) 
+where 𝑤𝑟,𝑖 represents the weightage of the i-th transient response, and 𝑅𝑀𝐸𝑆𝑛𝑜𝑟𝑚,𝑖 is the normalization term. 
+The following sections will detail the identification process of the model parameters, including OCV curve 
+calibration, polarization and temperature-related parameter identification, and degradation-related 
+parameter identification.  
+(1) OCV calibration 
+The OCV curve represents the relationship between the cell’s voltage and its lithium content in the anode 
+and cathode from 0% to 100% state of charge (SOC) when no or low current is flowing, providing valuable 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+10 
+ 
+ 
+ 
+insights into the electrochemical potentioal of the cell. The first step in effectively simulating the cell is to 
+match the model to the OCV curve of the cell. This can be achieved by calibrating the voltage curve during a 
+low current discharge. The data used in this study are obtained from the voltage curve at a 1/20C discharge 
+rate, and the identified parameters include the Cathode Loading, Negative/Positive (N/P) ratio, First Charge 
+Capacity (FCC), First Discharge Capacity (FDC), maximum OCP of the active material, and the OCV of a full cell, 
+where the cathode loading refers to the capacity per unit area of the electrode, which defines how much active 
+material is present in the cathode, the N/P ratio represents the ratio of anode capacity to cathode capacity, 
+FCC/FDC defines the first charge and discharge capacities of the active materials. During the first charge-
+discharge cycle, some lithium is lost due to the initial formation of the SEI layer. To address the coulombic 
+efficiency during the initial lithiation of the active materials, we calculate the initial coulombic efficiency as 
+the ratio of the FCC to the FDC. The OCV of a fully charged cell determines the starting point for testing the 
+reversible capacity. During testing, the cell is discharged at a low rate within the manufacturer’s 
+recommended voltage window to identify the maximum reversible capacity. Table 3 summarizes the 
+calibration parameters used during OCV calibration. 
+Table 3 Parameters required for OCV calibration 
+Parameter 
+Unit 
+Cathode Loading 
+mAh/cm2 
+N/P Ratio 
+- 
+Cathode FCC 
+mAh/g 
+Cathode FDC 
+mAh/g 
+Cathode Umax 
+V 
+Anode FCC 
+mAh/g 
+Anode FDC 
+mAh/g 
+Anode Umax 
+V 
+OCV of Full Cell 
+V 
+ 
+In the first stage of OCV calibration, a pre-optimization step based on sensitivity analysis is performed 
+to match the OCP of the cell's cathode and anode. Initially, the cathode loading is adjusted, and the optimal 
+value is determined to pre-calibrate the total capacity of the cell. Subsequently, the N/P ratio is modified to 
+align with the experimental data in the middle section of the OCV discharge curve, which represents the most 
+likely operating range of the cell. In the second stage, an optimization algorithm is employed to identify the 
+parameters listed in Table 3, minimizing the RMSE between the simulated and experimental results to 
+calibrate the OCV curve. 
+ 
+(2) Dynamic condition calibration 
+With a well-calibrated OCV curve, further dynamic condition calibration can be conducted. Under actual 
+operating conditions, the cell's charge/discharge rate is significantly higher than that under OCV testing 
+conditions, which introduces limitations in internal charge transport. Thus, the polarization and 
+temperature-related parameters need to be identified, which are divided into three groups as summarized in 
+Table 4. The first group are the parameters for charge/discharge under normal temperature utilizing the 
+experimental data at a 1C constant current discharge. In this scenario, the cell's temperature rise is minimal, 
+making it suitable for calibrating polarization-related parameters which include the contact resistance 
+between the cathode coating and current collector, the Bruggeman exponent, solid-phase diffusion coefficient, 
+solid-phase exchange current density, liquid-phase ionic conductivity, liquid-phase diffusion conductivity, 
+and the pre-exponential factor of the liquid-phase diffusion coefficient. The convective heat transfer 
+coefficient is fixed at approximately 10 W/(m²-K) due to its minimal influence on the results at low 
+charge/discharge rates under normal temperature conditions. 
+The second group are the parameters for high current charge/discharge from the experimental data at 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+11 
+ 
+ 
+1.5C, 2C, and 3C constant current discharges. They are the temperature-related parameters, including the 
+activation energy terms for the solid-phase diffusion coefficient, solid-phase exchange current density, liquid-
+phase ionic conductivity, liquid-phase diffusion conductivity, and the liquid-phase diffusion coefficient. The 
+third group are the parameters influencing the starting and ending points of the battery voltages at low 
+temperatures, such as the convective heat transfer coefficient, specific heat capacity, and the resistance of the 
+SEI film at the reference temperature.  
+Table 4 Parameters required to be identified for dynamic condition calibration 
+Group 
+Parameter 
+Unit 
+1 
+Contact Resistance (@ Foil/Cathode Interface) 
+Ohm-m2 
+Bruggeman Exponent 
+- 
+Cathode Solid Diffusivity-25℃ 
+m2/s 
+Anode Solid Diffusivity-25℃ 
+m2/s 
+Cathode Exchange Current Density -25℃ 
+A/ m2 
+Anode Exchange Current Density-25℃ 
+A/ m2 
+Ionic Conductivity-25℃ 
+S/m 
+Diffusional Conductivity-25℃ 
+A/m 
+Ionic Diffusivity-25℃ 
+m2/s 
+2 
+Cathode Solid Diffusivity- Activation Energy 
+kJ/mol 
+Anode Solid Diffusivity- Activation Energy 
+kJ/mol 
+Cathode Exchange Current Density-Activation Energy 
+kJ/mol 
+Anode Exchange Current Density-Activation Energy 
+kJ/mol 
+Ionic Conductivity-Activation Energy 
+kJ/mol 
+Diffusional Conductivity-Activation Energy 
+kJ/mol 
+Ionic Diffusivity-Activation Energy 
+kJ/mol 
+Convective Heat Transfer Coefficient 
+W/(m2-k) 
+Specific Heat 
+J/kg-K 
+Anode Film Conductivity-25℃ 
+S/m 
+Anode Film Conductivity-Activation Energy 
+kJ/mol 
+ 
+The entropy heat coefficient in Equation (27) represents the derivative of cell voltage with respect to 
+temperature which can be used to calculate the heat generated by chemical reactions within the cell. This 
+parameter is critical to the accuracy of the thermal generation model. The value of the entropy coefficient 
+varies significantly across different SOCs. To ensure model accuracy and reliability, experiments were 
+designed to alter the cell temperature at the interval of 10% SOC and record the corresponding changes in 
+OCV. Figure 4 shows the average entropy coefficient at each SOC point. 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+12 
+ 
+ 
+ 
+ 
+Fig.4 Entropic heat coefficients of the cell at different SOCs. 
+ 
+The solid-phase diffusion coefficient, solid-phase exchange current density, liquid-phase ionic 
+conductivity, liquid-phase diffusion conductivity, liquid-phase diffusion coefficient, and the conductivity of 
+the SEI film are all treated as indicative variables and are assumed to follow a temperature-dependent 
+Arrhenius function, which describes how there parameters change with temperature. Both their reference 
+values at 25°C and the activation energy terms were identified for each of these parameters. The heat transfer 
+model assumes natural convection between the cell and environment, with both the initial cell temperature 
+and the ambient temperature set at 25°C. The model then applies different entropy coefficient values before 
+proceeding with the identification of the first group of the polarization parameters. To identify the second 
+group of the temperature-dependent parameters, the optimization objective includes both the cell's voltage 
+transient responses and its temperature transient responses, with a weightage of 5 assigned to the voltage 
+response and 1 to the temperature response.  
+ 
+(3) Aging calibration 
+A life prediction model based on the experimental data of capacity degradation is more practical and 
+effective. The use of the transient response of capacity degradation as the optimization target simplifies the 
+modelling process, making it easier to implement. Three aging mechanisms were considered in this study: 
+the SEI film growth on the anode, the CEI film growth on the cathode, and the LAMs from both the anode and 
+cathode. The calibration of aging parameters was divided into calendar life calibration and cycle life 
+calibration. Since no current is present during calendar life aging, only the SEI and CEI film growth models 
+are considered, where four key parameters: the diffusion coefficient of ethylene carbonate (EC) through the 
+CEI film, the reaction rate coefficient of the CEI film, the diffusion coefficient of EC through the SEI film, and 
+the reaction rate coefficient of the SEI film, were identified and modeled as temperature-dependent 
+Arrhenius functions. In contrast, the reaction rate coefficients of LAMs from both the anode and cathode are 
+identified for the cycle life calibration. Table 5 summarizes aging-related parameters to be identified. 
+Table 5 Parameters to identified for aging calibration 
+Parameter 
+Unit 
+Cathode EC Diffusivity 
+m2/s 
+Cathode EC Diffusivity 
+J/mol 
+Cathode CEI Reaction Rate Coefficient 
+- 
+Cathode CEI Reaction Rate Coefficient 
+J/mol 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+13 
+ 
+ 
+Anode EC Diffusivity 
+m2/s 
+Anode EC Diffusivity 
+J/mol 
+Anode SEI Reaction Rate Coefficient 
+- 
+Anode SEI Reaction Rate Coefficient 
+J/mol 
+Cathode Isolation Rate Coefficient  
+m3/(A·s) 
+Anode Isolation Rate Coefficient 
+m3/(A·s) 
+4 Simulation and optimization results 
+4.1 Model parameter identification results 
+The parameter identification process described in Section 3.2.2 was applied to a sample cell, and all 
+model parameters were obtained. The identified parameters were loaded into the model, and simulations 
+were conducted under the same conditions as the experiments. A comparison between the simulation and 
+experimental results is shown below, which demonstrates that the electrochemical model and its parameters 
+identified in this study are accurate and effective. 
+4.1.1 OCV calibration results 
+Figure 5 illustrates the OCV curve over time, showing a good agreement between the simulated and 
+experimental values. It is worth noting that a slight deviation between the simulation and experimental 
+results becomes apparent after the SOC drops below 20%. This is primarily due to the model's high 
+dependence on the electrode material specifications and the influence of half-cell equilibrium potential. 
+Consequently, the model struggles to fully capture the decreasing trend of the OCV curve at discharge levels 
+beyond 80%, marking the full-cell characterization more challenging. 
+ 
+Fig.5 Calibration results of OCV curve. 
+4.1.2 Dynamic condition calibration results  
+The model parameters were identified with and without considering the entropy coefficient. The RMSEs 
+of the identification results are shown in Table 6. For the voltage curve, a comparison reveals that the entropy 
+coefficient has a minimal impact on its accuracy, which means it has little effect on the precision of 
+polarization-related parameter identification. However, a comparison of the temperature curve shows that 
+the entropy coefficient significantly affects the RMSE and its inclusion in the model substantially reduces its 
+RMSE, indicating that the entropy coefficient is crucial for improving the accuracy of temperature-related 
+parameter identification. Figures 6 and 7 display the identified voltage and temperature curves, respectively, 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+14 
+ 
+ 
+ 
+showing that the simulation results closely match the experimental data with high accuracy. 
+Table 6 Influence of entropic heat on accuracy of voltage and temperature curves 
+Curve Type 
+Condition 
+RMSE 
+Case1 
+Case2 
+Case3 
+Case4 
+Voltage Curve 
+Without entropy heat  
+27mV 
+14 mV 
+19 mV 
+20 mV 
+Considering entropy 
+heat  
+23 mV 
+14 mV 
+17 mV 
+17 mV 
+Temperature 
+Curve 
+Without entropy heat  
+1.971℃ 
+1.576℃ 
+1.493℃ 
+2.899℃ 
+Considering entropy 
+heat  
+1.331℃ 
+0.796℃ 
+0.799℃ 
+1.485℃ 
+ 
+Fig.6 Voltage curves of different discharge rates 
+ 
+Fig.7 Temperature curves of different discharge rates 
+4.1.3 Aging calibration results  
+Battery life prediction model is evaluated based on the comparison of the calculated and experimental 
+SOHs as shown in Figure 8. The RMSE of the aging curve after completing the calendar life calibration is 0.017, 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+15 
+ 
+ 
+and this RMSE value further decreases to 0.001 after completing the cycle life calibration.  
+ 
+Fig.8 Calibration results of capacity degradation curve. 
+4.2 Simulation Case Studies  
+4.2.1 Case simulation objects 
+Different case studies were set up to analyze the generality and validity of the established model and the 
+parameter identification results. To ensure the rigor of the case study validation, new battery cells from the 
+same batch, distinct from the sample cell in Section 4.1, were selected and screened. The capacity and OCV 
+curves of four cells from the same experiment were compared, two of them with relatively minor 
+inconsistencies were selected in the case studies, referred to as Cell A and Cell B. 
+For subsequent validation experiments, four sets of parameters (a/b/c/d) were calibrated for Cell A and 
+Cell B, with each set including all the parameters listed in Tables 3 and 4 . The calibration process begins with 
+the OCV curve calibration for both cells to obtain the parameters required for OCV curve calibration, as 
+outlined in Table 3. This is followed by constant current and DST calibrations to acquire the parameters 
+required to be identified for dynamic condition calibration, as shown in Table 4. Figure 9 illustrates the logic 
+behind the composition of these four parameter sets. Specifically, for Cell A, the OCV calibration combined 
+with the constant current calibration forms parameter set 'a,' while the OCV calibration combined with the 
+DST calibration forms parameter set 'b.' Similarly, for Cell B, the OCV calibration combined with the constant 
+current calibration forms parameter set 'c,' and the OCV calibration combined with the DST calibration forms 
+parameter set 'd.' 
+The calibration results for Cell A and Cell B at each step are shown in Figures 9-14. As illustrated, the 
+simulation results generated using parameter sets a/b/c/d closely match the experimental results. Therefore, 
+the identified parameter sets are accurate and can be used for further case validation. 
+ 
+ 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+16 
+ 
+ 
+ 
+Fig.9 Composition logic of calibration parameters. 
+(1) OCV curve calibration results 
+The OCV curve calibration results for Cell A and Cell B are shown in Figure 10, with RMSE values of 4 mV 
+and 8 mV, respectively.  
+ 
+Fig.10 Calibration results of OCV curve. (a) Cell A, (b) Cell B. 
+ 
+(2) Constant current discharge calibration results 
+The calibration parameters corresponding to the constant current discharge conditions are parameters 
+a for Cell A and c for Cell B. The data used for the calibration was obtained from a 2C constant current 
+discharge test, and the calibration results are shown in Figures 11 and 12. The RMSE values are 10 mV for 
+Cell A and 9 mV for Cell B. 
+ 
+Fig.11 Calibration results of parameter a. 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+17 
+ 
+ 
+ 
+Fig.12 Calibration results of parameter c. 
+ 
+(3) DST calibration results 
+The calibration parameters corresponding to the DST conditions are parameters b for Cell A and d for 
+Cell B, and the calibration results are shown in Figures 13 and 14. The RMSE values are 12 mV for Cell A and 
+28 mV for Cell B. 
+ 
+Fig.13 Calibration results of parameter b. 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+18 
+ 
+ 
+ 
+ 
+Fig.14 Calibration results of parameter d. 
+ 
+(4) Aging Calibration Results 
+Both cells A and B were simulated over 600 cycles. Based on the requirements of subsequent lifespan 
+simulations, four sets of aging parameters were calibrated for each cell, with each set including all parameters 
+listed in Table 6. For Cell A, parameters 1 and 2 were calibrated after 200 and 400 cycles, respectively, while 
+parameters 3 and 4 were calibrated for Cell B at the same cycle intervals. The aging parameter calibration 
+was based on the constant current discharge calibration results, where parameters 1 and 2 were calibrated 
+based on parameter a for Cell A, and parameters 3 and 4 were calibrated based on parameter c for Cell B. The 
+aging curve calibration results are shown in Figure 15, with RMSE values of 0.0007, 0.001, 0.0006, and 0.0007. 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+19 
+ 
+ 
+ 
+Fig.15 Aging calibration results. (a) Parameter 1; (b) Parameter 2; (c) Parameter 3; (d) 
+Parameter 4.  
+4.2.2 Case analysis 
+(1) Voltage Response Simulation Cases 
+Four case studies were conducted to verify the voltage response simulation. In these simulations, the 
+aging conditions for Cell A and Cell B were set identically, with both modeled as unused new cells. In the case 
+1 and case 2, Cell A was used for calibration, and Cell B for validation. In the case 3 and case 4, Cell B was used 
+for calibration, and Cell A for validation. 
+· Case 1 used constant current calibration and validation, applying parameter a to the constant current 
+model of Cell B. 
+· Case 2 used DST calibration and validation, applying parameter b to the DST model of Cell B. 
+In the second case, Cell B was used for calibration, and Cell A for validation: 
+· Case 3 used constant current calibration and validation, applying parameter c to the constant current 
+model of Cell A. 
+· Case 4 used DST calibration and validation, applying parameter d to the DST model of Cell A. 
+The design logic of the voltage response simulation cases is illustrated in Figure 16. The results of the 
+four voltage response simulation cases are presented in Figure 17, with RMSE values of 21 mV, 34 mV, 17 mV, 
+and 16 mV, respectively. The mutual validation between Cell A and Cell B demonstrates that the model 
+exhibits a certain degree of generalizability, with errors primarily arising from inconsistencies between the 
+cells and inaccuracies introduced during the parameter calibration process. 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+20 
+ 
+ 
+ 
+ 
+Fig.16 Design logic of voltage response simulation cases. 
+ 
+Fig.17 Validation results of voltage response cases. (a) Case 1, (b) Case 2, (c) Case 3, (d) Case 4. 
+ 
+(2) Lifespan Prediction Simulation Cases 
+Four case studies were conducted to validate the lifespan simulations: 
+· Case 1 used the first 200 cycles of Cell A for calibration, with validation performed after 400 and 600 cycles. 
+· Case 2 used the first 200 and 400 cycles of Cell A for calibration, with validation at 600 cycles. 
+· Case 3 used the first 200 cycles of Cell B for calibration, with validation after 400 and 600 cycles. 
+· Case 4 used the first 200 and 400 cycles of Cell B for calibration, with validation at 600 cycles. 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+21 
+ 
+ 
+These lifespan simulations employed the previously calibrated aging parameters 1, 2, 3, and 4, 
+respectively, for each case. The results of the lifespan prediction simulations are shown in Figure 18, with 
+RMSE values of 0.0024, 0.0011, 0.0023, and 0.0008, respectively. It can be observed that for both Cell A and 
+Cell B, the aging parameter calibration based on the first 400 cycles yielded significantly better validation 
+results at 600 cycles compared to calibration based on the first 200 cycles, enabling better model updates as 
+the cells aged. 
+ 
+Fig.18 Validation results of lifetime prediction cases. (a) Case 1, (b) Case 2, (c) Case 3, (d) Case 4. 
+5 Conclusion 
+This paper proposes an optimization method for the calibration of lithium-ion cells based on an 
+electrochemical model. A P2D electrochemical-thermal coupling model was used for the cells, considering 
+the impact of various aging factors on cell lifespan. Experimental data from different operational conditions 
+were utilized to optimize and calibrate the model, with mutual validation performed for models obtained 
+from different cells and conditions. 
+The simulation results of the parameter calibration for lithium-ion cells demonstrate that the model 
+accurately replicates the experimentally measured voltage and temperature curves, with the best RMSE 
+values of 14 mV and 0.796°C. The aging model achieved an RMSE of only 0.001, indicating high accuracy in 
+parameter calibration. The case study results show good cross-validation between the voltage curves of 
+different cells, with RMSE values below 34 mV, demonstrating the model's generalizability. The RMSE for 
+capacity fade curve validation was below 0.0024, proving the effectiveness of lifespan prediction and the 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+22 
+ 
+ 
+ 
+model’s capability for real-time updates. 
+This method provides a unified framework for the simulation and optimization of lithium-ion cells, 
+offering a powerful tool for predicting and optimizing cell performance from electrochemical, thermal, and 
+aging perspectives. The optimization approach presented can be applied to other types of cells and extended 
+to battery packs and full-vehicle applications. 
+Acknowledgements 
+This work was supported by the National Natural Science Foundation of China (No. 52307234) and Beijing 
+Natural Science Foundation (Grant No. L223013). The systemic experiments of the lithium-ion batteries were 
+performed at the Joint Lab for Advanced Energy Storage and Applications, Beijing Institute of Technology. 
+Author contributions 
+Xinqi Xie: Conceptualization, Methodology, Modeling, Presentation, Writing-original draft.  
+Rui Xiong: Conceptualization, Supervision, Writing-reviewing&editing. 
+Declaration of competing interest 
+The authors declare no conflicts of interest. 
+References 
+[1]  
+Sun, F. (2022). Green Energy and Intelligent Transportation—promoting green and intelligent 
+mobility. Green Energy and Intelligent Transportation, 1: 100017.  
+[2]  
+Lander, L., Kallitsis, E., Hales, A., Edge, J.S., Korre, A., Offer, G. (2021). Cost and carbon footprint 
+reduction of electric vehicle lithium-ion batteries through efficient thermal management. Applied 
+Energy, 289: 116737.  
+[3]  
+Yang, Z., Huang, H., Lin, F., Yang, Z., Lin, F., Huang, H. (2022). Sustainable Electric Vehicle Batteries for 
+a Sustainable World: Perspectives on Battery Cathodes, Environment, Supply Chain, Manufacturing, 
+Life Cycle, and Policy. Advanced Energy Materials, 12: 2200383.  
+[4]  
+Rakhmatov, D., Vrudhula, S., Wallach, D.A. (2003). A model for battery lifetime analysis for organizing 
+applications on a pocket computer. IEEE Transactions on Very Large Scale Integration (VLSI) Systems, 
+11: 1019–1030.  
+[5]  
+Xiong, R., Kim, J., Shen, W., Lv, C., Li, H., Zhu, X., Zhao, W., Gao, B., Guo, H., Zhang, C., et al. (2022). Key 
+technologies for electric vehicles. Green Energy and Intelligent Transportation, 1: 100041.  
+[6]  
+Shi, H., Wang, S., Huang, Q., Fernandez, C., Liang, J., Zhang, M., Qi, C., Wang, L. (2024). Improved 
+electric-thermal-aging multi-physics domain coupling modeling and identification decoupling of 
+complex kinetic processes based on timescale quantification in lithium-ion batteries. Applied Energy, 
+353: 122174.  
+[7]  
+Cai, X., Zhang, C., Chen, Z., Zhang, L., Uwe Sauer, D., Li, W. (2024). Characterization and quantification 
+of multi-field coupling in lithium-ion batteries under mechanical constraints. Journal of Energy 
+Chemistry, 95: 364–379.  
+[8]  
+Li, C., Cui, N., Wang, C., Zhang, C. (2021). Reduced-order electrochemical model for lithium-ion 
+battery with domain decomposition and polynomial approximation methods. Energy, 221: 119662.  
+[9]  
+An, Z., Jia, L., Wei, L., Dang, C., Peng, Q. (2018). Investigation on lithium-ion battery electrochemical 
+and thermal characteristic based on electrochemical-thermal coupled model. Applied Thermal 
+Engineering, 137: 792–807.  
+[10]  Gao, Y., Zhu, C., Zhang, X., Guo, B. (2021). Implementation and evaluation of a practical 
+electrochemical- thermal model of lithium-ion batteries for EV battery management system. Energy, 
+221: 119688.  
+[11]  Doyle, M., Fuller, T.F., Newman, J. (1993). Modeling of Galvanostatic Charge and Discharge of the 
+Lithium/Polymer/Insertion Cell. Journal of The Electrochemical Society, 140: 1526–1533.  
+[12]  Zheng, L., Zhang, L., Zhu, J., Wang, G., Jiang, J. (2016). Co-estimation of state-of-charge, capacity and 
+
+
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+ 
+23 
+ 
+ 
+resistance for lithium-ion batteries based on a high-fidelity electrochemical model. Applied Energy, 
+180: 424–434.  
+[13]  Han, X., Ouyang, M., Lu, L., Li, J. (2015). Simplification of physics-based electrochemical model for 
+lithium ion battery on electric vehicle. Part I: Diffusion simplification and single particle model. 
+Journal of Power Sources, 278: 802–813.  
+[14]  Liu, B., Tang, X., Gao, F. (2020). Joint estimation of battery state-of-charge and state-of-health based 
+on a simplified pseudo-two-dimensional model. Electrochimica Acta, 344: 136098.  
+[15]  Geng, Z., Wang, S., Lacey, M.J., Brandell, D., Thiringer, T. (2021). Bridging physics-based and 
+equivalent circuit models for lithium-ion batteries. Electrochimica Acta, 372: 137829.  
+[16]  Zhao, W., Ding, W., Zhang, S., Zhang, Z. (2024). Enhancing lithium-ion battery lifespan early 
+prediction using a multi-branch vision transformer model. Energy, 302: 131816.  
+[17]  Gonzalez-Moreno, A., Marcos, J., de la Parra, I., Marroyo, L. (2022). A PV ramp-rate control strategy to 
+extend battery lifespan using forecasting. Applied Energy, 323: 119546.  
+[18]  Astaneh, M., Andric, J., Löfdahl, L., Stopp, P. (2022). Multiphysics simulation optimization framework 
+for lithium-ion battery pack design for electric vehicle applications. Energy, 239: 122092.  
+[19]  Gasper, P., Collath, N., Hesse, H.C., Jossen, A., Smith, K. (2022). Machine-Learning Assisted 
+Identification of Accurate Battery Lifetime Models with Uncertainty. Journal of The Electrochemical 
+Society, 169: 080518.  
+[20]  Alshawabkeh, A., Matar, M., Almutairy, F. (2024). Parameters Identification for Lithium-Ion Battery 
+Models Using the Levenberg–Marquardt Algorithm. World Electric Vehicle Journal 2024, Vol. 15, Page 
+406, 15: 406.  
+[21]  Wang, Z., Feng, G., Liu, X., Gu, F., Ball, A. (2022). A novel method of parameter identification and state 
+of charge estimation for lithium-ion battery energy storage system. Journal of Energy Storage, 49: 
+104124.  
+[22]  Friesen, A., Mönnighoff, X., Börner, M., Haetge, J., Schappacher, F.M., Winter, M. (2017). Influence of 
+temperature on the aging behavior of 18650-type lithium ion cells: A comprehensive approach 
+combining electrochemical characterization and post-mortem analysis. Journal of Power Sources, 
+342: 88–97.  
+[23]  Braco, E., San Martín, I., Sanchis, P., Ursúa, A., Stroe, D.I. (2022). State of health estimation of second-
+life lithium-ion batteries under real profile operation. Applied Energy, 326: 119992.  
+[24]  Gong, J., Wasylowski, D., Figgener, J., Bihn, S., Rücker, F., Ringbeck, F., Sauer, D.U. (2024). Quantifying 
+the impact of V2X operation on electric vehicle battery degradation: An experimental evaluation. 
+ETransportation, 20: 100316.  
+[25]  Timilsina, L., Badr, P.R., Hoang, P.H., Ozkan, G., Papari, B., Edrington, C.S. (2023). Battery Degradation 
+in Electric and Hybrid Electric Vehicles: A Survey Study. IEEE Access, 11: 42431–42462.  
+[26]  Jafari, M., Gauchia, A., Zhao, S., Zhang, K., Gauchia, L. (2017). Electric Vehicle Battery Cycle Aging 
+Evaluation in Real-World Daily Driving and Vehicle-to-Grid Services. IEEE Transactions on 
+Transportation Electrification, 4: 122–134.  
+[27]  Fang, D., Wu, W., Li, J., Yuan, W., Liu, T., Dai, C., Wang, Z., Zhao, M. (2023). Performance simulation 
+method and state of health estimation for lithium-ion batteries based on aging-effect coupling model. 
+Green Energy and Intelligent Transportation, 2: 100082.  
+[28]  Rasool, G., Xinhua, W., Sun, T., Hayat, T. (2024). Recent advancements in battery thermal 
+management system (BTMS): A review of performance enhancement techniques with an emphasis 
+on nano-enhanced phase change materials. Heliyon, 10: e36950.  
+[29]  Tesser, R., Russo, V., Ji, C., Dai, J., Zhai, C., Wang, J., Tian, Y., Sun, W. (2024). A Review on Lithium-Ion 
+Battery Modeling from Mechanism-Based and Data-Driven Perspectives. Processes 2024, Vol. 12, Page 
+1871, 12: 1871.  
+[30]  Mele, I., Zelič, K., Firm, M., Moškon, J., Gaberšček, M., Katrašnik, T. (2024). Enhanced Porous Electrode 
+Theory Based Electrochemical Model for Higher Fidelity Modelling and Deciphering of the EIS 
+Spectra. Journal of The Electrochemical Society, 171: 080537.  
+[31]  Alipour, M., Ziebert, C., Conte, F.V., Kizilel, R. (2020). A Review on Temperature-Dependent 
+Electrochemical Properties, Aging, and Performance of Lithium-Ion Cells. Batteries 2020, Vol. 6, Page 
+35, 6: 35.  
+[32]  Chen, S., Zhang, Q., Wang, F., Wang, D., He, Z. (2024). An electrochemical-thermal-aging effects 
+
+
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ARTICLE 
+Predicting Tie Strength of Chinese Guanxi 
+ 
+Lithium-ion Battery Simulation Optimization and Lifetime 
+Prediction 
+24 
+ 
+ 
+ 
+coupled model for lithium-ion batteries performance simulation and state of health estimation. 
+Applied Thermal Engineering, 239: 122128.  
+[33]  Zhang, X., Chen, S., Zhu, J., Gao, Y. (2023). A Critical Review of Thermal Runaway Prediction and 
+Early-Warning Methods for Lithium-Ion Batteries. Energy Material Advances, 4:.  
+[34]  Shen, W., Wang, N., Zhang, J., Wang, F., Zhang, G. (2022). Heat Generation and Degradation 
+Mechanism of Lithium-Ion Batteries during High-Temperature Aging. ACS Omega, 7: 44733–44742.  
+[35]  Zhang, X., Li, P., Huang, B., Zhang, H. (2022). Numerical investigation on the thermal behavior of 
+cylindrical lithium-ion batteries based on the electrochemical-thermal coupling model. International 
+Journal of Heat and Mass Transfer, 199: 123449.  
+[36]  Xiong, R., Pan, Y., Shen, W., Li, H., Sun, F. (2020). Lithium-ion battery aging mechanisms and diagnosis 
+method for automotive applications: Recent advances and perspectives. Renewable and Sustainable 
+Energy Reviews, 131: 110048.  
+[37]  Gao, Y., Jiang, J., Zhang, C., Zhang, W., Ma, Z., Jiang, Y. (2017). Lithium-ion battery aging mechanisms 
+and life model under different charging stresses. Journal of Power Sources, 356: 103–114.  
+[38]  Wang, F.M., Yu, M.H., Hsiao, Y.J., Tsai, Y., Hwang, B.J., Wang, Y.Y., Wan, C.C. (2011). Aging Effects to 
+Solid Electrolyte Interface (SEI) Membrane Formation and the Performance Analysis of Lithium Ion 
+Batteries. International Journal of Electrochemical Science, 6: 1014–1026.  
+[39]  Li, R., Bao, L., Chen, L., Zha, C., Dong, J., Qi, N., Tang, R., Lu, Y., Wang, M., Huang, R., et al. (2023). 
+Accelerated aging of lithium-ion batteries: bridging battery aging analysis and operational lifetime 
+prediction. Science Bulletin, 68: 3055–3079.  
+[40]  Barcellona, S., Piegari, L. (2017). Lithium Ion Battery Models and Parameter Identification 
+Techniques. Energies 2017, Vol. 10, Page 2007, 10: 2007.

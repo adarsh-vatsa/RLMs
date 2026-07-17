@@ -1,0 +1,3856 @@
+# tcp-lab
+
+## [include\buffer.h](./include\buffer.h)
+
+```
+#ifndef __BUFFER_H__
+#define __BUFFER_H__
+
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <utility>
+#include <stdexcept>
+
+template <size_t N> struct RingBuffer {
+  // ring buffer from [begin, begin+size)
+  uint8_t buffer[N];
+  size_t begin;
+  size_t size;
+
+  RingBuffer();
+
+  // write data to ring buffer
+  size_t write(const uint8_t *data, size_t len);
+
+  // read data from ring buffer
+  size_t read(uint8_t *data, size_t len);
+
+  // allocate space in ring buffer
+  size_t alloc(size_t len);
+
+  // free data in ring buffer
+  size_t free(size_t len);
+
+  // return free bytes in ring buffer
+  size_t free_bytes() const;
+};
+
+template <size_t N> struct RecvRingBuffer : public RingBuffer<N> {
+  // recv ring buffer from [begin, begin+size)
+
+  size_t recv_size;
+  bool recved[N];
+
+  RecvRingBuffer();
+  
+  // write data to recv ring buffer
+  size_t write(const uint8_t *data, size_t len, size_t offset);
+
+  // read received data in ring buffer
+  size_t read(uint8_t *data, size_t len);
+
+  // order received data in ring buffer
+  void order();
+
+  // free bytes in ring buffer
+  size_t free_bytes() const;
+};
+
+template <size_t N> struct SendRingBuffer : public RingBuffer<N> {
+  // send ring buffer from [begin, begin+size)
+
+  size_t sent_size;
+
+  SendRingBuffer();
+
+  // read data to send from ring buffer
+  size_t read(uint8_t *data, size_t len);
+
+  // free sent data in ring buffer
+  size_t free(size_t len);
+};
+
+#endif /* __BUFFER_H__ */
+
+```
+
+## [include\common.h](./include\common.h)
+
+```
+#ifndef __COMMON_H__
+#define __COMMON_H__
+
+#include <arpa/inet.h>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fcntl.h>
+#include <string>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <vector>
+#include <stdexcept>
+
+// assume interface MTU is 1500 bytes
+#define MTU 1500
+
+// helper macros
+#define UNIMPLEMENTED()                                                        \
+  do {                                                                         \
+    printf(RED "UNIMPLEMENTED at %s:%d\n" RESET, __FILE__, __LINE__);                    \
+    exit(1);                                                                   \
+  } while (0);
+
+#define UNIMPLEMENTED_WARN()                                                   \
+  do {                                                                         \
+    printf(YEL "WARN: UNIMPLEMENTED at %s:%d\n" RESET, __FILE__, __LINE__);              \
+  } while (0);
+
+// useful types to mark endianness
+// conversion between be{32,16}_t and other must use htons or ntohs
+typedef uint32_t be32_t;
+typedef uint16_t be16_t;
+
+// domain socket to send ip packets
+extern struct sockaddr_un remote_addr;
+extern int socket_fd;
+extern FILE *pcap_fp;
+
+// configurable packet drop rate
+// can be set in command line
+extern double recv_drop_rate;
+extern double send_drop_rate;
+
+// configurable packet send delay in ms
+extern double send_delay_min;
+extern double send_delay_max;
+
+// configurable http server index page
+extern std::vector<std::string> http_index;
+
+// configurable congestion control algorithm
+enum CongestionControlAlgorithm {
+  Default,
+  NewReno,
+  CUBIC,
+  BBR,
+};
+extern CongestionControlAlgorithm current_cc_algo;
+
+// set socket to blocking/non-blocking
+bool set_socket_blocking(int fd, bool blocking);
+
+// create sockaddr_un from path
+struct sockaddr_un create_sockaddr_un(const char *path);
+
+// setup unix socket
+int setup_unix_socket(const char *path);
+
+// setup tun device
+int open_device(std::string tun_name);
+
+// set local/remote ip
+void set_ip(const char *local_ip, const char *remote_ip);
+
+// taken from https://wiki.wireshark.org/Development/LibpcapFileFormat
+typedef struct pcap_header_s {
+  uint32_t magic_number;
+  uint16_t version_major;
+  uint16_t version_minor;
+  uint32_t thiszone;
+  uint32_t sigfigs;
+  uint32_t snaplen;
+  uint32_t network;
+} pcap_header_t;
+
+typedef struct pcap_packet_header_s {
+  uint32_t tv_sec;
+  uint32_t tv_usec;
+  uint32_t caplen;
+  uint32_t len;
+} pcap_packet_header_t;
+
+// create pcap file
+FILE *pcap_create(const char *path);
+
+// write packet to pcap file
+void pcap_write(FILE *fp, const uint8_t *data, size_t size);
+
+// send packet to remote
+void send_packet(const uint8_t *data, size_t size);
+
+// recv packet from remote
+ssize_t recv_packet(uint8_t *buffer, size_t buffer_size);
+
+void parse_argv(int argc, char *argv[]);
+
+// ref: https://stackoverflow.com/a/3586005/2148614
+// you can use these to colorize your output
+#define RED "\x1B[31m"
+#define GRN "\x1B[32m"
+#define YEL "\x1B[33m"
+#define BLU "\x1B[34m"
+#define MAG "\x1B[35m"
+#define CYN "\x1B[36m"
+#define WHT "\x1B[37m"
+#define RESET "\x1B[0m"
+
+#endif
+```
+
+## [include\ip.h](./include\ip.h)
+
+```
+#ifndef __IP_H__
+#define __IP_H__
+
+#include "common.h"
+
+// taken from linux header netinet/ip.h
+struct IPHeader {
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  unsigned int ip_hl : 4; /* header length */
+  unsigned int ip_v : 4;  /* version */
+#endif
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  unsigned int ip_v : 4;  /* version */
+  unsigned int ip_hl : 4; /* header length */
+#endif
+  uint8_t ip_tos;        /* type of service */
+  be16_t ip_len;         /* total length */
+  be16_t ip_id;          /* identification */
+  be16_t ip_off;         /* fragment offset field */
+  uint8_t ip_ttl;        /* time to live */
+  uint8_t ip_p;          /* protocol */
+  be16_t ip_sum;         /* checksum */
+  be32_t ip_src, ip_dst; /* source and dest address */
+};
+
+// client address 10.0.0.2
+const static be32_t client_ip = htonl(0x0a000002);
+const static char *client_ip_s = "10.0.0.2";
+// server address 10.0.0.1
+const static be32_t server_ip = htonl(0x0a000001);
+const static char *server_ip_s = "10.0.0.1";
+
+// process received IP
+void process_ip(const uint8_t *data, size_t size);
+
+// update IP header checksum
+void update_ip_checksum(IPHeader *ip_hdr);
+
+// verify IP header checksum
+bool verify_ip_checksum(const IPHeader *ip_hdr);
+
+#endif
+```
+
+## [include\lwipopts.h](./include\lwipopts.h)
+
+```
+#ifndef __LWIP_OPTS_H__
+#define __LWIP_OPTS_H__
+
+// enabled features:
+#define LWIP_IPV4 1
+#define LWIP_ARP 1
+#define LWIP_TCP 1
+#define LWIP_ICMP 1
+#define LWIP_DHCP 1
+
+// disabled features:
+#define LWIP_SOCKET 0
+#define LWIP_NETCONN 0
+#define LWIP_IPV6 0
+#define IP_FRAG 0
+
+// debugging
+#define LWIP_DEBUG 1
+#define LWIP_DEBUG_TIMERNAMES 1
+#define HTTPD_DEBUG LWIP_DBG_ON
+#define HTTPC_DEBUG LWIP_DBG_ON
+#define TCP_DEBUG LWIP_DBG_ON
+#define TCP_WND_DEBUG LWIP_DBG_ON
+#define TCP_OUTPUT_DEBUG LWIP_DBG_ON
+#define TCP_RST_DEBUG LWIP_DBG_ON
+#define TCP_INPUT_DEBUG LWIP_DBG_ON
+
+// system related settings
+#define SYS_LIGHTWEIGHT_PROT 0
+#define MEM_LIBC_MALLOC 1
+#define NO_SYS 1
+
+#endif
+```
+
+## [include\lwip_common.h](./include\lwip_common.h)
+
+```
+#ifndef __LWIP_COMMON_H__
+#define __LWIP_COMMON_H__
+
+#include "lwip/netif.h"
+
+extern struct netif netif;
+
+// netif output handler
+err_t netif_output(struct netif *netif, struct pbuf *p,
+                   const ip4_addr_t *ipaddr);
+
+// setup netif
+void setup_lwip(const char *ip);
+err_t netif_init_callback(struct netif *netif);
+
+// create ip_addr_t from string
+ip_addr_t ip4_from_string(const char *addr);
+
+// yield until next timeout or 50ms
+void loop_yield();
+
+#endif
+```
+
+## [include\tcp.h](./include\tcp.h)
+
+```
+#ifndef __TCP_H__
+#define __TCP_H__
+
+#include "common.h"
+#include "ip.h"
+#include "timers.h"
+#include "tcp_header.h"
+#include "buffer.h"
+#include <map>
+#include <queue>
+#include <stdint.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <algorithm>
+#include <vector>
+
+
+
+// 数值定义
+
+// 慢启动初始 cwnd 值，为 3 * mss
+const size_t INITIAL_WINDOW = DEFAULT_MSS * 3;
+
+const size_t RECV_BUFF_SIZE = 10240;
+const size_t SEND_BUFF_SIZE = 10240;
+
+// 重传检查时间
+const int RETRANS_TIME = 1000;
+
+// 比较序列号大小的分界
+const uint32_t division = 1 << 31;
+
+
+// 结构体定义
+
+// RFC793 Page 21
+// https://www.rfc-editor.org/rfc/rfc793.html#page-21
+enum TCPState {
+  LISTEN,       // 监听状态，表示服务器正在监听连接请求
+  SYN_SENT,     // 同步已发送状态，表示客户端已经发送了连接请求（SYN包），等待服务器的响应
+  SYN_RCVD,     // 同步已接收状态，表示服务器已经接收到客户端的连接请求（SYN包），并发送了确认响应（SYN+ACK包）
+  ESTABLISHED,  // 已建立连接状态，表示连接已经成功建立，双方可以进行数据传输
+  FIN_WAIT_1,   // 终止等待1状态，表示一方主动关闭连接，发送了终止请求（FIN包），等待对方的确认（ACK包）
+  FIN_WAIT_2,   // 终止等待2状态，表示一方已经收到对方对终止请求的确认（ACK包），等待对方发送终止请求（FIN包）
+  CLOSE_WAIT,   // 关闭等待状态，表示一方接收到对方的终止请求（FIN包），并发送了确认（ACK包），等待应用层处理完所有数据后再关闭连接
+  CLOSING,      // 关闭中状态，表示双方几乎同时关闭连接，等待对方的确认（ACK包）
+  LAST_ACK,     // 最后确认状态，表示一方在关闭等待状态下发送了终止请求（FIN包），等待对方的确认（ACK包）
+  TIME_WAIT,    // 时间等待状态，表示一方接收到对方的终止请求（FIN包），并发送了确认（ACK包），等待足够的时间以确保对方也接收到了终止确认（ACK包）
+  CLOSED,       // 关闭状态，表示连接已经完全关闭，所有资源都已释放
+};
+
+// TCP 拥塞控制状态
+enum ConState {
+    SLOW_START,           // 慢启动
+    CONGESTION_AVOIDANCE, // 拥塞避免
+    FAST_RECOVERY         // 快速恢复
+};
+
+// tcp 包，用于重传和乱序处理
+struct packet{
+  int seq;                // 序列号
+  int size;               // tcp 包总长度（包括 tcp header）
+  int seg_len;            // (数据段长度)
+  uint64_t retrans_time;  // 下一次重传时间
+  uint8_t buffer [2000]; 
+};
+
+// 重传队列
+struct RetransQueue{
+  std::deque <packet> queue;
+
+  void add_packet (uint8_t * data, int size, int seq, int seg_len) {
+    printf("RetransQueue add packet: seq = %d\n", seq);
+    packet pkt;
+    memcpy(pkt.buffer, data, size);
+
+    pkt.seq = seq;
+    pkt.size = size;
+    pkt.seg_len = seg_len;
+
+    // 分组如果在 1 秒内没有收到确认，就需要重传
+    pkt.retrans_time = current_ts_msec() + RETRANS_TIME;
+    queue.push_back(pkt);
+  }
+};
+
+// 乱序队列
+struct ReorderBuff{
+  std::vector <packet> packets;
+  // 将包按序列号排序，顺序插入队列中
+  void add_packet (const uint8_t * data, int size, int seq, int seg_len) {
+    printf("ReorderBuff add packet: seq = %d\n", seq);
+    packet pkt;
+    memcpy(pkt.buffer, data, size);
+
+    pkt.seq = seq;
+    pkt.size = size;
+    pkt.seg_len = seg_len;
+    
+    for (auto packet: packets) {
+      if (packet.seq == seq) {
+        return;
+      }
+    }
+
+    auto it = std::lower_bound(packets.begin(), packets.end(), pkt,
+                              [](const packet& lhs, const packet& rhs) {
+                                  return (int32_t)(lhs.seq - rhs.seq) < 0;
+                              });
+    packets.insert(it, pkt);
+  }
+};
+
+
+// SACK
+struct SackBlock {
+  uint32_t left_edge;
+  uint32_t right_edge;
+
+  SackBlock(uint32_t left, uint32_t right) : left_edge(left), right_edge(right) {}
+};
+
+
+// Transmission Control Block
+// rfc793 Page 10 Section 3.2
+struct TCP {
+  // (local_ip, remote_ip, local_port, remote_port) tuple
+  // 0 means wildcard
+  be32_t local_ip;      // 本地 IP 地址。
+  be32_t remote_ip;     // 远程 IP 地址。
+  uint16_t local_port;  // 本地端口号。
+  uint16_t remote_port; // 远程端口号。
+  TCPState state;       // 当前 TCP 连接的状态。
+
+  // send & recv buffers
+  // ring buffers from [begin, begin+size)
+  RingBuffer<SEND_BUFF_SIZE> send;  // 发送缓冲区，用于存储待发送的数据。
+  RingBuffer<RECV_BUFF_SIZE> recv;  // 接收缓冲区，用于存储接收到的数据。
+  RetransQueue retrans;
+  ReorderBuff recv_reorder;
+
+
+  // mss(maximum segment size): maximum of TCP payload(excluding TCP and IP
+  // headers). default: 536. max(ipv4): mtu - 20(ipv4) - 20(tcp). max(ipv6): mtu
+  // - 40(ipv6) - 20(tcp). only advertised in SYN packet. see rfc6691.
+  uint16_t local_mss;   // 本地最大报文段大小。
+  uint16_t remote_mss;  // 远程最大报文段大小。
+
+  // see rfc793 page 20 fig 4 send sequence space
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-20
+  // acknowledged: seq < snd_una
+  // sent but not acknowledged: snd_una <= seq < snd_nxt
+  // allowed for new data transmission: snd_nxt <= seq < snd_una+snd_wnd
+  uint32_t snd_una;   // 已发送但未确认的最早序列号。
+  uint32_t snd_nxt;   // 下一个要发送的序列号。
+  uint32_t snd_wnd;   // 发送窗口大小，由远程端约束。
+  uint32_t snd_wl1;   // 窗口更新的最后一个序列号。
+  uint32_t snd_wl2;   // 窗口更新的最后一个确认号。
+  uint32_t iss;       // 初始发送序列号。
+
+  // see rfc793 page 20 fig 5 recv sequence space
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-20
+  uint32_t rcv_nxt;   // 下一个要接收的序列号。
+  // when out of order is unsupported,
+  // rcv_wnd always equals to this->recv.free_bytes()
+  uint32_t rcv_wnd;   // 接收窗口大小，通常等于接收缓冲区的空闲空间。
+  uint32_t irs;       // 初始接收序列号。
+
+  // pending accept queue
+  std::deque<int> accept_queue; // 待处理的连接请求队列。
+
+  // slow start and congestion avoidance
+
+  // 拥塞窗口，初始为 3 * MSS。
+  // 发送端限制在收到确认 (ACK) 之前可以发送到网络中的数据量。
+  uint32_t cwnd = INITIAL_WINDOW;   
+
+  // 慢启动的阈值
+  // 用于决定使用慢启动算法还是拥塞避免算法。
+  uint32_t ssthresh = RECV_BUFF_SIZE;  
+
+  // 拥塞控制状态
+  ConState cc_state = SLOW_START;
+
+  // 快速重传计数器
+  uint16_t dup_ack_count = 0; 
+
+  // 处于 shutdown，但还有数据没发完。一旦发完，发送 fin 包。
+  bool shutdown_waiting = false;
+
+  TCP() { state = TCPState::CLOSED; }
+
+  // state transition with debug output
+  void set_state(TCPState new_state);
+
+
+  // SACK
+  bool sack_enabled = false; // SACK 是否启用
+
+  std::vector<SackBlock> recv_sack_blocks;  // 接收方的 SACK 块
+  std::vector<SackBlock> send_sack_blocks;  // 发送方的 SACK 块
+
+  void add_recv_sack_block(uint32_t left_edge, uint32_t right_edge) {
+    SackBlock new_sack_block(left_edge, right_edge);
+    recv_sack_blocks.emplace_back(new_sack_block);
+  }
+
+  void add_send_sack_block(uint32_t left_edge, uint32_t right_edge) {
+    SackBlock new_sack_block(left_edge, right_edge);
+    send_sack_blocks.emplace_back(new_sack_block);
+  }
+
+  void print_recv_sack_info();
+
+  void print_send_sack_info();
+};
+
+extern std::vector<TCP *> tcp_connections;
+
+
+void update_recv_sack_blocks(TCP *tcp, uint32_t seg_seq, uint32_t seg_len);
+
+void update_sack_info(TCP *tcp, uint32_t ack_seq);
+
+
+
+
+// 功能函数
+
+// convert tcp state to string
+const char *tcp_state_to_string(TCPState state);
+
+const char *con_state_to_string(ConState state);
+
+void construct_ip_header(uint8_t *buffer, const TCP *tcp, uint16_t total_length);
+
+void update_tcp_ip_checksum(uint8_t *buffer);
+
+// generate initial seq
+uint32_t generate_initial_seq();
+
+// calc TCP checksum
+void update_tcp_checksum(const IPHeader *ip, TCPHeader *tcp);
+
+// verify TCP checksum
+bool verify_tcp_checksum(const IPHeader *ip, const TCPHeader *tcp);
+
+// tcp sequence number comparisons
+// rfc793 page 24
+// https://www.rfc-editor.org/rfc/rfc793.html#page-24
+// "The symbol "=<" means "less than or equal (modulo 2**32)."
+bool tcp_seq_lt(uint32_t a, uint32_t b);
+bool tcp_seq_le(uint32_t a, uint32_t b);
+bool tcp_seq_gt(uint32_t a, uint32_t b);
+bool tcp_seq_ge(uint32_t a, uint32_t b);
+
+
+
+
+
+
+// 发送包函数 
+void send_syn_pkt(TCP *tcp, bool ack);
+
+void send_ack_pkt(TCP *tcp);
+
+void send_data_pkt(TCP* tcp, size_t segment_len);
+
+void send_fin_pkt(TCP *tcp);
+
+void send_rst_pkt(TCP *tcp, bool ack, 
+uint32_t seg_seq, uint32_t seg_ack, uint32_t seg_len);
+
+void send_pkt_nagle(TCP *tcp);
+
+void send_pkt_directly(TCP *tcp);
+
+
+
+
+
+// tcp 处理流程函数
+
+// process received TCP
+void process_tcp(const IPHeader *ip, const uint8_t *data, size_t size);
+
+void process_tcp_after_established(TCP* tcp, const uint8_t* data, uint32_t seg_len);
+
+void flush_reorder_buf (TCP* tcp);
+
+int tcp_retransmit(int fd);
+
+struct retransmit
+{
+  int fd;
+  int operator()() {
+    return tcp_retransmit(fd);
+  }
+};
+
+
+
+// 拥塞控制函数
+
+void cc_update_after_ack(TCP *tcp, uint32_t seg_ack);
+
+void cc_update_after_timeout(TCP *tcp);
+
+void fast_retransmit(TCP *tcp, uint32_t retrans_seq);
+
+
+
+
+
+// tcp 用户调用函数
+
+// returns fd
+int tcp_socket();
+
+// TCP connect (OPEN call)
+void tcp_connect(int fd, be32_t dst_addr, uint16_t dst_port);
+
+// write data to TCP (SEND call)
+// returns the bytes written
+ssize_t tcp_write(int fd, const uint8_t *data, size_t size);
+
+// read data from TCP (RECEIVE call)
+// returns the bytes read
+ssize_t tcp_read(int fd, uint8_t *data, size_t size);
+
+void shutdown(TCP* tcp);
+
+// shutdown TCP connection
+void tcp_shutdown(int fd);
+
+// closes and free fd
+void tcp_close(int fd);
+
+// bind socket to TCP port
+void tcp_bind(int fd, be32_t addr, uint16_t port);
+
+// enter listen state
+void tcp_listen(int fd);
+
+// accept TCP connection if exists
+// return new fd if a client is connecting, otherwise -1
+int tcp_accept(int fd);
+
+// get tcp state
+TCPState tcp_state(int fd);
+
+
+
+#endif
+```
+
+## [include\tcp_header.h](./include\tcp_header.h)
+
+```
+#ifndef __TCP_HEADER_H__
+#define __TCP_HEADER_H__
+
+#include "common.h"
+
+// default MSS is MTU - 20 - 20 for TCP over IPv4
+#define DEFAULT_MSS (MTU - 20 - 20)
+
+
+// taken from linux source include/uapi/linux/tcp.h
+// RFC793 Page 15
+struct TCPHeader {
+  be16_t source;    // 源端口号，用于标识发送方的应用程序。
+  be16_t dest;      // 目标端口号，用于标识接收方的应用程序。
+  be32_t seq;       // 序列号，用于标识传输数据的顺序。
+  be32_t ack_seq;   // 确认序列号，用于确认已收到的数据。
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+  unsigned int res1 : 4;  // 保留位，通常设为0。
+  unsigned int doff : 4;  // 数据偏移量，表示TCP头部的长度。它的单位是4字节(32位)块，所以实际的头部长度为doff * 4字节。
+  unsigned int fin : 1;   // 结束标志，表示数据发送完毕。
+  unsigned int syn : 1;   // 同步标志，用于建立连接。
+  unsigned int rst : 1;   // 重置标志，用于重置连接。
+  unsigned int psh : 1;
+  unsigned int ack : 1;   // 确认标志，表示确认字段有效。
+  unsigned int urg : 1;
+  unsigned int ece : 1;
+  unsigned int cwr : 1;
+#endif
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+  unsigned int doff : 4;
+  unsigned int res1 : 4;
+  unsigned int cwr : 1;
+  unsigned int ece : 1;
+  unsigned int urg : 1;
+  unsigned int ack : 1;
+  unsigned int psh : 1;
+  unsigned int rst : 1;
+  unsigned int syn : 1;
+  unsigned int fin : 1;
+#endif
+  be16_t window;    // 窗口大小，用于流量控制，表示接收方可以接收的字节数。
+  be16_t checksum;  // 校验和，用于验证TCP报文头和数据的完整性。
+  be16_t urg_ptr;
+};
+
+#endif /* __TCP_HEADER_H__ */
+
+```
+
+## [include\timers.h](./include\timers.h)
+
+```
+#ifndef __TIMERS_H__
+#define __TIMERS_H__
+
+#include <functional>
+#include <queue>
+#include <set>
+#include <stdint.h>
+#include <vector>
+
+// return -1 means break
+// return >=0 means schedule in res ms
+typedef std::function<int()> timer_fn;
+
+// Return monotonic timestamp in msecs
+uint64_t current_ts_msec();
+
+// Return monotonic timestamp in usecs
+uint64_t current_ts_usec();
+
+class Timer {
+public:
+  Timer(timer_fn fn, uint64_t ts_msec, uint64_t id);
+
+  // Callback function
+  timer_fn fn;
+  // Timestamp in msecs
+  uint64_t ts_msec;
+  // Timer id
+  uint64_t id;
+
+  bool operator<(const Timer &other) const;
+};
+
+class Timers {
+  friend class Timer;
+private:
+  std::priority_queue<Timer> timers;
+  std::set<uint64_t> removed_timer_ids;
+  uint64_t timer_counter;
+
+public:
+  Timers();
+
+  // Trigger timers
+  void trigger();
+
+  // Add job to timers
+  uint64_t add_job(timer_fn fn, uint64_t ts_msec);
+
+  // Readd job to timers
+  void readd_job(timer_fn fn, uint64_t ts_msec, uint64_t id);
+
+  // Schedule job to timers in msecs later
+  uint64_t schedule_job(timer_fn fn, uint64_t delay_msec);
+
+  // Reschedule job to timers in msecs later
+  void reschedule_job(timer_fn fn, uint64_t delay_msec, uint64_t id);
+
+  // Remove job from timers
+  void remove_job(uint64_t id);
+};
+
+extern Timers TIMERS;
+
+#endif
+```
+
+## [include\arch\cc.h](./include\arch\cc.h)
+
+```
+#ifndef __CC_H__
+#define __CC_H__
+
+#endif
+```
+
+## [src\common.cpp](./src\common.cpp)
+
+```
+#include <assert.h>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <string>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <time.h>
+#include <unistd.h>
+#include <algorithm>
+
+#ifdef __APPLE__
+
+#include <net/if.h>
+#include <net/if_utun.h>
+#include <sys/kern_control.h>
+#include <sys/kern_event.h>
+#include <sys/sys_domain.h>
+
+#else
+
+#include <linux/if.h>
+#include <linux/if_tun.h>
+
+#endif
+
+#include "common.h"
+#include "ip.h"
+#include "timers.h"
+#include "tcp_header.h"
+
+// global state
+struct sockaddr_un remote_addr;
+enum IOConfig {
+  UnixSocket,
+  TUN,
+} io_config;
+int socket_fd = 0;
+int tun_fd = 0;
+FILE *pcap_fp = nullptr;
+int tun_padding_len = 0;
+const uint32_t tun_padding_v4 = htonl(AF_INET);
+const char *local_ip = "";
+const char *remote_ip = "";
+
+// random packet drop
+// never drop by default
+double recv_drop_rate = 0.0;
+double send_drop_rate = 0.0;
+
+// random delay in ms
+double send_delay_min = 0.0;
+double send_delay_max = 0.0;
+
+std::vector<std::string> http_index;
+
+// default congestion control algorithm
+CongestionControlAlgorithm current_cc_algo =
+    CongestionControlAlgorithm::Default;
+
+// taken from https://stackoverflow.com/a/1549344
+bool set_socket_blocking(int fd, bool blocking) {
+  int flags = fcntl(fd, F_GETFL, 0);
+  if (flags == -1)
+    return false;
+  flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+  return fcntl(fd, F_SETFL, flags) == 0;
+}
+
+struct sockaddr_un create_sockaddr_un(const char *path) {
+  struct sockaddr_un addr = {};
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, path, sizeof(addr.sun_path));
+  return addr;
+}
+
+int setup_unix_socket(const char *path) {
+  // remove if exists
+  unlink(path);
+  int fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+  if (fd < 0) {
+    perror("Failed to create unix datagram socket");
+    exit(1);
+  }
+
+  struct sockaddr_un addr = create_sockaddr_un(path);
+  if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    perror("Failed to create bind local datagram socket");
+    exit(1);
+  }
+  set_socket_blocking(fd, false);
+  return fd;
+}
+
+FILE *pcap_create(const char *path) {
+  FILE *fp = fopen(path, "wb");
+
+  pcap_header_t header;
+  header.magic_number = 0xa1b2c3d4;
+  header.version_major = 2;
+  header.version_minor = 4;
+  header.thiszone = 0;
+  header.sigfigs = 0;
+  header.snaplen = 65535;
+  header.network = 0x65; // Raw
+
+  fwrite(&header, sizeof(header), 1, fp);
+  fflush(fp);
+  return fp;
+}
+
+void pcap_write(FILE *fp, const uint8_t *data, size_t size) {
+
+  pcap_packet_header_t header;
+  header.caplen = size;
+  header.len = size;
+
+  struct timespec tp = {};
+  clock_gettime(CLOCK_MONOTONIC, &tp);
+  header.tv_sec = tp.tv_sec;
+  header.tv_usec = tp.tv_nsec / 1000;
+
+  fwrite(&header, sizeof(header), 1, fp);
+  fwrite(data, size, 1, fp);
+  fflush(fp);
+}
+
+#include <map>
+
+// send packet drop control
+#define MIN_DROP_TIMES 1
+#define MAX_DROP_TIMES 3
+std::map<uint32_t, uint32_t> packet_drop_count;
+
+void send_packet_internal(const uint8_t *data, size_t size) {
+  printf("TX:");
+  for (size_t i = 0; i < size; i++) {
+    printf(" %02X", data[i]);
+  }
+  printf("\n");
+  if (send_drop_rate) {
+    // drop packet at least MIN_DROP_TIMES
+    uint32_t seq = ntohl(((TCPHeader*)(data + 20))->seq);
+    // simply regard seq as the identifier of a packet
+    if (packet_drop_count[seq] < MIN_DROP_TIMES) {
+      packet_drop_count[seq]++;
+      printf("Send packet dropped\n");
+      return;
+    }
+    // drop packet at most MAX_DROP_TIMES with probability send_drop_rate
+    if (packet_drop_count[seq] < MAX_DROP_TIMES && (double)rand() / RAND_MAX < send_drop_rate) {
+      packet_drop_count[seq]++;
+      printf("Send packet dropped\n");
+      return;
+    }
+  }
+  // save to pcap
+  if (pcap_fp) {
+    pcap_write(pcap_fp, data, size);
+  }
+
+  // send to remote
+  if (io_config == UnixSocket) {
+    while(sendto(socket_fd, data, size, 0, (struct sockaddr *)&remote_addr,
+           sizeof(remote_addr)) < 0);
+  } else {
+    // prepend padding if needed
+    const uint8_t *ptr = data;
+    uint8_t buffer[4096];
+    if (tun_padding_len > 0) {
+      memcpy(buffer + tun_padding_len, data, size);
+      memcpy(buffer, &tun_padding_v4, tun_padding_len);
+      ptr = buffer;
+      size += tun_padding_len;
+    }
+
+    write(tun_fd, ptr, size);
+  }
+}
+
+struct delay_sender {
+  std::vector<uint8_t> data;
+
+  int operator()() {
+    send_packet_internal(data.data(), data.size());
+    return -1;
+  }
+};
+
+const int DELAY_SLOT_COUNT = 10;
+double delay_slots[DELAY_SLOT_COUNT] = {0};
+
+void update_delay_slots() {
+  for (int i = 0; i < DELAY_SLOT_COUNT; i++) {
+    delay_slots[i] = send_delay_min + ((double)rand() / RAND_MAX) *
+                                          (send_delay_max - send_delay_min);
+  }
+  std::sort(delay_slots, delay_slots + DELAY_SLOT_COUNT, std::greater<double>());
+}
+
+double get_delay_slot() {
+  static int index = DELAY_SLOT_COUNT;
+  if (index == DELAY_SLOT_COUNT) {
+    index = 0;
+    update_delay_slots();
+  }
+  return delay_slots[index++];
+}
+
+void send_packet(const uint8_t *data, size_t size) {
+  if (send_delay_max != 0.0) {
+    // simulate transfer latency
+    double time = get_delay_slot();
+    printf("Delay in %.2lf ms\n", time);
+
+    delay_sender fn;
+    fn.data.insert(fn.data.begin(), data, data + size);
+    TIMERS.schedule_job(fn, time);
+  } else {
+    send_packet_internal(data, size);
+  }
+}
+
+
+// send packet throughput control
+#define MAX_TPS (10 * 1024)
+
+enum TPSControlMode {
+  None,
+  Fixed,
+  Random,
+  Continue,
+};
+TPSControlMode tps_control_mode = TPSControlMode::None;
+
+ssize_t recv_packet(uint8_t *buffer, size_t buffer_size) {
+  static int bytes_recv = 0;
+  static uint64_t first_packet_time = current_ts_msec();
+  ssize_t size = 0;
+  if (io_config == IOConfig::UnixSocket) {
+    struct sockaddr_un addr = {};
+    memset(&addr, 0, sizeof(addr));
+    socklen_t len = sizeof(addr);
+    size = recvfrom(socket_fd, buffer, buffer_size, 0, (struct sockaddr *)&addr,
+                    &len);
+  } else {
+    size = read(tun_fd, buffer, buffer_size);
+
+    // remove padding if needed
+    if (tun_padding_len > 0) {
+      if (size < tun_padding_len) {
+        return -1;
+      }
+      size -= tun_padding_len;
+      memmove(buffer, buffer + tun_padding_len, size);
+    }
+  }
+
+  if (size >= 0) {
+    uint64_t now = current_ts_msec();
+    // tps_control_handle() returns true if the packet should be dropped
+    // otherwise, the packet should be passed
+    static auto tps_control_handle = [&]() {
+      switch (tps_control_mode) {
+        case TPSControlMode::Fixed:
+          // drop packet if the throughput is higher than MAX_TPS
+          return (bytes_recv + size) * 1000 > (now - first_packet_time) * MAX_TPS;
+        case TPSControlMode::Random:
+          // drop packet with probability 0.1 if the throughput is higher than MAX_TPS
+          return (bytes_recv + size) * 1000 > (now - first_packet_time) * MAX_TPS &&
+                 (double)rand() / RAND_MAX < 0.1;
+        case TPSControlMode::Continue: {
+          // drop 3 packets for every 20 packets passed
+          static size_t drop_count = 3;
+          static size_t pass_count = 0;
+          if (size > 1000) {
+            // only count packets larger than 1000 bytes
+            if (pass_count) {
+              pass_count--;
+              return false;
+            } else {
+              if (drop_count) {
+                drop_count--;
+                return true;
+              } else {
+                // reset drop_count and pass_count
+                drop_count = 3;
+                pass_count = 20;
+                return false;
+              }
+            }
+          }
+          return false;
+        }
+        default:
+          return false;
+      }
+    };
+    if (tps_control_handle()) {
+      printf("Recv packet dropped for throughput control at time %lu ms\n", now - first_packet_time);
+      return -1;
+    }
+    bytes_recv += size;
+    // print
+    printf("RX:");
+    for (ssize_t i = 0; i < size; i++) {
+      printf(" %02X", buffer[i]);
+    }
+    printf("\n");
+
+    if (recv_drop_rate) {
+      // drop packet at least MIN_DROP_TIMES
+      uint32_t seq = ntohl(((TCPHeader*)(buffer + 20))->seq);
+      if (packet_drop_count[seq] < MIN_DROP_TIMES) {
+        packet_drop_count[seq]++;
+        printf("Recv packet dropped\n");
+        return -1;
+      }
+
+      if (packet_drop_count[seq] < MAX_DROP_TIMES && (double)rand() / RAND_MAX < recv_drop_rate) {
+        packet_drop_count[seq]++;
+        printf("Recv packet dropped, drop times %d\n", packet_drop_count[seq]);
+        return -1;
+      }
+    }
+
+    // pcap
+    if (pcap_fp) {
+      pcap_write(pcap_fp, buffer, size);
+    }
+  }
+  return size;
+}
+
+void set_congestion_control_algo(const char *algo) {
+  std::string s = algo;
+  if (s == "Default") {
+    current_cc_algo = CongestionControlAlgorithm::Default;
+    printf("Congestion Control Algo is Default\n");
+  } else if (s == "NewReno") {
+    current_cc_algo = CongestionControlAlgorithm::NewReno;
+    printf("Congestion Control Algo is NewReno\n");
+  } else if (s == "CUBIC") {
+    current_cc_algo = CongestionControlAlgorithm::CUBIC;
+    printf("Congestion Control Algo is CUBIC\n");
+  } else if (s == "BBR") {
+    current_cc_algo = CongestionControlAlgorithm::BBR;
+    printf("Congestion Control Algo is BBR\n");
+  }
+}
+
+void generate_http_index(const char *test_case=nullptr) {
+  static const char *index_data[5] = {
+    "HTTP/1.1 200 OK\r\n",
+    "Content-Length: 13\r\n",
+    "Content-Type: text/plain; charset=utf-8\r\n",
+    "\r\n",
+    "Hello World!\n",
+  };
+  http_index.clear();
+  auto hello_world_multi_lines = [&](int times) {
+    for (int i = 0; i < 4; i++) {
+      http_index.push_back(std::string(index_data[i]));
+    }
+    http_index[1] = std::string("Content-Length: ") + std::to_string(times * 13) + std::string("\r\n");
+    for (int i = 0; i < times; i++) {
+      http_index.push_back(std::string(index_data[4]));
+    }
+  };
+  auto hello_world_one_line = [&](int times) {
+    for (int i = 0; i < 4; i++) {
+      http_index.push_back(std::string(index_data[i]));
+    }
+    http_index[1] = std::string("Content-Length: ") + std::to_string(times * 13) + std::string("\r\n");
+    // repeat hello world for times
+    std::string one_line = "";
+    for (int i = 0; i < times; i++) {
+      one_line += std::string(index_data[4]);
+    }
+    http_index.push_back(one_line);
+  };
+  if (!test_case) {
+    hello_world_multi_lines(1);
+    return;
+  }
+  if (strcmp(test_case, "nagle") == 0) {
+    hello_world_multi_lines(100);
+    return;
+  }
+  if (strcmp(test_case, "out-of-order") == 0) {
+    hello_world_multi_lines(5);
+    return;
+  }
+  if (strcmp(test_case, "cong-avoid-client") == 0) {
+    tps_control_mode = TPSControlMode::Fixed;
+    return;
+  }
+  if (strcmp(test_case, "cong-avoid-client-2") == 0) {
+    tps_control_mode = TPSControlMode::Random;
+    return;
+  }
+  if (strcmp(test_case, "new-reno") == 0) {
+    tps_control_mode = TPSControlMode::Continue;
+    return;
+  }
+  if (strcmp(test_case, "cong-avoid-server") == 0) {
+    hello_world_one_line(10000);
+    return;
+  }
+  throw std::runtime_error("Unknown test case");
+}
+
+void parse_argv(int argc, char *argv[]) {
+  int c;
+  int hflag = 0;
+  char *local = NULL;
+  char *remote = NULL;
+  char *pcap = NULL;
+  char *tun = NULL;
+  srand(time(NULL));
+
+  // parse arguments
+  while ((c = getopt(argc, argv, "hl:r:t:p:R:S:c:s:T:")) != -1) {
+    switch (c) {
+    case 'h':
+      hflag = 1;
+      break;
+    case 'l':
+      local = optarg;
+      break;
+    case 'r':
+      remote = optarg;
+      break;
+    case 't':
+      tun = optarg;
+      break;
+    case 'p':
+      pcap = optarg;
+      break;
+    case 'R':
+      sscanf(optarg, "%lf", &recv_drop_rate);
+      printf("Recv drop rate is now %lf\n", recv_drop_rate);
+      break;
+    case 'S':
+      sscanf(optarg, "%lf", &send_drop_rate);
+      printf("Send drop rate is now %lf\n", send_drop_rate);
+      break;
+    case 'c':
+      set_congestion_control_algo(optarg);
+      break;
+    case 's':
+      if (strchr(optarg, ',') != NULL) {
+        // min, max
+        sscanf(optarg, "%lf,%lf", &send_delay_min, &send_delay_max);
+        assert(send_delay_min <= send_delay_max);
+      } else {
+        // min = max
+        sscanf(optarg, "%lf", &send_delay_min);
+        send_delay_max = send_delay_min;
+      }
+      printf("Send delay is [%lf,%lf] ms\n", send_delay_min, send_delay_max);
+      break;
+    case 'T':
+      generate_http_index(optarg);
+      break;
+    case '?':
+      fprintf(stderr, "Unknown option: %c\n", optopt);
+      exit(1);
+      break;
+    default:
+      break;
+    }
+  }
+
+  if (!http_index.size()) {
+    generate_http_index();
+  }
+
+  if (hflag) {
+    fprintf(stderr,
+            "Usage: %s [-h] [-l LOCAL] [-r REMOTE] [-t TUN] [-p PCAP] [-R "
+            "FLOAT] [-S FLOAT] [-c ALGO] [-s DELAY[MIN,MAX]] [-T TEST_CASE]\n",
+            argv[0]);
+    fprintf(stderr, "\t-l LOCAL: local unix socket path\n");
+    fprintf(stderr, "\t-r REMOTE: remote unix socket path\n");
+    fprintf(stderr, "\t-t TUN: use tun interface\n");
+    fprintf(stderr, "\t-p PCAP: pcap file for debugging\n");
+    fprintf(stderr, "\t-R FLOAT: recv packet drop rate\n");
+    fprintf(stderr, "\t-S FLOAT: send packet drop rate\n");
+    fprintf(stderr, "\t-c ALGO: congestion control algorithm: Default, "
+                    "NewReno, CUBIC, BBR\n");
+    fprintf(
+        stderr,
+        "\t-s DELAY[MIN,MAX]: add random delay time(ms) in sending packets\n");
+    fprintf(stderr, "\t-T TEST_CASE: test case: nagle, out-of-order, "
+                    "cong-avoid-client, cong-avoid-client-2, cong-avoid-server, "
+                    "new-reno\n");
+    exit(0);
+  }
+
+  if (tun) {
+    printf("Using TUN interface: %s\n", tun);
+    open_device(tun);
+  } else {
+    if (!local) {
+      fprintf(stderr, "Please specify LOCAL addr(-l)!\n");
+      exit(1);
+    }
+    if (!remote) {
+      fprintf(stderr, "Please specify REMOTE addr(-r)!\n");
+      exit(1);
+    }
+
+    printf("Using local addr: %s\n", local);
+    printf("Using remote addr: %s\n", remote);
+    remote_addr = create_sockaddr_un(remote);
+
+    socket_fd = setup_unix_socket(local);
+    io_config = IOConfig::UnixSocket;
+  }
+
+  if (pcap) {
+    printf("Saving packets to %s\n", pcap);
+    pcap_fp = pcap_create(pcap);
+  }
+
+  // init random
+  srand(current_ts_msec());
+}
+
+int open_device(std::string tun_name) {
+  int fd = -1;
+
+#ifdef __APPLE__
+  if (tun_name.find("utun") == 0 || tun_name == "") {
+    // utun
+    fd = socket(PF_SYSTEM, SOCK_DGRAM, SYSPROTO_CONTROL);
+    if (fd < 0) {
+      perror("failed to create socket");
+      exit(1);
+    }
+
+    struct ctl_info info;
+    bzero(&info, sizeof(info));
+    strncpy(info.ctl_name, UTUN_CONTROL_NAME, strlen(UTUN_CONTROL_NAME));
+
+    if (ioctl(fd, CTLIOCGINFO, &info) < 0) {
+      perror("failed to ioctl on tun device");
+      close(fd);
+      exit(1);
+    }
+
+    struct sockaddr_ctl ctl;
+    ctl.sc_id = info.ctl_id;
+    ctl.sc_len = sizeof(ctl);
+    ctl.sc_family = AF_SYSTEM;
+    ctl.ss_sysaddr = AF_SYS_CONTROL;
+    ctl.sc_unit = 0;
+
+    if (tun_name.find("utun") == 0 && tun_name.length() > strlen("utun")) {
+      // user specified number
+      ctl.sc_unit =
+          stoi(tun_name.substr(tun_name.find("utun") + strlen("utun"))) + 1;
+    }
+
+    if (connect(fd, (struct sockaddr *)&ctl, sizeof(ctl)) < 0) {
+      perror("failed to connect to tun");
+      close(fd);
+      exit(1);
+    }
+
+    char ifname[IFNAMSIZ];
+    socklen_t ifname_len = sizeof(ifname);
+
+    if (getsockopt(fd, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, ifname, &ifname_len) <
+        0) {
+      perror("failed to getsockopt for tun");
+      close(fd);
+      exit(1);
+    }
+    tun_name = ifname;
+    // utun has a 32-bit loopback header ahead of data
+    tun_padding_len = sizeof(uint32_t);
+  } else {
+    fprintf(stderr, "Bad tunnel name %s\n", tun_name.c_str());
+    exit(1);
+  }
+
+  std::string command = "ifconfig '" + tun_name + "' up";
+  printf("Running: %s\n", command.c_str());
+  system(command.c_str());
+
+  // from macOS's perspective
+  // local/remote is reversed
+  command = std::string("ifconfig ") + "'" + tun_name + "' " + remote_ip + " " +
+            local_ip;
+  printf("Running: %s\n", command.c_str());
+  system(command.c_str());
+#else
+
+  struct ifreq ifr = {};
+  ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+  strncpy(ifr.ifr_name, tun_name.c_str(), IFNAMSIZ);
+
+  fd = open("/dev/net/tun", O_RDWR);
+  if (fd < 0) {
+    perror("failed to open /dev/net/tun");
+    exit(1);
+  } else {
+    if (ioctl(fd, TUNSETIFF, (void *)&ifr) < 0) {
+      perror("fail to set tun ioctl");
+      close(fd);
+      exit(1);
+    }
+    tun_name = ifr.ifr_name;
+
+    std::string command = "ip link set dev '" + tun_name + "' up";
+    printf("Running: %s\n", command.c_str());
+    system(command.c_str());
+
+    // from linux's perspective
+    // local/remote is reversed
+    command = std::string("ip addr add ") + remote_ip + " peer " + local_ip +
+              " dev '" + tun_name + "'";
+    printf("Running: %s\n", command.c_str());
+    system(command.c_str());
+  }
+
+#endif
+
+  printf("Device %s is now up\n", tun_name.c_str());
+  io_config = IOConfig::TUN;
+  set_socket_blocking(fd, false);
+  tun_fd = fd;
+  return fd;
+}
+
+void set_ip(const char *new_local_ip, const char *new_remote_ip) {
+  printf("Local IP is %s\n", new_local_ip);
+  printf("Remote IP is %s\n", new_remote_ip);
+  local_ip = new_local_ip;
+  remote_ip = new_remote_ip;
+}
+```
+
+## [src\lwip_common.cpp](./src\lwip_common.cpp)
+
+```
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/un.h>
+
+#include "common.h"
+#include "lwip/arch.h"
+#include "lwip/dhcp.h"
+#include "lwip/etharp.h"
+#include "lwip/init.h"
+#include "lwip/netif.h"
+#include "lwip/opt.h"
+#include "lwip/timeouts.h"
+#include "lwip_common.h"
+
+struct netif netif;
+
+// support functions for lwip
+extern "C" {
+
+u32_t sys_jiffies(void) { return 0; }
+
+u32_t sys_now() {
+  struct timeval tv = {};
+  gettimeofday(&tv, NULL);
+  return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+}
+
+err_t netif_output(struct netif *netif, struct pbuf *p,
+                   const ip4_addr_t *ipaddr) {
+  // p might have next, don't use payload directly
+  u8_t *buffer = (u8_t *)malloc(p->tot_len);
+  pbuf_copy_partial(p, buffer, p->tot_len, 0);
+
+  send_packet(buffer, p->tot_len);
+
+  free(buffer);
+  return ERR_OK;
+}
+
+err_t netif_init(struct netif *netif) {
+  netif->output = netif_output;
+  netif->mtu = 1500;
+  netif->flags = 0;
+  return ERR_OK;
+}
+
+ip_addr_t ip4_from_string(const char *addr) {
+  ip_addr_t ip_addr = {0};
+  ip4addr_aton(addr, &ip_addr);
+  return ip_addr;
+}
+
+void loop_yield() {
+  uint32_t time = sys_timeouts_sleeptime();
+  if (time > 50) {
+    time = 50;
+  }
+  usleep(time * 1000);
+}
+
+void setup_lwip(const char *ip) {
+  lwip_init();
+  ip_addr_t client_addr = ip4_from_string(ip);
+  ip_addr_t netmask = ip4_from_string("255.255.255.0");
+  netif_add(&netif, &client_addr, &netmask, IP4_ADDR_ANY, NULL, netif_init,
+            netif_input);
+  netif.name[0] = 'e';
+  netif.name[1] = '0';
+  netif_set_default(&netif);
+  netif_set_up(&netif);
+  netif_set_link_up(&netif);
+}
+```
+
+## [src\lab\buffer.cpp](./src\lab\buffer.cpp)
+
+```
+#include "buffer.h"
+#include "tcp_header.h"
+#include "timers.h"
+
+static inline size_t min(size_t a, size_t b) { return a > b ? b : a; }
+
+
+// ********** RingBuffer ********** //
+template <size_t N>
+RingBuffer<N>::RingBuffer() { begin = size = 0; }
+
+// write data to ring buffer
+template <size_t N>
+size_t RingBuffer<N>::write(const uint8_t *data, size_t len) {
+  size_t bytes_left = N - size;
+  size_t bytes_written = min(bytes_left, len);
+  // first part
+  size_t part1_index = (begin + size) % N;
+  size_t part1_size = min(N - part1_index, bytes_written);
+  memcpy(&buffer[part1_index], data, part1_size);
+  // second part if wrap around
+  if (N - part1_index < bytes_written) {
+    memcpy(&buffer[0], &data[part1_size], bytes_written - part1_size);
+  }
+  size += bytes_written;
+  return bytes_written;
+}
+
+// read data from ring buffer
+template <size_t N>
+size_t RingBuffer<N>::read(uint8_t *data, size_t len) {
+  size_t bytes_read = min(size, len);
+  // first part
+  size_t part1_size = min(N - begin, bytes_read);
+  memcpy(data, &buffer[begin], part1_size);
+  // second part if wrap around
+  if (N - begin < bytes_read) {
+    memcpy(&data[part1_size], buffer, bytes_read - part1_size);
+  }
+  size -= bytes_read;
+  begin = (begin + bytes_read) % N;
+  return bytes_read;
+}
+
+// allocate space in ring buffer
+template <size_t N>
+size_t RingBuffer<N>::alloc(size_t len) {
+  size_t bytes_left = N - size;
+  size_t bytes_allocated = min(bytes_left, len);
+  size += bytes_allocated;
+  return bytes_allocated;
+}
+
+// free data in ring buffer
+template <size_t N>
+size_t RingBuffer<N>::free(size_t len) {
+  size_t bytes_freed = min(size, len);
+  size -= bytes_freed;
+  begin = (begin + bytes_freed) % N;
+  return bytes_freed;
+}
+
+// return free bytes in ring buffer
+template <size_t N>
+size_t RingBuffer<N>::free_bytes() const { return N - size; }
+
+// explicit instantiations
+template class RingBuffer<10240>;
+
+// ********** RecvRingBuffer ********** //
+template <size_t N>
+RecvRingBuffer<N>::RecvRingBuffer() : RingBuffer<N>() { 
+  recv_size = 0;
+  memset(recved, 0, N);
+}
+
+// write data to recv ring buffer
+template <size_t N>
+size_t RecvRingBuffer<N>::write(const uint8_t *data, size_t len, size_t offset) {
+  size_t current = (RingBuffer<N>::begin + recv_size + offset) % N;
+  size_t bytes_able_to_write = min(N - recv_size - offset, len);
+  size_t bytes_written = 0;
+  size_t old_recv_size = recv_size;
+  for (size_t i = 0; i < bytes_able_to_write; i++) {
+    if (!recved[current]) {
+      recved[current] = true;
+      bytes_written++;
+    }
+    RingBuffer<N>::buffer[current] = data[i];
+    current = (current + 1) % N;
+  }
+  RingBuffer<N>::size += bytes_written;
+  this->order();
+  // return recv_wnd delta
+  return recv_size - old_recv_size;
+}
+
+// read received data in ring buffer
+template <size_t N>
+size_t RecvRingBuffer<N>::read(uint8_t *data, size_t len) {
+  size_t bytes_read = min(recv_size, len);
+  // first part
+  size_t part1_size = min(N - RingBuffer<N>::begin, bytes_read);
+  memcpy(data, &RingBuffer<N>::buffer[RingBuffer<N>::begin], part1_size);
+  memset(&recved[RingBuffer<N>::begin], 0, part1_size);
+  // second part if wrap around
+  if (N - RingBuffer<N>::begin < bytes_read) {
+    memcpy(&data[part1_size], RingBuffer<N>::buffer, bytes_read - part1_size);
+    memset(&recved[0], 0, bytes_read - part1_size);
+  }
+  recv_size -= bytes_read;
+  RingBuffer<N>::size -= bytes_read;
+  RingBuffer<N>::begin = (RingBuffer<N>::begin + bytes_read) % N;
+  return bytes_read;
+}
+
+// order received data in ring buffer
+template <size_t N>
+void RecvRingBuffer<N>::order() {
+  size_t current = (RingBuffer<N>::begin + recv_size) % N;
+  while (recved[current] && recv_size < N) {
+    recv_size++;
+    current = (current + 1) % N;
+  }
+}
+
+// free bytes in ring buffer
+template <size_t N>
+size_t RecvRingBuffer<N>::free_bytes() const {
+  return N - recv_size;
+}
+
+// explicit instantiations
+template class RecvRingBuffer<10240>;
+
+
+// ********** SendRingBuffer ********** //
+template <size_t N>
+SendRingBuffer<N>::SendRingBuffer() : RingBuffer<N>() { 
+  sent_size = 0;
+}
+
+// read data to send from ring buffer
+template <size_t N>
+size_t SendRingBuffer<N>::read(uint8_t *data, size_t len) {
+  size_t bytes_read = min(RingBuffer<N>::size - sent_size, len);
+  // first part
+  size_t part1_index = (RingBuffer<N>::begin + sent_size) % N;
+  size_t part1_size = min(N - part1_index, bytes_read);
+  memcpy(data, &RingBuffer<N>::buffer[part1_index], part1_size);
+  // second part if wrap around
+  if (N - part1_index < bytes_read) {
+    memcpy(&data[part1_size], RingBuffer<N>::buffer, bytes_read - part1_size);
+  }
+  sent_size += bytes_read;
+  return bytes_read;
+}
+
+// free sent data in ring buffer
+template <size_t N>
+size_t SendRingBuffer<N>::free(size_t len) {
+  size_t bytes_freed = min(sent_size, len);
+  sent_size -= bytes_freed;
+  RingBuffer<N>::size -= bytes_freed;
+  RingBuffer<N>::begin = (RingBuffer<N>::begin + bytes_freed) % N;
+  return bytes_freed;
+}
+
+// explicit instantiations
+template class SendRingBuffer<10240>;
+```
+
+## [src\lab\ip.cpp](./src\lab\ip.cpp)
+
+```
+#include "ip.h"
+#include "tcp.h"
+#include <stdio.h>
+
+void process_ip(const uint8_t *data, size_t size) {
+  struct IPHeader *ip = (struct IPHeader *)data;
+  if (ip->ip_v != 4) {
+    printf("Unsupported IP version: %d\n", ip->ip_v);
+    return;
+  }
+
+  if (ip->ip_hl * 4 > size) {
+    printf("IP header length too large: %d > %zu\n", ip->ip_hl * 4, size);
+    return;
+  }
+
+  if (!verify_ip_checksum(ip)) {
+    printf("Bad IP header checksum\n");
+    return;
+  }
+
+  if (ip->ip_off & 0x20) {
+    printf("Got fragmented IP, not supported\n");
+    return;
+  }
+
+  if (ip->ip_p == 6) {
+    // TCP
+    size_t header_size = ip->ip_hl * 4;
+    process_tcp(ip, data + header_size, size - header_size);
+  }
+}
+
+void update_ip_checksum(IPHeader *ip) {
+  uint32_t checksum = 0;
+  uint8_t *data = (uint8_t *)ip;
+  ip->ip_sum = 0;
+  for (int i = 0; i < ip->ip_hl * 2; i++) {
+    checksum += (((uint32_t)data[i * 2]) << 8) + data[i * 2 + 1];
+  }
+  while (checksum >= 0x10000) {
+    checksum -= 0x10000;
+    checksum += 1;
+  }
+  // update
+  ip->ip_sum = htons(~checksum);
+}
+
+bool verify_ip_checksum(const IPHeader *ip_hdr) {
+  uint32_t checksum = 0;
+  uint8_t *data = (uint8_t *)ip_hdr;
+  for (int i = 0; i < ip_hdr->ip_hl * 2; i++) {
+    checksum += (((uint32_t)data[i * 2]) << 8) + data[i * 2 + 1];
+  }
+  while (checksum >= 0x10000) {
+    checksum -= 0x10000;
+    checksum += 1;
+  }
+  return checksum == 0xffff;
+}
+```
+
+## [src\lab\lab-client.cpp](./src\lab\lab-client.cpp)
+
+```
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "common.h"
+#include "ip.h"
+#include "tcp.h"
+#include "timers.h"
+
+// gracefully close socket and exit when closed
+struct close_and_exit {
+  int fd;
+  size_t operator()() {
+    TCPState state = tcp_state(fd);
+    // gracefully shutdown
+    if (state == TCPState::CLOSED) {
+      tcp_close(fd);
+      exit(0);
+      return -1;
+    } else {
+      tcp_shutdown(fd);
+      return 100;
+    }
+  }
+};
+
+// read http response
+struct read_http_response {
+  int fd;
+  // output file
+  FILE *fp;
+  // parsing state
+  bool http_response_header_done = false;
+  std::vector<uint8_t> read_http_response;
+  int content_length = -1;
+  int read_body_length = 0;
+
+  int operator()() {
+    char buffer[10 << 10];  // 10KB
+    ssize_t res = tcp_read(fd, (uint8_t *)buffer, sizeof(buffer) - 1);
+    if (res > 0) {
+      printf("Read %lu bytes '", res);
+      fwrite(buffer, 1, res, stdout);
+      printf("' from tcp\n");
+
+      read_http_response.insert(read_http_response.end(), &buffer[0],
+                                &buffer[res]);
+      if (!http_response_header_done) {
+        // find consecutive \r\n\r\n
+        for (size_t i = 0; i + 3 < read_http_response.size(); i++) {
+          if (read_http_response[i] == '\r' &&
+              read_http_response[i + 1] == '\n' &&
+              read_http_response[i + 2] == '\r' &&
+              read_http_response[i + 3] == '\n') {
+            http_response_header_done = true;
+            std::string resp((char *)read_http_response.data(),
+                             read_http_response.size());
+
+            // find content length
+            std::string content_length_header = "Content-Length: ";
+            size_t pos = resp.find(content_length_header);
+            assert(pos != std::string::npos);
+            sscanf(&resp[pos + content_length_header.length()], "%d",
+                   &content_length);
+            printf("Content Length is %d\n", content_length);
+            assert(content_length >= 0);
+
+            // check if body is long enough
+            int body_size = read_http_response.size() - i - 4;
+            read_body_length += body_size;
+            fwrite(&read_http_response[i + 4], 1, body_size, fp);
+
+            break;
+          }
+        }
+      } else {
+        // write to file
+        read_body_length += res;
+        fwrite(buffer, 1, res, fp);
+      }
+      fflush(fp);
+
+      // fix bug: if http response header undone then content_length is -1
+      if (read_body_length >= content_length && content_length >= 0) {
+        // done
+        close_and_exit fn;
+        fn.fd = fd;
+        TIMERS.schedule_job(fn, 0);
+        return -1;
+      }
+    }
+
+    // try to read next data
+    return 1;
+  }
+};
+
+int main(int argc, char *argv[]) {
+  set_ip(client_ip_s, server_ip_s);
+  parse_argv(argc, argv);
+
+  // create socket and connect to server port 80
+  int tcp_fd = tcp_socket();
+  tcp_connect(tcp_fd, server_ip, 80);
+
+  // always try to read from tcp
+  // and write to stdout & file
+  FILE *fp = fopen("index.html", "w");
+  assert(fp);
+  char *pwd = getenv("PWD");
+  printf("Writing http response body to %s/index.html\n", pwd);
+
+  read_http_response read_fn;
+  read_fn.fd = tcp_fd;
+  read_fn.fp = fp;
+  TIMERS.schedule_job(read_fn, 1000);
+
+  // write HTTP request line by line every 1s
+  const char *data[] = {
+      "GET /index.html HTTP/1.1\r\n",
+      "Accept: */*\r\n",
+      "Host: 10.0.0.1\r\n",
+      "Connection: Close\r\n",
+      "\r\n",
+  };
+  int index = 0;
+  size_t offset = 0;
+  timer_fn write_fn = [&] {
+    if (tcp_state(tcp_fd) == TCPState::CLOSED) {
+      printf("Connection closed\n");
+      return -1;
+    }
+    if (tcp_state(tcp_fd) != TCPState::ESTABLISHED) {
+      printf("Waiting for connection establishment\n");
+      return 1000;
+    }
+
+    const char *p = data[index];
+    size_t len = strlen(p);
+    ssize_t res = tcp_write(tcp_fd, (const uint8_t *)p + offset, len - offset);
+    if (res > 0) {
+      printf("Write '%s' to tcp\n", p);
+      offset += res;
+
+      // write completed
+      if (offset == len) {
+        index++;
+        offset = 0;
+      }
+    }
+
+    // next data
+    if (index < 5) {
+      return 100;
+    } else {
+      return -1;
+    }
+  };
+  TIMERS.schedule_job(write_fn, 1000);
+
+  // main loop
+  const size_t buffer_size = 2048;
+  uint8_t buffer[buffer_size];
+  while (1) {
+    ssize_t size = recv_packet(buffer, buffer_size);
+    if (size >= 0) {
+      // got data
+      process_ip(buffer, size);
+    }
+    TIMERS.trigger();
+    fflush(stdout);
+  }
+  return 0;
+}
+
+```
+
+## [src\lab\lab-server.cpp](./src\lab\lab-server.cpp)
+
+```
+#include <assert.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "common.h"
+#include "ip.h"
+#include "tcp.h"
+#include "timers.h"
+
+struct write_response {
+  int fd;
+  int index = 0;
+  size_t offset = 0;
+
+  size_t operator()() {
+    // write HTTP request line by line immediately
+    const char *p = http_index[index].c_str();
+    size_t len = strlen(p);
+    ssize_t res = tcp_write(fd, (const uint8_t *)p + offset, len - offset);
+    if (res > 0) {
+      printf("Write '%s' to tcp\n", p);
+      offset += res;
+
+      // write completed
+      if (offset == len) {
+        index++;
+        offset = 0;
+      }
+    }
+
+    // next data
+    if (index < http_index.size()) {
+      return 1;
+    } else {
+      // done, closing
+      printf("Closing socket %d\n", fd);
+      tcp_close(fd);
+      return -1;
+    }
+  }
+};
+
+struct server_handler {
+  int new_fd;
+  std::vector<uint8_t> read_http_request;
+  size_t operator()() {
+    uint8_t buffer[1024];
+    ssize_t res = tcp_read(new_fd, buffer, sizeof(buffer));
+    if (res > 0) {
+      printf("Read '");
+      fwrite(buffer, res, 1, stdout);
+      printf("' from tcp\n");
+
+      // parse http request header
+      read_http_request.insert(read_http_request.end(), &buffer[0],
+                               &buffer[res]);
+      // find consecutive \r\n\r\n
+      for (size_t i = 0; i + 3 < read_http_request.size(); i++) {
+        if (read_http_request[i] == '\r' && read_http_request[i + 1] == '\n' &&
+            read_http_request[i + 2] == '\r' &&
+            read_http_request[i + 3] == '\n') {
+          // send response
+          write_response write_fn;
+          write_fn.fd = new_fd;
+          TIMERS.schedule_job(write_fn, 0);
+          return 0;
+        }
+      }
+    }
+
+    // next data
+    return 100;
+  }
+};
+
+int main(int argc, char *argv[]) {
+  set_ip(server_ip_s, client_ip_s);
+  parse_argv(argc, argv);
+
+  int listen_fd = tcp_socket();
+  tcp_bind(listen_fd, server_ip, 80);
+  tcp_listen(listen_fd);
+  printf("Listening on 80 port\n");
+
+  timer_fn accept_fn = [=]() {
+    int new_fd = tcp_accept(listen_fd);
+    if (new_fd >= 0) {
+      printf("Got new TCP connection: fd=%d\n", new_fd);
+
+      server_handler server_fn;
+      server_fn.new_fd = new_fd;
+
+      TIMERS.schedule_job(server_fn, 0);
+    }
+
+    // next accept
+    return 100;
+  };
+  TIMERS.schedule_job(accept_fn, 1000);
+
+  // main loop
+  const size_t buffer_size = 2048;
+  uint8_t buffer[buffer_size];
+  while (1) {
+    ssize_t size = recv_packet(buffer, buffer_size);
+    if (size >= 0) {
+      // got data
+      process_ip(buffer, size);
+    }
+    fflush(stdout);
+    TIMERS.trigger();
+  }
+  return 0;
+}
+```
+
+## [src\lab\tcp.cpp](./src\lab\tcp.cpp)
+
+```
+#include "tcp.h"
+#include "common.h"
+#include "timers.h"
+#include <assert.h>
+#include <map>
+#include <stdio.h>
+
+// mapping from fd to TCP connection
+std::map<int, TCP *> tcp_fds;
+
+
+// 功能函数
+
+static inline size_t min(size_t a, size_t b) { return a > b ? b : a; }
+
+// some helper functions
+const char *tcp_state_to_string(TCPState state) {
+  switch (state) {
+  case TCPState::LISTEN:
+    return "LISTEN";
+  case TCPState::SYN_SENT:
+    return "SYN_SENT";
+  case TCPState::SYN_RCVD:
+    return "SYN_RCVD";
+  case TCPState::ESTABLISHED:
+    return "ESTABLISHED";
+  case TCPState::FIN_WAIT_1:
+    return "FIN_WAIT_1";
+  case TCPState::FIN_WAIT_2:
+    return "FIN_WAIT_2";
+  case TCPState::CLOSE_WAIT:
+    return "CLOSE_WAIT";
+  case TCPState::CLOSING:
+    return "CLOSING";
+  case TCPState::LAST_ACK:
+    return "LAST_ACK";
+  case TCPState::TIME_WAIT:
+    return "TIME_WAIT";
+  case TCPState::CLOSED:
+    return "CLOSED";
+  default:
+    printf("Invalid TCPState\n");
+    exit(1);
+  }
+}
+
+const char *con_state_to_string(ConState state) {
+  switch (state) {
+  case ConState::SLOW_START:
+    return "SLOW_START";
+  case ConState::CONGESTION_AVOIDANCE:
+    return "CONGESTION_AVOIDANCE";
+  case ConState::FAST_RECOVERY:
+    return "FAST_RECOVERY";
+  default:
+    printf("Invalid ConState\n");
+    exit(1);
+  }
+}
+
+void TCP::set_state(TCPState new_state) {
+  // for unit tests
+  printf("TCP state transitioned from %s to %s\n", tcp_state_to_string(state),
+         tcp_state_to_string(new_state));
+  fflush(stdout);
+  state = new_state;
+}
+
+// construct ip header from tcp connection
+void construct_ip_header(uint8_t *buffer, const TCP *tcp, uint16_t total_length) {
+  IPHeader *ip_hdr = (IPHeader *)buffer;
+  memset(ip_hdr, 0, 20);
+  ip_hdr->ip_v = 4;
+  ip_hdr->ip_hl = 5;
+  ip_hdr->ip_len = htons(total_length);
+  ip_hdr->ip_ttl = 64;
+  ip_hdr->ip_p = 6; // TCP
+  ip_hdr->ip_src = tcp->local_ip;
+  ip_hdr->ip_dst = tcp->remote_ip;
+}
+
+
+void construct_tcp_header(uint8_t *buffer, const TCP *tcp, uint16_t hdr_size){
+  TCPHeader *tcp_hdr = (TCPHeader *)buffer;
+  memset(tcp_hdr, 0, hdr_size);
+  tcp_hdr->source = htons(tcp->local_port);
+  tcp_hdr->dest = htons(tcp->remote_port);
+  tcp_hdr->doff = hdr_size / 4;
+  tcp_hdr->window = htons((uint16_t)tcp->recv.free_bytes());
+  tcp_hdr->seq = htonl(tcp->snd_nxt);
+
+}
+
+
+// update tcp & ip checksum
+void update_tcp_ip_checksum(uint8_t *buffer) {
+  IPHeader *ip_hdr = (IPHeader *)buffer;
+  TCPHeader *tcp_hdr = (TCPHeader *)(buffer + ip_hdr->ip_hl * 4);
+  update_tcp_checksum(ip_hdr, tcp_hdr);
+  update_ip_checksum(ip_hdr);
+}
+
+uint32_t generate_initial_seq() {
+  // DONE(step 1: sequence number comparison and generation)
+  // initial sequence number based on timestamp
+  // rfc793 page 27 or rfc6528
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-27
+  // "The generator is bound to a (possibly fictitious) 32
+  // bit clock whose low order bit is incremented roughly every 4
+  // microseconds."
+
+  uint32_t now = current_ts_usec();
+  uint32_t interval = 4;  //  4 us
+  uint32_t seq = uint32_t(now / interval) & (0xffffffff);
+  return seq;
+}
+
+void update_tcp_checksum(const IPHeader *ip, TCPHeader *tcp) {
+  uint32_t checksum = 0;
+
+  // pseudo header
+  // rfc793 page 17
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-17
+  // "This pseudo header contains the Source
+  // Address, the Destination Address, the Protocol, and TCP length."
+  uint8_t pseudo_header[12];
+  memcpy(&pseudo_header[0], &ip->ip_src, 4);
+  memcpy(&pseudo_header[4], &ip->ip_dst, 4);
+  // zero
+  pseudo_header[8] = 0;
+  // proto tcp
+  pseudo_header[9] = 6;
+  // TCP length (header + payload)
+  be16_t tcp_len = htons(ntohs(ip->ip_len) - ip->ip_hl * 4);
+  memcpy(&pseudo_header[10], &tcp_len, 2);
+  for (int i = 0; i < 6; i++) {
+    checksum +=
+        (((uint32_t)pseudo_header[i * 2]) << 8) + pseudo_header[i * 2 + 1];
+  }
+
+  // "The checksum field is the 16 bit one's complement of the one's
+  // complement sum of all 16 bit words in the header and text."
+
+  // TCP header
+  uint8_t *tcp_data = (uint8_t *)tcp;
+  tcp->checksum = 0;
+  for (int i = 0; i < tcp->doff * 2; i++) {
+    checksum += (((uint32_t)tcp_data[i * 2]) << 8) + tcp_data[i * 2 + 1];
+  }
+
+  // TCP payload
+  uint8_t *payload = tcp_data + tcp->doff * 4;
+  int payload_len = ntohs(ip->ip_len) - ip->ip_hl * 4 - tcp->doff * 4;
+  for (int i = 0; i < payload_len; i++) {
+    if ((i % 2) == 0) {
+      checksum += (((uint32_t)payload[i]) << 8);
+    } else {
+      checksum += payload[i];
+    }
+  }
+
+  while (checksum >= 0x10000) {
+    checksum -= 0x10000;
+    checksum += 1;
+  }
+  // update
+  tcp->checksum = htons(~checksum);
+}
+
+bool verify_tcp_checksum(const IPHeader *ip, const TCPHeader *tcp) {
+  uint32_t checksum = 0;
+
+  // pseudo header
+  // rfc793 page 17
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-17
+  // "This pseudo header contains the Source
+  // Address, the Destination Address, the Protocol, and TCP length."
+  uint8_t pseudo_header[12];
+  memcpy(&pseudo_header[0], &ip->ip_src, 4);
+  memcpy(&pseudo_header[4], &ip->ip_dst, 4);
+  // zero
+  pseudo_header[8] = 0;
+  // proto tcp
+  pseudo_header[9] = 6;
+  // TCP length (header + payload)
+  be16_t tcp_len = htons(ntohs(ip->ip_len) - ip->ip_hl * 4);
+  memcpy(&pseudo_header[10], &tcp_len, 2);
+  for (int i = 0; i < 6; i++) {
+    checksum +=
+        (((uint32_t)pseudo_header[i * 2]) << 8) + pseudo_header[i * 2 + 1];
+  }
+
+  // "The checksum field is the 16 bit one's complement of the one's
+  // complement sum of all 16 bit words in the header and text."
+
+  // TCP header
+  uint8_t *tcp_data = (uint8_t *)tcp;
+  for (int i = 0; i < tcp->doff * 2; i++) {
+    checksum += (((uint32_t)tcp_data[i * 2]) << 8) + tcp_data[i * 2 + 1];
+  }
+
+  // TCP payload
+  uint8_t *payload = tcp_data + tcp->doff * 4;
+  int payload_len = ntohs(ip->ip_len) - ip->ip_hl * 4 - tcp->doff * 4;
+  for (int i = 0; i < payload_len; i++) {
+    if ((i % 2) == 0) {
+      checksum += (((uint32_t)payload[i]) << 8);
+    } else {
+      checksum += payload[i];
+    }
+  }
+
+  while (checksum >= 0x10000) {
+    checksum -= 0x10000;
+    checksum += 1;
+  }
+  return checksum == 0xffff;
+}
+
+// DONE(step 1: sequence number comparison and generation)
+
+bool tcp_seq_lt(uint32_t a, uint32_t b) {
+  // if(a < b && b - a < division) return true;
+  // if(a > b && a - b > division) return true;
+  if(a - b > division) return true;
+  return false;
+}
+
+bool tcp_seq_le(uint32_t a, uint32_t b) {
+  if(a - b > division || a == b) return true;
+  return false;
+}
+
+bool tcp_seq_gt(uint32_t a, uint32_t b) {
+  if(a - b <= division && a != b) return true;
+  return false;
+}
+
+bool tcp_seq_ge(uint32_t a, uint32_t b) {
+  if(a - b <= division) return true;
+  return false;
+}
+
+
+
+
+
+
+
+
+// 发送包函数
+void send_syn_pkt(TCP *tcp, bool ack) {
+  printf("In send_syn_pkt: seq = %u\n", tcp->iss - tcp->iss);
+
+  uint8_t buffer[44];   // 20 + 20 + 4
+  construct_ip_header(buffer, tcp, 44);
+  construct_tcp_header(&buffer[20], tcp, 24);
+  TCPHeader *tcp_hdr = (TCPHeader *)&buffer[20];
+  
+  tcp_hdr->seq = htonl(tcp->iss);
+  tcp_hdr->syn = 1;
+  if (ack) {
+    tcp_hdr->ack = 1;
+    tcp_hdr->ack_seq = htonl(tcp->rcv_nxt);
+  }
+
+  // MSS option
+  buffer[40] = 0x02; // kind
+  buffer[41] = 0x04; // length
+  buffer[42] = tcp->local_mss >> 8; // // MSS value (high byte)
+  buffer[43] = tcp->local_mss;  // // MSS value (low byte)
+
+  update_tcp_ip_checksum(buffer);
+  tcp->retrans.add_packet(buffer, 44, tcp->iss, 1);
+  send_packet(buffer, 44);
+}
+
+void send_ack_pkt(TCP *tcp) {
+  printf("In send_ack_pkt: seq = %u\n", tcp->snd_nxt - tcp->iss);
+
+  uint8_t buffer[60];   // 20 + 20 + SACK options
+  uint16_t hdr_size = 20;
+  if (tcp->sack_enabled && !tcp->recv_sack_blocks.empty()) {
+    hdr_size += 2 + 2 + 8 * tcp->recv_sack_blocks.size(); // 2 NOP, 2 SACK header, 8 * block count
+  }
+  construct_ip_header(buffer, tcp, hdr_size + 20);
+  construct_tcp_header(&buffer[20], tcp, hdr_size);
+  TCPHeader *tcp_hdr = (TCPHeader *)&buffer[20];
+
+  tcp_hdr->ack = 1;
+  tcp_hdr->ack_seq = htonl(tcp->rcv_nxt);
+
+  // 添加 SACK 选项
+  if (tcp->sack_enabled && !tcp->recv_sack_blocks.empty()) {
+    uint8_t *opt_ptr = buffer + 40; // TCP header is 20 bytes, options start after that
+    
+    *opt_ptr++ = 0x05; // SACK option
+    *opt_ptr++ = 4 + 8 * tcp->recv_sack_blocks.size(); // Option length
+    *opt_ptr++ = 0x01; // NOP
+    *opt_ptr++ = 0x01; // NOP
+
+    for (const auto &block : tcp->recv_sack_blocks) {
+        uint32_t left_edge = htonl(block.left_edge);
+        uint32_t right_edge = htonl(block.right_edge);
+        memcpy(opt_ptr, &left_edge, sizeof(left_edge));
+        opt_ptr += sizeof(left_edge);
+        memcpy(opt_ptr, &right_edge, sizeof(right_edge));
+        opt_ptr += sizeof(right_edge);
+    }
+    tcp->print_recv_sack_info();
+  }
+  
+
+  update_tcp_ip_checksum(buffer);
+  send_packet(buffer, hdr_size + 20);
+}
+
+
+void send_data_pkt(TCP *tcp, size_t segment_len) {
+  if (segment_len > 0) {
+    printf("In send_data_pkt: seq = %u, segment_len = %zu\n", 
+    tcp->snd_nxt - tcp->iss, segment_len);
+
+    // 20 IP header & 20 TCP header
+    uint16_t size = 20 + 20 + segment_len;
+    
+    uint8_t buffer[MTU];
+    construct_ip_header(buffer, tcp, size);
+    construct_tcp_header(&buffer[20], tcp, 20);
+    TCPHeader *tcp_hdr = (TCPHeader *)&buffer[20];
+
+    // DONE(step 3: send & receive)
+    // set ack bit and ack_seq flags
+    // window size: size of empty bytes in recv buffer
+    tcp_hdr->ack = 1;
+    tcp_hdr->ack_seq = htonl(tcp->rcv_nxt);
+    tcp->snd_nxt += segment_len;
+
+    // payload
+    size_t bytes_read = tcp->send.read(&buffer[40], segment_len);
+    
+    // should never fail
+    assert(bytes_read == segment_len);
+
+    update_tcp_ip_checksum(buffer);
+    tcp->retrans.add_packet(buffer, size, ntohl(tcp_hdr->seq), segment_len);
+    send_packet(buffer, size);
+
+    
+  }
+}
+
+void send_fin_pkt(TCP *tcp) {
+  printf("In send_fin_pkt: seq = %u\n", tcp->snd_nxt - tcp->iss);
+
+  uint8_t buffer[40];   // 20 + 20
+  construct_ip_header(buffer, tcp, 40);
+  construct_tcp_header(&buffer[20], tcp, 20);
+  TCPHeader *tcp_hdr = (TCPHeader *)&buffer[20];
+
+  tcp_hdr->fin = 1;
+  tcp_hdr->ack = 1;
+  tcp_hdr->ack_seq = htonl(tcp->rcv_nxt);
+
+  update_tcp_ip_checksum(buffer);
+  tcp->retrans.add_packet(buffer, 40, ntohl(tcp_hdr->seq), 1);
+  send_packet(buffer, 40);
+}
+
+void send_rst_pkt(TCP *tcp, bool ack, uint32_t seg_seq, uint32_t seg_ack, uint32_t seg_len) {
+  printf("In send_rst_pkt: seq = %u\n", tcp->snd_nxt - tcp->iss);
+
+  uint8_t buffer[40];
+  construct_ip_header(buffer, tcp, 40);
+
+  construct_tcp_header(&buffer[20], tcp, 20);
+
+  TCPHeader *tcp_hdr = (TCPHeader *)&buffer[20];
+  tcp_hdr->rst = 1;
+  if (ack) {
+    tcp_hdr->ack = 1;
+    tcp_hdr->seq = 0;
+    tcp_hdr->ack_seq = htonl(seg_seq + seg_len);
+  } else {
+    tcp_hdr->seq = htonl(seg_ack);
+  }
+
+  update_tcp_ip_checksum(buffer);
+  send_packet(buffer, 40);
+}
+
+// Nagle's algorithm
+void send_pkt_nagle(TCP *tcp) {
+  printf("In send_pkt_nagle\n");
+  // Nagle算法是一种用于减少网络中小数据包数量的TCP拥塞控制算法。
+  // 它通过将小的数据段积累起来一起发送，
+  // 从而减少网络中的小包数量，提高网络传输效率
+  
+  // 已经发出去，未确认的数据量
+  uint32_t outstanding = tcp->snd_nxt - tcp->snd_una;
+  // 发送窗口限制
+  uint32_t snd_wnd = min(tcp->snd_wnd, tcp->cwnd);
+  // 当前可供发送的窗口
+  uint32_t snd_space = snd_wnd > outstanding ? snd_wnd - outstanding : 0;
+  // 总的窗口限制
+  uint32_t window = min(snd_space, tcp->remote_mss);
+  // 可发送长度
+  size_t segment_len = min(window, tcp->send.size);
+
+  // 只有在以下两种情况下，数据才会被发送：
+  // 1. 缓冲区中的数据达到了MSS。
+  while (segment_len == tcp->remote_mss) {
+    send_data_pkt(tcp, segment_len);
+    outstanding = tcp->snd_nxt - tcp->snd_una;
+    snd_wnd = min(tcp->snd_wnd, tcp->cwnd);
+    snd_space = snd_wnd > outstanding ? snd_wnd - outstanding : 0;
+    window = min(snd_space, tcp->remote_mss);
+    segment_len = min(window, tcp->send.size);
+  }
+
+  // 2. 所有之前发送的数据都已确认（即没有未确认的数据）。
+  if (tcp->snd_una == tcp->snd_nxt) {
+    send_data_pkt(tcp, segment_len);
+  }
+}
+
+void send_pkt_directly(TCP *tcp) {
+  printf("In send_pkt_directly\n");
+
+  uint32_t outstanding = tcp->snd_nxt - tcp->snd_una;
+  uint32_t snd_wnd = min(tcp->snd_wnd, tcp->cwnd);
+  uint32_t snd_space = snd_wnd > outstanding ? snd_wnd - outstanding : 0;
+  uint32_t window = min(snd_space, tcp->remote_mss);
+  size_t segment_len = min(window, tcp->send.size);
+
+  while (segment_len > 0) {
+    send_data_pkt(tcp, segment_len);
+
+    outstanding = tcp->snd_nxt - tcp->snd_una;
+    snd_wnd = min(tcp->snd_wnd, tcp->cwnd);
+    snd_space = snd_wnd > outstanding ? snd_wnd - outstanding : 0;
+    window = min(snd_space, tcp->remote_mss);
+    // note: 这里不能写 size_t
+    segment_len = min(window, tcp->send.size);
+  }
+}
+
+
+
+
+
+
+
+// tcp 处理流程函数
+
+void process_tcp(const IPHeader *ip, const uint8_t *data, size_t size) {
+  printf("In process_tcp\n");
+
+  TCPHeader *tcp_header = (TCPHeader *)data;
+  // 校验 TCP 数据包的校验和，确保数据包的完整性。如果校验失败，则丢弃该数据包。
+  if (!verify_tcp_checksum(ip, tcp_header)) {
+    printf("Bad TCP checksum\n");
+    return;
+  }
+
+  // 序列号 SEG.SEQ
+  uint32_t seg_seq = ntohl(tcp_header->seq);
+  // 确认号 SEG.ACK
+  uint32_t seg_ack = ntohl(tcp_header->ack_seq);
+  // 窗口大小 SEG.WND
+  uint16_t seg_wnd = ntohs(tcp_header->window);
+  // 数据段长度 segment(payload) length
+  uint32_t seg_len = ntohs(ip->ip_len) - ip->ip_hl * 4 - tcp_header->doff * 4;
+  // 数据段 payload
+  const uint8_t *payload = data + tcp_header->doff * 4;
+
+  // iterate tcp connections in two pass
+  // first pass: only exact matches
+  // second pass: allow wildcard matches for listening socket
+  // this gives priority to connected sockets
+  for (int pass = 1; pass <= 2; pass++) {
+    // 遍历所有 tcp 连接
+    for (auto &pair : tcp_fds) {
+      TCP *tcp = pair.second;
+      if (tcp->state == TCPState::CLOSED) {
+        // ignore closed sockets
+        continue;
+      }
+
+      if (pass == 1) {
+        // first pass: exact match
+        // 验证数据包的基本合法性和有效性
+        if (tcp->local_ip != ip->ip_dst || tcp->remote_ip != ip->ip_src ||
+            tcp->local_port != ntohs(tcp_header->dest) ||
+            tcp->remote_port != ntohs(tcp_header->source)) {
+          continue;   // 不合法的跳过
+        }
+      } else {
+        // second pass: allow wildcard
+        if (tcp->local_ip != 0 && tcp->local_ip != ip->ip_dst) {
+          continue;
+        }
+        if (tcp->remote_ip != 0 && tcp->remote_ip != ip->ip_src) {
+          continue;
+        }
+        if (tcp->local_port != 0 &&
+            tcp->local_port != ntohs(tcp_header->dest)) {
+          continue;
+        }
+        if (tcp->remote_port != 0 &&
+            tcp->remote_port != ntohs(tcp_header->source)) {
+          continue;
+        }
+      }
+
+      // matched
+      if (tcp_header->doff > 20 / 4) {
+        // options exists
+        // check TCP option header: MSS
+        // option 指针
+        uint8_t *opt_ptr = (uint8_t *)data + 20;
+        uint8_t *opt_end = (uint8_t *)data + tcp_header->doff * 4;
+        while (opt_ptr < opt_end) {
+          if (*opt_ptr == 0x00) {
+            // End Of Option List
+            break;
+          } else if (*opt_ptr == 0x01) {
+            // No-Operation
+            opt_ptr++;
+          } else if (*opt_ptr == 0x02) {
+            // MSS
+            uint8_t len = opt_ptr[1];
+            // MSS option 长度为 4 字节
+            if (len != 4) {
+              printf("Bad TCP option len: %d\n", len);
+              break;
+            }
+
+            // mss 值
+            uint16_t mss = ((uint16_t)opt_ptr[2] << 8) + opt_ptr[3];
+            
+            if (tcp_header->syn) {
+              // 如果是 SYN 包，更新 tcp->remote_mss。
+              // 告诉 remote 窗口大小
+              tcp->remote_mss = mss;
+              printf("Remote MSS is %d\n", mss);
+            } else {
+              printf("Remote sent MSS option header in !SYN packet\n");
+            }
+            opt_ptr += len;
+          }
+          else if (*opt_ptr == 0x05) {
+            printf("Receive SACK option\n");
+            uint8_t len = opt_ptr[1];
+            if (len % 8 != 4) {
+              printf("Bad TCP SACK option length: %d\n", len);
+              break;
+            }
+            uint8_t num_blocks = (len - 4) / 8;
+            opt_ptr += 4;
+            
+            for (int i = 0; i < num_blocks; ++i) {
+              uint32_t left_edge = ntohl(*(uint32_t *)opt_ptr);
+              opt_ptr += 4;
+              uint32_t right_edge = ntohl(*(uint32_t *)opt_ptr);
+              opt_ptr += 4;
+              tcp->add_send_sack_block(left_edge, right_edge);
+            }
+            tcp->print_send_sack_info();
+          }
+          else {
+            printf("Unrecognized TCP option: %d\n", *opt_ptr);
+            break;
+          }
+        }
+      }
+
+      if (tcp->state == TCPState::LISTEN) {
+        // 服务器监听连接请求
+        // rfc793 page 65
+        // https://www.rfc-editor.org/rfc/rfc793.html#page-65
+        // "If the state is LISTEN then"
+
+        // "first check for an RST
+        // An incoming RST should be ignored.  Return."
+        if (tcp_header->rst) {
+          return;
+        }
+
+        // "second check for an ACK"
+        if (tcp_header->ack) {
+          // "Any acknowledgment is bad if it arrives on a connection still in
+          // the LISTEN state.  An acceptable reset segment should be formed
+          // for any arriving ACK-bearing segment.  The RST should be
+          // formatted as follows:
+          // <SEQ=SEG.ACK><CTL=RST>
+          // Return."
+          
+          send_rst_pkt(tcp, true, seg_seq, seg_ack, seg_len);
+          
+          return;
+        }
+
+        // "third check for a SYN"
+        if (tcp_header->syn) {
+          printf("LISTEN: receive syn\n");
+          // 有一个新的连接请求
+          // 创建一个新的 TCP 套接字来处理这个连接请求。
+          // create a new socket for the connection
+          int new_fd = tcp_socket();
+          TCP *new_tcp = tcp_fds[new_fd];
+          tcp->accept_queue.push_back(new_fd);
+
+          // initialize
+          new_tcp->local_ip = tcp->local_ip;
+          new_tcp->remote_ip = ip->ip_src;
+          new_tcp->local_port = tcp->local_port;
+          new_tcp->remote_port = ntohs(tcp_header->source);
+
+          // "Set RCV.NXT to SEG.SEQ+1, IRS is set to SEG.SEQ and any other
+          // control or text should be queued for processing later.  ISS
+          // should be selected"
+          new_tcp->rcv_nxt = seg_seq + 1;
+          new_tcp->irs = seg_seq;
+
+          uint32_t initial_seq = generate_initial_seq();
+          new_tcp->iss = initial_seq;
+
+          // initialize params
+          // assume maximum mss for remote by default
+          new_tcp->local_mss = DEFAULT_MSS;
+          new_tcp->remote_mss = tcp->remote_mss;
+
+          // DONE(step 2: 3-way handshake)
+          // send SYN,ACK to remote
+          // 44 = 20(IP) + 24(TCP)
+          // with 4 bytes option(MSS)
+          // "a SYN segment sent of the form:
+          // <SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>"
+
+          send_syn_pkt(new_tcp, true);
+
+          // "SND.NXT is set to ISS+1 and SND.UNA to ISS.  The connection
+          // state should be changed to SYN-RECEIVED."
+          new_tcp->snd_nxt = initial_seq + 1;
+          new_tcp->snd_una = initial_seq;
+          new_tcp->snd_wnd = seg_wnd;
+          new_tcp->rcv_wnd = new_tcp->recv.free_bytes();
+          new_tcp->snd_wl2 = initial_seq - 1;
+          new_tcp->set_state(TCPState::SYN_RCVD);
+          return;
+        }
+      }
+
+      if (tcp->state == TCPState::SYN_SENT) {
+        // 同步已发送状态
+        // 表示客户端已经发送了连接请求（SYN包），等待服务器的响应。
+        // rfc793 page 66
+        // https://www.rfc-editor.org/rfc/rfc793.html#page-66
+        // "If the state is SYN-SENT then"
+        // "If the ACK bit is set"
+        if (tcp_header->ack) {
+          printf("SYN_SENT: receive ack\n");
+          // "If SEG.ACK =< ISS, or SEG.ACK > SND.NXT, send a reset (unless
+          // the RST bit is set, if so drop the segment and return)
+          //<SEQ=SEG.ACK><CTL=RST>
+          // and discard the segment.  Return."
+          if (tcp_seq_le(seg_ack, tcp->iss) ||
+              tcp_seq_gt(seg_ack, tcp->snd_nxt)) {
+            // send a reset when !RST
+            send_rst_pkt(tcp, true, seg_seq, seg_ack, seg_len);
+            return;
+          }
+        }
+
+        // "second check the RST bit"
+        // "If the RST bit is set"
+        if (tcp_header->rst) {
+          // "If the ACK was acceptable then signal the user "error:
+          // connection reset", drop the segment, enter CLOSED state,
+          // delete TCB, and return.  Otherwise (no ACK) drop the segment
+          // and return."
+          // 连接已重置，进入 CLOSED 状态，并删除 TCB。
+          printf("Connection reset\n");
+          tcp->set_state(TCPState::CLOSED);
+          return;
+        }
+
+        // "fourth check the SYN bit"
+        if (tcp_header->syn) {
+          // DONE(step 2: 3-way handshake)
+          // "RCV.NXT is set to SEG.SEQ+1, IRS is set to
+          // SEG.SEQ.  SND.UNA should be advanced to equal SEG.ACK (if there
+          // is an ACK), and any segments on the retransmission queue which
+          // are thereby acknowledged should be removed."
+          tcp->rcv_nxt = seg_seq + 1;
+          tcp->irs = seg_seq;
+          if (tcp_header->ack) {
+            uint32_t iss = tcp->iss;
+            // printf("Update una: snd_una=%u, snd_nxt=%u, seg_ack=%u\n", 
+            // tcp->snd_una - iss, tcp->snd_nxt - iss, seg_ack - iss);
+
+            tcp->snd_una = seg_ack;
+          }
+
+          if (tcp_seq_gt(tcp->snd_una, tcp->iss)) {
+            // "If SND.UNA > ISS (our SYN has been ACKed), change the connection
+            // state to ESTABLISHED,"
+            tcp->set_state(TCPState::ESTABLISHED);
+
+            // DONE(step 2: 3-way handshake)
+            // "form an ACK segment
+            // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>
+            // and send it."
+
+            send_ack_pkt(tcp);
+
+            // DONE(step 2: 3-way handshake)
+            // https://www.rfc-editor.org/rfc/rfc1122#page-94
+            // "When the connection enters ESTABLISHED state, the following
+            // variables must be set:
+            // SND.WND <- SEG.WND
+            // SND.WL1 <- SEG.SEQ
+            // SND.WL2 <- SEG.ACK"
+            tcp->snd_wnd = seg_wnd;
+            tcp->snd_wl1 = seg_seq;
+            tcp->snd_wl2 = seg_ack;
+          } else {
+            // "Otherwise enter SYN-RECEIVED"
+            // "form a SYN,ACK segment
+            //<SEQ=ISS><ACK=RCV.NXT><CTL=SYN,ACK>
+            // and send it."
+            tcp->set_state(TCPState::SYN_RCVD);
+            send_syn_pkt(tcp, true);
+            tcp->snd_nxt = tcp->iss + 1;
+          }
+          return;
+        }
+
+        // "fifth, if neither of the SYN or RST bits is set then drop the
+        // segment and return."
+        if (!tcp_header->syn || !tcp_header->ack) {
+          printf("Received unexpected !SYN || !ACK packet in SYN_SENT state\n");
+          return;
+        }
+      }
+
+      // rfc793 page 69
+      // https://www.rfc-editor.org/rfc/rfc793.html#page-69
+      // "Otherwise,"
+      if (tcp->state == TCPState::SYN_RCVD ||
+          tcp->state == TCPState::ESTABLISHED ||
+          tcp->state == TCPState::FIN_WAIT_1 ||
+          tcp->state == TCPState::FIN_WAIT_2 ||
+          tcp->state == TCPState::CLOSE_WAIT ||
+          tcp->state == TCPState::CLOSING || tcp->state == TCPState::LAST_ACK ||
+          tcp->state == TCPState::TIME_WAIT) {
+
+        // "first check sequence number"
+
+        // "There are four cases for the acceptability test for an incoming
+        // segment:"
+        bool acceptable = false;
+        // UNIMPLEMENTED_WARN();
+
+        // "If an incoming segment is not acceptable, an acknowledgment
+        // should be sent in reply (unless the RST bit is set, if so drop
+        // the segment and return):"
+        if (!acceptable) {
+          // UNIMPLEMENTED_WARN();
+        }
+
+        // "second check the RST bit,"
+        if (tcp_header->rst) {
+        }
+
+        // "fourth, check the SYN bit,"
+        if (tcp_header->syn) {
+        }
+        // printf("CHECK: seg_seq = %u, seg_len = %u, seg_ack = %u\n", seg_seq, seg_len, seg_ack - tcp->iss);
+
+        // 将接收到的 TCP 数据包添加到接收重排序缓冲区中
+        tcp->recv_reorder.add_packet(data, size, seg_seq, seg_len);
+        if (seg_seq != tcp->rcv_nxt) {
+          // 如果接收的数据包的序列号不等于期望的下一个序列号，说明数据包乱序了。
+          printf("Packet out-of-order.\n");
+          // 发送 ack
+          send_ack_pkt(tcp);
+          return;
+        } 
+        else {
+          // 处理重排序缓冲区
+          flush_reorder_buf(tcp);
+        }
+      }
+      return;
+    }
+  }
+
+  printf("No matching TCP connection found\n");
+  // send RST
+  // rfc793 page 65 CLOSED state
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-65
+  if (tcp_header->rst) {
+    // "An incoming segment containing a RST is discarded."
+    return;
+  }
+
+  // send RST segment
+  // 40 = 20(IP) + 20(TCP)
+  uint8_t buffer[40];
+  IPHeader *ip_hdr = (IPHeader *)buffer;
+  memset(ip_hdr, 0, 20);
+  ip_hdr->ip_v = 4;
+  ip_hdr->ip_hl = 5;
+  ip_hdr->ip_len = htons(sizeof(buffer));
+  ip_hdr->ip_ttl = 64;
+  ip_hdr->ip_p = 6; // TCP
+  ip_hdr->ip_src = ip->ip_dst;
+  ip_hdr->ip_dst = ip->ip_src;
+
+  // tcp
+  TCPHeader *tcp_hdr = (TCPHeader *)&buffer[20];
+  memset(tcp_hdr, 0, 20);
+  tcp_hdr->source = tcp_header->dest;
+  tcp_hdr->dest = tcp_header->source;
+  if (!tcp_header->ack) {
+    // "If the ACK bit is off, sequence number zero is used,"
+    // "<SEQ=0>"
+    tcp_hdr->seq = 0;
+    // "<ACK=SEG.SEQ+SEG.LEN>"
+    tcp_hdr->ack_seq = htonl(seg_seq + seg_len);
+    // "<CTL=RST,ACK>"
+    tcp_hdr->rst = 1;
+    tcp_hdr->ack = 1;
+  } else {
+    // "If the ACK bit is on,"
+    // "<SEQ=SEG.ACK>"
+    tcp_hdr->seq = htonl(seg_ack);
+    // "<CTL=RST>"
+    tcp_hdr->rst = 1;
+  }
+  // flags
+  tcp_hdr->doff = 20 / 4; // 20 bytes
+
+  update_tcp_ip_checksum(buffer);
+
+  send_packet(buffer, sizeof(buffer));
+}
+
+// 处理乱序到达的数据包
+void flush_reorder_buf(TCP *tcp) {
+  printf("In flush_reorder_buf\n");
+
+  auto it = tcp->recv_reorder.packets.begin();
+  int excepted_seq = tcp->rcv_nxt;
+  while (it != tcp->recv_reorder.packets.end()) {
+    auto pkt = *it;
+    if (pkt.seq < excepted_seq) {
+      // 如果数据包的序列号小于预期的序列号
+      // 则说明该数据包已经处理过
+      // 将其从缓冲区中删除，并跳过该数据包
+      it = tcp->recv_reorder.packets.erase(it);
+      continue;
+    }
+    if (pkt.seq == excepted_seq) {
+      printf("ReorderBuff process buf: seq = %d\n", pkt.seq);
+      process_tcp_after_established(tcp, pkt.buffer, pkt.seg_len);
+      // 下一个希望处理的数据包
+      excepted_seq = tcp->rcv_nxt;
+      // 删除处理过的数据包，指针前移
+      it = tcp->recv_reorder.packets.erase(it);
+    }
+    else {
+      break;
+    }
+  }
+}
+
+void process_tcp_after_established(TCP *tcp, const uint8_t *data, uint32_t seg_len) {
+  printf("In process_tcp_after_established\n");
+
+  TCPHeader *tcp_header = (TCPHeader *)data;
+  uint32_t seg_seq = ntohl(tcp_header->seq);
+  uint32_t seg_ack = ntohl(tcp_header->ack_seq);
+  uint16_t seg_wnd = ntohs(tcp_header->window);
+  const uint8_t *payload = data + tcp_header->doff * 4;
+
+  // "fifth check the ACK field,"
+  if (tcp_header->ack) {
+    printf("Receive ack\n");
+
+    // "if the ACK bit is on"
+    // "SYN-RECEIVED STATE"
+
+    if (tcp->state == SYN_RCVD) {
+      // "If SND.UNA =< SEG.ACK =< SND.NXT then enter ESTABLISHED state
+      // and continue processing."
+      // ack 在发送发送窗口之内
+      // snd_una ~ snd_nxt 之间是所有发送但未 ack 的数据
+      if (tcp_seq_le(tcp->snd_una, seg_ack) &&
+          tcp_seq_le(seg_ack, tcp->snd_nxt)) {
+        tcp->set_state(TCPState::ESTABLISHED);
+      }
+    }
+
+    // "ESTABLISHED STATE"
+    if (tcp->state == ESTABLISHED || tcp->state == FIN_WAIT_1
+        || tcp->state == FIN_WAIT_2 || tcp->state == CLOSE_WAIT
+        || tcp->state == CLOSING){
+      
+
+      // DONE(step 3: send & receive)
+      // "If SND.UNA < SEG.ACK =< SND.NXT then, set SND.UNA <- SEG.ACK."
+      if (tcp_seq_lt(tcp->snd_una, seg_ack) &&
+          tcp_seq_le(seg_ack, tcp->snd_nxt)) {
+
+        // 收到新的 ack，拥塞控制处理
+        // una 更新在 cc_update_after_ack 中
+        cc_update_after_ack(tcp, seg_ack);
+
+        // DONE(step 3: send & receive)
+        // "If SND.UNA < SEG.ACK =< SND.NXT, the send window should be
+        // updated.  If (SND.WL1 < SEG.SEQ or (SND.WL1 = SEG.SEQ and
+        // SND.WL2 =< SEG.ACK)), set SND.WND <- SEG.WND, set
+        // SND.WL1 <- SEG.SEQ, and set SND.WL2 <- SEG.ACK."
+        
+        if (tcp_seq_lt(tcp->snd_wl1, seg_seq) ||
+            (tcp->snd_wl1 == seg_seq && tcp_seq_le(tcp->snd_wl2, seg_ack))) {
+            // 更新发送窗口
+          tcp->snd_wnd = seg_wnd;
+          tcp->snd_wl1 = seg_seq;
+          tcp->snd_wl2 = seg_ack;
+        }
+
+        update_sack_info(tcp, seg_ack);  // 调用更新SACK信息的函数
+      }     
+    }
+
+
+    // "FIN-WAIT-1 STATE"
+    if (tcp->state == FIN_WAIT_1) {
+      // 终止等待 1 状态，
+      // 表示一方主动关闭连接，
+      // 发送了终止请求（FIN包），
+      // 等待对方的确认（ACK包）。
+
+      // "In addition to the processing for the ESTABLISHED state, if
+      // our FIN is now acknowledged then enter FIN-WAIT-2 and continue
+      // processing in that state."
+
+      uint32_t iss = tcp->iss;
+      printf("FIN_WAIT_1: snd_una = %u, snd_nxt = %u, seg_ack = %u\n", 
+      tcp->snd_una - iss, tcp->snd_nxt - iss, seg_ack - iss);
+      
+      if (tcp->snd_una == tcp->snd_nxt) {
+        // 等到了 ack，进入等待 2 状态
+        tcp->set_state(FIN_WAIT_2);
+      }
+      // tcp->set_state(FIN_WAIT_2);
+    }
+    else if(tcp->shutdown_waiting){    
+      printf("In process tcp after established: tcp->shutdown_waiting\n");
+      shutdown(tcp);
+    }
+
+    // "FIN-WAIT-2 STATE"
+    if (tcp->state == FIN_WAIT_2) {
+      // 终止等待2状态，
+      // 表示一方已经收到对方对终止请求的确认（ACK包），
+      // 等待对方发送终止请求（FIN包）。
+
+      // "In addition to the processing for the ESTABLISHED state, if
+      // the retransmission queue is empty, the user's CLOSE can be
+      // acknowledged ("ok") but do not delete the TCB."
+    }
+
+    // LAST-ACK STATE
+    if (tcp->state == LAST_ACK) {
+      // 最后确认状态，
+      // 表示一方在关闭等待状态下发送了终止请求（FIN包），
+      // 等待对方的确认（ACK包）。
+
+      // "The only thing that can arrive in this state is an
+      // acknowledgment of our FIN.  If our FIN is now acknowledged,
+      // delete the TCB, enter the CLOSED state, and return."
+      if (seg_ack == tcp->snd_nxt) {
+        // 等到了 ack 包，关闭
+        tcp->set_state(CLOSED);
+      }
+      return;
+    }
+
+    // 对面更新窗口之后，如果自己有堆积的数据，就发送一下
+
+    #ifdef ENABLE_NAGLE
+      send_pkt_nagle(tcp);
+    #else
+      send_pkt_directly(tcp);
+    #endif
+
+  }
+
+  // "seventh, process the segment text,"
+  if (seg_len > 0) {
+    if (tcp->state == ESTABLISHED) {
+      // "Once in the ESTABLISHED state, it is possible to deliver
+      // segment text to user RECEIVE buffers."
+      printf("Received %d bytes from server\n", seg_len);
+
+      // DONE(step 3: send & receive)
+      // write to recv buffer
+      // "Once the TCP takes responsibility for the data it advances
+      // RCV.NXT over the data accepted, and adjusts RCV.WND as
+      // appropriate to the current buffer availability.  The total of
+      // RCV.NXT and RCV.WND should not be reduced."
+
+      // 接收数据到 rcv_buf 中
+      size_t res = tcp->recv.write(payload, seg_len);
+      
+      tcp->rcv_nxt += res;
+      tcp->rcv_wnd = tcp->recv.free_bytes();
+
+      update_recv_sack_blocks(tcp, seg_seq, seg_len);
+      
+
+      // "Send an acknowledgment of the form:
+      // <SEQ=SND.NXT><ACK=RCV.NXT><CTL=ACK>"
+
+      send_ack_pkt(tcp);
+    }
+  }
+
+  // "eighth, check the FIN bit,"
+  if (tcp_header->fin) {
+    // "Do not process the FIN if the state is CLOSED, LISTEN or SYN-SENT
+    // since the SEG.SEQ cannot be validated; drop the segment and
+    // return."
+    if (tcp->state == CLOSED || tcp->state == LISTEN ||
+        tcp->state == SYN_SENT) {
+      return;
+    }
+
+    // DONE(step 4: connection termination)
+    // "If the FIN bit is set, signal the user "connection closing" and
+    // return any pending RECEIVEs with same message, advance RCV.NXT
+    // over the FIN, and send an acknowledgment for the FIN.  Note that
+    // FIN implies PUSH for any segment text not yet delivered to the
+    // user."
+    printf("Connection closing\n");
+    tcp->rcv_nxt += 1;
+    send_ack_pkt(tcp);
+
+    if (tcp->state == SYN_RCVD || tcp->state == ESTABLISHED) {
+      // Enter the CLOSE-WAIT state
+      // 收到 Fin，且发送了 ack 包，进入 close_wait
+      tcp->set_state(TCPState::CLOSE_WAIT);
+    } 
+    else if (tcp->state == FIN_WAIT_1) {
+      // FIN-WAIT-1 STATE
+      // "If our FIN has been ACKed (perhaps in this segment), then
+      // enter TIME-WAIT, start the time-wait timer, turn off the other
+      // timers; otherwise enter the CLOSING state."
+
+      tcp->set_state(TCPState::TIME_WAIT);
+    } 
+    else if (tcp->state == FIN_WAIT_2) {
+      // FIN-WAIT-2 STATE
+      // "Enter the TIME-WAIT state.  Start the time-wait timer, turn
+      // off the other timers."
+      tcp->set_state(TCPState::TIME_WAIT);
+    }
+  }
+}
+
+// 重传
+int tcp_retransmit(int fd) {
+  // printf("In tcp_retransmit\n");
+
+  TCP *tcp = tcp_fds[fd];
+  uint64_t cur_ts = current_ts_msec();
+  uint64_t nxt_ts = RETRANS_TIME;
+  for (auto it = tcp->retrans.queue.begin(); it != tcp->retrans.queue.end();) {
+    auto &pkt = *it;
+    // 对于每个 pkt，如果该分组的序列号小于 snd_una，
+    // 说明已发送，则将其从队列中删除。
+    if (tcp_seq_le(pkt.seq + pkt.seg_len, tcp->snd_una)) {
+      it = tcp->retrans.queue.erase(it);
+    } 
+    else {
+      bool sack_blocked = false;
+      for (const auto &block : tcp->send_sack_blocks) {
+        if (pkt.seq >= block.left_edge && pkt.seq + pkt.seg_len <= block.right_edge) {
+          sack_blocked = true;
+          printf("SACK useful\n");
+          break;
+        }
+      }
+
+      // 如果当前时间超过了 pkt 的重传时间，则重新发送该分组，更新重传时间。
+      if (!sack_blocked && pkt.retrans_time < cur_ts) {
+        printf("Retransmit: seq = %d\n", pkt.seq - tcp->iss);
+        cc_update_after_timeout(tcp);
+        send_packet(pkt.buffer, pkt.size);
+        pkt.retrans_time = cur_ts + RETRANS_TIME;
+      } 
+      else {
+        // 下次检查
+        nxt_ts = min(nxt_ts, pkt.retrans_time - cur_ts);
+      }
+      it++;
+    }
+  }
+  return nxt_ts;
+}
+
+
+
+
+
+
+// 拥塞控制函数
+
+// 慢启动，冲突避免，快速重传和快速恢复
+void cc_update_after_ack(TCP *tcp, uint32_t seg_ack) {
+  printf("In cc_update_after_ack\n");
+
+  // 刚被 ack 的数据的长度 
+  uint32_t acked_len = seg_ack - tcp->snd_una;  
+
+  // printf("%s: acked_len = %u, dup_ack_count = %u, seg_ack = %u, cwnd = %u\n",
+  // con_state_to_string(tcp->cc_state), acked_len, tcp->dup_ack_count, 
+  // seg_ack - tcp->iss, tcp->cwnd);
+
+  if (acked_len == 0) {
+    printf("Receive duplicate ack\n");
+    // 一个 ack 信号，处理重复 ack
+    tcp->dup_ack_count += 1;
+    if (tcp->cc_state == FAST_RECOVERY) {
+      // 在快速重传后，发送方继续接收重复的 ACK，每收到一个增加 cwnd 的值。
+      tcp->cwnd += tcp->local_mss;
+    }
+  } 
+  else {
+    // 有新的数据被确认
+    printf("Receive new ack\n");
+    // printf("Update una: snd_una = %u, snd_nxt = %u, seg_ack = %u\n", 
+    // tcp->snd_una - tcp->iss, tcp->snd_nxt - tcp->iss, seg_ack - tcp->iss);
+    
+    tcp->snd_una = seg_ack;
+    
+    // 重置 ack 计数器
+    tcp->dup_ack_count = 0;
+    
+    if (tcp->cc_state == SLOW_START) {
+      // 慢启动状态
+      // cwnd += min (N, SMSS)，
+      // N 是 ACK 确认的未被确认的字节数
+      tcp->cwnd += min(acked_len, tcp->local_mss);
+
+      if (tcp->cwnd > tcp->ssthresh) {
+        // 进入拥塞避免状态
+        tcp->cc_state = CONGESTION_AVOIDANCE;
+      }
+    } 
+    else if (tcp->cc_state == CONGESTION_AVOIDANCE) {
+      // 拥塞避免状态
+      // 在拥塞避免状态，每收到一个 ACK，按公式 (SMSS * SMSS) / cwnd 增加 cwnd。
+      double add = (double)tcp->local_mss * (double)tcp->local_mss / (double)tcp->cwnd;
+      tcp->cwnd += std::max(int(add), 1);
+    } 
+    else if(tcp->cc_state == FAST_RECOVERY){
+      tcp->cwnd = tcp->ssthresh;
+      tcp->cc_state = CONGESTION_AVOIDANCE;
+    }
+  }
+
+  if (tcp->dup_ack_count == 3) {
+    printf("tcp->dup_ack_count == 3\n");
+    // 通过重传定时器检测到段丢失时
+  
+    // 在快速重传发送丢失的数据包之后，快速恢复算法将接管新数据的传输，直到收到非重复的 ACK
+    tcp->cc_state = FAST_RECOVERY;
+
+    // ssthresh 设置为 max (FlightSize / 2, 2*SMSS)。
+    // FlightSize : 网络中未确认数据的总量
+    
+    tcp->ssthresh = std::max((tcp->snd_nxt - tcp->snd_una) / 2, uint32_t(2 * tcp->local_mss));
+
+    // 将 cwnd 设置为 ssthresh 加上 3 倍的最大段大小（SMSS）
+    tcp->cwnd = tcp->ssthresh + 3 * tcp->local_mss;
+
+    // 快速重传看似丢失的数据
+    fast_retransmit(tcp, tcp->snd_una);
+  }
+  
+}
+
+// 超时重传后
+void cc_update_after_timeout(TCP *tcp) {
+  printf("In cc_update_after_timeout\n");
+  tcp->ssthresh = std::max((tcp->snd_nxt - tcp->snd_una) / 2, uint32_t(2 * tcp->local_mss));
+
+  tcp->cwnd = INITIAL_WINDOW;
+  tcp->dup_ack_count = 0;
+  
+  tcp->cc_state = SLOW_START;
+}
+
+// 快速重传
+void fast_retransmit(TCP *tcp, uint32_t retrans_seq) {
+  printf("In fast_retransmit: seq = %u\n", retrans_seq - tcp->iss);
+
+  for (auto it = tcp->retrans.queue.begin(); it != tcp->retrans.queue.end();) {
+    auto &pkt = *it;
+    if (tcp_seq_lt(pkt.seq, tcp->snd_una)) {
+      // 确认过了
+      it = tcp->retrans.queue.erase(it);
+    } 
+    else {
+      if (pkt.seq == retrans_seq) {
+        send_packet(pkt.buffer, pkt.size);
+        pkt.retrans_time = current_ts_msec() + RETRANS_TIME;
+      }
+      it++;
+    }
+  }
+}
+
+
+
+
+
+
+// tcp 用户调用函数
+
+// returns fd
+int tcp_socket() {
+  for (int i = 0;; i++) {
+    if (tcp_fds.find(i) == tcp_fds.end()) {
+      // found free fd, create one
+      TCP *tcp = new TCP;
+      tcp_fds[i] = tcp;
+
+      // 初始化重传计时器
+      retransmit retrans_timer;
+      retrans_timer.fd = i;
+
+      TIMERS.schedule_job(retrans_timer, RETRANS_TIME);
+
+      // add necessary initialization here
+      return i;
+    }
+  }
+}
+
+void tcp_connect(int fd, uint32_t dst_addr, uint16_t dst_port) {
+  TCP *tcp = tcp_fds[fd];
+
+  tcp->local_ip = client_ip;
+  // random local port
+  tcp->local_port = 40000 + (rand() % 10000);
+  tcp->remote_ip = dst_addr;
+  tcp->remote_port = dst_port;
+
+  // initialize params
+  // assume maximum mss for remote by default
+  tcp->local_mss = tcp->remote_mss = DEFAULT_MSS;
+
+  uint32_t initial_seq = generate_initial_seq();
+  // rfc793 page 54 OPEN Call CLOSED STATE
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-54
+  tcp->iss = initial_seq;
+
+  // only one unacknowledged number: initial_seq
+  // "Set SND.UNA to ISS, SND.NXT to ISS+1, enter SYN-SENT
+  // state, and return."
+  tcp->snd_una = initial_seq;
+  tcp->snd_nxt = initial_seq + 1;
+  tcp->snd_wnd = 0;
+  tcp->rcv_wnd = tcp->recv.free_bytes();
+  tcp->snd_wl2 = initial_seq - 1;
+  tcp->set_state(TCPState::SYN_SENT);
+
+  // send SYN to remote
+  // 44 = 20(IP) + 24(TCP)
+  // with 4 bytes option(MSS)
+  send_syn_pkt(tcp, false);
+  return;
+}
+
+// 发送数据
+ssize_t tcp_write(int fd, const uint8_t *data, size_t size) {
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+
+  printf("TCP_WRITE CALL, STATE: %s\n", tcp_state_to_string(tcp->state));
+
+  // rfc793 page 56 SEND Call
+  // https://www.rfc-editor.org/rfc/rfc793.html#page-56
+  if (tcp->state == TCPState::SYN_SENT || tcp->state == TCPState::SYN_RCVD) {
+    // queue data for transmission
+    // 在缓冲区中等待传输数据
+    printf("Queue data for transmission");
+    return tcp->send.write(data, size);
+  } 
+  else if (tcp->state == TCPState::ESTABLISHED ||
+             tcp->state == TCPState::CLOSE_WAIT) {
+
+    // queue data for transmission
+    size_t res = tcp->send.write(data, size);
+
+    // send data to remote
+    size_t bytes_to_send = tcp->send.size;
+
+
+    // DONE(step 3: send & receive)
+    // consider mss and send sequence space
+    // send sequence space: https://www.rfc-editor.org/rfc/rfc793.html#page-20
+    // figure 4 compute the segment length to send
+
+    
+
+    #ifdef ENABLE_NAGLE
+      send_pkt_nagle(tcp);
+    #else
+      send_pkt_directly(tcp);
+    #endif
+
+    return res;
+  }
+  return -1;
+}
+
+// 读取数据
+ssize_t tcp_read(int fd, uint8_t *data, size_t size) {
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+
+  // DONE(step 3: send & receive)
+  // copy from recv_buffer to user data
+
+  return tcp->recv.read(data, size);
+}
+
+
+void shutdown(TCP* tcp){
+  printf("In shutdown\n");
+
+  if(tcp->state == TCPState::FIN_WAIT_1){
+    // 已经进入了 FIN_WAIT_1 状态，不需要更多操作
+  }
+  else if(tcp->shutdown_waiting){
+    send_pkt_directly(tcp);
+    if(tcp->send.size == 0){
+      // 发送FIN 包
+      send_fin_pkt(tcp);
+      tcp->snd_nxt += 1;
+      tcp->set_state(TCPState::FIN_WAIT_1);
+    }
+
+  }
+  else if (tcp->state == TCPState::ESTABLISHED) {
+    // DONE(step 4: connection termination)
+    // "Queue this until all preceding SENDs have been segmentized, then
+    // form a FIN segment and send it. In any case, enter FIN-WAIT-1 state."
+    
+    // 尝试发送所有数据
+    send_pkt_directly(tcp);
+    if(tcp->send.size == 0){
+      printf("tcp->send.size == 0\n");
+      // 发送FIN 包
+      send_fin_pkt(tcp);
+      tcp->snd_nxt += 1;
+      tcp->set_state(TCPState::FIN_WAIT_1);
+    }
+    // 如果没发完
+    else if(tcp->send.size > 0){
+      // 关闭等待状态，等发完才 fin
+      printf("tcp->shutdown_waiting = true;\n");
+      tcp->shutdown_waiting = true;
+    }
+    
+  } 
+  else if (tcp->state == TCPState::CLOSE_WAIT) {
+    // DONE(step 4: connection termination)
+    // CLOSE_WAIT STATE
+    // "Queue this request until all preceding SENDs have been
+    // segmentized; then send a FIN segment, enter LAST-ACK state."
+    send_pkt_directly(tcp);
+    if(tcp->send.size == 0){
+      send_fin_pkt(tcp);
+      tcp->snd_nxt += 1;
+      tcp->set_state(TCPState::LAST_ACK);
+    }
+    else if(tcp->send.size > 0){
+      tcp->shutdown_waiting = true;
+    }
+  }
+}
+
+void tcp_shutdown(int fd) {
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+
+  shutdown(tcp);
+
+  // CLOSE Call
+  
+}
+
+void tcp_close(int fd) {
+  // shutdown first
+  tcp_shutdown(fd);
+
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+
+  // remove connection if closed
+  if (tcp->state == TCPState::CLOSED) {
+    printf("Removing TCP connection fd=%d\n", fd);
+    tcp_fds.erase(fd);
+    delete tcp;
+  }
+}
+
+void tcp_bind(int fd, be32_t addr, uint16_t port) {
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+
+  tcp->local_ip = addr;
+  tcp->local_port = port;
+  // wildcard
+  tcp->remote_ip = 0;
+  tcp->remote_port = 0;
+}
+
+void tcp_listen(int fd) {
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+
+  // enter listen state
+  tcp->set_state(TCPState::LISTEN);
+}
+
+int tcp_accept(int fd) {
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+
+  // pop fd from accept queue
+  if (tcp->accept_queue.empty()) {
+    return -1;
+  } else {
+    int fd = tcp->accept_queue.front();
+    tcp->accept_queue.pop_front();
+    return fd;
+  }
+}
+
+TCPState tcp_state(int fd) {
+  TCP *tcp = tcp_fds[fd];
+  assert(tcp);
+  return tcp->state;
+}
+
+
+void TCP::print_send_sack_info(){
+  if (send_sack_blocks.empty()) {
+    printf("send_sack_blocks: No SACK blocks\n");
+  } else {
+    printf("send_sack_blocks blocks:\n");
+    for (const auto &block : send_sack_blocks) {
+      printf("  [%u, %u]\n", block.left_edge, block.right_edge);
+    }
+  }
+}
+
+void TCP::print_recv_sack_info(){
+  if (recv_sack_blocks.empty()) {
+    printf("recv_sack_blocks: No SACK blocks\n");
+  } else {
+    printf("recv_sack_blocks blocks:\n");
+    for (const auto &block : recv_sack_blocks) {
+      printf("  [%u, %u]\n", block.left_edge, block.right_edge);
+    }
+  }
+}
+
+void update_recv_sack_blocks(TCP *tcp, uint32_t seg_seq, uint32_t seg_len) {
+  // 更新接收方的 SACK 块
+  for (auto it = tcp->recv_sack_blocks.begin(); it != tcp->recv_sack_blocks.end(); ++it) {
+    if (seg_seq <= it->right_edge && seg_seq + seg_len >= it->left_edge) {
+      // 如果当前数据段与已有的 SACK 块重叠，则合并
+      it->left_edge = std::min(it->left_edge, seg_seq);
+      it->right_edge = std::max(it->right_edge, seg_seq + seg_len);
+      return;
+    }
+  }
+  // 否则，添加新的 SACK 块
+  tcp->recv_sack_blocks.emplace_back(seg_seq, seg_seq + seg_len);
+
+  // 限制 SACK 块的数量
+  if (tcp->recv_sack_blocks.size() > 4) {
+    tcp->recv_sack_blocks.erase(tcp->recv_sack_blocks.begin());
+  }
+}
+
+
+void update_sack_info(TCP *tcp, uint32_t ack_seq) {
+  for (auto it = tcp->send_sack_blocks.begin(); it != tcp->send_sack_blocks.end(); ) {
+    if (ack_seq >= it->right_edge) {
+      it = tcp->send_sack_blocks.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+```
+
+## [src\lab\timers.cpp](./src\lab\timers.cpp)
+
+```
+#include "timers.h"
+#include <sys/time.h>
+#include <time.h>
+
+Timers TIMERS;
+
+uint64_t current_ts_msec() {
+  struct timespec tp;
+  clock_gettime(CLOCK_MONOTONIC, &tp);
+  return tp.tv_sec * 1000 + tp.tv_nsec / 1000 / 1000;
+}
+
+uint64_t current_ts_usec() {
+  struct timespec tp;
+  clock_gettime(CLOCK_MONOTONIC, &tp);
+  return tp.tv_sec * 1000 * 1000 + tp.tv_nsec / 1000;
+}
+
+Timer::Timer(timer_fn fn, uint64_t ts_msec, uint64_t id) {
+  this->fn = fn;
+  this->ts_msec = ts_msec;
+  this->id = id;
+}
+
+bool Timer::operator<(const Timer &other) const {
+  // smallest ts first
+  return this->ts_msec > other.ts_msec || (this->ts_msec == other.ts_msec && this->id > other.id);
+}
+
+Timers::Timers() {
+  timer_counter = 0;
+}
+
+void Timers::trigger() {
+  uint64_t cur_ts = current_ts_msec();
+  while (!timers.empty()) {
+    auto timer = timers.top();
+    if (timer.ts_msec > cur_ts) {
+      break;
+    }
+    timers.pop();
+    if (removed_timer_ids.find(timer.id) != removed_timer_ids.end()) {
+      removed_timer_ids.erase(timer.id);
+      continue;
+    }
+    int res = timer.fn();
+    if (res >= 0) {
+      reschedule_job(timer.fn, res, timer.id);
+    }
+  }
+}
+
+uint64_t Timers::add_job(timer_fn fn, uint64_t ts_msec) {
+  timers.emplace(fn, ts_msec, timer_counter);
+  return timer_counter++;
+}
+
+void Timers::readd_job(timer_fn fn, uint64_t ts_msec, uint64_t id) {
+  timers.emplace(fn, ts_msec, id);
+}
+
+uint64_t Timers::schedule_job(timer_fn fn, uint64_t delay_msec) {
+  timers.emplace(fn, delay_msec + current_ts_msec(), timer_counter);
+  return timer_counter++;
+}
+
+void Timers::reschedule_job(timer_fn fn, uint64_t delay_msec, uint64_t id) {
+  timers.emplace(fn, delay_msec + current_ts_msec(), id);
+}
+
+void Timers::remove_job(uint64_t id) {
+  removed_timer_ids.emplace(id);
+}
+```
+
+## [src\lwip\lwip-client.cpp](./src\lwip\lwip-client.cpp)
+
+```
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "common.h"
+#include "ip.h"
+#include "lwip/apps/http_client.h"
+#include "lwip/arch.h"
+#include "lwip/dhcp.h"
+#include "lwip/etharp.h"
+#include "lwip/init.h"
+#include "lwip/netif.h"
+#include "lwip/opt.h"
+#include "lwip/timeouts.h"
+#include "lwip_common.h"
+
+// callbacks
+err_t httpc_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err) {
+
+  printf("HTTP Got Body:\n");
+
+  // p might have next, don't use payload directly
+  u8_t *buffer = (u8_t *)malloc(p->tot_len);
+  pbuf_copy_partial(p, buffer, p->tot_len, 0);
+  fwrite(buffer, p->tot_len, 1, stdout);
+
+  free(buffer);
+  // inform tcp that we have taken the data
+  altcp_recved(tpcb, p->tot_len);
+  pbuf_free(p);
+  return ERR_OK;
+}
+
+err_t httpc_headers_done(httpc_state_t *connection, void *arg, struct pbuf *hdr,
+                         u16_t hdr_len, u32_t content_len) {
+  printf("HTTP Got Headers:\n");
+
+  // p might have next, don't use payload directly
+  u8_t *buffer = (u8_t *)malloc(hdr->tot_len);
+  pbuf_copy_partial(hdr, buffer, hdr->tot_len, 0);
+  fwrite(buffer, hdr->tot_len, 1, stdout);
+
+  printf("Header Length: %d\n", hdr_len);
+  printf("Content Length: %d\n", content_len);
+
+  free(buffer);
+  return ERR_OK;
+}
+
+bool exiting = false;
+void httpc_result(void *arg, httpc_result_t httpc_result, u32_t rx_content_len,
+                  u32_t srv_res, err_t err) {
+  printf("Server Result: %d\n", srv_res);
+  printf("Content Length: %d\n", rx_content_len);
+  printf("Exiting\n");
+  exiting = true;
+}
+
+int main(int argc, char *argv[]) {
+  set_ip(client_ip_s, server_ip_s);
+  parse_argv(argc, argv);
+
+  // init lwip
+  setup_lwip(client_ip_s);
+
+  ip_addr_t server_addr = ip4_from_string(server_ip_s);
+  httpc_connection_t settings{0};
+  settings.result_fn = httpc_result;
+  settings.headers_done_fn = httpc_headers_done;
+  httpc_get_file(&server_addr, 80, "/index.html", &settings, httpc_recv, NULL,
+                 NULL);
+
+  const size_t buffer_size = 2048;
+  u8_t buffer[buffer_size];
+  while (!exiting) {
+    ssize_t size = recv_packet(buffer, buffer_size);
+    if (size >= 0) {
+      // got data
+      struct pbuf *p = pbuf_alloc(PBUF_RAW, size, PBUF_POOL);
+      memcpy(p->payload, buffer, size);
+
+      if (netif.input(p, &netif) != ERR_OK) {
+        pbuf_free(p);
+      }
+    }
+    fflush(stdout);
+    sys_check_timeouts();
+    loop_yield();
+  }
+  // wait for lwip to finish
+  while (sys_timeouts_sleeptime() != SYS_TIMEOUTS_SLEEPTIME_INFINITE) {
+    sys_check_timeouts();
+    loop_yield();
+    printf("Waiting for lwip to finish\n");
+    fflush(stdout);
+  }
+  return 0;
+}
+
+```
+
+## [src\lwip\lwip-server.cpp](./src\lwip\lwip-server.cpp)
+
+```
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <sys/un.h>
+#include <unistd.h>
+
+#include "common.h"
+#include "timers.h"
+#include "ip.h"
+#include "lwip/apps/httpd.h"
+#include "lwip/arch.h"
+#include "lwip/dhcp.h"
+#include "lwip/etharp.h"
+#include "lwip/init.h"
+#include "lwip/netif.h"
+#include "lwip/opt.h"
+#include "lwip/timeouts.h"
+#include "lwip_common.h"
+
+int main(int argc, char *argv[]) {
+  set_ip(server_ip_s, client_ip_s);
+  parse_argv(argc, argv);
+
+  // init lwip
+  setup_lwip(server_ip_s);
+
+  httpd_init();
+
+  const size_t buffer_size = 2048;
+  u8_t buffer[buffer_size];
+  while (1) {
+    ssize_t size = recv_packet(buffer, buffer_size);
+    if (size >= 0) {
+      // got data
+      struct pbuf *p = pbuf_alloc(PBUF_RAW, size, PBUF_POOL);
+      memcpy(p->payload, buffer, size);
+
+      if (netif.input(p, &netif) != ERR_OK) {
+        pbuf_free(p);
+      }
+    }
+    TIMERS.trigger();
+    fflush(stdout);
+    sys_check_timeouts();
+    loop_yield();
+  }
+  return 0;
+}
+
+```

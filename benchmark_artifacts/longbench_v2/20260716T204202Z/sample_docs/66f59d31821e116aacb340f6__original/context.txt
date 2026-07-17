@@ -1,0 +1,7203 @@
+Automatic Machine Translation Evaluation in Many Languages
+via Zero-Shot Paraphrasing
+Abstract
+We frame the task of machine translation
+evaluation as one of scoring machine transla-
+tion output with a sequence-to-sequence para-
+phraser, conditioned on a human reference.
+We propose training the paraphraser as a multi-
+lingual NMT system, treating paraphrasing as
+a zero-shot translation task (e.g., Czech to
+Czech). This results in the paraphraser’s out-
+put mode being centered around a copy of the
+input sequence, which represents the best case
+scenario where the MT system output matches
+a human reference. Our method is simple and
+intuitive, and does not require human judge-
+ments for training. Our single model (trained
+in 39 languages) outperforms or statistically
+ties with all prior metrics on the WMT 2019
+segment-level shared metrics task in all lan-
+guages (excluding Gujarati where the model
+had no training data).
+We also explore us-
+ing our model for the task of quality estima-
+tion as a metric—conditioning on the source
+instead of the reference—and ﬁnd that it sig-
+niﬁcantly outperforms every submission to the
+WMT 2019 shared task on quality estimation
+in every language pair.
+1
+Introduction
+Machine Translation (MT) systems have improved
+dramatically in the past several years.
+This is
+largely due to advances in neural MT (NMT)
+methods, but the pace of improvement would not
+have been possible without automatic MT metrics,
+which provide immediate feedback on MT qual-
+ity without the time and expense associated with
+obtaining human judgments of MT output.
+However, the improvements that existing auto-
+matic metrics helped enable are now causing the
+correlation between human judgments and auto-
+matic metrics to break down (Ma et al., 2019;
+Mathur et al., 2020) especially for BLEU (Papineni
+et al., 2002), which has been the de facto standard
+Hi (p=.3)
+world (p=.6)
+world
+<EN>
+Hi
+Language-
+Agnostic
+Represen-
+tation
+amico
+<FR>
+Salut
+Salut
+l’ami
+TRAINING:
+SCORING:
+Ciao
+Hello
+Language-
+Agnostic
+Represen-
+tation
+Figure 1: Our model is trained on multilingual paral-
+lel examples such as “Ciao amico” translated to French
+is “Salut l’ami.”
+At evaluation time, the model is
+used in zero-shot mode to score MT system outputs
+conditioned on their corresponding human references.
+For example, the MT system output “Hi world” condi-
+tioned on the human reference “Hello world” is found
+to have token probabilities [0.3, 0.6].
+metric since its introduction almost two decades
+ago. The problem currently appears limited to very
+strong systems, but as hardware, modeling, and
+available training data improve, it is likely BLEU
+will fail more frequently in the future. This could
+prove extremely detrimental if the MT community
+fails to adopt an improved metric, as good ideas
+could quietly be discarded or rejected from publi-
+cation because they do not correlate with BLEU.
+In fact, this may already be happening.
+We propose using a sentential, sequence-to-
+sequence paraphraser to force-decode and score
+MT outputs conditioned on their corresponding hu-
+man references. Our model implicitly represents
+the entire (exponentially large) set of potential para-
+phrases of a sentence, both valid and invalid; by
+“querying” the model with a particular system out-
+
+
+91
+put, we can use the model score to measure how
+well the system output paraphrases the human ref-
+erence translation. Our model is not trained on any
+human quality judgements, which are not available
+in many domains and/or language pairs.
+The best possible MT output is one which per-
+fectly matches a human reference; therefore, for
+evaluation, an ideal paraphraser would be one with
+an output distribution centered around a copy of
+its input sentence. We denote such a model a “lex-
+ically/syntactically unbiased paraphraser” to dis-
+tinguish it from a standard paraphraser trained to
+produce output which conveys the meaning of the
+input while also being lexically and/or syntacti-
+cally different from it. For this reason, we propose
+using a multilingual NMT system as an unbiased
+paraphraser by treating paraphrasing as zero-shot
+“translation” (e.g., Czech to Czech). We show that
+a multilingual NMT model is much closer to an
+ideal lexically/syntactically unbiased paraphraser
+than a generative paraphraser trained on synthetic
+paraphrases. It also allows a single model to work
+in many languages, and can be applied to the task
+of “Quality estimation (QE) as a metric” (Fonseca
+et al., 2019) by conditioning on the source instead
+of the reference. Figure 1 illustrates our method,
+which we denote Prism (Probability is the metric).
+We train a single model in 39 languages and
+show that it:
+• Outperforms or ties with prior metrics and
+several contrastive neural methods on the
+segment-level WMT 2019 MT metrics task
+in every language pair;1
+• Is able to discriminate between very strong
+neural systems at the system level, addressing
+a problem raised at WMT 2019; and
+• Signiﬁcantly outperforms all QE metrics sub-
+mitted to the WMT 2019 QE shared task
+Finally, we contrast the effectiveness of our model
+when scoring MT output using the source vs the hu-
+man reference. We observe that human references
+substantially improve performance, and, crucially,
+allow our model to rank systems that are substan-
+tially better than our model at the task of transla-
+tion. This is important because it establishes that
+our method does not require building a state-of-the-
+art multilingual NMT model in order to produce
+a state-of-the-art MT metric capable of evaluating
+state-of-the-art MT systems.
+1Except for Gujarati, where we had no training data.
+We release our model, metrics toolkit, and pre-
+processed training data.2
+2
+Related Work
+MT Metrics
+Early MT metrics like BLEU (Pa-
+pineni et al., 2002) and NIST (Doddington, 2002)
+use token-level n-gram overlap between the MT
+output and the human reference.
+Overlap can
+also be measured at the character level (Popovi´
+c,
+2015, 2017) or using edit distance (Snover et al.,
+2006). Many metrics use word- and/or sentence-
+level embeddings, including ReVal (Gupta et al.,
+2015), RUSE (Shimanaka et al., 2018), WMDO
+(Chow et al., 2019), and ESIM (Mathur et al., 2019).
+MEANT (Lo and Wu, 2011) and MEANT 2.0 (Lo,
+2017) measure similarity between semantic frames
+and role ﬁllers. State-of-the-art methods including
+YiSi (Lo, 2019) and BERTscore (Zhang et al., 2019,
+2020) rely on contextualized embeddings (Devlin
+et al., 2019) trained on large (non-parallel) corpora.
+BLEURT (Sellam et al., 2020) applies ﬁne tuning
+of BERT, including training on prior human judge-
+ments. In contrast, our work exploits parallel bitext
+and doesn’t require training on human judgements.
+Paraphrase Databases
+Prior work explored us-
+ing parallel bitext to identify phrase level para-
+phrases (Bannard and Callison-Burch, 2005; Gan-
+itkevitch et al., 2013) including bitext in multiple
+language pairs (Ganitkevitch and Callison-Burch,
+2014). Paraphrase tables were, in turn, used in MT
+metrics to reward systems for paraphrasing words
+(Banerjee and Lavie, 2005) or phrases (Zhou et al.,
+2006; Denkowski and Lavie, 2010) from the human
+reference. Our work can be viewed as extending
+this idea to the sentence level, without having to
+enumerate the millions or billions of paraphrases
+(Dreyer and Marcu, 2012) for each sentence.
+Multilingual NMT
+Multilingual NMT (Dong
+et al., 2015) has been shown to rival performance
+of single language pair models in high-resource
+languages (Aharoni et al., 2019; Arivazhagan et al.,
+2019) while also improving low-resource trans-
+lation via transfer learning from higher-resource
+languages (Zoph et al., 2016; Nguyen and Chi-
+ang, 2017; Neubig and Hu, 2018). An extreme
+low-resource setting is where the system translates
+between languages seen during training, but in a
+language pair where it did not see any training
+2https://github.com/thompsonb/prism
+
+
+92
+Word-level paraphraser log probabilities
+H(out|in) sBLEU LASER
+Copy
+Jason went
+to
+school
+at
+the University
+of
+Madrid
+.
+<EOS>
+-0.08 -0.26 -0.16 -0.16 -0.12 -0.11
+-0.14
+-0.10 -0.10 -0.11
+-0.10
+-0.13
+100.0
+1.000
+Disﬂuent
+Jason went school
+at
+University
+of
+Madrid
+.
+<EOS>
+-0.08 -0.26 -7.21 -0.12
+-4.81
+-0.10 -0.11 -0.11
+-0.10
+-1.43
+35.5
+0.989
+Inadequate
+Jason will
+go
+to
+school
+at
+the University
+of
+Madrid
+.
+<EOS>
+-0.08 -9.77 -0.76 -0.22 -0.19 -0.14 -0.15
+-0.16
+-0.10 -0.10 -0.12
+-0.10
+-0.99
+70.8
+0.960
+Jason went
+to
+school
+at
+the University
+of
+Berlin
+.
+<EOS>
+-0.08 -0.26 -0.16 -0.16 -0.12 -0.11
+-0.14
+-0.10 -10.34 -0.12
+-0.10
+-1.06
+78.3
+0.957
+Fluent &
+Adequate
+Jason attended the University
+of
+Madrid
+.
+<EOS>
+-0.08
+-2.01
+-1.63
+-0.42
+-0.10 -0.09 -0.16
+-0.10
+-0.57
+41.1
+0.918
+Table 1: Example token-level log probabilities from our model for various output sentences, conditioned on input
+sentence (i.e., human reference) “Jason went to school at the University of Madrid.” H(out|in) denotes the average
+token-level log probability. We observe that our model generally penalizes any deviations (bolded) from the input
+sentence, but tends to penalize deviations which change the meaning of the sentence or introduce a disﬂuency
+more harshly than those which are ﬂuent and adequate. Sentence-level BLEU with smoothing=1 (“sBLEU”) and
+LASER embedding cosine similarity (“LASER”) are shown for comparison. We note that LASER appears fairly
+insensitive to disﬂuencies, and sentenceBLEU struggles to reward valid paraphrases.
+data, denoted ‘zero-shot’ translation. Despite ev-
+idence that intermediate representations are not
+truly language-agnostic (Kudugunta et al., 2019),
+zero-shot translation has been shown successful, es-
+pecially between related languages (Johnson et al.,
+2017; Gu et al., 2018; Pham et al., 2019).
+Generative Paraphrasing
+Sentential paraphras-
+ing can be accomplished by training an MT sys-
+tem on paraphrase examples instead of translation
+pairs (Quirk et al., 2004). While natural paraphrase
+datasets do exist (Quirk et al., 2004; Coster and
+Kauchak, 2011; Fader et al., 2013; Lin et al., 2014;
+Federmann et al., 2019), they are somewhat lim-
+ited. An alternative is to start with much more
+plentiful bitext and back-translate one side into
+the language of the other to create synthetic para-
+phrases on which to train (Prakash et al., 2016;
+Wieting and Gimpel, 2018; Hu et al., 2019a,b,c).
+Tiedemann and Scherrer (2019) propose using para-
+phrasing as a way to measure the semantic abstrac-
+tion of multilingual NMT. They also propose using
+a multilingual NMT model as a generative para-
+phraser.3
+Semantic Similarity
+Parallel corpora in many
+language pairs have been used to produce
+ﬁxed-size, multilingual sentence representations
+(Schwenk and Douze, 2017; Wieting et al., 2017;
+Artetxe and Schwenk, 2018; Wieting et al., 2019;
+Raganato et al., 2019).
+LASER (Artetxe and
+3We ﬁnd that generating from a well trained multilingual
+NMT system tends to produce copies of the input, as opposed
+to interesting paraphrases (see Appendix A).
+Schwenk, 2018), for example, trains a variant of
+NMT with a ﬁxed-size intermediate representation
+in 93 languages. Embeddings produced by the
+encoder can be compared to measure intra- or inter-
+lingual semantic similarity.
+3
+Method
+We propose using a paraphraser to force-decode
+and estimate probabilities of MT system outputs,
+conditioned on their corresponding human refer-
+ences. Let p(yt|yi<t, x) be the probability our para-
+phraser assigns to the tth token in output sequence
+y, given the previous output tokens yi<t and the
+input sequence x. Table 1 shows an example of
+how token-level probabilities from our model (de-
+scribed in §4) penalize both ﬂuency and adequacy
+errors given a human reference. We consider two
+ways of combining token-level probabilities from
+the model—sequence-level log probability (G) and
+average token-level log probability (H):
+G(y|x) =
+|y|
+X
+t=1
+log p(yt|yi<t, x)
+H(y|x) = 1
+|y|G(y|x)
+Let sys denote an MT system output, ref denote a
+human reference, and src denote the source. We
+expect scoring sys conditioned on ref to be most
+indicative of the quality of sys. However, we also
+explore scoring ref conditioned on sys as we ﬁnd
+qualitatively that output sentences which drop some
+
+
+93
+meaning conveyed by the input sentence are penal-
+ized less harshly by the model than output sen-
+tences which contain extra information not present
+in the input. Scoring in both directions to penalize
+the presence of information in one sentence but not
+the other is similar, in spirit, to methods which use
+bi-directional textual entailment as an MT metric
+(Pad´
+o et al., 2009; Khobragade et al., 2019).4
+We postulate that the output sentence that best
+represents the meaning of an input sentence is, in
+fact, simply a copy of the input sentence, as precise
+word order and choice often convey subtle connota-
+tions. As such, we seek a model whose output dis-
+tribution is centered around a copy of the input sen-
+tence, which we denote a “lexically/syntactically
+unbiased paraphraser.” While a standard generative
+paraphraser is trained to retain semantic meaning,
+it does not meet our criteria because it is simul-
+taneously trained to produce output which is lex-
+ically/syntactically different than its input, a key
+element in generative paraphrasing (Bhagat and
+Hovy, 2013).
+We propose using a multilingual NMT system
+as a lexically/syntactically unbiased paraphraser. A
+multilingual NMT system consists of an encoder
+which maps a sentence in to an (ideally) language-
+agnostic semantic representation, and decoder to
+map that representation back to a sentence. The
+model has only seen bitext in training, but we pro-
+pose to treat paraphrasing as a zero-shot “transla-
+tion” (e.g., Czech to Czech).
+Because our model is multilingual, we can also
+score MT system output conditioned on the source
+sentence instead of the human reference. This task
+is known as “quality estimation (QE) as a metric,”
+and was part of the WMT19 QE shared task (Fon-
+seca et al., 2019). We use “Prism-ref” to denote our
+reference-based metric and “Prism-src” to denote
+our system applied as a QE metric.
+Our ﬁnal metric and QE metric are deﬁned based
+on results on our development set (see §5.2) as
+follows:
+Prism-ref = 1
+2H(sys|ref) + 1
+2H(ref|sys)
+Prism-src = H(sys|src)
+To obtain system-level scores, we average segment-
+level scores over all segments in the test set.
+4Conditional probabilities of MT systems in each direc-
+tion have been shown effective at ﬁltering MT training data
+(Junczys-Dowmunt, 2018).
+4
+Experiments
+We train a multilingual NMT model and ex-
+plore the extent to which it functions as a lexi-
+cally/syntactically unbiased paraphraser. We then
+conduct several preliminary experiments on the
+WMT18 MT metrics data (Ma et al., 2018) to de-
+termine how to best utilize the token-level probabil-
+ities from the paraphraser, and report results on the
+WMT19 system- and segment-level metric tasks
+(Ma et al., 2019) and QE as a metric task (Fonseca
+et al., 2019).
+4.1
+Data Preparation
+Our method requires a model, which in turn re-
+lies heavily on the data on which it is trained, so
+we describe here the rationale behind the design
+decisions made regarding the training data. Full
+details sufﬁcient for replication are provided in Ap-
+pendix B.
+Language-Agnostic
+Representations
+To
+en-
+courage our intermediate representation to be as
+language-agnostic as possible, we choose datasets
+with as much language pair diversity as possible
+(i.e., not just en–* and *–en), as Kudugunta et al.
+(2019) has shown that encoder representation is
+affected by both the source language and target
+language. While it is common to append the target
+language token to the source sentence, we instead
+prepend it to the target sentence so that the encoder
+cannot do anything target-language speciﬁc with
+this tag. At test time, we force-decode the desired
+language tag prior to scoring.
+Noise
+NMT systems are known to be sensi-
+tive to noise, including sentence alignment errors
+(Khayrallah and Koehn, 2018), so we perform ﬁl-
+tering with LASER (Schwenk, 2018; Chaudhary
+et al., 2019). We also perform language ID ﬁltering
+using FastText (Joulin et al., 2016) to avoid training
+the decoder with incorrect language tags.
+Number of Languages
+Aharoni et al. (2019)
+found that performance of zero-shot translation
+in a related language pair increased substantially
+when increasing the number of languages from
+5 languages and 25, with a performance plateau
+somewhere between 25 and 50 languages. We view
+paraphrasing as zero-shot translation between sen-
+tences in the same language, so we expect to need
+a similar number of languages.
+
+
+94
+Copies
+We ﬁlter sentence pairs with excessive
+copies and partial copies, as multiple studies (Ott
+et al., 2018; Khayrallah and Koehn, 2018) have
+noted that MT performance degrades substantially
+when systems are exposed to copies in training.
+4.2
+Model Training
+We train a Transformer (Vaswani et al., 2017)
+model with approximately 745M parameters to
+translate between 39 languages. The full list of
+languages and data amounts used is provided in
+Appendix B, and model training details sufﬁcient
+for replication are given in Appendix C. Train-
+ing a single large model consumed the majority of
+our compute budget, thus performing ablations is
+beyond the scope of this work.
+Our data comes primarily from WikiMatrix
+(Schwenk et al., 2019), Global Voices,5 EuroParl
+(Koehn, 2005), SETimes,6 and United Nations
+(Eisele and Chen, 2010). The data processing de-
+scribed above and in Appendix B results in 99.8M
+sentence pairs in 39 languages.7 The most common
+language is English, at 16.7% of our data, while
+the least common 20 languages account for 21.9%.
+4.3
+Baselines and Contrastive Methods
+We compare to all systems from the WMT19
+shared metrics task, as well as BERTscore (Zhang
+et al., 2020) and the recent BLEURT method (Sel-
+lam et al., 2020). We also explore several con-
+trastive methods. Training details sufﬁcient for
+replication for each model/baseline are given in
+Appendix C.
+Generative Sentential Paraphraser
+We com-
+pare scoring with our Prism model vs a standard,
+English-only paraphraser trained on the ParaBank
+2 dataset (Hu et al., 2019c). ParaBank 2 contains
+∼50M synthetic paraphrastic pairs derived from
+back-translating a Czech–English corpus, and the
+authors report state-of-the-art paraphrasing results.
+Auto-encoder
+Auto-encoders provide an alterna-
+tive means of training seq2seq models, without the
+need for parallel bitext. We compare to scoring
+with the “multilingual denoising pre-trained model”
+(mBART) of Liu et al. (2020), as it works in all
+languages of interest.
+5http://casmacat.eu/corpus/
+global-voices.html
+6http://nlp.ffzg.hr/resources/corpora/
+setimes/
+7For every sentence pair (a,b) in our 99.8M examples, we
+train on both (a,b) and (b,a)
+LASER
+We explore using the cosine distance be-
+tween LASER embeddings of the MT output and
+human reference, using the pretrained 93-language
+model provided by the authors.8 We are particu-
+larly interested in LASER as it, like our model, is
+trained on parallel bitext in many languages.
+Language Model
+We ﬁnd qualitatively that
+LASER is fairly insensitive to disﬂuencies (see
+Table 1), so we also explore augmenting it with
+language model (LM) scores of the system outputs.
+We train a multilingual language model (see Ap-
+pendix C) on the same data as our multilingual
+NMT system.
+4.4
+Paraphraser Bias
+We expect that a lexically/syntactically unbiased
+measure of translation quality should (on average)
+increase with increased lexical similarity between
+a translation and reference. To explore the extent
+to which Prism and the model trained on ParaBank
+2 are biased, we consider average H(sys|ref) as a
+function of binned lexical similarity (approximated
+by sentBLEU, with smoothing=1) for all (sys, ref)
+pairs for all systems submitted to WMT19 in all
+language pairs into English. We also contrast the
+conditional probabilities of three outputs for the
+same input: (1) the sequence generated by the
+model via beam search; (2) a copy of the input;
+and (3) a human paraphrase of the input. Finally,
+we generate from the model using beam search and
+examine the outputs to see how much they differ
+from the inputs.
+4.5
+MT Metrics Evaluation
+We report results and statistical signiﬁcance us-
+ing scripts released with the WMT19 shared task.
+Segment-level performance is reported as the
+Kendall’s τ variant used in the shared task, and
+system-level performance is reported as Pearson
+correlation with the mean of the human judgments.
+Bootstrap resampling (Koehn, 2004; Graham et al.,
+2014) is used to estimate conﬁdence intervals for
+each metric, and metrics with non-overlapping 95%
+conﬁdence intervals are identiﬁed as having a sta-
+tistically signiﬁcant difference in performance.
+
+
+95
+0 10
+(8.0%)
+10 20
+(29%)
+20 30
+(21%)
+30 40
+(15%)
+40 50
+(11%)
+50 60
+(6.9%)
+60 70
+(3.9%)
+70 80
+(2.2%)
+80 90
+(0.9%)
+90 100
+(1.5%)
+sentBLEU (Prevalence in parentheses)
+-3.0
+-2.0
+-1.0
+0.0
+H(sys|ref)
+Prism (This Work)
+ParaBank 2
+Figure 2: Average H(sys|ref) as a function of average lexical difference (as measured by sentBLEU) for every
+English (sys, ref) pair submitted to WMT19, for both the Prism and ParaBank 2 paraphrasers. (sys, ref) pairs are
+split into 10 sentBLEU bins of uniform width. Fraction of total data in each bin is shown on x-axis (in parentheses).
+en–cs
+en–de
+en–ﬁ
+en–gu
+en–kk
+en–lt
+en–ru
+en–zh
+de–cs
+de–fr
+fr–de
+BERTSCORE (Zhang et al., 2020)
+0.485
+0.345
+0.524
+0.558
+0.533
+0.463
+0.580
+0.347
+0.352
+0.325
+0.274
+EED‡ (Stanchev et al., 2019)
+0.431
+0.315
+0.508
+0.568
+0.518
+0.425
+0.546
+0.257
+0.345
+0.301
+0.267
+YISI-1‡ (Lo, 2019)
+0.475
+0.351
+0.537
+0.551
+0.546
+0.470
+0.585
+0.355
+0.376
+0.349
+0.310
+YISI-1 SRL‡ (Lo, 2019)
+−
+0.368
+−
+−
+−
+−
+−
+0.361
+−
+−
+0.299
+Prism-ref (This Work)
+0.582
+0.427
+0.591
+0.313
+0.531
+0.558
+0.584
+0.376
+0.458
+0.453
+0.426
+LASER + LM (Contrastive)
+0.535
+0.401
+0.568
+0.306
+0.408
+0.503
+0.640
+0.356
+0.431
+0.401
+0.381
+mBART (Contrastive)
+0.345
+0.302
+0.401
+0.528
+0.462
+0.365
+0.443
+0.280
+0.262
+0.255
+0.236
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+BERTSCORE (Zhang et al., 2020)
+0.176
+0.345
+0.320
+0.432
+0.381
+0.223
+0.430
+BLEURT (Sellam et al., 2020)
+0.204
+0.367
+0.311
+0.447
+0.387
+0.228
+0.423
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+0.167
+0.337
+0.303
+0.435
+0.359
+0.201
+0.396
+YISI-1‡ (Lo, 2019)
+0.164
+0.347
+0.312
+0.440
+0.376
+0.217
+0.426
+YISI-1 SRL‡ (Lo, 2019)
+0.199
+0.346
+0.306
+0.442
+0.380
+0.222
+0.431
+Prism-ref (This Work)
+0.204
+0.357
+0.313
+0.434
+0.382
+0.225
+0.438
+Prism-ref w/ ParaBank 2 (Contrastive)
+0.184
+0.341
+0.326
+0.425
+0.373
+0.207
+0.432
+LASER + LM (Contrastive)
+0.190
+0.335
+0.319
+0.428
+0.368
+0.207
+0.416
+mBART (Contrastive)
+0.136
+0.255
+0.246
+0.377
+0.298
+0.162
+0.349
+Table 2: WMT19 segment-level human correlation (τ), to non-English (top) and to English (bottom). Bold denotes
+top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method.
+‡:WMT19 Metric Submission. For brevity, only competitive baselines are shown. For complete results see Ap-
+pendix E. Our models were not trained on Gujarati (gu). “LASER + LM” denotes the optimal linear combination
+found on the development set.
+5
+Results
+5.1
+Paraphraser Bias Results
+We ﬁnd H(sys|ref) increases monotonically with
+sentBLEU for the Prism model, but the model
+trained on ParaBank 2 has nearly the same scores
+for output with sentBLEU in the range of 60 to 100;
+however that range accounts for only about 8.5%
+of all system outputs (see Figure 2). We ﬁnd that
+a copy of the input is almost as probable as beam
+search output for the Prism model. In contrast, the
+8https://github.com/facebookresearch/
+LASER
+model trained on ParaBank 2 prefers its own beam
+search output to a copy of the input. Addition-
+ally, beam search from our model produces output
+which is more lexically similar to the input (BLEU
+of 82.8 with respect to input, vs 31.9 for ParaBank
+2). ParaBank 2 tends to change the output in ways
+which occasionally signiﬁcantly alter the meaning
+of the sentence. See Appendix A for more details.
+All of these ﬁndings support our hypothesis that our
+model is closer to an ideal lexically/syntactically
+unbiased paraphraser than the contrastive model
+trained on synthetic paraphrases.
+
+
+96
+5.2
+Preliminary (Development) Results
+We ﬁnd that length-normalized log probability (H)
+slightly outperforms un-normalized log probability
+(G). When using the reference, we ﬁnd an equal
+weighting of H(sys|ref) and H(ref|sys) to be ap-
+proximately optimal, but we ﬁnd that when using
+the source, H(src|sys) does not appear to add use-
+ful information to H(sys|src). Full results can be
+found in Appendix D. These ﬁndings were used to
+select the Prism-ref and Prism-src deﬁnitions (§3).
+We ﬁnd that the probability of sys as estimated
+by an LM, as well as and the cosine distance be-
+tween LASER embeddings of sys and ref, both
+have decent correlation with human judgments and
+are complementary. However, cosine distance be-
+tween LASER embeddings of sys and src have
+only weak correlation.
+5.3
+Segment-Level Metric Results
+Segment-level metric results are shown in Table 2.
+On language pairs into non-English, we outperform
+prior work by a statistically signiﬁcant margin in 7
+of 11 language pairs9 and are statistically tied for
+best in the rest, with the exception of Gujarati (gu)
+where the model had no training data. Into English,
+our metric is statistically tied with the best prior
+work in every language pair. Our metric tends to
+signiﬁcantly outperform our contrastive LASER +
+LM and mBART methods, although LASER + LM
+performs surprisingly well in en–ru.
+5.4
+System-Level Metric Results
+Table 3 shows system-level metric performance on
+the top four systems submitted to WMT19 com-
+pared to selected metrics. While correlations are
+not high in all cases for Prism, they are at least
+all positive. In contrast, BLEU has negative cor-
+relation in 5 language pairs, and BERTscore and
+YiSi-1 variants are each negative in at least two.
+BLEURT has positive correlations in all language
+pairs into English, but is English-only. Note that
+Pearson’s correlation coefﬁcient may be unstable
+in this setting (Mathur et al., 2020). For full top
+four system-level results see Appendix F.
+We do not ﬁnd the system-level results computed
+against all submitted MT systems (see Appendix G)
+to be particularly interesting; as noted by Ma et al.
+(2019), a single weak system can result in high
+9In en–ru, Prism-ref is statistically tied with YiSi-1, ESIM,
+and BERTscore.
+overall system-level correlation even for a very
+poor metric.
+5.5
+QE as a Metric Results
+We ﬁnd that our reference-less Prism-src outper-
+forms all QE as a metrics systems from the WMT19
+shared task by a statistically signiﬁcant margin, in
+every language pair at segment-level human corre-
+lation (Table 4), and outperforms or statistically ties
+at system-level human correlation (Appendix G).
+6
+Analysis and Discussion
+How helpful are human references?
+The fact
+that our model is multilingual allows us to explore
+the extent to which the human reference actually
+improves our model’s ability to judge MT system
+output, compared to using the source instead. The
+underlying assumption with any MT metric is that
+the work done by the human translator makes it
+easier to automatically judge the quality of MT
+output. However, if our model or the MT systems
+being judged were strong enough, we would expect
+this assumption to break down.
+Comparing the performance of our method with
+access to the human reference (Prism-ref) vs our
+method with access to only the source (Prism-src),
+we ﬁnd that the reference-based method statisti-
+cally outperforms the source-based method in all
+but one language pair. We ﬁnd the case where they
+are not statistically different, de–cs, to be particu-
+larly interesting: de–cs was the only language pair
+in WMT19 where the systems were unsupervised
+(i.e., did not use parallel training data). As a re-
+sult, it is the only language pair where our model
+outperformed the best WMT system at translation.
+In most cases, our model is substantially worse at
+translation than the best WMT systems. For exam-
+ple, in en–de and zh–en, two language pairs where
+strong NMT systems were especially problematic
+for MT metrics, the Prism model is 6.8 and 19.2
+BLEU points behind the strongest WMT systems,
+respectively (see Table 5 for the Prism model com-
+pared to the best system submitted in each WMT19
+language pair). Thus the performance difference
+between Prism-ref and Prism-src would suggest
+that the model needs no help in judging MT sys-
+tems which are weaker than it is, but the human ref-
+erences are assisting our model in evaluating MT
+systems which are stronger than it is. This means
+that we have not simply reduced the task of MT
+evaluation to that of building a state-of-the-art MT
+
+
+97
+en–cs
+en–de
+en–ﬁ
+en–gu
+en–kk
+en–lt
+en–ru
+en–zh
+de–cs
+de–fr
+fr–de
+BERTSCORE (Zhang et al., 2020)
+0.868
+-0.722
+0.859
+0.922
+0.288
+0.955
+0.953
+0.982
+0.976
+0.707
+0.973
+BLEU† (Papineni et al., 2002)
+0.930
+-0.370
+0.898
+0.860
+0.181
+0.925
+0.753
+0.987
+0.812
+0.495
+0.983
+YISI-1‡ (Lo, 2019)
+0.847
+-0.220
+0.976
+0.917
+0.342
+0.838
+0.963
+0.990
+0.967
+0.677
+0.967
+YISI-1 SRL‡ (Lo, 2019)
+−
+-0.378
+−
+−
+−
+−
+−
+0.994
+−
+−
+0.974
+Prism-ref (This Work)
+0.952
+0.278
+0.886
+0.863
+0.693
+0.862
+0.975
+0.966
+0.968
+0.648
+0.998
+LASER + LM (Contrastive)
+0.961
+0.377
+0.903
+0.509
+0.605
+0.743
+0.962
+0.985
+0.947
+0.774
+0.975
+mBART (Contrastive)
+0.936
+-0.834
+0.966
+0.912
+0.224
+0.946
+0.968
+0.986
+0.964
+0.944
+0.874
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+BERTSCORE (Zhang et al., 2020)
+0.272
+0.683
+0.913
+0.897
+0.753
+0.456
+-0.220
+BLEU† (Papineni et al., 2002)
+-0.822
+-0.275
+0.966
+0.958
+0.625
+-0.356
+-0.694
+BLEURT (Sellam et al., 2020)
+0.953
+0.714
+0.881
+0.929
+0.841
+0.522
+0.660
+YISI-1‡ (Lo, 2019)
+0.045
+0.610
+0.962
+0.887
+0.552
+0.365
+-0.067
+YISI-1 SRL‡ (Lo, 2019)
+0.081
+0.580
+0.959
+0.874
+0.560
+0.342
+-0.069
+Prism-ref (This Work)
+0.401
+0.719
+0.896
+0.796
+0.877
+0.431
+0.523
+LASER + LM (Contrastive)
+0.957
+0.768
+0.867
+0.870
+0.615
+0.596
+0.733
+mBART (Contrastive)
+-0.739
+0.559
+0.913
+0.902
+0.491
+-0.103
+-0.295
+Table 3: WMT19 system-level human correlation (Pearson), for top 4 systems only, to non-English (top) and to
+English (bottom), for selected metrics. Negative correlations with human judgments shown in red for emphasis.
+†:WMT19 Baseline ‡:WMT19 Metric Submission. “LASER + LM” denotes the optimal linear combination found
+on the development set. Our models were not trained on Gujarati (gu).
+en–cs
+en–de
+en–ﬁ
+en–gu
+en–kk
+en–lt
+en–ru
+en–zh
+de–cs
+de–fr
+fr–de
+Best WMT19 QE as Metric
+0.069a
+0.236b 0.351c
+0.147a
+0.187a 0.003a
+0.226c
+0.044a
+0.199a 0.186a 0.066a
+Prism-src (This work)
+0.470
+0.402
+0.555
+0.215
+0.507
+0.499
+0.486
+0.287
+0.444
+0.371
+0.316
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+Best WMT19 QE as Metric
+0.068a,b 0.211d −0.001a
+0.096a 0.075a
+0.089d
+0.253a
+Prism-src (This work)
+0.109
+0.300
+0.102
+0.391
+0.356
+0.178
+0.336
+Table 4: WMT19 segment-level human correlation (τ) for QE as Metric systems (which have access to the source
+only, not the reference). Bold denotes top scoring method and any other methods with whose 95% conﬁdence
+interval overlaps with that of a top method.
+Our models were not trained on Gujarati (gu). For brevity, only the
+best QE-metric for each language pair is shown—for full results see Appendix G. a:YISI-2 (Lo, 2019) b:YISI-
+2 SRL (Lo, 2019) c:UNI (Yankovskaya et al., 2019) d:UNI+ (Yankovskaya et al., 2019).
+system. We see that a good (but not state-of-the-art)
+multilingual NMT system can be a state-of-the-art
+MT metric and judge state-of-the-art MT systems.
+Finally, with the exception of de–cs discussed
+above, we see statistically signiﬁcant improve-
+ments for Prism-ref over Prism-src both into En-
+glish (where human judgments were reference-
+based) and into non-English (where human judg-
+ments were source-based). This suggests that the
+high correlation of Prism-ref with human judge-
+ments is not simply the result of reference bias
+(Fomicheva and Specia, 2016).
+Does
+paraphraser
+bias
+matter?
+Our
+lexi-
+cally/syntactically unbiased paraphraser tends to
+outperforms the generative English-only ParaBank
+2 paraphraser, but usually not by a statistically
+signiﬁcant margin.
+Analysis indicate the lexi-
+cal/syntactic bias is only harmful in somewhat in-
+frequent cases where MT systems match or nearly
+match the reference, suggesting it would be more
+detrimental with stronger systems or multiple ref-
+erences. Our multilingual training method is much
+simpler than the alternative of creating synthetic
+paraphrases and training individual models in 39
+languages, and our model may beneﬁt from transfer
+learning to lower-resource languages.
+Does ﬂuency matter?
+Despite NMT being very
+ﬂuent, our results suggest that ﬂuency is fairly dis-
+criminative, especially in non-English: LM scoring
+outperforms sentenceBLEU at segment-level cor-
+relation in 7/10 language pairs to non-English lan-
+guages (excluding Gujarati), for example. This is
+consistent with recent ﬁndings that LM scores can
+be used to augment BLEU (Edunov et al., 2020).
+
+
+98
+Lang
+BLEU
+Pair
+WMT19 Best
+Multilingual
+∆
+de–cs
+20.1†
+21.8‡
++1.7
+de–en
+42.8†
+35.5‡
+-7.3
+de–fr
+37.3†
+33.9‡
+-3.4
+en–cs
+29.9†
+24.2‡
+-5.7
+en–de
+44.9†
+38.1‡
+-6.8
+en–ﬁ
+27.4†
+21.9‡
+-5.5
+en–gu
+28.2†
+0.0‡
+-28.2
+en–kk
+11.1†
+8.6‡
+-2.5
+en–lt
+20.1†
+15.0‡
+-5.1
+en–ru
+36.3†
+28.1‡
+-8.2
+en–zh
+44.6†
+30.1‡
+-14.5
+ﬁ–en
+33.0†
+26.2‡
+-6.8
+fr–de
+35.0†
+26.4‡
+-8.6
+gu–en
+24.9†
+0.4‡
+-24.5
+kk–en
+30.5†
+27.7‡
+-2.8
+lt–en
+36.3†
+28.5‡
+-7.8
+ru–en
+40.1†
+36.1‡
+-4.0
+zh–en
+39.9†
+20.6‡
+-19.3
+Table 5: BLEU scores for our multilingual NMT sys-
+tem on WMT19 testsets, compared to best system from
+WMT19.
+Our multilingual system achieves state-of-
+the-art performance as an MT metric despite substan-
+tially under performing all the best WMT19 MT sys-
+tems at translation (excluding unsupervised). †: WMT
+systems were unsupervised (no parallel data). ‡: Multi-
+lingual system did not train on Gujarati (gu). Systems
+are not trained on the same data, so this should not be
+interpreted as a comparison between multilingual and
+single-language pair MT. ISO 639-1 language codes.
+Can we measure adequacy and ﬂuency sepa-
+rately?
+The proposed method signiﬁcantly out-
+performs the contrastive LASER-based method in
+most language pairs, even when LASER is aug-
+mented with a language model. This suggests that
+jointly optimizing a model for adequacy and ﬂu-
+ency is better than optimizing them independently
+and combining after the fact—this is unsurprising
+given that neural MT has shown signiﬁcant im-
+provements over statistical MT, where a phrase
+table and language model were trained separately.
+Can we train on monolingual data instead of
+bitext?
+The proposed method signiﬁcantly out-
+performs scoring with the mBART auto-encoder,
+which is trained on large amounts of monolin-
+gual data, despite using substantially less compute
+power (1.3 weeks on 8 V100s for Prism vs 2.5
+weeks on 256 V100s for mBART).
+7
+Conclusion and Future Work
+We show that a multilingual NMT system can be
+used as a lexically/syntactically unbiased, multi-
+lingual paraphraser, and that the resulting para-
+phraser can be used as an MT metric and QE metric.
+Our method achieves state-of-the-art performance
+on the most recent WMT shared metrics and QE
+tasks, without training on prior human judgements.
+We release a single model which supports 39 lan-
+guages. To the best of our knowledge, we are the
+ﬁrst to release a large multilingual NMT system,
+and we hope others follow suit. We are optimistic
+our method will improve further as stronger multi-
+lingual NMT models become publicly available.
+We compare our method to several contrastive
+methods and present analysis showing that we have
+not simply reduced the task of evaluation to that
+of building a state-of-the-art MT system; the work
+done by the human translator to create references
+helps the evaluation model to judge systems that
+are stronger (at translation) than it is.
+Nothing in our method is speciﬁc to sentence-
+level MT. In future work, we would like to extend
+Prism to paragraph- or document-level evaluation
+by training a paragraph- or document-level multi-
+lingual NMT system, as there is growing evidence
+that MT evaluation would be better conducted at
+the document level, rather than the sentence level
+(L¨
+aubli et al., 2018).
+Acknowledgments
+Brian Thompson is supported by the National De-
+fense Science and Engineering Graduate (NDSEG)
+Fellowship.
+References
+Roee Aharoni, Melvin Johnson, and Orhan Firat. 2019.
+Massively multilingual neural machine translation.
+In Proceedings of the 2019 Conference of the North
+American Chapter of the Association for Compu-
+tational Linguistics: Human Language Technolo-
+gies, Volume 1 (Long and Short Papers), pages
+3874–3884, Minneapolis, Minnesota. Association
+for Computational Linguistics.
+Naveen Arivazhagan,
+Ankur Bapna,
+Orhan Firat,
+Dmitry Lepikhin, Melvin Johnson, Maxim Krikun,
+Mia Xu Chen, Yuan Cao, George Foster, Colin
+Cherry, Wolfgang Macherey, Zhifeng Chen, and
+Yonghui Wu. 2019. Massively multilingual neural
+machine translation in the wild: Findings and chal-
+lenges. arXiv preprint arXiv:1907.05019.
+
+
+99
+Mikel Artetxe and Holger Schwenk. 2018.
+Mas-
+sively multilingual sentence embeddings for zero-
+shot cross-lingual transfer and beyond.
+arXiv
+preprint arXiv:1812.10464.
+Satanjeev Banerjee and Alon Lavie. 2005. METEOR:
+An automatic metric for MT evaluation with im-
+proved correlation with human judgments. In Pro-
+ceedings of the ACL Workshop on Intrinsic and Ex-
+trinsic Evaluation Measures for Machine Transla-
+tion and/or Summarization, pages 65–72, Ann Ar-
+bor, Michigan. Association for Computational Lin-
+guistics.
+Colin Bannard and Chris Callison-Burch. 2005. Para-
+phrasing with bilingual parallel corpora. In Proceed-
+ings of the 43rd Annual Meeting of the Association
+for Computational Linguistics (ACL’05), pages 597–
+604, Ann Arbor, Michigan. Association for Compu-
+tational Linguistics.
+Rahul Bhagat and Eduard Hovy. 2013. Squibs: What
+is a paraphrase?
+Computational Linguistics,
+39(3):463–472.
+Ondˇ
+rej Bojar, Rajen Chatterjee, Christian Federmann,
+Yvette Graham, Barry Haddow, Shujian Huang,
+Matthias Huck, Philipp Koehn, Qun Liu, Varvara Lo-
+gacheva, Christof Monz, Matteo Negri, Matt Post,
+Raphael Rubino, Lucia Specia, and Marco Turchi.
+2017. Findings of the 2017 conference on machine
+translation (WMT17).
+In Proceedings of the Sec-
+ond Conference on Machine Translation, pages 169–
+214, Copenhagen, Denmark. Association for Com-
+putational Linguistics.
+Vishrav Chaudhary, Yuqing Tang, Francisco Guzm´
+an,
+Holger Schwenk, and Philipp Koehn. 2019. Low-
+resource corpus ﬁltering using multilingual sentence
+embeddings. In Proceedings of the Fourth Confer-
+ence on Machine Translation (Volume 3: Shared
+Task Papers, Day 2), pages 261–266, Florence, Italy.
+Association for Computational Linguistics.
+Qian Chen, Xiaodan Zhu, Zhen-Hua Ling, Si Wei, Hui
+Jiang, and Diana Inkpen. 2017. Enhanced LSTM
+for natural language inference. In Proceedings of
+the 55th Annual Meeting of the Association for Com-
+putational Linguistics (Volume 1:
+Long Papers),
+pages 1657–1668, Vancouver, Canada. Association
+for Computational Linguistics.
+Julian Chow, Lucia Specia, and Pranava Madhyastha.
+2019.
+WMDO: Fluency-based word mover’s dis-
+tance for machine translation evaluation.
+In Pro-
+ceedings of the Fourth Conference on Machine
+Translation (Volume 2: Shared Task Papers, Day
+1), pages 494–500, Florence, Italy. Association for
+Computational Linguistics.
+William Coster and David Kauchak. 2011. Simple En-
+glish Wikipedia: A new text simpliﬁcation task. In
+Proceedings of the 49th Annual Meeting of the Asso-
+ciation for Computational Linguistics: Human Lan-
+guage Technologies, pages 665–669, Portland, Ore-
+gon, USA. Association for Computational Linguis-
+tics.
+Michael Denkowski and Alon Lavie. 2010. Extending
+the METEOR machine translation evaluation metric
+to the phrase level. In Human Language Technolo-
+gies: The 2010 Annual Conference of the North
+American Chapter of the Association for Computa-
+tional Linguistics, pages 250–253, Los Angeles, Cal-
+ifornia. Association for Computational Linguistics.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019.
+BERT: Pre-training of
+deep bidirectional transformers for language under-
+standing.
+In Proceedings of the 2019 Conference
+of the North American Chapter of the Association
+for Computational Linguistics: Human Language
+Technologies, Volume 1 (Long and Short Papers),
+pages 4171–4186, Minneapolis, Minnesota. Associ-
+ation for Computational Linguistics.
+George Doddington. 2002.
+Automatic evaluation
+of machine translation quality using n-gram co-
+occurrence statistics. In Proceedings of the second
+international conference on Human Language Tech-
+nology Research, pages 138–145.
+Daxiang Dong, Hua Wu, Wei He, Dianhai Yu, and
+Haifeng Wang. 2015. Multi-task learning for mul-
+tiple language translation.
+In Proceedings of the
+53rd Annual Meeting of the Association for Compu-
+tational Linguistics and the 7th International Joint
+Conference on Natural Language Processing (Vol-
+ume 1: Long Papers), pages 1723–1732, Beijing,
+China. Association for Computational Linguistics.
+Markus Dreyer and Daniel Marcu. 2012.
+HyTER:
+Meaning-equivalent semantics for translation evalu-
+ation. In Proceedings of the 2012 Conference of the
+North American Chapter of the Association for Com-
+putational Linguistics: Human Language Technolo-
+gies, pages 162–171, Montr´
+eal, Canada. Association
+for Computational Linguistics.
+Melania Duma and Wolfgang Menzel. 2017.
+UHH
+submission to the WMT17 metrics shared task. In
+Proceedings of the Second Conference on Machine
+Translation, pages 582–588, Copenhagen, Denmark.
+Association for Computational Linguistics.
+Sergey Edunov, Myle Ott, Marc’Aurelio Ranzato, and
+Michael Auli. 2020. On the evaluation of machine
+translation systems trained with back-translation. In
+Proceedings of the 58th Annual Meeting of the Asso-
+ciation for Computational Linguistics, pages 2836–
+2846, Online. Association for Computational Lin-
+guistics.
+Andreas Eisele and Yu Chen. 2010. Multiun: A multi-
+lingual corpus from united nation documents.
+In
+LREC.
+Anthony Fader, Luke Zettlemoyer, and Oren Etzioni.
+2013. Paraphrase-driven learning for open question
+
+
+100
+answering. In Proceedings of the 51st Annual Meet-
+ing of the Association for Computational Linguis-
+tics (Volume 1: Long Papers), pages 1608–1618,
+Soﬁa, Bulgaria. Association for Computational Lin-
+guistics.
+Christian Federmann, Oussama Elachqar, and Chris
+Quirk. 2019.
+Multilingual whispers: Generating
+paraphrases with translation.
+In Proceedings of
+the 5th Workshop on Noisy User-generated Text (W-
+NUT 2019), pages 17–26, Hong Kong, China. Asso-
+ciation for Computational Linguistics.
+Marina Fomicheva and Lucia Specia. 2016. Reference
+bias in monolingual machine translation evaluation.
+In Proceedings of the 54th Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 2:
+Short Papers), pages 77–82, Berlin, Germany. Asso-
+ciation for Computational Linguistics.
+Erick Fonseca, Lisa Yankovskaya, Andr´
+e F. T. Martins,
+Mark Fishel, and Christian Federmann. 2019. Find-
+ings of the WMT 2019 shared tasks on quality esti-
+mation. In Proceedings of the Fourth Conference on
+Machine Translation (Volume 3: Shared Task Papers,
+Day 2), pages 1–10, Florence, Italy. Association for
+Computational Linguistics.
+Juri Ganitkevitch and Chris Callison-Burch. 2014. The
+multilingual paraphrase database. In Proceedings of
+the Ninth International Conference on Language Re-
+sources and Evaluation (LREC-2014), pages 4276–
+4283, Reykjavik, Iceland. European Languages Re-
+sources Association (ELRA).
+Juri Ganitkevitch, Benjamin Van Durme, and Chris
+Callison-Burch. 2013.
+PPDB: The paraphrase
+database. In Proceedings of the 2013 Conference of
+the North American Chapter of the Association for
+Computational Linguistics: Human Language Tech-
+nologies, pages 758–764, Atlanta, Georgia. Associa-
+tion for Computational Linguistics.
+Yvette Graham, Nitika Mathur, and Timothy Baldwin.
+2014.
+Randomized signiﬁcance tests in machine
+translation. In Proceedings of the Ninth Workshop
+on Statistical Machine Translation, pages 266–274,
+Baltimore, Maryland, USA. Association for Compu-
+tational Linguistics.
+Jiatao Gu, Hany Hassan, Jacob Devlin, and Victor O.K.
+Li. 2018. Universal neural machine translation for
+extremely low resource languages. In Proceedings
+of the 2018 Conference of the North American Chap-
+ter of the Association for Computational Linguistics:
+Human Language Technologies, Volume 1 (Long Pa-
+pers), pages 344–354, New Orleans, Louisiana. As-
+sociation for Computational Linguistics.
+Yinuo Guo and Junfeng Hu. 2019.
+Meteor++ 2.0:
+Adopt syntactic level paraphrase knowledge into ma-
+chine translation evaluation. In Proceedings of the
+Fourth Conference on Machine Translation (Volume
+2: Shared Task Papers, Day 1), pages 501–506, Flo-
+rence, Italy. Association for Computational Linguis-
+tics.
+Rohit Gupta, Constantin Or˘
+asan, and Josef van Gen-
+abith. 2015. ReVal: A simple and effective machine
+translation evaluation metric based on recurrent neu-
+ral networks.
+In Proceedings of the 2015 Confer-
+ence on Empirical Methods in Natural Language
+Processing, pages 1066–1072, Lisbon, Portugal. As-
+sociation for Computational Linguistics.
+Aaron L.-F Han, Derek Wong, Lidia Chao, Liangye He,
+Yi Lu, Junwen Xing, and Xiaodong Zeng. 2013. Mt
+summit13.language-independent model for machine
+translation evaluation with reinforced factors.
+Aaron L. F. Han, Derek F. Wong, and Lidia S. Chao.
+2012. LEPOR: A robust evaluation metric for ma-
+chine translation with augmented factors.
+In Pro-
+ceedings of COLING 2012: Posters, pages 441–
+450, Mumbai, India. The COLING 2012 Organizing
+Committee.
+Hany Hassan, Anthony Aue, Chang Chen, Vishal
+Chowdhary,
+Jonathan
+Clark,
+Christian
+Feder-
+mann, Xuedong Huang, Marcin Junczys-Dowmunt,
+William Lewis, Mu Li, Shujie Liu, Tie-Yan Liu,
+Renqian Luo, Arul Menezes, Tao Qin, Frank Seide,
+Xu Tan, Fei Tian, Lijun Wu, Shuangzhi Wu, Yingce
+Xia, Dongdong Zhang, Zhirui Zhang, and Ming
+Zhou. 2018.
+Achieving human parity on auto-
+matic chinese to english news translation.
+CoRR,
+abs/1803.05567.
+J. Edward Hu, Huda Khayrallah, Ryan Culkin, Patrick
+Xia,
+Tongfei Chen,
+Matt Post,
+and Benjamin
+Van Durme. 2019a. Improved lexically constrained
+decoding for translation and monolingual rewriting.
+In Proceedings of the 2019 Conference of the North
+American Chapter of the Association for Computa-
+tional Linguistics: Human Language Technologies,
+Volume 1 (Long and Short Papers), pages 839–850,
+Minneapolis, Minnesota. Association for Computa-
+tional Linguistics.
+J. Edward Hu, Rachel Rudinger, Matt Post, and Ben-
+jamin Van Durme. 2019b.
+ParaBank:
+Monolin-
+gual bitext generation and sentential paraphrasing
+via lexically-constrained neural machine translation.
+In Proceedings of AAAI.
+J. Edward Hu, Abhinav Singh, Nils Holzenberger, Matt
+Post, and Benjamin Van Durme. 2019c.
+Large-
+scale, diverse, paraphrastic bitexts via sampling and
+clustering.
+In Proceedings of the 23rd Confer-
+ence on Computational Natural Language Learning
+(CoNLL), pages 44–54, Hong Kong, China. Associ-
+ation for Computational Linguistics.
+Yanping Huang, Youlong Cheng, Ankur Bapna, Orhan
+Firat, Dehao Chen, Mia Chen, HyoukJoong Lee, Ji-
+quan Ngiam, Quoc V Le, Yonghui Wu, and zhifeng
+Chen. 2019. Gpipe: Efﬁcient training of giant neu-
+ral networks using pipeline parallelism. In H. Wal-
+lach, H. Larochelle, A. Beygelzimer, F. d'Alch´
+e-Buc,
+E. Fox, and R. Garnett, editors, Advances in Neural
+Information Processing Systems 32, pages 103–112.
+Curran Associates, Inc.
+
+
+101
+Julia Ive, Fr´
+ed´
+eric Blain, and Lucia Specia. 2018. deep-
+Quest: A framework for neural-based quality estima-
+tion. In Proceedings of the 27th International Con-
+ference on Computational Linguistics, pages 3146–
+3157, Santa Fe, New Mexico, USA. Association for
+Computational Linguistics.
+Melvin Johnson, Mike Schuster, Quoc V. Le, Maxim
+Krikun, Yonghui Wu, Zhifeng Chen, Nikhil Thorat,
+Fernanda Vi´
+egas, Martin Wattenberg, Greg Corrado,
+Macduff Hughes, and Jeffrey Dean. 2017. Google’s
+multilingual neural machine translation system: En-
+abling zero-shot translation. Transactions of the As-
+sociation for Computational Linguistics, 5:339–351.
+Armand Joulin, Edouard Grave, Piotr Bojanowski, and
+Tomas Mikolov. 2016. Bag of tricks for efﬁcient text
+classiﬁcation. arXiv preprint arXiv:1607.01759.
+Marcin Junczys-Dowmunt. 2018.
+Dual conditional
+cross-entropy ﬁltering of noisy parallel corpora. In
+Proceedings of the Third Conference on Machine
+Translation: Shared Task Papers, pages 888–895,
+Belgium, Brussels. Association for Computational
+Linguistics.
+Huda Khayrallah and Philipp Koehn. 2018.
+On the
+impact of various types of noise on neural machine
+translation. In Proceedings of the 2nd Workshop on
+Neural Machine Translation and Generation, pages
+74–83, Melbourne, Australia. Association for Com-
+putational Linguistics.
+Rakesh Khobragade, Heaven Patel, Anand Namdev,
+Anish Mishra, and Pushpak Bhattacharyya. 2019.
+Machine translation evaluation using bi-directional
+entailment.
+Philipp Koehn. 2004.
+Statistical signiﬁcance tests
+for machine translation evaluation.
+In Proceed-
+ings of the 2004 Conference on Empirical Meth-
+ods in Natural Language Processing, pages 388–
+395, Barcelona, Spain. Association for Computa-
+tional Linguistics.
+Philipp Koehn. 2005. Europarl: A parallel corpus for
+statistical machine translation. In MT summit, vol-
+ume 5, pages 79–86. Citeseer.
+Taku Kudo and John Richardson. 2018. SentencePiece:
+A simple and language independent subword tok-
+enizer and detokenizer for neural text processing. In
+Proceedings of the 2018 Conference on Empirical
+Methods in Natural Language Processing: System
+Demonstrations, pages 66–71, Brussels, Belgium.
+Association for Computational Linguistics.
+Sneha Kudugunta, Ankur Bapna, Isaac Caswell, and
+Orhan Firat. 2019. Investigating multilingual NMT
+representations at scale.
+In Proceedings of the
+2019 Conference on Empirical Methods in Natu-
+ral Language Processing and the 9th International
+Joint Conference on Natural Language Processing
+(EMNLP-IJCNLP), pages 1565–1575, Hong Kong,
+China. Association for Computational Linguistics.
+Samuel L¨
+aubli, Rico Sennrich, and Martin Volk. 2018.
+Has machine translation achieved human parity? a
+case for document-level evaluation.
+In Proceed-
+ings of the 2018 Conference on Empirical Methods
+in Natural Language Processing, pages 4791–4796,
+Brussels, Belgium. Association for Computational
+Linguistics.
+Gregor Leusch, Nicola Uefﬁng, and Hermann Ney.
+2006. CDER: Efﬁcient MT evaluation using block
+movements.
+In 11th Conference of the European
+Chapter of the Association for Computational Lin-
+guistics, Trento, Italy. Association for Computa-
+tional Linguistics.
+Tsung-Yi Lin, Michael Maire, Serge Belongie, James
+Hays, Pietro Perona, Deva Ramanan, Piotr Doll´
+ar,
+and C. Lawrence Zitnick. 2014. Microsoft COCO:
+Common objects in context. In Computer Vision –
+ECCV 2014, pages 740–755, Cham. Springer Inter-
+national Publishing.
+Yinhan Liu, Jiatao Gu, Naman Goyal, Xian Li, Sergey
+Edunov, Marjan Ghazvininejad, Mike Lewis, and
+Luke Zettlemoyer. 2020.
+Multilingual denoising
+pre-training for neural machine translation.
+Chi-kiu Lo. 2017.
+MEANT 2.0: Accurate semantic
+MT evaluation for any output language. In Proceed-
+ings of the Second Conference on Machine Transla-
+tion, pages 589–597, Copenhagen, Denmark. Asso-
+ciation for Computational Linguistics.
+Chi-kiu Lo. 2019. YiSi - a uniﬁed semantic MT quality
+evaluation and estimation metric for languages with
+different levels of available resources. In Proceed-
+ings of the Fourth Conference on Machine Transla-
+tion (Volume 2: Shared Task Papers, Day 1), pages
+507–513, Florence, Italy. Association for Computa-
+tional Linguistics.
+Chi-kiu Lo and Dekai Wu. 2011. MEANT: An inex-
+pensive, high-accuracy, semi-automatic metric for
+evaluating translation utility based on semantic roles.
+In Proceedings of the 49th Annual Meeting of the
+Association for Computational Linguistics: Human
+Language Technologies, pages 220–229, Portland,
+Oregon, USA. Association for Computational Lin-
+guistics.
+Qingsong Ma, Ondˇ
+rej Bojar, and Yvette Graham. 2018.
+Results of the WMT18 metrics shared task: Both
+characters and embeddings achieve good perfor-
+mance. In Proceedings of the Third Conference on
+Machine Translation: Shared Task Papers, pages
+671–688, Belgium, Brussels. Association for Com-
+putational Linguistics.
+Qingsong Ma, Yvette Graham, Shugen Wang, and Qun
+Liu. 2017.
+Blend: a novel combined MT metric
+based on direct assessment — CASICT-DCU sub-
+mission to WMT17 metrics task.
+In Proceedings
+of the Second Conference on Machine Translation,
+pages 598–603, Copenhagen, Denmark. Association
+for Computational Linguistics.
+
+
+102
+Qingsong Ma, Johnny Wei, Ondˇ
+rej Bojar, and Yvette
+Graham. 2019.
+Results of the WMT19 metrics
+shared task:
+Segment-level and strong MT sys-
+tems pose big challenges.
+In Proceedings of the
+Fourth Conference on Machine Translation (Volume
+2: Shared Task Papers, Day 1), pages 62–90, Flo-
+rence, Italy. Association for Computational Linguis-
+tics.
+Nitika Mathur, Timothy Baldwin, and Trevor Cohn.
+2019.
+Putting evaluation in context: Contextual
+embeddings improve machine translation evaluation.
+In Proceedings of the 57th Annual Meeting of the
+Association for Computational Linguistics, pages
+2799–2808, Florence, Italy. Association for Compu-
+tational Linguistics.
+Nitika Mathur, Timothy Baldwin, and Trevor Cohn.
+2020. Tangled up in BLEU: Reevaluating the eval-
+uation of automatic machine translation evaluation
+metrics. In Proceedings of the 58th Annual Meet-
+ing of the Association for Computational Linguistics,
+pages 4984–4997, Online. Association for Computa-
+tional Linguistics.
+Graham Neubig and Junjie Hu. 2018. Rapid adapta-
+tion of neural machine translation to new languages.
+In Proceedings of the 2018 Conference on Empiri-
+cal Methods in Natural Language Processing, pages
+875–880, Brussels, Belgium. Association for Com-
+putational Linguistics.
+Toan Q. Nguyen and David Chiang. 2017.
+Trans-
+fer learning across low-resource, related languages
+for neural machine translation. In Proceedings of
+the Eighth International Joint Conference on Natu-
+ral Language Processing (Volume 2: Short Papers),
+pages 296–301, Taipei, Taiwan. Asian Federation of
+Natural Language Processing.
+Myle
+Ott,
+Michael
+Auli,
+David
+Grangier,
+and
+Marc’Aurelio Ranzato. 2018.
+Analyzing uncer-
+tainty in neural machine translation.
+In Interna-
+tional Conference on Machine Learning.
+Myle Ott, Sergey Edunov, Alexei Baevski, Angela
+Fan, Sam Gross, Nathan Ng, David Grangier, and
+Michael Auli. 2019.
+fairseq: A fast, extensible
+toolkit for sequence modeling.
+In Proceedings of
+NAACL-HLT 2019: Demonstrations.
+Sebastian Pad´
+o, Michel Galley, Dan Jurafsky, and
+Christopher D. Manning. 2009.
+Robust machine
+translation evaluation with entailment features. In
+Proceedings of the Joint Conference of the 47th An-
+nual Meeting of the ACL and the 4th International
+Joint Conference on Natural Language Processing
+of the AFNLP, pages 297–305, Suntec, Singapore.
+Association for Computational Linguistics.
+Joybrata Panja and Sudip Kumar Naskar. 2018. ITER:
+Improving translation edit rate through optimizable
+edit costs. In Proceedings of the Third Conference
+on Machine Translation: Shared Task Papers, pages
+746–750, Belgium, Brussels. Association for Com-
+putational Linguistics.
+Kishore Papineni, Salim Roukos, Todd Ward, and Wei-
+Jing Zhu. 2002. Bleu: a method for automatic eval-
+uation of machine translation.
+In Proceedings of
+the 40th Annual Meeting of the Association for Com-
+putational Linguistics, pages 311–318, Philadelphia,
+Pennsylvania, USA. Association for Computational
+Linguistics.
+Ngoc-Quan Pham, Jan Niehues, Thanh-Le Ha, and
+Alexander Waibel. 2019. Improving zero-shot trans-
+lation with language-independent constraints.
+In
+Proceedings of the Fourth Conference on Machine
+Translation (Volume 1: Research Papers), pages 13–
+23, Florence, Italy. Association for Computational
+Linguistics.
+Maja Popovi´
+c. 2015. chrF: character n-gram f-score
+for automatic MT evaluation. In Proceedings of the
+Tenth Workshop on Statistical Machine Translation,
+pages 392–395, Lisbon, Portugal. Association for
+Computational Linguistics.
+Maja Popovi´
+c. 2017. chrF++: words helping charac-
+ter n-grams.
+In Proceedings of the Second Con-
+ference on Machine Translation, pages 612–618,
+Copenhagen, Denmark. Association for Computa-
+tional Linguistics.
+Maja Popovi´
+c, David Vilar, Eleftherios Avramidis, and
+Aljoscha Burchardt. 2011. Evaluation without refer-
+ences: IBM1 scores as evaluation metrics. In Pro-
+ceedings of the Sixth Workshop on Statistical Ma-
+chine Translation, pages 99–103, Edinburgh, Scot-
+land. Association for Computational Linguistics.
+Matt Post. 2018. A call for clarity in reporting BLEU
+scores. In Proceedings of the Third Conference on
+Machine Translation: Research Papers, pages 186–
+191, Belgium, Brussels. Association for Computa-
+tional Linguistics.
+Aaditya Prakash, Sadid A. Hasan, Kathy Lee, Vivek
+Datla, Ashequl Qadir, Joey Liu, and Oladimeji Farri.
+2016.
+Neural paraphrase generation with stacked
+residual LSTM networks. In Proceedings of COL-
+ING 2016, the 26th International Conference on
+Computational Linguistics: Technical Papers, pages
+2923–2934, Osaka, Japan. The COLING 2016 Orga-
+nizing Committee.
+Chris Quirk, Chris Brockett, and William Dolan. 2004.
+Monolingual machine translation for paraphrase
+generation. In Proceedings of the 2004 Conference
+on Empirical Methods in Natural Language Process-
+ing, pages 142–149, Barcelona, Spain. Association
+for Computational Linguistics.
+Alec Radford, Jeffrey Wu, Rewon Child, David Luan,
+Dario Amodei, and Ilya Sutskever. 2019. Language
+models are unsupervised multitask learners. OpenAI
+Blog, 1(8):9.
+Alessandro Raganato, Ra´
+ul V´
+azquez, Mathias Creutz,
+and J¨
+org Tiedemann. 2019.
+An evaluation of
+language-agnostic inner-attention-based representa-
+tions in machine translation. In Proceedings of the
+
+
+103
+4th Workshop on Representation Learning for NLP
+(RepL4NLP-2019), pages 27–32, Florence, Italy. As-
+sociation for Computational Linguistics.
+Holger Schwenk. 2018.
+Filtering and mining paral-
+lel data in a joint multilingual space. In Proceed-
+ings of the 56th Annual Meeting of the Association
+for Computational Linguistics (Volume 2: Short Pa-
+pers), pages 228–234, Melbourne, Australia. Asso-
+ciation for Computational Linguistics.
+Holger Schwenk,
+Vishrav Chaudhary,
+Shuo Sun,
+Hongyu Gong,
+and Francisco Guzm´
+an. 2019.
+WikiMatrix:
+Mining 135m parallel sentences in
+1620 language pairs from wikipedia.
+CoRR,
+abs/1907.05791.
+Holger Schwenk and Matthijs Douze. 2017.
+Learn-
+ing joint multilingual sentence representations with
+neural machine translation. In Proceedings of the
+2nd Workshop on Representation Learning for NLP,
+pages 157–167, Vancouver, Canada. Association for
+Computational Linguistics.
+Thibault Sellam, Dipanjan Das, and Ankur Parikh.
+2020.
+BLEURT: Learning robust metrics for text
+generation. In Proceedings of the 58th Annual Meet-
+ing of the Association for Computational Linguistics,
+pages 7881–7892, Online. Association for Computa-
+tional Linguistics.
+Hiroki Shimanaka, Tomoyuki Kajiwara, and Mamoru
+Komachi. 2018. RUSE: Regressor using sentence
+embeddings for automatic machine translation eval-
+uation. In Proceedings of the Third Conference on
+Machine Translation: Shared Task Papers, pages
+751–758, Belgium, Brussels. Association for Com-
+putational Linguistics.
+Matthew Snover, Bonnie Dorr, Richard Schwartz, Lin-
+nea Micciulla, and John Makhoul. 2006. A study of
+translation edit rate with targeted human annotation.
+In Proceedings of association for machine transla-
+tion in the Americas, volume 200.
+Peter Stanchev, Weiyue Wang, and Hermann Ney. 2019.
+EED: Extended edit distance measure for machine
+translation.
+In Proceedings of the Fourth Confer-
+ence on Machine Translation (Volume 2: Shared
+Task Papers, Day 1), pages 514–520, Florence, Italy.
+Association for Computational Linguistics.
+Miloˇ
+s Stanojevi´
+c and Khalil Sima’an. 2015. BEER 1.1:
+ILLC UvA submission to metrics and tuning task.
+In Proceedings of the Tenth Workshop on Statistical
+Machine Translation, pages 396–401, Lisbon, Portu-
+gal. Association for Computational Linguistics.
+J¨
+org Tiedemann and Yves Scherrer. 2019.
+Measur-
+ing semantic abstraction of multilingual NMT with
+paraphrase recognition and generation tasks. In Pro-
+ceedings of the 3rd Workshop on Evaluating Vector
+Space Representations for NLP, pages 35–42, Min-
+neapolis, USA. Association for Computational Lin-
+guistics.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob
+Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz
+Kaiser, and Illia Polosukhin. 2017. Attention is all
+you need. In Advances in neural information pro-
+cessing systems, pages 5998–6008.
+Weiyue Wang, Jan-Thorsten Peter, Hendrik Rosendahl,
+and Hermann Ney. 2016.
+CharacTer: Translation
+edit rate on character level. In Proceedings of the
+First Conference on Machine Translation: Volume
+2, Shared Task Papers, pages 505–510, Berlin, Ger-
+many. Association for Computational Linguistics.
+John Wieting and Kevin Gimpel. 2018.
+ParaNMT-
+50M: Pushing the limits of paraphrastic sentence em-
+beddings with millions of machine translations. In
+Proceedings of the 56th Annual Meeting of the As-
+sociation for Computational Linguistics (Volume 1:
+Long Papers), pages 451–462, Melbourne, Australia.
+Association for Computational Linguistics.
+John Wieting, Kevin Gimpel, Graham Neubig, and Tay-
+lor Berg-Kirkpatrick. 2019.
+Simple and effective
+paraphrastic similarity from parallel translations. In
+Proceedings of the 57th Annual Meeting of the Asso-
+ciation for Computational Linguistics, pages 4602–
+4608, Florence, Italy. Association for Computational
+Linguistics.
+John Wieting, Jonathan Mallinson, and Kevin Gimpel.
+2017. Learning paraphrastic sentence embeddings
+from back-translated bitext. In Proceedings of the
+2017 Conference on Empirical Methods in Natural
+Language Processing, pages 274–285, Copenhagen,
+Denmark. Association for Computational Linguis-
+tics.
+Elizaveta Yankovskaya, Andre T¨
+attar, and Mark Fishel.
+2019.
+Quality estimation and translation metrics
+via pre-trained word and sentence embeddings. In
+Proceedings of the Fourth Conference on Machine
+Translation (Volume 3: Shared Task Papers, Day
+2), pages 101–105, Florence, Italy. Association for
+Computational Linguistics.
+Ryoma Yoshimura, Hiroki Shimanaka, Yukio Mat-
+sumura, Hayahide Yamagishi, and Mamoru Ko-
+machi. 2019. Filtering pseudo-references by para-
+phrasing for automatic evaluation of machine trans-
+lation. In Proceedings of the Fourth Conference on
+Machine Translation (Volume 2: Shared Task Papers,
+Day 1), pages 521–525, Florence, Italy. Association
+for Computational Linguistics.
+Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q
+Weinberger, and Yoav Artzi. 2019. Bertscore: Eval-
+uating text generation with bert.
+arXiv preprint
+arXiv:1904.09675.
+Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q.
+Weinberger, and Yoav Artzi. 2020. Bertscore: Eval-
+uating text generation with bert.
+In International
+Conference on Learning Representations.
+
+
+104
+Liang Zhou, Chin-Yew Lin, Dragos Stefan Munteanu,
+and Eduard Hovy. 2006.
+ParaEval: Using para-
+phrases to evaluate summaries automatically.
+In
+Proceedings of the Human Language Technology
+Conference of the NAACL, Main Conference, pages
+447–454, New York City, USA. Association for
+Computational Linguistics.
+Barret Zoph, Deniz Yuret, Jonathan May, and Kevin
+Knight. 2016.
+Transfer learning for low-resource
+neural machine translation. In Proceedings of the
+2016 Conference on Empirical Methods in Natu-
+ral Language Processing, pages 1568–1575, Austin,
+Texas. Association for Computational Linguistics.
+
+
+105
+A
+Generation Examples
+Figure 3 shows sentences generated from both our model and the model trained on ParaBank 2.
+We also contrast the conditional probabilities of three outputs for the same input: (1) the sequence
+generated by the model via beam search; (2) a copy of the input; and (3) a human paraphrase of the
+input. We use the English side of the zh–en newstest17 (Bojar et al., 2017) as input, so that we can use
+the second human reference released by Hassan et al. (2018) as a human paraphrase. Table 6 shows the
+results of scoring a copy of the input, a human paraphrase of the input, and a model’s beam search output,
+for both our multilingual paraphraser and the ParaBank 2 model.
+ParaBank 2
+This Work
+H(BS|r0)
+-0.501
+-0.225
+H(r0|r0)
+-1.157
+-0.303
+H(r1|r0)
+-2.246
+-2.187
+BLEU(BS, r0)
+31.9
+82.8
+Table 6: Average token log probability (H) for a sequence generated via beam search (BS), a copy of the input
+(r0), and a high-quality human paraphrase of the input (r1), for a generative paraphraser vs our model, conditioned
+on r0 in all cases. BLEU is also computed for the beam search output of each model, with respect to r0. Note that
+BLEU for r1 with respect to r0 is 17.1.
+
+
+106
+REFERENCE
+28-Year-Old Chef Found Dead at San Francisco Mall
+THIS WORK
+28-Year-Old Chef Found Dead at San Francisco Mall
+PARABANK 2
+28-year-old chef found dead in a mall in San Francisco
+REFERENCE
+A 28-year-old chef who had recently moved to San Francisco was found dead in the stairwell of a local
+mall this week.
+THIS WORK
+A 28-year-old chef who had recently moved to San Francisco was found dead in the stairwell of a local
+mall this week.
+PARABANK 2
+Earlier this week, a 28-year-old chef who had recently moved to San Francisco was found dead on
+the steps of a local department store.
+REFERENCE
+But the victim’s brother says he can’t think of anyone who would want to hurt him, saying, ”Things
+were ﬁnally going well for him.”
+THIS WORK
+But the victim’s brother says he can’t think of anyone who would want to hurt him, saying, ”Things
+were ﬁnally going well for him.”
+PARABANK 2
+But the victim’s brother said he couldn’t think of anyone who’d want to hurt him, and he said he was
+ﬁnally okay.
+REFERENCE
+The body found at the Westﬁeld Mall Wednesday morning was identiﬁed as 28-year-old San Francisco
+resident Frank Galicia, the San Francisco Medical Examiner’s Ofﬁce said.
+THIS WORK
+The body found at the Westﬁeld Mall Wednesday morning was identiﬁed as 28-year-old San Francisco
+resident Frank Galicia, the San Francisco Medical Examiner’s Ofﬁce said.
+PARABANK 2
+The body found Wednesday morning at the Westﬁeld Mall has been identiﬁed by the San Francisco
+Medical Examiner’s Ofﬁce as 28-year-old San Franscisco resident Frank Galicia.
+REFERENCE
+The San Francisco Police Department said the death was ruled a homicide and an investigation is
+ongoing.
+THIS WORK
+The San Francisco Police Department said the death was deemed a homicide and an investigation is
+ongoing.
+PARABANK 2
+The San Francisco P.D. says the death has been ruled a murder and is under investigation.
+REFERENCE
+The victim’s brother, Louis Galicia, told ABC station KGO in San Francisco that Frank, previously
+a line cook in Boston, had landed his dream job as line chef at San Francisco’s Sons & Daughters
+restaurant six months ago.
+THIS WORK
+The victim’s brother, Louis Galicia, told ABC station KGO in San Francisco that Frank, formerly a line
+cook in Boston, had landed his dream job as line chef at San Francisco’s Sons & Daughters restaurant
+six months ago.
+PARABANK 2
+The Victim’s brother, Louis Galicia, told ABC station KGO in San Francisco that Frank, who used to
+be a line chef in Boston, quit his dream job six months ago as a line chef at the Sons & Daughters
+Restaurant in San Francisco.
+REFERENCE
+A spokesperson for Sons & Daughters said they were ”shocked and devastated” by his death.
+THIS WORK
+A spokesperson for Sons & Daughters said they were ”shocked and devastated” by his death
+PARABANK 2
+A spokesman for Sons & Daughters said that his death ”shocked and devastated them.”
+REFERENCE
+”We are a small team that operates like a close knit family and he will be dearly missed,” the spokesper-
+son said.
+THIS WORK
+”We are a small team that operates like a close-knit family and he will be dearly missed,” the spokesman
+said.
+PARABANK 2
+”We are a small team, operating as a close-knit family, and we will miss him dearly,” said the
+spokesman.
+REFERENCE
+Our thoughts and condolences are with Frank’s family and friends at this difﬁcult time.
+THIS WORK
+Our thoughts and condolences are with Frank’s family and friends at this difﬁcult time.
+PARABANK 2
+Our thoughts and condolences go out to Frank’s family and friends in these difﬁcult times.
+REFERENCE
+Louis Galicia said Frank initially stayed in hostels, but recently, ”Things were ﬁnally going well for
+him.”
+THIS WORK
+Louis Galicia said Frank initially stayed in hostels, but recently, ”Things were ﬁnally going well for
+him.”
+PARABANK 2
+Louis Galicia said that Frank initially stayed in the dormitory, but lately, ”He’s ﬁnally doing okay.”
+Figure 3: Sentences generated via beam search (beamwidth 5) for the multilingual model presented in this work
+vs ParaBank 2. We note that our model tends to produces copies or near copies of the input, which is the desired
+behavior for our application. Changes are emphasized with bold or strikethrough. The model trained on ParaBank
+2 tends to produce output with lexical/syntactic changes, which occasionally also signiﬁcantly change the meaning
+of the sentence (denoted in red). References (paraphraser inputs) are the ﬁrst ten sentences of WMT17 zh–en.
+
+
+107
+B
+Data Details for Replication
+Much of our data comes from WikiMatrix (Schwenk et al., 2019), a large collection of parallel data
+extracted from Wikipedia, and for more domain variety, we added Global Voices,10 EuroParl (Koehn,
+2005) (random subset of to 100k sentence pairs per language pair), SETimes,11 United Nations (Eisele
+and Chen, 2010) (random sample of 1M sentence pairs per language pair). We also included WMT
+Kazakh–English and Kazakh–Russian data from WMT, to be able to evaluate on Kazakh.
+WMT Kazakh–English and Kazakh–Russian were limited to the best 1M and 200k sentence pairs,
+respectively, as judged by LASER. We used a margin threshold of 1.05 for WikiMatrix and a threshold of
+1.04 for the remaining datasets, as we expect them to be cleaner. We ﬁnd that FastText classiﬁes many
+sentences as non-English when they contain mostly English but also contain a few non-English words,
+especially from lower resource languages. To remedy this, we performed language identiﬁcation (LID)
+on 5-grams and ﬁltered out sentences for which LID did not classify at least half of the 5-grams as the
+expected language.
+We ﬁltered out sentences where there was more than 60% overlap in 3-grams or 40% overlap in
+4-grams. Via manual inspection, this seemed to provide a good trade-off between allowing numbers and
+named entities to be copied, and ﬁltering out sentences that were clearly not translated. We perform
+tokenization with SentencePiece (Kudo and Richardson, 2018) prior to ﬁltering, using a 200k vocabulary
+for all language pairs, to account for languages like Chinese which do not denote word boundaries. Note
+that this vocabulary was used only for ﬁltering, not for training the ﬁnal model.
+We limited training to languages with at least 1M examples, which resulted in 39 languages. Figure 4
+shows the languages and amount of data in each language.
+en es fr ru pt de it
+ar zh cs el ro bg nl pl ca uk sv hu ﬁda mk sk et
+tr
+lt
+vi sl id ja sq lv no sr he kk eo hr bn
+0
+2.5M
+5M
+7.5M
+10M
+12.5M
+15M
+Figure 4: Distribution of the 39 languages (ISO 639-1 language code) of the 99.8M training sentences. English
+accounts for 16.7%. Spanish, French, Russian, Portuguese, German, and Italian account for a combined 34.3%.
+The bottom 20 languages account for only 21.9% combined.
+10http://casmacat.eu/corpus/global-voices.html
+11http://nlp.ffzg.hr/resources/corpora/setimes/
+
+
+108
+C
+Model Training Details for Replication
+C.1
+Primary Model
+We train a SentencePiece (Kudo and Richardson, 2018) model with a 64k vocabulary size on the con-
+catenation of all data, and ﬁlter sentences with length greater than 200 subwords. Multilingual NMT
+performance has been found to increase signiﬁcantly with model size – tor example, the best performance
+of Huang et al. (2019) is with their largest model which has 6 billion parameters. Training such a model is
+well beyond the scope of this work, but we train a model as large a feasible given our compute budget
+constraints. We train a Transformer (Vaswani et al., 2017) in fairseq (Ott et al., 2019) with eight encoder
+layers, eight decoder layers, an embedding size of 1280, feed forward layer size of 12288, 20 attention
+heads, learning rate of 0.0004, batch size of 1800 tokens with gradient accumulation over 200 batches,
+gradient clipping of 1.2, and dropout of 0.1. The model has approximately 745M parameters for 39
+languages. We train for 6 epochs, which takes approximately 9 days on a p3.16xlarge instance rented
+from Amazon AWS, which has 8 Volta V100 GPUs with 16 GB of memory each. No hyperparameters
+were swept, as training a single model used the majority of our compute budget (the total cost for training
+this model was approximately $13,000 USD). However, we did restart training after discovering that LID
+was not performing well and adding the 5-gram LID ﬁltering.
+C.2
+ParaBank 2 Model
+We train a contrastive, English-only paraphraser on the ParaBank 2 dataset (Hu et al., 2019c). We train a
+Transformer with an 8-layer encoder, 8-layer decoder, 1024 dimensional embeddings, embedding sizes
+of 1024, feed-forward size of 4096, and 16 attention heads. We use a SentencePiece model with a 16k
+vocabulary size. Dropout is 0.3, label smoothing is 0.1, and learning rate is 0.0005. The model has
+approximately 253M parameters for 1 language. Batch size is 31200 tokens, and the model trains for
+approximately 6 weeks (33 epochs) on 4 Nvidia 2080 GPUs.
+C.3
+Language Model
+We train a multilingual language model on the same data as our multilingual NMT system.
+The model architecture is based on GPT-2 (Radford et al., 2019), and we use the fairseq
+transformer_lm_gpt2_small implementation. We train for 200k updates (18 epochs) of ap-
+proximately 131k tokens. The model has 369M parameters for 39 languages. We train with shared
+embeddings and a learning rate of 0.0005, and we stop gradients at sentence boundaries, using
+--sample-break-mode eos as the model will be used to evaluate individual sentences. Other
+parameters match the fairseq defaults. The model trained for approximately 4 weeks on 4 Nvidia TITAN
+RTX GPUs.
+C.4
+Autoencoder
+We use the pretrained “multilingual denoising pre-trained model” (mBART) model of Liu et al. (2020), as
+it works in all languages of interest. Their model is designed to be ﬁne-tuned to translation tasks, and
+their ﬁne-tuning introduces subtle changes to the decoder that are required for inference. In order to adapt
+it to our task, we therefore ﬁne-tune for a single update with a learning rate of 0. We then produce scores
+with the model in the same manner as Prism-ref. The model has approximately 680M parameters for 25
+languages. We did not train this model but note that doing so required substantial compute power – Liu
+et al. (2020) note that they trained for approximately 2.5 weeks on 256 Nvidia V100 GPUS, each with
+32GB of memory.
+C.5
+Baselines
+We compare to BLEURT (Sellam et al., 2020) using the authors’ recommended “BLEURT-Base 128”12
+We compare to BERTscore F1 (Zhang et al., 2020) using the model and code provided by the authors.13
+12https://github.com/google-research/bleurt
+13https://github.com/Tiiiger/bert_score
+
+
+109
+The remaining baseline results are computed using the metric scores as submitted to (Ma et al., 2019)14
+14http://data.statmt.org/wmt19/translation-task/wmt19-submitted-data-v3.tgz
+
+
+110
+D
+WMT 2018 (Development set) Results: System-level, Segment-level, and Sweeps
+Figure 5 shows results on the development set (WMT18) for sweeping various linear combinations.
+Table 7, Table 8, Table 9 and Table 10, show full segment- and system- level results, into and out of
+English, for the WMT 2018 MT metrics shared task, along with all baselines and submitted systems.
+0
+0.5
+1
+α
+0.1
+0.2
+0.3
+0.4
+0.5
+Average Kendall-τ
+w/ Reference
+0
+0.5
+1
+α
+w/o Reference
+w/ Reference (MT Metric):
+(1 −α) H(ref|sys) + α H(sys|ref)
+(1 −α) G(ref|sys) + α G(sys|ref)
+(1 −α) H(sys) + 10α LASER(sys, ref)
+w/o Reference (QE as Metric):
+(1 −α) H(src|sys) + α H(sys|src)
+(1 −α) G(src|sys) + α G(sys|src)
+(1 −α) H(sys) + 10α LASER(sys, src)
+Figure 5: Linear combinations of scoring each direction using length-normalized (H) vs un-normalized (G) log
+probability for our method, and length-normalized language model probabilities (H) vs LASER for our contrastive
+method. In both cases, we explore scoring using the human reference ref vs the source src. Results are segment-
+level τ on our development set (WMT18), averaged across all language pairs.
+
+
+111
+cs–en
+de–en
+et–en
+ﬁ–en
+ru–en
+tr–en
+zh–en
+n
+5110
+77811
+56721
+15648
+10404
+8525
+33357
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.295
+0.481
+0.341
+0.232
+0.288
+0.229
+0.214
+BERTSCORE (Zhang et al., 2019, 2020)
+0.404
+0.550
+0.397
+0.296
+0.340
+0.292
+0.253
+BLEND‡ (Ma et al., 2017)
+0.322
+0.492
+0.354
+0.226
+0.290
+0.232
+0.217
+CHARACTER‡ (Wang et al., 2016)
+0.256
+0.450
+0.286
+0.185
+0.244
+0.172
+0.202
+CHRF† (Popovi´
+c, 2015)
+0.288
+0.479
+0.328
+0.229
+0.269
+0.210
+0.208
+CHRF+† (Popovi´
+c, 2017)
+0.288
+0.479
+0.332
+0.234
+0.279
+0.218
+0.207
+ITER‡ (Panja and Naskar, 2018)
+0.198
+0.396
+0.235
+0.128
+0.139
+-0.029
+0.144
+METEOR++‡ (Shimanaka et al., 2018)
+0.270
+0.457
+0.329
+0.207
+0.253
+0.204
+0.179
+RUSE‡ (Shimanaka et al., 2018)
+0.347
+0.498
+0.368
+0.273
+0.311
+0.259
+0.218
+SENTBLEU† (Papineni et al., 2002)
+0.233
+0.415
+0.285
+0.154
+0.228
+0.145
+0.178
+UHH TSKM‡ (Duma and Menzel, 2017)
+0.274
+0.436
+0.300
+0.168
+0.235
+0.154
+0.151
+YISI-0‡ (Lo, 2019)
+0.301
+0.474
+0.330
+0.225
+0.294
+0.215
+0.205
+YISI-1‡ (Lo, 2019)
+0.319
+0.488
+0.351
+0.231
+0.300
+0.234
+0.211
+YISI-1 SRL‡ (Lo, 2019)
+0.317
+0.483
+0.345
+0.237
+0.306
+0.233
+0.209
+Prism-ref (This Work)
+0.423
+0.560
+0.409
+0.317
+0.366
+0.309
+0.263
+Prism-ref w/ ParaBank 2 (Contrastive)
+0.386
+0.538
+0.399
+0.309
+0.340
+0.275
+0.244
+LASER + LM (Contrastive)
+0.364
+0.526
+0.378
+0.265
+0.305
+0.257
+0.243
+Prism-src (This work)
+0.355
+0.515
+0.370
+0.257
+0.308
+0.213
+0.194
+LM
+0.285
+0.438
+0.285
+0.198
+0.280
+0.123
+0.192
+LASER
+0.310
+0.494
+0.364
+0.232
+0.257
+0.248
+0.207
+mBART (Contrastive)
+0.251
+0.455
+0.315
+0.199
+0.248
+0.196
+0.181
+Table 7: WMT18 Segment-level results, to English. n denotes number of pairwise judgments. Bold denotes top
+scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method.
+We exclude BLEURT (Sellam et al., 2020) as it was directly trained on WMT18 judgements. †:WMT18 Baseline
+(Ma et al., 2018) ‡:WMT18 Metric Submission (Ma et al., 2018)
+en–cs
+en–de
+en–et
+en–ﬁ
+en–ru
+en–tr
+en–zh
+n
+5413
+19711
+32202
+9809
+22181
+1358
+28602
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.518
+0.686
+0.558
+0.511
+0.403
+0.374
+0.302
+BERTSCORE (Zhang et al., 2019, 2020)
+0.559
+0.727
+0.584
+0.538
+0.424
+0.389
+0.364
+BLEND‡ (Ma et al., 2017)
+−
+−
+−
+−
+0.394
+−
+−
+CHARACTER‡ (Wang et al., 2016)
+0.414
+0.604
+0.464
+0.403
+0.352
+0.404
+0.313
+CHRF† (Popovi´
+c, 2015)
+0.516
+0.677
+0.572
+0.520
+0.383
+0.409
+0.328
+CHRF+† (Popovi´
+c, 2017)
+0.513
+0.680
+0.573
+0.525
+0.392
+0.405
+0.328
+ITER‡ (Panja and Naskar, 2018)
+0.333
+0.610
+0.392
+0.311
+0.291
+0.236
+−
+SENTBLEU† (Papineni et al., 2002)
+0.389
+0.620
+0.414
+0.355
+0.330
+0.261
+0.311
+YISI-0‡ (Lo, 2019)
+0.471
+0.661
+0.531
+0.464
+0.394
+0.376
+0.318
+YISI-1‡ (Lo, 2019)
+0.496
+0.691
+0.546
+0.504
+0.407
+0.418
+0.323
+YISI-1 SRL‡ (Lo, 2019)
+−
+0.696
+−
+−
+−
+−
+0.310
+Prism-ref (This Work)
+0.667
+0.799
+0.705
+0.667
+0.469
+0.574
+0.371
+LASER + LM (Contrastive)
+0.587
+0.746
+0.628
+0.629
+0.450
+0.501
+0.367
+Prism-src (This work)
+0.552
+0.732
+0.636
+0.626
+0.409
+0.505
+0.298
+LM
+0.459
+0.655
+0.408
+0.511
+0.375
+0.331
+0.221
+LASER
+0.480
+0.677
+0.585
+0.511
+0.402
+0.432
+0.338
+mBART (Contrastive)
+0.404
+0.594
+0.405
+0.410
+0.356
+0.303
+0.305
+Table 8: WMT18 Segment-level results, from English. n denotes number of pairwise judgments. Bold denotes
+top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method.
+†:WMT18 Baseline (Ma et al., 2018) ‡:WMT18 Metric Submission (Ma et al., 2018)
+
+
+112
+cs–en
+de–en
+et–en
+ﬁ–en
+ru–en
+tr–en
+zh–en
+n
+5
+16
+14
+9
+8
+5
+14
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.958
+0.994
+0.985
+0.991
+0.982
+0.870
+0.976
+BERTSCORE (Zhang et al., 2019, 2020)
+0.990
+0.999
+0.990
+0.998
+0.935
+0.499
+0.956
+BLEND‡ (Ma et al., 2017)
+0.973
+0.991
+0.985
+0.994
+0.993
+0.801
+0.976
+BLEU† (Papineni et al., 2002)
+0.970
+0.971
+0.986
+0.973
+0.979
+0.657
+0.978
+CDER† (Leusch et al., 2006)
+0.972
+0.980
+0.990
+0.984
+0.980
+0.664
+0.982
+CHARACTER‡ (Wang et al., 2016)
+0.970
+0.993
+0.979
+0.989
+0.991
+0.782
+0.950
+CHRF† (Popovi´
+c, 2015)
+0.966
+0.994
+0.981
+0.987
+0.990
+0.452
+0.960
+CHRF+† (Popovi´
+c, 2017)
+0.966
+0.993
+0.981
+0.989
+0.990
+0.174
+0.964
+ITER‡ (Panja and Naskar, 2018)
+0.975
+0.990
+0.975
+0.996
+0.937
+0.861
+0.980
+METEOR++‡ (Shimanaka et al., 2018)
+0.945
+0.991
+0.978
+0.971
+0.995
+0.864
+0.962
+NIST† (Doddington, 2002)
+0.954
+0.984
+0.983
+0.975
+0.973
+0.970
+0.968
+PER†
+0.970
+0.985
+0.983
+0.993
+0.967
+0.159
+0.931
+RUSE‡ (Shimanaka et al., 2018)
+0.981
+0.997
+0.990
+0.991
+0.988
+0.853
+0.981
+TER† (Snover et al., 2006)
+0.950
+0.970
+0.990
+0.968
+0.970
+0.533
+0.975
+UHH TSKM‡ (Duma and Menzel, 2017)
+0.952
+0.980
+0.989
+0.982
+0.980
+0.547
+0.981
+WER†
+0.951
+0.961
+0.991
+0.961
+0.968
+0.041
+0.975
+YISI-0‡ (Lo, 2019)
+0.956
+0.994
+0.975
+0.978
+0.988
+0.954
+0.957
+YISI-1‡ (Lo, 2019)
+0.950
+0.992
+0.979
+0.973
+0.991
+0.958
+0.951
+YISI-1 SRL‡ (Lo, 2019)
+0.965
+0.995
+0.981
+0.977
+0.992
+0.869
+0.962
+Prism-ref (This Work)
+0.988
+0.995
+0.971
+0.998
+0.995
+0.730
+0.989
+Prism-ref w/ ParaBank 2 (Contrastive)
+0.992
+0.989
+0.964
+0.998
+0.996
+0.896
+0.986
+LASER + LM (Contrastive)
+0.988
+0.991
+0.965
+0.994
+0.745
+0.297
+0.890
+Prism-src (This work)
+0.984
+0.991
+0.964
+0.987
+0.970
+0.896
+0.958
+LM
+0.986
+0.970
+0.954
+0.898
+0.951
+0.891
+0.972
+LASER
+0.978
+0.986
+0.953
+0.984
+0.489
+0.968
+0.591
+mBART (Contrastive)
+0.955
+0.996
+0.987
+0.995
+0.981
+0.721
+0.980
+Table 9: WMT18 System-level results, to English. n denotes number of MT systems. Bold denotes top scoring
+method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method. We exclude
+BLEURT (Sellam et al., 2020) as it was directly trained on WMT18 judgements. †:WMT18 Baseline (Ma et al.,
+2018) ‡:WMT18 Metric Submission (Ma et al., 2018)
+en–cs
+en–de
+en–et
+en–ﬁ
+en–ru
+en–tr
+en–zh
+n
+5
+16
+14
+12
+9
+8
+14
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.992
+0.991
+0.980
+0.961
+0.988
+0.965
+0.928
+BERTSCORE (Zhang et al., 2019, 2020)
+0.997
+0.989
+0.982
+0.972
+0.990
+0.908
+0.967
+BLEND‡ (Ma et al., 2017)
+−
+−
+−
+−
+0.988
+−
+−
+BLEU† (Papineni et al., 2002)
+0.995
+0.981
+0.975
+0.962
+0.983
+0.826
+0.947
+CDER† (Leusch et al., 2006)
+0.997
+0.986
+0.984
+0.964
+0.984
+0.861
+0.961
+CHARACTER‡ (Wang et al., 2016)
+0.993
+0.989
+0.956
+0.974
+0.983
+0.833
+0.983
+CHRF† (Popovi´
+c, 2015)
+0.990
+0.990
+0.981
+0.969
+0.989
+0.948
+0.944
+CHRF+† (Popovi´
+c, 2017)
+0.990
+0.989
+0.982
+0.970
+0.989
+0.943
+0.943
+ITER‡ (Panja and Naskar, 2018)
+0.915
+0.984
+0.981
+0.973
+0.975
+0.865
+−
+NIST† (Doddington, 2002)
+0.999
+0.986
+0.983
+0.949
+0.990
+0.902
+0.950
+PER†
+0.991
+0.981
+0.958
+0.906
+0.988
+0.859
+0.964
+TER† (Snover et al., 2006)
+0.997
+0.988
+0.981
+0.942
+0.987
+0.867
+0.963
+WER†
+0.997
+0.986
+0.981
+0.945
+0.985
+0.853
+0.957
+YISI-0‡ (Lo, 2019)
+0.973
+0.985
+0.968
+0.944
+0.990
+0.990
+0.957
+YISI-1‡ (Lo, 2019)
+0.987
+0.985
+0.979
+0.940
+0.992
+0.976
+0.963
+YISI-1 SRL‡ (Lo, 2019)
+−
+0.990
+−
+−
+−
+−
+0.952
+Prism-ref (This Work)
+0.962
+0.987
+0.973
+0.976
+0.989
+0.894
+0.977
+LASER + LM (Contrastive)
+0.953
+0.984
+0.980
+0.976
+0.984
+0.927
+0.982
+Prism-src (This work)
+0.850
+0.984
+0.949
+0.964
+0.960
+0.864
+0.940
+LM
+0.854
+0.985
+0.837
+0.938
+0.959
+0.830
+0.859
+LASER
+0.995
+0.965
+0.937
+0.978
+0.993
+0.895
+0.978
+mBART (Contrastive)
+0.985
+0.989
+0.977
+0.959
+0.987
+0.963
+0.689
+Table 10: WMT18 System-level results, from English. n denotes number of MT systems. Bold denotes top scoring
+method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method. †:WMT18
+Baseline (Ma et al., 2018) ‡:WMT18 Metric Submission (Ma et al., 2018)
+
+
+113
+E
+WMT 2019 Metric and QE as Metric Segment-Level Results
+Table 11, Table 12, and Table 13 show segment-level metrics (excluding QE as a metric) results, for
+language pairs into, out of, and not including English, for the WMT 2019 MT metrics shared task, along
+with all baselines and submitted systems.
+Table 14, Table 15, and Table 16 show segment-level QE as a metric results, for language pairs into,
+out of, and not including English, for the WMT 2019 MT metrics shared task, along with all baselines
+and submitted systems.
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+n
+85365
+38307
+31139
+27094
+21862
+46172
+31070
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.128
+0.283
+0.260
+0.421
+0.315
+0.189
+0.371
+BERTR‡ (Mathur et al., 2019)
+0.142
+0.331
+0.291
+0.421
+0.353
+0.195
+0.399
+BERTSCORE (Zhang et al., 2019, 2020)
+0.176
+0.345
+0.320
+0.432
+0.381
+0.223
+0.430
+BLEURT (Sellam et al., 2020)
+0.204
+0.367
+0.311
+0.447
+0.387
+0.228
+0.423
+CHARACTER‡ (Wang et al., 2016)
+0.101
+0.253
+0.190
+0.340
+0.254
+0.155
+0.337
+CHRF† (Popovi´
+c, 2015)
+0.122
+0.286
+0.256
+0.389
+0.301
+0.180
+0.371
+CHRF+† (Popovi´
+c, 2017)
+0.125
+0.289
+0.257
+0.394
+0.303
+0.182
+0.374
+EED‡ (Stanchev et al., 2019)
+0.120
+0.281
+0.264
+0.392
+0.298
+0.176
+0.376
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+0.167
+0.337
+0.303
+0.435
+0.359
+0.201
+0.396
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.372
+−
+−
+0.339
+METEOR++ 2.0(SYNTAX)‡ (Guo and Hu, 2019)
+0.084
+0.274
+0.237
+0.395
+0.291
+0.156
+0.370
+METEOR++ 2.0(SYNTAX+COPY)‡ (Guo and Hu, 2019)
+0.094
+0.273
+0.244
+0.402
+0.287
+0.163
+0.367
+PREP‡ (Yoshimura et al., 2019)
+0.030
+0.197
+0.192
+0.386
+0.193
+0.124
+0.267
+SENTBLEU† (Papineni et al., 2002)
+0.056
+0.233
+0.188
+0.377
+0.262
+0.125
+0.323
+WMDO‡ (Chow et al., 2019)
+0.096
+0.281
+0.260
+0.420
+0.300
+0.162
+0.362
+YISI-0‡ (Lo, 2019)
+0.117
+0.271
+0.263
+0.402
+0.289
+0.178
+0.355
+YISI-1‡ (Lo, 2019)
+0.164
+0.347
+0.312
+0.440
+0.376
+0.217
+0.426
+YISI-1 SRL‡ (Lo, 2019)
+0.199
+0.346
+0.306
+0.442
+0.380
+0.222
+0.431
+Prism-ref (This Work)
+0.204
+0.357
+0.313
+0.434
+0.382
+0.225
+0.438
+Prism-ref w/ ParaBank 2 (Contrastive)
+0.184
+0.341
+0.326
+0.425
+0.373
+0.207
+0.432
+LASER + LM (Contrastive)
+0.190
+0.335
+0.319
+0.428
+0.368
+0.207
+0.416
+LM
+0.083
+0.253
+0.165
+0.120
+0.281
+0.130
+0.210
+LASER
+0.151
+0.301
+0.305
+0.420
+0.325
+0.193
+0.397
+mBART (Contrastive)
+0.136
+0.255
+0.246
+0.377
+0.298
+0.162
+0.349
+Table 11: WMT19 Segment-level results, metrics (excludes QE as metric), to English. n denotes number of
+pairwise judgments. Bold denotes top scoring method and any other methods with whose 95% conﬁdence interval
+overlaps with that of a top method. †:WMT19 Baseline (Ma et al., 2019) ‡:WMT19 Metric Submission (Ma et al.,
+2019)
+
+
+114
+en–cs
+en–de
+en–ﬁ
+en–gu
+en–kk
+en–lt
+en–ru
+en–zh
+n
+27178
+99840
+31820
+11355
+18172
+17401
+24334
+18658
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.443
+0.316
+0.514
+0.537
+0.516
+0.441
+0.542
+0.232
+BERTSCORE (Zhang et al., 2019, 2020)
+0.485
+0.345
+0.524
+0.558
+0.533
+0.463
+0.580
+0.347
+CHARACTER‡ (Wang et al., 2016)
+0.349
+0.264
+0.404
+0.500
+0.351
+0.311
+0.432
+0.094
+CHRF† (Popovi´
+c, 2015)
+0.455
+0.326
+0.514
+0.534
+0.479
+0.446
+0.539
+0.301
+CHRF+† (Popovi´
+c, 2017)
+0.458
+0.327
+0.514
+0.538
+0.491
+0.448
+0.543
+0.296
+EED‡ (Stanchev et al., 2019)
+0.431
+0.315
+0.508
+0.568
+0.518
+0.425
+0.546
+0.257
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+−
+0.329
+0.511
+−
+0.510
+0.428
+0.572
+0.339
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.463
+0.390
+−
+−
+−
+SENTBLEU† (Papineni et al., 2002)
+0.367
+0.248
+0.396
+0.465
+0.392
+0.334
+0.469
+0.270
+YISI-0‡ (Lo, 2019)
+0.406
+0.304
+0.483
+0.539
+0.494
+0.402
+0.535
+0.266
+YISI-1‡ (Lo, 2019)
+0.475
+0.351
+0.537
+0.551
+0.546
+0.470
+0.585
+0.355
+YISI-1 SRL‡ (Lo, 2019)
+−
+0.368
+−
+−
+−
+−
+−
+0.361
+Prism-ref (This Work)
+0.582
+0.427
+0.591
+0.313
+0.531
+0.558
+0.584
+0.376
+LASER + LM (Contrastive)
+0.535
+0.401
+0.568
+0.306
+0.408
+0.503
+0.640
+0.356
+LM
+0.439
+0.329
+0.477
+0.181
+0.284
+0.430
+0.586
+0.279
+LASER
+0.408
+0.334
+0.509
+0.340
+0.363
+0.396
+0.511
+0.284
+mBART (Contrastive)
+0.345
+0.302
+0.401
+0.528
+0.462
+0.365
+0.443
+0.280
+Table 12: WMT19 Segment-level results, metrics (excludes QE as metric results), from English. n denotes number
+of pairwise judgments. Bold denotes top scoring method and any other methods with whose 95% conﬁdence
+interval overlaps with that of a top method. †:WMT19 Baseline (Ma et al., 2019) ‡:WMT19 Metric Submission
+(Ma et al., 2019)
+de–cs
+de–fr
+fr–de
+n
+35793
+4862
+1369
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.337
+0.293
+0.265
+BERTSCORE (Zhang et al., 2019, 2020)
+0.352
+0.325
+0.274
+CHARACTER‡ (Wang et al., 2016)
+0.232
+0.251
+0.224
+CHRF† (Popovi´
+c, 2015)
+0.326
+0.284
+0.275
+CHRF+† (Popovi´
+c, 2017)
+0.326
+0.284
+0.278
+EED‡ (Stanchev et al., 2019)
+0.345
+0.301
+0.267
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+0.331
+0.290
+0.289
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+0.207
+0.239
+−
+SENTBLEU† (Papineni et al., 2002)
+0.203
+0.235
+0.179
+YISI-0‡ (Lo, 2019)
+0.331
+0.296
+0.277
+YISI-1‡ (Lo, 2019)
+0.376
+0.349
+0.310
+YISI-1 SRL‡ (Lo, 2019)
+−
+−
+0.299
+Prism-ref (This Work)
+0.458
+0.453
+0.426
+LASER + LM (Contrastive)
+0.431
+0.401
+0.381
+LM
+0.294
+0.235
+0.138
+LASER
+0.397
+0.352
+0.348
+mBART (Contrastive)
+0.262
+0.255
+0.236
+Table 13: WMT19 Segment-level results, metrics (excludes QE as metric), non-English. n denotes number of
+pairwise judgments. Bold denotes top scoring method and any other methods with whose 95% conﬁdence interval
+overlaps with that of a top method. †:WMT19 Baseline (Ma et al., 2019) ‡:WMT19 Metric Submission (Ma et al.,
+2019)
+
+
+115
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+n
+85365
+38307
+31139
+27094
+21862
+46172
+31070
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+-0.074
+0.009
+−
+−
+0.069
+−
+−
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+-0.153
+−
+−
+−
+−
+−
+−
+LASIM*
+-0.024
+−
+−
+−
+−
+0.022
+−
+LP*
+-0.096
+−
+−
+−
+−
+-0.035
+−
+UNI* (Yankovskaya et al., 2019)
+0.022
+0.202
+−
+−
+−
+0.084
+−
+UNI+* (Yankovskaya et al., 2019)
+0.015
+0.211
+−
+−
+−
+0.089
+−
+YISI-2* (Lo, 2019)
+0.068
+0.126
+-0.001
+0.096
+0.075
+0.053
+0.253
+YISI-2 SRL* (Lo, 2019)
+0.068
+−
+−
+−
+−
+−
+0.246
+Prism-src (This work)
+0.109
+0.300
+0.102
+0.391
+0.356
+0.178
+0.336
+Table 14: WMT19 Segment-level results, QE as a metric, to English. n denotes number of pairwise judgments.
+Bold denotes top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of
+a top method. *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+en–cs
+en–de
+en–ﬁ
+en–gu
+en–kk
+en–lt
+en–ru
+en–zh
+n
+27178
+99840
+31820
+11355
+18172
+17401
+24334
+18658
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+-0.135
+-0.003
+-0.005
+−
+−
+-0.165
+−
+−
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+−
+-0.123
+−
+−
+−
+−
+−
+−
+LASIM*
+−
+0.147
+−
+−
+−
+−
+-0.240
+−
+LP*
+−
+-0.119
+−
+−
+−
+−
+-0.158
+−
+UNI* (Yankovskaya et al., 2019)
+0.060
+0.129
+0.351
+−
+−
+−
+0.226
+−
+UNI+* (Yankovskaya et al., 2019)
+−
+−
+−
+−
+−
+−
+0.222
+−
+USFD* (Ive et al., 2018)
+−
+-0.029
+−
+−
+−
+−
+0.136
+−
+USFD-TL* (Ive et al., 2018)
+−
+-0.037
+−
+−
+−
+−
+0.191
+−
+YISI-2* (Lo, 2019)
+0.069
+0.212
+0.239
+0.147
+0.187
+0.003
+-0.155
+0.044
+YISI-2 SRL* (Lo, 2019)
+−
+0.236
+−
+−
+−
+−
+−
+0.034
+Prism-src (This work)
+0.470
+0.402
+0.555
+0.215
+0.507
+0.499
+0.486
+0.287
+Table 15: WMT19 Segment-level results, QE as a metric, from English. n denotes number of pairwise judgments.
+Bold denotes top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of
+a top method. *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+de–cs
+de–fr
+fr–de
+n
+35793
+4862
+1369
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+0.048
+-0.013
+-0.053
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+−
+-0.074
+-0.097
+YISI-2* (Lo, 2019)
+0.199
+0.186
+0.066
+Prism-src (This work)
+0.444
+0.371
+0.316
+Table 16: WMT19 Segment-level results, QE as a metric, non-English. n denotes number of pairwise judgments.
+Bold denotes top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of
+a top method. *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+
+
+116
+F
+WMT 2019 System-Level results for Top 4 Systems
+Table 17 Table 18, and Table 19 show system-level results for just the top 4 systems, for language pairs
+into, out of, and not including English, for WMT 2019. We show statistical signiﬁcance following the
+shared task but note it appears extremely noisy.
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+n
+4
+4
+4
+4
+4
+4
+4
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+-0.760
+0.065
+0.981
+0.957
+0.423
+-0.122
+-0.625
+BERTR‡ (Mathur et al., 2019)
+0.251
+0.430
+0.966
+0.864
+0.518
+0.505
+0.402
+BERTSCORE (Zhang et al., 2019, 2020)
+0.272
+0.683
+0.913
+0.897
+0.753
+0.456
+-0.220
+BLEU† (Papineni et al., 2002)
+-0.822
+-0.275
+0.966
+0.958
+0.625
+-0.356
+-0.694
+BLEURT (Sellam et al., 2020)
+0.953
+0.714
+0.881
+0.929
+0.841
+0.522
+0.660
+CDER† (Leusch et al., 2006)
+-0.740
+-0.214
+0.940
+0.948
+0.389
+-0.108
+-0.611
+CHARACTER‡ (Wang et al., 2016)
+-0.664
+-0.079
+0.980
+0.924
+0.386
+0.052
+-0.092
+CHRF† (Popovi´
+c, 2015)
+-0.610
+0.170
+0.986
+0.893
+0.377
+-0.043
+-0.147
+CHRF+† (Popovi´
+c, 2017)
+-0.612
+0.157
+0.982
+0.886
+0.341
+-0.019
+-0.093
+EED‡ (Stanchev et al., 2019)
+-0.503
+0.125
+0.978
+0.904
+0.323
+0.033
+-0.06
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+0.895
+0.740
+0.847
+0.965
+0.896
+0.534
+0.819
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.816
+−
+−
+0.312
+HLEPORB BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.816
+0.257
+−
+0.312
+METEOR++ 2.0(SYNTAX)‡ (Guo and Hu, 2019)
+-0.591
+0.349
+0.978
+0.912
+0.413
+0.024
+-0.214
+METEOR++ 2.0(SYNTAX+COPY)‡ (Guo and Hu, 2019)
+-0.587
+0.399
+0.980
+0.888
+0.413
+0.051
+-0.17
+NIST† (Doddington, 2002)
+-0.82
+0.111
+0.963
+0.913
+0.746
+-0.458
+-0.906
+PER†
+-0.787
+0.232
+0.945
+0.731
+0.086
+-0.081
+0.730
+PREP‡ (Yoshimura et al., 2019)
+-0.981
+0.754
+0.976
+0.863
+0.171
+-0.357
+-0.927
+SACREBLEU.BLEU† (Post, 2018)
+-0.823
+-0.333
+0.966
+0.958
+0.426
+-0.217
+-0.694
+SACREBLEU.CHRF† (Post, 2018)
+-0.633
+0.113
+0.954
+0.875
+0.311
+-0.094
+0.347
+TER† (Snover et al., 2006)
+-0.798
+0.032
+0.942
+0.963
+0.585
+-0.137
+-0.845
+WER†
+-0.816
+-0.125
+0.940
+0.958
+0.621
+-0.153
+-0.859
+WMDO‡ (Chow et al., 2019)
+-0.711
+0.344
+0.943
+0.921
+0.290
+0.114
+-0.352
+YISI-0‡ (Lo, 2019)
+-0.714
+0.074
+0.991
+0.946
+0.540
+-0.079
+-0.663
+YISI-1‡ (Lo, 2019)
+0.045
+0.610
+0.962
+0.887
+0.552
+0.365
+-0.067
+YISI-1 SRL‡ (Lo, 2019)
+0.081
+0.580
+0.959
+0.874
+0.560
+0.342
+-0.069
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+-0.643
+0.065
+−
+−
+-0.952
+−
+−
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+-0.831
+−
+−
+−
+−
+−
+−
+LASIM*
+-0.855
+−
+−
+−
+−
+-0.353
+−
+LP.1*
+0.777
+−
+−
+−
+−
+0.442
+−
+UNI* (Yankovskaya et al., 2019)
+0.703
+0.830
+−
+−
+−
+0.738
+−
+UNI+* (Yankovskaya et al., 2019)
+0.796
+0.791
+−
+−
+−
+0.777
+−
+YISI-2* (Lo, 2019)
+-0.809
+0.780
+-0.125
+0.834
+-0.362
+-0.325
+-0.889
+YISI-2 SRL* (Lo, 2019)
+-0.749
+−
+−
+−
+−
+−
+-0.83
+Prism-ref (This Work)
+0.401
+0.719
+0.896
+0.796
+0.877
+0.431
+0.523
+Prism-ref w/ ParaBank 2 (Contrastive)
+0.957
+0.788
+0.871
+0.759
+0.939
+0.625
+0.899
+LASER + LM (Contrastive)
+0.957
+0.768
+0.867
+0.870
+0.615
+0.596
+0.733
+Prism-src (This work)
+0.502
+0.802
+0.608
+0.558
+-0.301
+0.437
+0.958
+LM
+0.973
+0.754
+0.619
+0.498
+-0.006
+0.779
+0.973
+LASER
+-0.458
+0.718
+0.984
+0.926
+0.662
+0.262
+-0.528
+mBART (Contrastive)
+-0.739
+0.559
+0.913
+0.902
+0.491
+-0.103
+-0.295
+Table 17: WMT19 System-level results, to English for the top 4 systems (as judged by humans) for each language
+pair. n denotes number of MT systems. Bold denotes top scoring method and any other methods with whose 95%
+conﬁdence interval overlaps with that of a top method. †:WMT19 Baseline (Ma et al., 2019) ‡:WMT19 Metric
+Submission (Ma et al., 2019) *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+
+
+117
+en–cs en–de
+en–ﬁen–gu en–kk
+en–lt en–ru en–zh
+n
+4
+4
+4
+4
+4
+4
+4
+4
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.872 -0.801
+0.960
+0.899
+0.226
+0.888
+0.961
+0.992
+BERTSCORE (Zhang et al., 2019, 2020)
+0.868 -0.722
+0.859
+0.922
+0.288
+0.955
+0.953
+0.982
+BLEU† (Papineni et al., 2002)
+0.930
+-0.37
+0.898
+0.860
+0.181
+0.925
+0.753
+0.987
+CDER† (Leusch et al., 2006)
+0.946 -0.975
+0.837
+0.900 -0.011
+0.880
+0.917
+0.986
+CHARACTER‡ (Wang et al., 2016)
+0.828 -0.777
+0.887
+0.902
+0.295
+0.675
+0.974
+0.997
+CHRF† (Popovi´
+c, 2015)
+0.799 -0.590
+0.936
+0.926
+0.277
+0.901
+0.954
+0.987
+CHRF+† (Popovi´
+c, 2017)
+0.816 -0.605
+0.921
+0.923
+0.283
+0.858
+0.940
+0.996
+EED‡ (Stanchev et al., 2019)
+0.825 -0.552
+0.939
+0.913
+0.267
+0.921
+0.961
+0.997
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+−-0.796
+0.957
+−
+0.418
+0.997
+0.986
+0.987
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.915
+0.062
+−
+−
+−
+HLEPORB BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.915
+0.062
+0.821
+−
+−
+NIST† (Doddington, 2002)
+0.946 -0.233
+0.971
+0.893
+0.082
+0.988
+0.724
+0.979
+PER†
+0.916 -0.995
+0.850
+0.887 -0.260
+0.390
+0.911
+0.980
+SACREBLEU.BLEU† (Post, 2018)
+0.970 -0.976
+0.845
+0.859
+0.181
+0.638
+0.878
+0.962
+SACREBLEU.CHRF† (Post, 2018)
+0.907 -0.816
+0.921
+0.902
+0.239
+0.980
+0.970
+0.963
+TER† (Snover et al., 2006)
+0.969 -0.989
+0.889
+0.874 -0.060
+0.988
+0.895
+0.984
+WER†
+0.973 -0.993
+0.876
+0.868 -0.058
+0.973
+0.894
+0.987
+YISI-0‡ (Lo, 2019)
+0.879 -0.796
+0.975
+0.920
+0.196
+0.787
+0.940
+0.982
+YISI-1‡ (Lo, 2019)
+0.847 -0.220
+0.976
+0.917
+0.342
+0.838
+0.963
+0.990
+YISI-1 SRL‡ (Lo, 2019)
+−-0.378
+−
+−
+−
+−
+−
+0.994
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+-0.771 -0.425
+0.430
+−
+−
+0.969
+−
+−
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+−-0.502
+−
+−
+−
+−
+−
+−
+LASIM*
+−-0.914
+−
+−
+−
+−
+0.223
+−
+LP.1*
+−
+0.949
+−
+−
+−
+−-0.407
+−
+UNI* (Yankovskaya et al., 2019)
+0.587
+-0.96
+0.637
+−
+−
+−
+0.655
+−
+UNI+* (Yankovskaya et al., 2019)
+−
+−
+−
+−
+−
+−
+0.644
+−
+USFD* (Ive et al., 2018)
+−-0.729
+−
+−
+−
+−
+0.985
+−
+USFD-TL* (Ive et al., 2018)
+−-0.390
+−
+−
+−
+−
+0.698
+−
+YISI-2* (Lo, 2019)
+0.793 -0.933 -0.991 -0.389
+0.851 -0.504
+0.075
+0.983
+YISI-2 SRL* (Lo, 2019)
+−-0.915
+−
+−
+−
+−
+−
+0.991
+Prism-ref (This Work)
+0.952
+0.278
+0.886
+0.863
+0.693
+0.862
+0.975
+0.966
+LASER + LM (Contrastive)
+0.961
+0.377
+0.903
+0.509
+0.605
+0.743
+0.962
+0.985
+Prism-src (This work)
+0.973 -0.408
+0.765 -0.703
+0.833 -0.003
+0.708
+0.863
+LM
+0.833
+0.425
+0.763 -0.712
+0.953
+0.633
+0.916
+0.846
+LASER
+0.851
+0.246
+0.983
+0.568
+0.328
+0.263
+0.995
+0.988
+mBART (Contrastive)
+0.936 -0.834
+0.966
+0.912
+0.224
+0.946
+0.968
+0.986
+Table 18: WMT19 System-level results, from English for the top 4 systems (as judged by humans) for each
+language pair. n denotes number of MT systems. Bold denotes top scoring method and any other methods with
+whose 95% conﬁdence interval overlaps with that of a top method. †:WMT19 Baseline (Ma et al., 2019) ‡:WMT19
+Metric Submission (Ma et al., 2019) *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+
+
+118
+de–cs
+de–fr
+fr–de
+n
+4
+4
+4
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.961
+0.590
+0.978
+BERTSCORE (Zhang et al., 2019, 2020)
+0.976
+0.707
+0.973
+BLEU† (Papineni et al., 2002)
+0.812
+0.495
+0.983
+CDER† (Leusch et al., 2006)
+0.860
+0.544
+0.959
+CHARACTER‡ (Wang et al., 2016)
+0.871
+0.626
+0.963
+CHRF† (Popovi´
+c, 2015)
+0.920
+0.531
+0.952
+CHRF+† (Popovi´
+c, 2017)
+0.909
+0.522
+0.946
+EED‡ (Stanchev et al., 2019)
+0.873
+0.582
+0.945
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+0.977
+0.702
+0.991
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+0.771
+0.314
+HLEPORB BASELINE‡ (Han et al., 2012, 2013)
+0.754
+0.314
+NIST† (Doddington, 2002)
+0.754
+0.561
+0.990
+PER†
+0.913
+0.401
+0.990
+SACREBLEU.BLEU† (Post, 2018)
+0.888
+0.495
+0.958
+SACREBLEU.CHRF† (Post, 2018)
+0.964
+0.575
+0.920
+TER† (Snover et al., 2006)
+0.999
+0.541
+0.989
+WER†
+0.997
+0.566
+0.991
+YISI-0‡ (Lo, 2019)
+0.838
+0.655
+0.961
+YISI-1‡ (Lo, 2019)
+0.967
+0.677
+0.967
+YISI-1 SRL‡ (Lo, 2019)
+−
+−
+0.974
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+0.645
+-0.885
+-0.339
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+−
+-0.106
+-0.33
+YISI-2* (Lo, 2019)
+0.368
+0.209
+-0.687
+Prism-ref (This Work)
+0.968
+0.648
+0.998
+LASER + LM (Contrastive)
+0.947
+0.774
+0.975
+Prism-src (This work)
+0.903
+0.600
+0.181
+LM
+0.336
+0.770
+-0.903
+LASER
+0.552
+0.713
+0.953
+mBART (Contrastive)
+0.806
+0.615
+0.972
+Table 19: WMT19 System-level results, non-English for the top 4 systems (as judged by humans) for each language
+pair. n denotes number of MT systems. Bold denotes top scoring method and any other methods with whose 95%
+conﬁdence interval overlaps with that of a top method. †:WMT19 Baseline (Ma et al., 2019) ‡:WMT19 Metric
+Submission (Ma et al., 2019) *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+
+
+119
+G
+WMT 2019 Metric and QE as Metric System-Level Results
+Table 20, Table 21, and Table 22, show system-level results, for metrics (excludes QE as metric) for
+language pairs into, out of, and not including English, for the WMT 2019 MT metrics shared task, along
+with all baselines and submitted systems.
+Table 23, Table 24, and Table 25, show system-level results, for QE as metric, for language pairs into,
+out of, and not including English, for the WMT 2019 MT metrics shared task, along with all baselines
+and submitted systems.
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+n
+16
+12
+11
+11
+11
+14
+15
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.906
+0.993
+0.952
+0.986
+0.947
+0.915
+0.942
+BERTR‡ (Mathur et al., 2019)
+0.926
+0.984
+0.938
+0.990
+0.948
+0.971
+0.974
+BERTSCORE (Zhang et al., 2019, 2020)
+0.949
+0.987
+0.981
+0.980
+0.962
+0.921
+0.983
+BLEU† (Papineni et al., 2002)
+0.849
+0.982
+0.834
+0.946
+0.961
+0.879
+0.899
+BLEURT (Sellam et al., 2020)
+0.940
+0.978
+0.878
+0.993
+0.991
+0.977
+0.984
+CDER† (Leusch et al., 2006)
+0.890
+0.988
+0.876
+0.967
+0.975
+0.892
+0.917
+CHARACTER‡ (Wang et al., 2016)
+0.898
+0.990
+0.922
+0.953
+0.955
+0.923
+0.943
+CHRF† (Popovi´
+c, 2015)
+0.917
+0.992
+0.955
+0.978
+0.940
+0.945
+0.956
+CHRF+† (Popovi´
+c, 2017)
+0.916
+0.992
+0.947
+0.976
+0.940
+0.945
+0.956
+EED‡ (Stanchev et al., 2019)
+0.903
+0.994
+0.976
+0.980
+0.929
+0.950
+0.949
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+0.941
+0.971
+0.885
+0.986
+0.989
+0.968
+0.988
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.975
+−
+−
+0.947
+HLEPORB BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.975
+0.906
+−
+0.947
+METEOR++ 2.0(SYNTAX)‡ (Guo and Hu, 2019)
+0.887
+0.995
+0.909
+0.974
+0.928
+0.950
+0.948
+METEOR++ 2.0(SYNTAX+COPY)‡ (Guo and Hu, 2019)
+0.896
+0.995
+0.900
+0.971
+0.927
+0.952
+0.952
+NIST† (Doddington, 2002)
+0.813
+0.986
+0.930
+0.942
+0.944
+0.925
+0.921
+PER†
+0.883
+0.991
+0.910
+0.737
+0.947
+0.922
+0.952
+PREP‡ (Yoshimura et al., 2019)
+0.575
+0.614
+0.773
+0.776
+0.494
+0.782
+0.592
+SACREBLEU.BLEU† (Post, 2018)
+0.813
+0.985
+0.834
+0.946
+0.955
+0.873
+0.903
+SACREBLEU.CHRF† (Post, 2018)
+0.910
+0.990
+0.952
+0.969
+0.935
+0.919
+0.955
+TER† (Snover et al., 2006)
+0.874
+0.984
+0.890
+0.799
+0.960
+0.917
+0.840
+WER†
+0.863
+0.983
+0.861
+0.793
+0.961
+0.911
+0.820
+WMDO‡ (Chow et al., 2019)
+0.872
+0.987
+0.983
+0.998
+0.900
+0.942
+0.943
+YISI-0‡ (Lo, 2019)
+0.902
+0.993
+0.993
+0.991
+0.927
+0.958
+0.937
+YISI-1‡ (Lo, 2019)
+0.949
+0.989
+0.924
+0.994
+0.981
+0.979
+0.979
+YISI-1 SRL‡ (Lo, 2019)
+0.950
+0.989
+0.918
+0.994
+0.983
+0.978
+0.977
+Prism-ref (This Work)
+0.954
+0.983
+0.764
+0.998
+0.995
+0.914
+0.992
+Prism-ref w/ ParaBank 2 (Contrastive)
+0.949
+0.979
+0.925
+0.993
+0.981
+0.948
+0.994
+LASER + LM (Contrastive)
+0.938
+0.974
+0.974
+0.997
+0.996
+0.940
+0.988
+mBART (Contrastive)
+0.906
+0.991
+0.949
+0.974
+0.917
+0.880
+0.956
+Table 20: WMT19 System-level results, to English. n denotes number of MT systems. Bold denotes top scoring
+method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method. †:WMT19
+Baseline (Ma et al., 2019) ‡:WMT19 Metric Submission (Ma et al., 2019)
+
+
+120
+en–cs
+en–de
+en–ﬁ
+en–gu
+en–kk
+en–lt
+en–ru
+en–zh
+n
+11
+22
+12
+11
+11
+12
+12
+12
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.990
+0.983
+0.989
+0.829
+0.971
+0.982
+0.977
+0.803
+BERTSCORE (Zhang et al., 2019, 2020)
+0.981
+0.990
+0.970
+0.922
+0.981
+0.978
+0.989
+0.925
+BLEU† (Papineni et al., 2002)
+0.897
+0.921
+0.969
+0.737
+0.852
+0.989
+0.986
+0.901
+CDER† (Leusch et al., 2006)
+0.985
+0.973
+0.978
+0.840
+0.927
+0.985
+0.993
+0.905
+CHARACTER‡ (Wang et al., 2016)
+0.994
+0.986
+0.968
+0.910
+0.936
+0.954
+0.985
+0.862
+CHRF† (Popovi´
+c, 2015)
+0.990
+0.979
+0.986
+0.841
+0.972
+0.981
+0.943
+0.880
+CHRF+† (Popovi´
+c, 2017)
+0.991
+0.981
+0.986
+0.848
+0.974
+0.982
+0.950
+0.879
+EED‡ (Stanchev et al., 2019)
+0.993
+0.985
+0.987
+0.897
+0.979
+0.975
+0.967
+0.856
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+−
+0.991
+0.957
+−
+0.980
+0.989
+0.989
+0.931
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.841
+0.968
+−
+−
+−
+HLEPORB BASELINE‡ (Han et al., 2012, 2013)
+−
+−
+−
+0.841
+0.968
+0.980
+−
+−
+NIST† (Doddington, 2002)
+0.896
+0.321
+0.971
+0.786
+0.930
+0.993
+0.988
+0.884
+PER†
+0.976
+0.970
+0.982
+0.839
+0.921
+0.985
+0.981
+0.895
+SACREBLEU.BLEU† (Post, 2018)
+0.994
+0.969
+0.966
+0.736
+0.852
+0.986
+0.977
+0.801
+SACREBLEU.CHRF† (Post, 2018)
+0.983
+0.976
+0.980
+0.841
+0.967
+0.966
+0.985
+0.796
+TER† (Snover et al., 2006)
+0.980
+0.969
+0.981
+0.865
+0.940
+0.994
+0.995
+0.856
+WER†
+0.982
+0.966
+0.980
+0.861
+0.939
+0.991
+0.994
+0.875
+YISI-0‡ (Lo, 2019)
+0.992
+0.985
+0.987
+0.863
+0.974
+0.974
+0.953
+0.861
+YISI-1‡ (Lo, 2019)
+0.962
+0.991
+0.971
+0.909
+0.985
+0.963
+0.992
+0.951
+YISI-1 SRL‡ (Lo, 2019)
+−
+0.991
+−
+−
+−
+−
+−
+0.948
+Prism-ref (This Work)
+0.958
+0.988
+0.949
+0.624
+0.978
+0.937
+0.918
+0.898
+LASER + LM (Contrastive)
+0.962
+0.989
+0.957
+0.775
+0.969
+0.958
+0.987
+0.950
+mBART (Contrastive)
+0.987
+0.988
+0.982
+0.917
+0.981
+0.965
+0.978
+0.866
+Table 21: WMT19 System-level results, from English. n denotes number of MT systems. Bold denotes top scoring
+method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method. †:WMT19
+Baseline (Ma et al., 2019) ‡:WMT19 Metric Submission (Ma et al., 2019)
+de–cs
+de–fr
+fr–de
+n
+11
+11
+10
+BEER‡ (Stanojevi´
+c and Sima’an, 2015)
+0.978
+0.941
+0.848
+BERTSCORE (Zhang et al., 2019, 2020)
+0.969
+0.971
+0.899
+BLEU† (Papineni et al., 2002)
+0.941
+0.891
+0.864
+CDER† (Leusch et al., 2006)
+0.864
+0.949
+0.852
+CHARACTER‡ (Wang et al., 2016)
+0.965
+0.928
+0.849
+CHRF† (Popovi´
+c, 2015)
+0.974
+0.931
+0.864
+CHRF+† (Popovi´
+c, 2017)
+0.972
+0.936
+0.848
+EED‡ (Stanchev et al., 2019)
+0.982
+0.940
+0.851
+ESIM‡ (Chen et al., 2017; Mathur et al., 2019)
+0.980
+0.950
+0.942
+HLEPORA BASELINE‡ (Han et al., 2012, 2013)
+0.941
+0.814
+−
+HLEPORB BASELINE‡ (Han et al., 2012, 2013)
+0.959
+0.814
+0.862
+NIST† (Doddington, 2002)
+0.954
+0.916
+0.899
+PER†
+0.875
+0.857
+0.869
+SACREBLEU.BLEU† (Post, 2018)
+0.869
+0.891
+0.882
+SACREBLEU.CHRF† (Post, 2018)
+0.975
+0.952
+0.895
+TER† (Snover et al., 2006)
+0.890
+0.956
+0.894
+WER†
+0.872
+0.956
+0.820
+YISI-0‡ (Lo, 2019)
+0.978
+0.952
+0.908
+YISI-1‡ (Lo, 2019)
+0.973
+0.969
+0.912
+Prism-ref (This Work)
+0.976
+0.936
+0.911
+LASER + LM (Contrastive)
+0.990
+0.935
+0.924
+mBART (Contrastive)
+0.964
+0.944
+0.874
+Table 22: WMT19 System-level results, non-English. n denotes number of MT systems. Bold denotes top scoring
+method and any other methods with whose 95% conﬁdence interval overlaps with that of a top method. †:WMT19
+Baseline (Ma et al., 2019) ‡:WMT19 Metric Submission (Ma et al., 2019)
+
+
+121
+de–en
+ﬁ–en
+gu–en
+kk–en
+lt–en
+ru–en
+zh–en
+n
+16
+12
+11
+11
+11
+14
+15
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+-0.345
+0.740
+−
+−
+0.487
+−
+−
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+-0.339
+−
+−
+−
+−
+−
+−
+LASIM*
+0.247
+−
+−
+−
+−
+-0.310
+−
+LP.1*
+-0.474
+−
+−
+−
+−
+-0.488
+−
+UNI* (Yankovskaya et al., 2019)
+0.846
+0.930
+−
+−
+−
+0.805
+−
+UNI+* (Yankovskaya et al., 2019)
+0.850
+0.924
+−
+−
+−
+0.808
+−
+YISI-2* (Lo, 2019)
+0.796
+0.642
+-0.566
+-0.324
+0.442
+-0.339
+0.940
+YISI-2 SRL* (Lo, 2019)
+0.804
+−
+−
+−
+−
+−
+0.947
+Prism-src (This work)
+0.890
+0.941
+0.171
+0.961
+0.989
+0.845
+0.971
+Table 23: WMT19 System-level results, QE as a metric, to English. n denotes number of MT systems. Bold
+denotes top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of a top
+method. *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+en–cs
+en–de
+en–ﬁ
+en–gu
+en–kk
+en–lt
+en–ru
+en–zh
+n
+11
+22
+12
+11
+11
+12
+12
+12
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+-0.871
+0.870
+0.084
+−
+−
+-0.81
+−
+−
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+−
+0.393
+−
+−
+−
+−
+−
+−
+LASIM*
+−
+0.871
+−
+−
+−
+−
+-0.823
+−
+LP.1*
+−
+-0.569
+−
+−
+−
+−
+-0.661
+−
+UNI* (Yankovskaya et al., 2019)
+0.028
+0.841
+0.907
+−
+−
+−
+0.919
+−
+UNI+* (Yankovskaya et al., 2019)
+−
+−
+−
+−
+−
+−
+0.918
+−
+USFD* (Ive et al., 2018)
+−
+-0.224
+−
+−
+−
+−
+0.857
+−
+USFD-TL* (Ive et al., 2018)
+−
+-0.091
+−
+−
+−
+−
+0.771
+−
+YISI-2* (Lo, 2019)
+0.324
+0.924
+0.696
+0.314
+0.339
+0.055
+-0.766
+-0.097
+YISI-2 SRL* (Lo, 2019)
+−
+0.936
+−
+−
+−
+−
+−
+-0.118
+Prism-src (This work)
+0.865
+0.976
+0.933
+0.444
+0.959
+0.908
+0.822
+0.793
+Table 24: WMT19 System-level results, QE as a metric, from English. n denotes number of MT systems. Bold
+denotes top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of a top
+method. *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+de–cs
+de–fr
+fr–de
+n
+11
+11
+10
+IBM1-MORPHEME* (Popovi´
+c et al., 2011)
+0.355
+-0.509
+-0.625
+IBM1-POS4GRAM* (Popovi´
+c et al., 2011)
+−
+0.085
+-0.478
+YISI-2* (Lo, 2019)
+0.606
+0.721
+-0.53
+Prism-src (This work)
+0.973
+0.889
+0.739
+Table 25: WMT19 System-level results, QE as a metric, non-English. n denotes number of MT systems. Bold
+denotes top scoring method and any other methods with whose 95% conﬁdence interval overlaps with that of a top
+method. *:WMT19 QE-as-Metric Submission (Fonseca et al., 2019)
+
+
+BARTSCORE:
+Evaluating Generated Text as Text Generation
+Weizhe Yuan
+Carnegie Mellon University
+weizhey@cs.cmu.edu
+Graham Neubig
+Carnegie Mellon University
+gneubig@cs.cmu.edu
+Pengfei Liu ∗
+Carnegie Mellon University
+pliu3@cs.cmu.edu
+Abstract
+A wide variety of NLP applications, such as machine translation, summarization,
+and dialog, involve text generation. One major challenge for these applications
+is how to evaluate whether such generated texts are actually ﬂuent, accurate,
+or effective. In this work, we conceptualize the evaluation of generated text
+as a text generation problem, modeled using pre-trained sequence-to-sequence
+models. The general idea is that models trained to convert the generated text
+to/from a reference output or the source text will achieve higher scores when
+the generated text is better. We operationalize this idea using BART [32], an
+encoder-decoder based pre-trained model, and propose a metric BARTSCORE
+with a number of variants that can be ﬂexibly applied in an unsupervised fashion
+to evaluation of text from different perspectives (e.g. informativeness, ﬂuency,
+or factuality). BARTSCORE is conceptually simple and empirically effective.
+It can outperform existing top-scoring metrics in 16 of 22 test settings, cov-
+ering evaluation of 16 datasets (e.g., machine translation, text summarization)
+and 7 different perspectives (e.g., informativeness, factuality). Code to calculate
+BARTScore is available at https://github.com/neulab/BARTScore,
+and we have released an interactive leaderboard for meta-evaluation at http:
+//explainaboard.nlpedia.ai/leaderboard/task-meval/ on the
+EXPLAINABOARD platform [38], which allows us to interactively understand the
+strengths, weaknesses, and complementarity of each metric.
+1
+Introduction
+One deﬁning feature of recent NLP models is the use of neural representations trained on raw text,
+using unsupervised objectives such as language modeling [6,54], or denoising autoencoding [9,32,55].
+By learning to predict the words or sentences in natural text, these models simultaneously learn to
+extract features that not only beneﬁt mainstream NLP tasks such as information extraction [23,37],
+question answering [1,26], text summarization [40,78] but also have proven effective in development
+of automatic metrics for evaluation of text generation itself [63,66]. For example, BERTScore [76]
+and MoverScore [77] take features extracted by BERT [9] and apply unsupervised matching functions
+to compare system outputs against references. Other works build supervised frameworks that use the
+extracted features to learn to rank [57] or regress [63] to human evaluation scores.
+However, in the context of generation evaluation, one may note that there is a decided disconnect
+between how models are pre-trained using text generation objectives and how they are used as
+down-stream feature extractors. This leads to potential under-utilization of the pre-trained model
+parameters. For example, the output prediction layer is not used at all in this case. This disconnect
+is particularly striking because of the close connection between the pre-training objectives and the
+generation tasks we want to evaluate.
+∗Corresponding author.
+35th Conference on Neural Information Processing Systems (NeurIPS 2021), Sydney, Australia.
+arXiv:2106.11520v2  [cs.CL]  27 Oct 2021
+
+
+In this paper, we instead argue for a formulation of evaluation of generated text as a text generation
+problem, directly evaluating text through the lens of its probability of being generated from or generat-
+ing other textual inputs and outputs. This is a better match with the underlying pre-training tasks and
+allows us to more fully take advantage of the parameters learned during the pre-training phase. We
+solve the modeling problem with a pre-trained sequence-to-sequence (seq2seq) model, speciﬁcally
+BART [32], and devise a metric named BARTSCORE, which has the following characteristics: (1)
+BARTSCORE is parameter- and data-efﬁcient. Architecturally there are no extra parameters beyond
+those used in pre-training itself, and it is an unsupervised metric that doesn’t require human judgments
+to train. (2) BARTSCORE can better support evaluation of generated text from different perspectives
+(e.g., informativeness, coherence, factuality, §4) by adjusting the inputs and outputs of the conditional
+text generation problem, as we demonstrate in §3.2. This is in contrast to most previous work, which
+mostly examines correlation of the devised metrics with output quality from a limited number of
+perspectives. (3) BARTSCORE can be further enhanced by (i) providing textual prompts that bring
+the evaluation task closer to the pre-training task, or (ii) updating the underlying model by ﬁne-tuning
+BART based on downstream generation tasks (e.g., text summarization).
+Experimentally, we evaluate different variants of BARTSCORE from 7 perspectives on 16 datasets.
+BARTSCORE achieves the best performance in 16 of 22 test settings against existing top-scoring
+metrics. Empirical results also show the effectiveness of the prompting strategy supported by
+BARTSCORE. For example, simply adding the phrase “such as” to the translated text when using
+BARTSCORE can lead to a 3% point absolute improvement in correlation on “German-English”
+machine translation (MT) evaluation. Additional analysis shows that BARTSCORE is more robust
+when dealing with high-quality texts generated by top-performing systems.
+2
+Preliminaries
+2.1
+Problem Formulation
+As stated above, our goal is to assess the quality of generated text [3,47]. In this work, we focus on
+conditional text generation (e.g., machine translation), where the goal is to generate a hypothesis
+(h = h1, · · · , hm) based on a given source text (s = s1, · · · , sn). Commonly, one or multiple
+human-created references (r = r1, · · · , rl) are provided to aid this evaluation.
+2.2
+Gold-standard Human Evaluation
+In general, the gold-standard method for evaluating such texts is still human evaluation, where human
+annotators assess the generated texts’ quality. This evaluation can be done from perspectives, and we
+list a few common varieties below (all are investigated in §4):
+1. Informativeness (INFO): How well the generated hypothesis captures the key ideas of the
+source text [18].
+2. Relevance (REL): How consistent the generated hypothesis is with respect to the source
+text [19].
+3. Fluency (FLU): Whether the text has no formatting problems, capitalization errors or
+obviously ungrammatical sentences (e.g., fragments, missing components) that make the
+text difﬁcult to read [13].
+4. Coherence (COH): Whether the text builds from sentence to sentence to a coherent body of
+information about a topic [7].
+5. Factuality (FAC): Whether the generated hypothesis contains only statements entailed by
+the source text [30].
+6. Semantic Coverage (COV): How many semantic content units from reference texts are
+covered by the generated hypothesis [50].
+7. Adequacy (ADE): Whether the output conveys the same meaning as the input sentence, and
+none of the message is lost, added, or distorted [29].
+Most existing evaluation metrics were designed to cover a small subset of these perspectives. For
+example, BLEU [51] aims to capture the adequacy and ﬂuency of translations, while ROUGE [36]
+was designed to match the semantic coverage metric. Some metrics, particularly trainable ones, can
+perform evaluation from different perspectives but generally require maximizing correlation with
+each type of judgment separately [8].
+2
+
+
+r2
+r3
+h1
+h2
+s1
+s2
+r1
+r2
+r3
+h1
+h2
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+3
+h1
+h2
+s1
+s2
+s
+r
+h
+Coherence / Fluency
+Factuality
+Relevance
+Informativeness
+Consistency
+(a) Matching
+h1
+h2
+r1
+r2
+r3
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+r1
+r2
+r3
+h1
+h2
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+s
+r
+h
+Coherence / Fluency
+Factuality
+Relevance
+Informativeness
+Consistency
+(b) Regression
+h1
+h2
+r1
+r2
+r3
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+r1
+r2
+r3
+h1
+h2
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+s
+r
+h
+Coherence / Fluency
+Factuality
+Relevance
+Informativeness
+Consistency
+(c) Ranking
+h1
+h2
+r1
+r2
+r3
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+r1
+r2
+r3
+h1
+h2
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+r1
+r2
+r3
+h1
+h2
+s1
+s2
+s
+r
+h
+Coherence / Fluency
+Factuality
+Relevance
+Informativeness
+Consistency
+(d) Generation
+Figure 1: Evaluation metrics as different tasks, where si, hi and rj represent source, hypothesis and
+reference words respectively.
+As we describe more in §4, BARTSCORE can evaluate text from the great majority of these perspec-
+tives, signiﬁcantly expanding its applicability compared to these metrics.
+2.3
+Evaluation as Different Tasks
+There is a recent trend that leverages neural models for automated evaluation in different ways,
+as shown in Fig. 1. We ﬁrst elaborate on their characteristics by highlighting differences in task
+formulation and evaluation perspectives.
+T1: Unsupervised Matching. Unsupervised matching metrics aim to measure the semantic equiv-
+alence between the reference and hypothesis by using a token-level matching functions in dis-
+tributed representation space, such as BERTScore [76], MoverScore [77] or discrete string space
+like ROUGE [35], BLEU [51], CHRF [53]. Although similar matching functions can be used to
+assess the quality beyond semantic equivalence (e.g, factuality, a relationship between source text
+and hypothesis), to our knowledge prior research has not attested to the capability of unsupervised
+matching methods in this regard; we explore this further in our experiments (Tab. 5).
+T2: Supervised Regression. Regression-based models introduce a parameterized regression layer,
+which would be learned in a supervised fashion to accurately predict human judgments. Examples
+include recent metrics BLEURT [63], COMET [57] and traditional metrics like S3 [52], VRM [21].
+T3: Supervised Ranking. Evaluation can also be conceived as a ranking problem, where the main
+idea is to learn a scoring function that assigns a higher score to better hypotheses than to worse ones.
+Examples include COMET [57] and BEER [65], where COMET focuses the machine translation
+task and relies on human judgments to tune parameters in ranking or regression layers, and BEER
+combines many simple features in a tunable linear model of MT evaluation metrics.
+T4: Text Generation. In this work, we formulate evaluating generated text as a text generation task
+from pre-trained language models. The basic idea is that a high-quality hypothesis will be easily
+generated based on source or reference text or vice-versa. This has not been covered as extensively
+in previous work, with one notable exception being PRISM [66]. Our work differs from PRISM
+in several ways: (i) PRISM formulates evaluation as a paraphrasing task, whose deﬁnition that
+two texts are with the same meaning limits its applicable scenarios, like factuality evaluation in
+text summarization that takes source documents and generated summaries as input whose semantic
+space are different. (ii) PRISM trained a model from scratch on parallel data while BARTSCORE
+is based on open-sourced pre-trained seq2seq models. (iii) BARTSCORE supports prompt-based
+learning [60,64] which hasn’t been examined in PRISM.
+3
+BARTScore
+3.1
+Sequence-to-Sequence Pre-trained Models
+Although pre-trained models differ along different axes, one of the main axes of variation is the
+training objective, with two main variants: language modeling objectives (e.g., masked language
+modeling [9]) and seq2seq objectives [55]. In particular, seq2seq pre-trained models are particularly
+well-suited to conditioned generation tasks since they consist of both an encoder and a decoder,
+and predictions are made auto-regressively [32]. In this work, we operationalize our idea by using
+3
+
+
+BART [32] as our backbone due to its superior performance in text generation [12,42,72]. We also
+report preliminary experiments comparing BART with T5 [55] and PEGASUS [75] in the Appendix.
+Given a seq2seq model parameterized by θ, a source sequence containing n tokens x = {x1, · · · , xn}
+and a target sequence containing m tokens y = {y1, · · · , ym}. We can factorize the generation
+probability of y conditioned on x as follows:
+p(y|x, θ) =
+m
+Y
+t=1
+p(yt|y<t, x, θ)
+(1)
+By exploring these probabilities, we design metrics that can gauge the quality of the generated text.
+3.2
+BARTScore
+The most general form of our proposed BARTSCORE is shown in Eq. 2, where we use the weighted
+log probability of one text y given another text x. The weights are used to put different emphasis on
+different tokens, which can be instantiated using different methods like Inverse Document Frequency
+(IDF) [25] etc. In our work, we weigh each token equally.2
+BARTSCORE =
+m
+X
+t=1
+ωt log p(yt|y<t, x, θ)
+(2)
+Due to its generation task-based formulation and ability to utilize the entirety of BART’s pre-trained
+parameters, BARTSCORE can be ﬂexibly used in different evaluation scenarios. We speciﬁcally
+present four methods for using BARTSCORE based on different generation directions, which are,
+• Faithfulness (s →h): from source document to hypothesis p(h|s, θ). This direction measures how
+likely it is that the hypothesis could be generated based on the source text. Potential application
+scenarios are factuality and relevance introduced in §2.2. This measure can also be used for
+estimating measures of the quality of only the target text, such as coherence and ﬂuency (§2.2).
+• Precision (r →h): from reference text to system-generated text p(h|r, θ). This direction assesses
+how likely the hypothesis could be constructed based on the gold reference and is suitable for the
+precision-focused scenario.
+• Recall (h →r): from system-generated text to reference text p(r|h, θ). This version quantiﬁes
+how easily a gold reference could be generated by the hypothesis and is suitable for pyramid-based
+evaluation (i.e., semantic coverage introduced in §2.2) in summarization task since pyramid score
+measures ﬁne-grained Semantic Content Units (SCUs) [50] covered by system-generated texts.
+• F score (r ↔h): Consider both directions and use the arithmetic average of Precision and Recall
+ones. This version can be broadly used to evaluate the semantic overlap (informativeness, adequacy
+detailed in §2.2) between reference texts and generated texts.
+3.3
+BARTScore Variants
+We also investigate two extensions to BARTSCORE: (i) changing x and y through prompting, which
+can bring the evaluation task closer to the pre-training task. (ii) changing θ by considering different
+ﬁne-tuning tasks, which can bring the pre-training domain closer to the evaluation task.
+3.3.1
+Prompt
+Prompting is a practice of adding short phrases to the input or output to encourage pre-trained
+models to perform speciﬁc tasks, which has been proven effective in several other NLP scenarios
+[24,58,59,61,64]. The generative formulation of BARTSCORE makes it relatively easy to incorporate
+these insights here as well; we name this variant BARTSCORE-PROMPT.
+Given a prompt of l tokens z = {z1, · · · , zl}, we can either (i) append it to the source text, in which
+case we get x′ = {x1, · · · , xn, z1, · · · , zl}, and calculate the score based on this new source text
+using Eq.2. or (ii) prepend it to the target text, getting y′ = {z1, · · · , zl, y1, · · · , ym}. Then we can
+also use Eq.2 given the new target text.
+2We have tried several other weighting schemes, including: (i) uniform weighting while ignoring stop words.
+(ii) IDF weighting. (iii) using the prior probability of each target token (calculated within the target sequence) as
+the weighting factor. However, none of those outperformed the uniform weighting scheme.
+4
+
+
+3.3.2
+Fine-tuning Task
+Different from BERT-based metrics, which typically use classiﬁcation-based tasks (e.g., natural
+language inference) [68] to ﬁne-tune, BARTSCORE can be ﬁne-tuned using generation-based tasks,
+which will make the pre-training domain closer to the evaluation task. In this paper, we explore two
+downstream tasks. (1) Summarization. We use BART ﬁne-tuned on CNNDM dataset [20], which is
+available off-the-shelf in Huggingface Transformers [71]. (2) Paraphrasing. We continue ﬁne-tuning
+BART from (1) on ParaBank2 dataset [22], which contains a large paraphrase collection. We used
+a random subset of 30,000 data and ﬁne-tuned for one epoch with a batch size of 20 and a learning
+rate of 5e−5. We used two 2080Ti GPUs, and the training time is less than one hour.
+4
+Experiment
+This section aims to evaluate the reliability of different automated metrics, which is commonly
+achieved by quantifying how well different metrics correlate with human judgments using measures
+(e.g., Spearman Correlation [73]) deﬁned below (§4.1.2).
+4.1
+Baselines and Datasets
+4.1.1
+Evaluation Metrics
+We comprehensively examine metrics outlined in §2.3, which either require human judgments to
+train (i.e., supervised metrics): COMET [57], BLEURT [63], or are human judgment-free (i.e.,
+unsupervised): BLEU [51] ROUGE-1 and ROUGE-2, ROUGE-L, CHRF [53], PRISM [66],
+MoverScore [77], BERTScore [76]. The detailed comparisons of those metrics can be found in
+Appendix. We use the ofﬁcial code for each metric.
+4.1.2
+Measures for Meta Evaluation
+Pearson Correlation [15] measures the linear correlation between two sets of data. Spearman
+Correlation [73] assesses the monotonic relationships between two variables. Kendall’s Tau [27]
+measures the ordinal association between two measured quantities. Accuracy, in our experiments,
+measures the percentage of correct ranking between factual texts and non-factual texts. We follow
+previous works in the choices of measures for different datasets to make a fair comparison.
+4.1.3
+Datasets
+Table 1: A summary of tasks, datasets, and
+evaluation perspectives that we have covered
+in our experiments. Explanation of evaluation
+perspectives can be found in §2.2.
+Tasks
+Datasets
+Eval. Perspectives
+SUM
+REALSUM
+COV
+SummEval
+COH FAC FLU INFO
+NeR18
+COH FLU REL INFO
+Rank19
+FAC
+QAGS-C
+QAGS-X
+MT
+DE FI GU KK
+ADE FLU
+IT RU ZH
+D2T
+BAGEL
+INFO
+SFHOT
+SFRES
+The datasets we use are summarized in Tab. 1. We
+consider three different tasks: summarization (SUM),
+machine translation (MT), and data-to-text (D2T).
+Machine Translation We obtain the source language
+sentences, machine-translated texts and reference
+texts from the WMT19 metrics shared task [44]. We
+use the DARR corpus and consider 7 language
+pairs, which are de-en, fi-en, gu-en, kk-en,
+lt-en, ru-en, zh-en.
+Text Summarization (1) REALSumm [4] is a meta-
+evaluation dataset for text summarization which mea-
+sures pyramid recall of each system-generated sum-
+mary. (2) SummEval [13] is a collection of hu-
+man judgments of model-generated summaries on
+the CNNDM dataset annotated by both expert judges
+and crowd-source workers. Each system generated
+summary is gauged through the lens of coherence,
+consistency, ﬂuency and relevance.3 (3) NeR18 The
+3We rephrase the original “relevance” into “informativeness” and “consistency” into “factuality” based on
+the descriptions in their paper and our deﬁnitions in §2.2.
+5
+
+
+NEWSROOM dataset [18] contains 60 articles with summaries generated by 7 different methods are
+annotated with human scores in terms of coherence, ﬂuency, informativeness, relevance.
+Factuality
+(1) Rank19 [14] is used to meta-evaluate factuality metrics. It is a collection of
+373 triples of a source sentence with two summary sentences, one correct and one incorrect. (2)
+QAGS20 [67] collected 235 test outputs on CNNDM dataset from [16] and 239 test outputs on
+XSUM dataset [48] from BART ﬁne-tuned on XSUM. Sentences in each summary are annotated with
+correctness scores w.r.t. factuality.
+Data to Text We consider the following datasets which target utterance generation for spoken
+dialogue systems. (1) BAGEL [45] provides information about restaurants. (2) SFHOT [70] provides
+information about hotels in San Francisco. (3) SFRES [70] provides information about restaurants in
+San Francisco. They contain 202, 398, and 581 samples respectively, each sample consists of one
+meaning representation, multiple references, and utterances generated by different systems.
+4.2
+Setup
+4.2.1
+Prompt Design
+To perform prompting, we ﬁrst need to ﬁnd proper prompts within a search space. Instead of
+considering a large discrete search space [64]4 or continuous search space [34], we use simple
+heuristics to narrow our search space. In particular, we use manually devised seed prompts and gather
+paraphrases to construct our prompt set.5 The seed prompts and some examples of paraphrased
+prompts are shown in Tab. 2. Details are listed in the Appendix.
+Table 2: Seed prompts and examples of ﬁnal prompts. “Number” denotes the size of our ﬁnal prompt
+set that was acquired from the seed prompts.
+Usage
+Number
+Seed
+Example
+s →h
+70
+in summary
+in short, in a word, to sum up
+h ↔r
+34
+in other words
+to rephrase it, that is to say, i.e.
+4.2.2
+Settings
+Variants. We consider four variants of BARTSCORE, which are (1) BARTSCORE, which uses the
+vanilla BART; (2) BARTSCORE-CNN, which uses the BART ﬁne-tuned on the summarization dataset
+CNNDM; (3) BARTSCORE-CNN-PARA, where BART is ﬁrst ﬁne-tuned on CNNDM, then ﬁne-tuned
+on ParaBank2. (4) BARTSCORE-PROMPT, which is enhanced by adding prompts.
+Selection of Prompts. For the summarization and data-to-text tasks, we use all entries (either all
+prompts designed for s →h or all prompts designed for h ↔r depending on the BARTScore
+usage chosen) in the prompt set by preﬁxing the decoder input and getting different generation scores
+(calculated by Eq.2) for each hypothesis based on different prompts. We ﬁnally get the score for one
+hypothesis by taking the average of all its generation scores using different prompts ( [24]; details
+about prompt ensembling can be found in the Appendix). For the machine translation task, due to
+the more expensive computational cost brought by larger text sets, we ﬁrst use WMT18 [43] as a
+development set to search for one best prompt and obtain the phrase “Such as”, which is then used
+for the test language pairs.
+Selection of BARTScore Usage. Although BARTSCORE can be used in different ways (shown
+in §3.2)), in different tasks, they can be chosen based on how targeted evaluation perspectives are
+deﬁned (described in §2.2) as well as the types of tasks. Speciﬁcally, (i) For those datasets whose gold
+standard human evaluation are obtained based on recall-based pyramid method, we adopt recall-based
+BARTSCORE (h →r). (ii) For those datasets whose human judgments focus on linguistic quality
+(coherence, ﬂuency) and factual correctness (factuality), or the source and hypothesis texts are in
+the same modality (i.e., language), we use faithfulness-based BARTSCORE (s →h). (iii) For
+data-to-text and machine translation tasks, to make a fair comparison, we use BARTSCORE with the
+F-score version that other existing works [66] have adopted when evaluating generated texts.
+4We explored this ﬁrst and found that discovered prompts led to worse performance.
+5We use the website https://www.wordhippo.com/ to search for synonyms.
+6
+
+
+Table 3: Kendall’s Tau correlation of different metrics on WMT19 dataset. The highest correlation
+for each language pair achieved by unsupervised method is bold, and the highest correlation overall
+is underlined. Avg. denotes the average correlation achieved by a metric across all language pairs.
+de-en
+ﬁ-en
+gu-en
+kk-en
+lt-en
+ru-en
+zh-en
+Avg.
+SUPERVISED METHODS
+BLEURT
+0.174
+0.374
+0.313
+0.372
+0.388
+0.220
+0.436
+0.325
+COMET
+0.219
+0.369
+0.316
+0.378
+0.405
+0.226
+0.462
+0.339
+UNSUPERVISED METHODS
+BLEU
+0.054
+0.236
+0.194
+0.276
+0.249
+0.115
+0.321
+0.206
+CHRF
+0.123
+0.292
+0.240
+0.323
+0.304
+0.177
+0.371
+0.261
+PRISM
+0.199
+0.366
+0.320
+0.362
+0.382
+0.220
+0.434
+0.326
+BERTScore
+0.190
+0.354
+0.292
+0.351
+0.381
+0.221
+0.430
+0.317
+BARTSCORE
+0.156
+0.335
+0.273
+0.324
+0.322
+0.167
+0.389
+0.281
++ CNN
+0.190
+0.365
+0.300
+0.348
+0.384
+0.208
+0.425
+0.317
++ CNN + Para
+0.205†
+0.370†
+0.316
+0.378†
+0.386†
+0.219
+0.442†
+0.331
++ CNN + Para + Prompt
+0.238‡
+0.374‡
+0.318
+0.376†
+0.386†
+0.219
+0.447‡
+0.337
+Table 4: Spearman correlation of different metrics on three human judgement datasets. For prompt-
+based learning, we consider adding prompts to the best-performing BARTSCORE (Ω) on each dataset.
+The highest correlation overall for each aspect on each dataset is bold.
+REALSumm
+SummEval
+NeR18
+COV
+COH
+FAC
+FLU
+INFO
+COH
+FLU
+INFO
+REL
+Avg.
+ROUGE-1
+0.498
+0.167
+0.160
+0.115
+0.326
+0.095
+0.104
+0.130
+0.147
+0.194
+ROUGE-2
+0.423
+0.184
+0.187
+0.159
+0.290
+0.026
+0.048
+0.079
+0.091
+0.165
+ROUGE-L
+0.488
+0.128
+0.115
+0.105
+0.311
+0.064
+0.072
+0.089
+0.106
+0.164
+BERTScore
+0.440
+0.284
+0.110
+0.193
+0.312
+0.147
+0.170
+0.131
+0.163
+0.217
+MoverScore
+0.372
+0.159
+0.157
+0.129
+0.318
+0.161
+0.120
+0.188
+0.195
+0.200
+PRISM
+0.411
+0.249
+0.345
+0.254
+0.212
+0.573
+0.532
+0.561
+0.553
+0.410
+BARTSCORE
+0.441
+0.322†
+0.311
+0.248
+0.264
+0.679† 0.670† 0.646† 0.604† 0.465
++ CNN
+0.475
+0.448‡ 0.382† 0.356† 0.356† 0.653† 0.640† 0.616†
+0.567
+0.499
++ CNN + Para
+0.471
+0.424† 0.401‡ 0.378‡
+0.313
+0.657† 0.652† 0.614†
+0.562
+0.497
++ Ω+ Prompt
+0.488
+0.407† 0.378† 0.338† 0.368‡ 0.701‡ 0.679‡ 0.686‡ 0.620‡ 0.518
+Signiﬁcance Tests.
+To perform rigorous analysis, we adopt the bootstrapping method (p-value <
+0.05) [28] for pair-wise signiﬁcance tests. In all tables, we use † on BARTSCORE if it signiﬁcantly
+(p < 0.05) outperforms other unsupervised metrics excluding BARTSCORE variants. We use ‡ on
+BARTSCORE if it signiﬁcantly outperforms all other unsupervised metrics including BARTSCORE
+variants.
+4.3
+Experimental Results
+4.3.1
+Machine Translation
+Tab. 3 illustrates Kendall’s Tau correlation of diverse metrics on different language pairs. We
+can observe that: (1) BARTSCORE enhanced by ﬁne-tuning tasks (CNN+Para) can signiﬁcantly
+outperform all other unsupervised methods on ﬁve language pairs and achieve comparable results on
+the other two. (2) The performance of BARTSCORE can be further improved by simply adding a
+prompt (i.e., such as) without any other overhead. Notably, on the language pair de-en, using the
+prompt results in a 0.033 improvement, which even signiﬁcantly surpasses existing state-of-the-art
+supervised metrics BLEURT and COMET. This suggests a promising future direction for metric
+design: searching for proper prompts to better leverage knowledge stored in pre-trained language
+models instead of training on human judgment data [31].
+7
+
+
+4.3.2
+Text Summarization
+Tab. 4 shows the meta-evaluation results of different metrics on the summarization task. We can
+observe that: (1) Simply vanilla BARTSCORE can outperform BERTScore and MoverScore by
+a large margin on 8 settings except the INFO perspective on SummEval. Strikingly, it achieves
+improvements of 0.251 and 0.265 over BERTScore and MoverScore respectively. (2) The improve-
+ment on REALSum and SummEval datasets can be further improved when introducing ﬁne-tuning
+tasks. However, ﬁne-tuning does not improve on the NeR18 dataset, likely because this dataset only
+contains 7 systems with easily distinguishable quality, and vanilla BARTSCORE can already achieve
+a high level of correlation (> 0.6 on average). (3) Our prompt combination strategy can consistently
+improve the performance on informativeness, up to 0.072 Spearman correlation on the NeR18 dataset
+Table 5: Results on Rank19 and QAGS datasets.
+where “Q” represents QAGS. Metrics achieve
+highest correlation are bold.
+Rank19
+Q-CNN
+Q-XSUM
+Acc.
+Pearson
+ROUGE-1
+0.568
+0.338
+-0.008
+ROUGE-2
+0.630
+0.459
+0.097
+ROUGE-L
+0.587
+0.357
+0.024
+BERTScore
+0.713
+0.576
+0.024
+MoverScore
+0.713
+0.414
+0.054
+PRISM
+0.780
+0.479
+0.025
+FactCC [30]
+0.700
+–
+–
+QAGS [67]
+0.721
+0.545
+0.175
+Human [14]
+0.839
+–
+–
+BARTSCORE
+0.684
+0.661†
+0.009
++ CNN
+0.836‡
+0.735‡
+0.184‡
++ CNN + Para
+0.788
+0.680†
+0.074
++ CNN + Prompt
+0.796
+0.719†
+0.094
+and 0.055 on SummEval. However, the perfor-
+mance from other perspectives such as ﬂuency and
+factuality do not show consistent improvements,
+which we will elaborate on later (§4.4.2).
+Analysis on Factuality Datasets The goal of these
+datasets is to judge whether a short generated sum-
+mary is faithful to the original long documents. As
+shown in Tab. 5, we observe that (1) BARTSCORE
++ CNN can almost match human baseline on Rank19
+and outperform all other metrics, including the most
+recent top-performing factuality metrics FactCC
+and QAGS by a large margin. (2) Using paraphrase
+as a ﬁne-tuning task will reduce BARTSCORE’s
+performance, which is reasonable since these two
+texts (i.e., the summary and document) shouldn’t
+maintain the paraphrased relationship in general.
+(3) Introducing prompts does not bring an improve-
+ment, even resulting in a performance decrease.
+4.3.3
+Data-to-text
+Table 6: Results on data-to-text datasets. We re-
+port Spearman correlation. Metrics achieve highest
+correlation are bold.
+BAGEL
+SFRES
+SFHOT
+Avg.
+ROUGE-1
+0.234
+0.115
+0.118
+0.156
+ROUGE-2
+0.199
+0.116
+0.088
+0.134
+ROUGE-L
+0.189
+0.103
+0.110
+0.134
+BERTScore
+0.289
+0.156
+0.135
+0.193
+MoverScore
+0.284
+0.153
+0.172
+0.203
+PRISM
+0.305
+0.155
+0.196
+0.219
+BARTSCORE
+0.247
+0.164†
+0.158
+0.190
++ CNN
+0.303
+0.191†
+0.190
+0.228
++ CNN + Para
+0.330†
+0.185†
+0.211†
+0.242
++ Ω+ Prompt
+0.336‡
+0.238‡
+0.235‡
+0.270
+The experiment results on data-to-text datasets
+are shown in Tab. 6. We observe that (1) ﬁne-
+tuning on the CNNDM dataset can consistently
+boost the correlation, for example, up to 0.056
+gain on BAGEL. (2) Additionally, further ﬁne-
+tuning on paraphrase datasets results in even
+higher performance compared to the version
+without any ﬁne-tuning, up to 0.083 Spearman
+correlation on BAGEL dataset. These results
+surpass all existing top-performing metrics. (3)
+Our proposed prompt combination strategy can
+consistently improve correlation, on average
+0.028 Spearman correlation. This is consistent
+with the ﬁndings in §4.3.2 that we can improve
+the aspect of informativeness through proper
+prompting.
+4.4
+Analysis
+We design experiments to better understand the mechanism by which BARTSCORE obtains these
+promising results, speciﬁcally asking three questions: Q1: Compared to other unsupervised metrics,
+where does BARTSCORE outperform them? Q2: How does adding prompts beneﬁt evaluation? Q3:
+Will BARTScore introduce biases in unpredictable ways?
+8
+
+
+All
+10
+8
+6
+4
+0.15
+0.2
+0.25
+0.3
+0.35
+Kendall’s Tau
+BE
+PR
+BL
+CO
+BA
+(a) Top-k systems
+15-25
+25-35
+35-45
+45-54
+0.29
+0.3
+0.31
+0.32
+0.33
+Kendall’s Tau
+BE
+PR
+BL
+CO
+BA
+(b) Reference length
+Sem
+Lin
+Fac
+20
+40
+60
+80
+100
+Percentage
+(c) Evaluation perspective
+Figure 2: Fine-grained analysis (a,b) and prompt analysis (c). In (a, b), BE, PR, BL, CO, BA represent
+BERTScore, PRISM, BLEURT, COMET and BARTSCORE respectively. In (c), SEM, LIN, FAC
+denote semantic overlap, linguistic quality and factual correctness respectively.
+4.4.1
+Fine-grained Analysis
+To answer Q1, we choose the MT task and break down the performance of each metric into different
+buckets based on different axes.
+Top-k Systems
+We report the average correlation across all language pairs achieved by each metric
+given only translations from top-k systems. We vary the number of k, and the results are shown in
+Fig. 2-(a). We can see that BARTSCORE can outperform all other metrics (including one supervised
+metric BLEURT) except the existing state-of-the-art supervised metric COMET for different k, and
+the decrease in correlation becomes smoother than others when considering top-scoring systems.
+This indicates that BARTSCORE is robust to high-quality generated texts.
+Reference Length
+We break down each test set into four buckets based on the reference length,
+which are [15, 25), [25, 35), [35, 45), [45, 54] and compute the Kendall’s Tau average correlation of
+different metrics across all language pairs within each bucket.6 The results are shown in Fig. 2-(b).
+We observe that BARTSCORE can outperform or tie with other unsupervised metrics over different
+reference lengths. Also, its correlation with human judgments is more stable compared to all other
+metrics. This indicates its robustness to different input lengths. More other analyses can be found in
+Appendix.
+4.4.2
+Prompt Analysis
+For Q2, we choose the summarization and data-to-text tasks for analysis where we used all prompts
+from our prompt set. We ﬁrst group all the evaluation perspectives into three categories: (1) semantic
+overlap (informativeness, pyramid score, and relevance) (2) linguistic quality (ﬂuency, coherence)
+(3) factual correctness (factuality). We then calculate the percentage of prompts that result in
+performance improvements for each perspective within a dataset. Finally, we compute the average
+percentage of prompts that can lead to performance gains for each category. The results are shown
+in Tab. 2-(c). We can see that for semantic overlap, almost all prompts can lead to the performance
+increase, while for factuality only a few prompts can improve the performance. This also explains the
+results in §4.3.2 where we found that combining the results of different prompts can lead to consistent
+increases in semantic overlap but worse performance in factuality. Regarding linguistic quality, the
+effect of adding a prompt is not that predictive, which is also consistent with our ﬁndings in §4.3.2.
+4.4.3
+Bias Analysis
+To answer Q3, we conduct bias analysis. Bias would indicate that the scores are too high or too low
+compared to the scores they are given by human annotators. Therefore, to see whether such biases
+exist, we inspected the rank differences given by human annotators and BARTScore (ﬁne-tuned
+on CNNDM dataset) on the REALSumm dataset where 24 systems are considered, including both
+abstractive models and extractive models as well as models based on pre-trained models and models
+6In each bucket, we remove the language pairs that do not contain over 500 samples. This results in the
+removal of kk-en in [35, 45) and the removal of gu-en, kk-en, lt-en in [45, 54].
+9
+
+
+E1
+E2
+E3
+E4
+E5
+E6
+E7
+E8
+E9 E10 A1
+A2
+A3
+A4
+A5
+A6
+A7
+A8
+A9 A10 A11 A12 A13 A14
+−5
+0
+5
+10
+Rank Diﬀerence
+Figure 3: Bias analysis of BARTScore. The “Rank Difference" is the rank obtained using human
+judgements minus the rank got from BARTScore. Systems beginning with letter “E" are extractive
+systems while systems beginning with letter “A" are abstractive systems.
+that are trained from scratch. We list all the systems below. And the resulting rank difference is
+shown in Fig. 3.
+Extractive Systems
+E1: BanditSum [11]; E2: Refresh [49]; E3: NeuSum [81]; E4: LSTM-
+PN-RL [80]; E5: BERT-TF-SL [80]; E6: BERT-TF-PN [80]; E7: BERT-LSTM-PN-RL [80]; E8:
+BERT-LSTM-PN [80]; E9: HeterGraph [69]; E10: MatchSum [79].
+Abstractive Systems
+A1: Ptr-Gen [62]; A2: Bottom-up [17]; A3: Fast-Abs-RL [5]; A4: Two-stage-
+RL [74]; A5: BERT-Ext-Abs [41]; A6: BERT-Abs [41]; A7: Trans-Abs [41]; A8: UniLM-1 [10]; A9:
+UniLM-2 [2]; A10: T5-base [56]; A11: T5-large [56]; A12: T5-11B [56]; A13: BART [33]; A14:
+SemSim [42].
+As shown in Fig. 3, BARTScore is less effective at distinguishing the quality of extractive summariza-
+tion systems while much better at distinguishing the quality of abstractive summarization systems.
+However, given that there is a trend for using abstractive systems as more and more pre-trained
+sequence-to-sequence models being proposed, BARTScore’s weaknesses on extractive systems will
+be mitigated.
+5
+Implications and Future Directions
+In this paper, we proposed a metric BARTSCORE that formulates evaluation of generated text as a
+text generation task, and empirically demonstrated its efﬁcacy. Without the supervision of human
+judgments, BARTSCORE can effectively evaluate texts from 7 perspectives and achieve the best
+performance on 16 of 22 settings against existing top-scoring metrics. We highlight potential future
+directions based on what we have learned.
+Prompt-augmented metrics As an easy-to-use but powerful method, prompting [39] has achieved
+impressive performance particularly on semantic overlap-based evaluation perspectives. However, its
+effectiveness in factuality and linguistic quality-based perspectives has not been fully demonstrated
+in this paper. In the future, more works can explore how to make better use of prompts for these and
+other evaluation scenarios.
+Co-evolving evaluation metrics and systems BARTSCORE builds the connection between metric
+design and system design, which allows them to share their technological advances, thereby progress-
+ing together. For example, a better BART-based summarization system may be directly used as a
+more reliable automated metric for evaluating summaries, and this work makes them connected.
+Acknowledgments
+The authors would like to thank the anonymous reviewers for their insightful comments and sugges-
+tions. The authors also thank Wei Zhao for assisting with reproducing baseline results. This work
+was supported by the Air Force Research Laboratory under agreement number FA8750-19-2-0200.
+The U.S. Government is authorized to reproduce and distribute reprints for Governmental purposes
+notwithstanding any copyright notation thereon. The views and conclusions contained herein are
+those of the authors and should not be interpreted as necessarily representing the ofﬁcial policies
+or endorsements, either expressed or implied, of the Air Force Research Laboratory or the U.S.
+Government.
+10
+
+
+References
+[1] Akari Asai, Kazuma Hashimoto, Hannaneh Hajishirzi, Richard Socher, and Caiming Xiong.
+Learning to retrieve reasoning paths over wikipedia graph for question answering. arXiv preprint
+arXiv:1911.10470, 2019.
+[2] Hangbo Bao, Li Dong, Furu Wei, Wenhui Wang, Nan Yang, Xiaodong Liu, Yu Wang, Jianfeng
+Gao, Songhao Piao, Ming Zhou, and Hsiao-Wuen Hon. Unilmv2: Pseudo-masked language
+models for uniﬁed language model pre-training. In Proceedings of the 37th International
+Conference on Machine Learning, ICML 2020, 13-18 July 2020, Virtual Event, volume 119 of
+Proceedings of Machine Learning Research, pages 642–652. PMLR, 2020.
+[3] Manik Bhandari, Pranav Narayan Gour, Atabak Ashfaq, and Pengfei Liu. Metrics also disagree
+in the low scoring range: Revisiting summarization evaluation metrics. In Proceedings of the
+28th International Conference on Computational Linguistics, pages 5702–5711, Barcelona,
+Spain (Online), December 2020. International Committee on Computational Linguistics.
+[4] Manik Bhandari, Pranav Narayan Gour, Atabak Ashfaq, Pengfei Liu, and Graham Neubig.
+Re-evaluating evaluation in text summarization. In Proceedings of the 2020 Conference on
+Empirical Methods in Natural Language Processing (EMNLP), pages 9347–9359, Online,
+November 2020. Association for Computational Linguistics.
+[5] Yen-Chun Chen and Mohit Bansal. Fast abstractive summarization with reinforce-selected
+sentence rewriting. In Proceedings of the 56th Annual Meeting of the Association for Computa-
+tional Linguistics (Volume 1: Long Papers), pages 675–686, Melbourne, Australia, July 2018.
+Association for Computational Linguistics.
+[6] Andrew M Dai and Quoc V Le. Semi-supervised sequence learning. In C. Cortes, N. Lawrence,
+D. Lee, M. Sugiyama, and R. Garnett, editors, Advances in Neural Information Processing
+Systems, volume 28. Curran Associates, Inc., 2015.
+[7] Hoa Trang Dang. Overview of duc 2005. In Proceedings of the document understanding
+conference, volume 2005, pages 1–12, 2005.
+[8] Michael Denkowski and Alon Lavie. Extending the METEOR machine translation evaluation
+metric to the phrase level. In Human Language Technologies: The 2010 Annual Conference of
+the North American Chapter of the Association for Computational Linguistics, pages 250–253,
+Los Angeles, California, June 2010. Association for Computational Linguistics.
+[9] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert: Pre-training of deep
+bidirectional transformers for language understanding. In Proceedings of the 2019 Conference
+of the North American Chapter of the Association for Computational Linguistics: Human
+Language Technologies, Volume 1 (Long and Short Papers), pages 4171–4186, 2019.
+[10] Li Dong, Nan Yang, Wenhui Wang, Furu Wei, Xiaodong Liu, Yu Wang, Jianfeng Gao, Ming
+Zhou, and Hsiao-Wuen Hon. Uniﬁed language model pre-training for natural language under-
+standing and generation. In Hanna M. Wallach, Hugo Larochelle, Alina Beygelzimer, Florence
+d’Alché-Buc, Emily B. Fox, and Roman Garnett, editors, Advances in Neural Information
+Processing Systems 32: Annual Conference on Neural Information Processing Systems 2019,
+NeurIPS 2019, December 8-14, 2019, Vancouver, BC, Canada, pages 13042–13054, 2019.
+[11] Yue Dong, Yikang Shen, Eric Crawford, Herke van Hoof, and Jackie Chi Kit Cheung. Bandit-
+Sum: Extractive summarization as a contextual bandit. In Proceedings of the 2018 Conference
+on Empirical Methods in Natural Language Processing, pages 3739–3748, Brussels, Belgium,
+October-November 2018. Association for Computational Linguistics.
+[12] Zi-Yi Dou, Pengfei Liu, Hiroaki Hayashi, Zhengbao Jiang, and Graham Neubig. GSum: A
+general framework for guided neural abstractive summarization. In Meeting of the North
+American Chapter of the Association for Computational Linguistics (NAACL), Mexico City,
+June 2021.
+[13] A. R. Fabbri, Wojciech Kryscinski, Bryan McCann, R. Socher, and Dragomir Radev. Summeval:
+Re-evaluating summarization evaluation. Trans. Assoc. Comput. Linguistics, 9:391–409, 2021.
+[14] Tobias Falke, Leonardo FR Ribeiro, Prasetya Ajie Utama, Ido Dagan, and Iryna Gurevych.
+Ranking generated summaries by correctness: An interesting but challenging application for
+natural language inference. In Proceedings of the 57th Annual Meeting of the Association for
+Computational Linguistics, pages 2214–2220, 2019.
+11
+
+
+[15] David Freedman, Robert Pisani, and Roger Purves. Statistics (international student edition).
+Pisani, R. Purves, 4th edn. WW Norton & Company, New York, 2007.
+[16] Sebastian Gehrmann, Yuntian Deng, and Alexander Rush. Bottom-up abstractive summarization.
+In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing,
+pages 4098–4109, 2018.
+[17] Sebastian Gehrmann, Yuntian Deng, and Alexander Rush. Bottom-up abstractive summarization.
+In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing,
+pages 4098–4109, Brussels, Belgium, October-November 2018. Association for Computational
+Linguistics.
+[18] Max Grusky, Mor Naaman, and Yoav Artzi. Newsroom: A dataset of 1.3 million summaries
+with diverse extractive strategies. In Proceedings of the 2018 Conference of the North American
+Chapter of the Association for Computational Linguistics: Human Language Technologies,
+Volume 1 (Long Papers), pages 708–719, New Orleans, Louisiana, June 2018. Association for
+Computational Linguistics.
+[19] Max Grusky, Mor Naaman, and Yoav Artzi. Newsroom: A dataset of 1.3 million summaries
+with diverse extractive strategies. In Proceedings of the 2018 Conference of the North American
+Chapter of the Association for Computational Linguistics: Human Language Technologies,
+Volume 1 (Long Papers), volume 1, pages 708–719, 2018.
+[20] K. Hermann, Tomás Kociský, Edward Grefenstette, Lasse Espeholt, Will Kay, Mustafa Suley-
+man, and P. Blunsom. Teaching machines to read and comprehend. In NIPS, 2015.
+[21] Tsutomu Hirao, Manabu Okumura, Norihito Yasuda, and Hideki Isozaki. Supervised auto-
+matic evaluation for summarization with voted regression model. Information Processing &
+Management, 43(6):1521–1535, 2007.
+[22] J. Edward Hu, Abhinav Singh, Nils Holzenberger, Matt Post, and Benjamin Van Durme. Large-
+scale, diverse, paraphrastic bitexts via sampling and clustering. In Proceedings of the 23rd
+Conference on Computational Natural Language Learning (CoNLL), pages 44–54, Hong Kong,
+China, November 2019. Association for Computational Linguistics.
+[23] Sarthak Jain, Madeleine van Zuylen, Hannaneh Hajishirzi, and Iz Beltagy. Scirex: A challenge
+dataset for document-level information extraction. arXiv preprint arXiv:2005.00512, 2020.
+[24] Zhengbao Jiang, Frank F. Xu, Jun Araki, and Graham Neubig. How can we know what language
+models know? Transactions of the Association for Computational Linguistics, 8:423–438,
+2020.
+[25] Karen Sparck Jones. A statistical interpretation of term speciﬁcity and its application in retrieval.
+Journal of documentation, 1972.
+[26] Vladimir Karpukhin, Barlas O˘
+guz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov,
+Danqi Chen, and Wen-tau Yih. Dense passage retrieval for open-domain question answering.
+arXiv preprint arXiv:2004.04906, 2020.
+[27] M. G. Kendall. A new measure of rank correlation. Biometrika, 30(1/2):81–93, 1938.
+[28] Philipp Koehn. Statistical signiﬁcance tests for machine translation evaluation. In Proceedings
+of the 2004 Conference on Empirical Methods in Natural Language Processing, pages 388–395,
+Barcelona, Spain, July 2004. Association for Computational Linguistics.
+[29] Philipp Koehn. Statistical machine translation. Cambridge University Press, 2009.
+[30] Wojciech Kryscinski, Bryan McCann, Caiming Xiong, and Richard Socher. Evaluating the
+factual consistency of abstractive text summarization. In Proceedings of the 2020 Conference
+on Empirical Methods in Natural Language Processing (EMNLP), pages 9332–9346, Online,
+November 2020. Association for Computational Linguistics.
+[31] Teven Le Scao and Alexander Rush. How many data points is a prompt worth? In Proceedings
+of the 2021 Conference of the North American Chapter of the Association for Computational
+Linguistics: Human Language Technologies, pages 2627–2636, Online, June 2021. Association
+for Computational Linguistics.
+[32] Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman Mohamed,
+Omer Levy, Ves Stoyanov, and Luke Zettlemoyer. Bart: Denoising sequence-to-sequence
+pre-training for natural language generation, translation, and comprehension. arXiv preprint
+arXiv:1910.13461, 2019.
+12
+
+
+[33] Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman Mohamed, Omer
+Levy, Veselin Stoyanov, and Luke Zettlemoyer. BART: Denoising sequence-to-sequence pre-
+training for natural language generation, translation, and comprehension. In Proceedings of
+the 58th Annual Meeting of the Association for Computational Linguistics, pages 7871–7880,
+Online, July 2020. Association for Computational Linguistics.
+[34] Xiang Lisa Li and Percy Liang. Preﬁx-tuning: Optimizing continuous prompts for generation.
+ArXiv, abs/2101.00190, 2021.
+[35] Chin-Yew Lin. Rouge: A package for automatic evaluation of summaries. Text Summarization
+Branches Out, 2004.
+[36] Chin-Yew Lin and Eduard Hovy.
+Automatic evaluation of summaries using n-gram co-
+occurrence statistics. In Proceedings of the 2003 Human Language Technology Conference of
+the North American Chapter of the Association for Computational Linguistics, pages 150–157,
+2003.
+[37] Ying Lin, Heng Ji, Fei Huang, and Lingfei Wu. A joint neural model for information extrac-
+tion with global features. In Proceedings of the 58th Annual Meeting of the Association for
+Computational Linguistics, pages 7999–8009, 2020.
+[38] Pengfei Liu, Jinlan Fu, Yang Xiao, Weizhe Yuan, Shuaicheng Chang, Junqi Dai, Yixin Liu,
+Zihuiwen Ye, and Graham Neubig. Explainaboard: An explainable leaderboard for nlp. arXiv
+preprint arXiv:2104.06387, 2021.
+[39] Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi, and Graham Neubig.
+Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language
+processing, 2021.
+[40] Yang Liu and Mirella Lapata. Text summarization with pretrained encoders. arXiv preprint
+arXiv:1908.08345, 2019.
+[41] Yang Liu and Mirella Lapata. Text summarization with pretrained encoders. In Proceedings
+of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th
+International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), pages
+3730–3740, Hong Kong, China, November 2019. Association for Computational Linguistics.
+[42] Yixin Liu and Pengfei Liu. Simcls: A simple framework for contrastive learning of abstractive
+summarization. arXiv preprint arXiv:2106.01890, 2021.
+[43] Qingsong Ma, Ondˇ
+rej Bojar, and Yvette Graham. Results of the WMT18 metrics shared
+task: Both characters and embeddings achieve good performance. In Proceedings of the Third
+Conference on Machine Translation: Shared Task Papers, pages 671–688, Belgium, Brussels,
+October 2018. Association for Computational Linguistics.
+[44] Qingsong Ma, Johnny Wei, Ondˇ
+rej Bojar, and Yvette Graham. Results of the WMT19 metrics
+shared task: Segment-level and strong MT systems pose big challenges. In Proceedings of
+the Fourth Conference on Machine Translation (Volume 2: Shared Task Papers, Day 1), pages
+62–90, Florence, Italy, August 2019. Association for Computational Linguistics.
+[45] François Mairesse, Milica Gasic, Filip Jurcicek, Simon Keizer, Blaise Thomson, Kai Yu, and
+Steve Young. Phrase-based statistical language generation using graphical models and active
+learning. In Proceedings of the 48th Annual Meeting of the Association for Computational
+Linguistics, pages 1552–1561, 2010.
+[46] Chaitanya Malaviya, Graham Neubig, and Patrick Littell. Learning language representations for
+typology prediction. In Proceedings of the 2017 Conference on Empirical Methods in Natural
+Language Processing, pages 2529–2535, Copenhagen, Denmark, September 2017. Association
+for Computational Linguistics.
+[47] Nitika Mathur, Timothy Baldwin, and Trevor Cohn. Tangled up in BLEU: Reevaluating the
+evaluation of automatic machine translation evaluation metrics. In Proceedings of the 58th
+Annual Meeting of the Association for Computational Linguistics, pages 4984–4997, Online,
+July 2020. Association for Computational Linguistics.
+[48] Shashi Narayan, Shay B Cohen, and Mirella Lapata. Don’t give me the details, just the summary!
+topic-aware convolutional neural networks for extreme summarization. In Proceedings of the
+2018 Conference on Empirical Methods in Natural Language Processing, pages 1797–1807,
+2018.
+13
+
+
+[49] Shashi Narayan, Shay B. Cohen, and Mirella Lapata. Ranking sentences for extractive sum-
+marization with reinforcement learning. In Proceedings of the 2018 Conference of the North
+American Chapter of the Association for Computational Linguistics: Human Language Tech-
+nologies, Volume 1 (Long Papers), pages 1747–1759, New Orleans, Louisiana, June 2018.
+Association for Computational Linguistics.
+[50] Ani Nenkova and Rebecca Passonneau. Evaluating content selection in summarization: The
+pyramid method. In Proceedings of the Human Language Technology Conference of the North
+American Chapter of the Association for Computational Linguistics: HLT-NAACL 2004, pages
+145–152, Boston, Massachusetts, USA, May 2 - May 7 2004. Association for Computational
+Linguistics.
+[51] Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. Bleu: a method for automatic
+evaluation of machine translation. In Proceedings of the 40th Annual Meeting of the Association
+for Computational Linguistics, pages 311–318, Philadelphia, Pennsylvania, USA, July 2002.
+Association for Computational Linguistics.
+[52] Maxime Peyrard, Teresa Botschen, and Iryna Gurevych. Learning to score system summaries
+for better content selection evaluation. In Proceedings of the Workshop on New Frontiers
+in Summarization, pages 74–84, Copenhagen, Denmark, September 2017. Association for
+Computational Linguistics.
+[53] Maja Popovi´
+c. chrF: character n-gram F-score for automatic MT evaluation. In Proceedings
+of the Tenth Workshop on Statistical Machine Translation, pages 392–395, Lisbon, Portugal,
+September 2015. Association for Computational Linguistics.
+[54] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever.
+Language models are unsupervised multitask learners. OpenAI blog, 1(8):9, 2019.
+[55] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena,
+Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of transfer learning with a uniﬁed
+text-to-text transformer. Journal of Machine Learning Research, 21(140):1–67, 2020.
+[56] Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena,
+Yanqi Zhou, Wei Li, and Peter J. Liu. Exploring the limits of transfer learning with a uniﬁed
+text-to-text transformer. J. Mach. Learn. Res., 21:140:1–140:67, 2020.
+[57] Ricardo Rei, Craig Stewart, Ana C Farinha, and Alon Lavie. COMET: A neural framework
+for MT evaluation. In Proceedings of the 2020 Conference on Empirical Methods in Natural
+Language Processing (EMNLP), pages 2685–2702, Online, November 2020. Association for
+Computational Linguistics.
+[58] Laria Reynolds and Kyle McDonell. Prompt programming for large language models: Beyond
+the few-shot paradigm. In Extended Abstracts of the 2021 CHI Conference on Human Factors
+in Computing Systems, pages 1–7, 2021.
+[59] Timo Schick and Hinrich Schütze. Exploiting cloze questions for few-shot text classiﬁcation
+and natural language inference. arXiv preprint arXiv:2001.07676, 2020.
+[60] Timo Schick and Hinrich Schütze. Few-shot text generation with pattern-exploiting training.
+arXiv preprint arXiv:2012.11926, 2020.
+[61] Timo Schick and Hinrich Schütze. It’s not just size that matters: Small language models are
+also few-shot learners. arXiv preprint arXiv:2009.07118, 2020.
+[62] Abigail See, Peter J. Liu, and Christopher D. Manning. Get to the point: Summarization with
+pointer-generator networks. In Proceedings of the 55th Annual Meeting of the Association for
+Computational Linguistics (Volume 1: Long Papers), pages 1073–1083, Vancouver, Canada,
+July 2017. Association for Computational Linguistics.
+[63] Thibault Sellam, Dipanjan Das, and Ankur Parikh. BLEURT: Learning robust metrics for text
+generation. In Proceedings of the 58th Annual Meeting of the Association for Computational
+Linguistics, pages 7881–7892, Online, July 2020. Association for Computational Linguistics.
+[64] Taylor Shin, Yasaman Razeghi, Robert L Logan IV, Eric Wallace, and Sameer Singh. Auto-
+prompt: Eliciting knowledge from language models with automatically generated prompts.
+arXiv preprint arXiv:2010.15980, 2020.
+14
+
+
+[65] Miloš Stanojevi´
+c and Khalil Sima’an. BEER: BEtter evaluation as ranking. In Proceedings of
+the Ninth Workshop on Statistical Machine Translation, pages 414–419, Baltimore, Maryland,
+USA, June 2014. Association for Computational Linguistics.
+[66] Brian Thompson and Matt Post. Automatic machine translation evaluation in many languages
+via zero-shot paraphrasing. In Proceedings of the 2020 Conference on Empirical Methods in
+Natural Language Processing (EMNLP), pages 90–121, Online, November 2020. Association
+for Computational Linguistics.
+[67] Alex Wang, Kyunghyun Cho, and M. Lewis. Asking and answering questions to evaluate the
+factual consistency of summaries. In ACL, 2020.
+[68] Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel Bowman.
+GLUE: A multi-task benchmark and analysis platform for natural language understanding.
+In Proceedings of the 2018 EMNLP Workshop BlackboxNLP: Analyzing and Interpreting
+Neural Networks for NLP, pages 353–355, Brussels, Belgium, November 2018. Association for
+Computational Linguistics.
+[69] Danqing Wang, Pengfei Liu, Yining Zheng, Xipeng Qiu, and Xuanjing Huang. Heterogeneous
+graph neural networks for extractive document summarization. In Proceedings of the 58th
+Annual Meeting of the Association for Computational Linguistics, pages 6209–6219, Online,
+July 2020. Association for Computational Linguistics.
+[70] Tsung-Hsien Wen, Milica Gasic, Nikola Mrksic, Pei-Hao Su, David Vandyke, and Steve Young.
+Semantically conditioned lstm-based natural language generation for spoken dialogue systems.
+arXiv preprint arXiv:1508.01745, 2015.
+[71] Thomas Wolf, Lysandre Debut, Victor Sanh, Julien Chaumond, Clement Delangue, Anthony
+Moi, Pierric Cistac, Tim Rault, Remi Louf, Morgan Funtowicz, Joe Davison, Sam Shleifer,
+Patrick von Platen, Clara Ma, Yacine Jernite, Julien Plu, Canwen Xu, Teven Le Scao, Sylvain
+Gugger, Mariama Drame, Quentin Lhoest, and Alexander Rush. Transformers: State-of-the-art
+natural language processing. In Proceedings of the 2020 Conference on Empirical Methods in
+Natural Language Processing: System Demonstrations, pages 38–45, Online, October 2020.
+Association for Computational Linguistics.
+[72] Weizhe Yuan, Pengfei Liu, and Graham Neubig. Can we automate scientiﬁc reviewing? arXiv
+preprint arXiv:2102.00176, 2021.
+[73] Jerrold H Zar. Spearman rank correlation. Encyclopedia of Biostatistics, 7, 2005.
+[74] Haoyu Zhang, Jingjing Cai, Jianjun Xu, and Ji Wang. Pretraining-based natural language
+generation for text summarization. In Proceedings of the 23rd Conference on Computational
+Natural Language Learning (CoNLL), pages 789–797, Hong Kong, China, November 2019.
+Association for Computational Linguistics.
+[75] Jingqing Zhang, Yao Zhao, Mohammad Saleh, and Peter Liu. Pegasus: Pre-training with
+extracted gap-sentences for abstractive summarization. In International Conference on Machine
+Learning, pages 11328–11339. PMLR, 2020.
+[76] Tianyi Zhang, Varsha Kishore, Felix Wu, Kilian Q. Weinberger, and Yoav Artzi. Bertscore:
+Evaluating text generation with bert. In International Conference on Learning Representations,
+2020.
+[77] Wei Zhao, Maxime Peyrard, Fei Liu, Yang Gao, Christian M. Meyer, and Steffen Eger. Mover-
+Score: Text generation evaluating with contextualized embeddings and earth mover distance. In
+Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP),
+pages 563–578, Hong Kong, China, November 2019. Association for Computational Linguistics.
+[78] Ming Zhong, Pengfei Liu, Yiran Chen, Danqing Wang, Xipeng Qiu, and Xuanjing Huang.
+Extractive summarization as text matching. arXiv preprint arXiv:2004.08795, 2020.
+[79] Ming Zhong, Pengfei Liu, Yiran Chen, Danqing Wang, Xipeng Qiu, and Xuanjing Huang.
+Extractive summarization as text matching. In Proceedings of the 58th Annual Meeting of the
+Association for Computational Linguistics, pages 6197–6208, Online, July 2020. Association
+for Computational Linguistics.
+[80] Ming Zhong, Pengfei Liu, Danqing Wang, Xipeng Qiu, and Xuanjing Huang. Searching for
+effective neural extractive summarization: What works and what’s next. In Proceedings of
+15
+
+
+the 57th Annual Meeting of the Association for Computational Linguistics, pages 1049–1058,
+Florence, Italy, July 2019. Association for Computational Linguistics.
+[81] Qingyu Zhou, Nan Yang, Furu Wei, Shaohan Huang, Ming Zhou, and Tiejun Zhao. Neural
+document summarization by jointly learning to score and select sentences. In Proceedings of the
+56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers),
+pages 654–663, Melbourne, Australia, July 2018. Association for Computational Linguistics.
+16
+
+
+A
+Appendix
+A.1
+Summary of Commonly Used Metrics for Text Generation
+Table 7: Summary of commonly used metrics for text generation. (S, H) represents whether a metric
+has a setting that uses source text and hypothesis text. (R, H) denotes whether a metric has a setting
+that uses reference text and hypothesis text. (S, R, H) indicates whether a metric has a setting that
+uses source text, hypothesis text and reference text. We use the following abbreviations for different
+tasks: SUM - Summarization, MT - Machine Translation, MUL - Multiple tasks, FAC - Factuality.
+For settings and tasks, we only list the ones justiﬁed by the original paper for each metric.
+Metrics
+Supervised
+Paradigm
+(S, H)
+(R, H)
+(S, R, H)
+Task
+Support FAC
+ROUGE
+
+Match
+
+SUM
+
+BLEU
+
+Match
+
+MT
+
+CHRF
+
+Match
+
+MT
+
+BERTScore
+
+Match
+
+MUL
+
+MoverScore
+
+Match
+
+MUL
+
+PRISM
+
+Paraphrase
+
+
+MT
+
+BLEURT
+
+Regress
+
+MT
+
+S3
+
+Regress
+
+SUM
+
+VRM
+
+Regress
+
+SUM
+
+COMET
+
+Regress, Rank
+
+MT
+
+BEER
+
+Rank
+
+MT
+
+BARTScore
+
+Generation
+
+
+MUL
+
+A.2
+Pre-trained Model Selection
+Besides BART, we also tried T5 and PEGASUS as our sequence-to-sequence model to get generation
+scores. We conduct experiments on WMT19, and the results are shown in Tab. 8. We don’t observe
+improvements in using PEGASUS or T5 over BART.
+Table 8: Experiment results for PEGASUS and T5 on the WMT19 dataset. The highest correlations
+are bold.
+de-en
+ﬁ-en
+gu-en
+kk-en
+lt-en
+ru-en
+zh-en
+PEGASUS-large
+0.124
+0.297
+0.237
+0.205
+0.252
+0.148
+0.311
+PEGASUS-large-cnn
+0.174
+0.361
+0.297
+0.337
+0.373
+0.215
+0.415
+T5-base
+0.170
+0.357
+0.300
+0.339
+0.348
+0.208
+0.378
+T5-large
+0.168
+0.353
+0.287
+0.332
+0.335
+0.193
+0.383
+T5-base-cnn
+0.177
+0.364
+0.295
+0.342
+0.347
+0.207
+0.402
+BART
+0.156
+0.335
+0.273
+0.324
+0.322
+0.167
+0.389
+BART-cnn
+0.190
+0.365
+0.300
+0.348
+0.384
+0.208
+0.425
+A.3
+Prompt Set
+In Tab. 9, we list the full prompt set for both s →h direction and h ↔r direction.
+A.4
+Prompt Combination
+Given a source sequence x, a target sequence y and a set of prompts z1, z2, · · · zn. We denote the
+prompted target sequence as [y : zi] for any prompt zi. Under the sequence-to-sequence model
+17
+
+
+Table 9: Full prompt set for both s →h and h ↔r
+Prompt Set
+s →h
+Last
+Tersely
+Succinctly
+In summation
+To put it succinctly
+After
+In brief
+All in all
+To summarize
+Bringing up the rear
+Behind
+In short
+In outline
+In a nutshell
+To come to the point
+Lastly
+Concisely
+In closing
+In conclusion
+In the ﬁnal analysis
+In sum
+In precis
+In passing
+In winding up
+Without wasting words
+To end
+In a word
+To conclude
+Last in order
+At the end of the day
+Curtly
+Compactly
+Summarising
+In a few words
+Without waste of words
+Crisply
+Summarily
+In the rear
+As a ﬁnal point
+Finally yet importantly
+At last
+To sum up
+Summarizing
+Not least of all
+To put it in a nutshell
+Pithily
+Basically
+Laconically
+To put it brieﬂy
+When all is said and done
+Shortly
+In the end
+At the rear
+Not to mince words
+To cut a long story short
+In ﬁne
+At the end
+To be brief
+Last but not least
+Not to beat about the bush
+Finally
+In essence
+Last of all
+Just as importantly
+In drawing things to a close
+Brieﬂy
+Ultimately
+Elliptically
+To put it concisely
+Not to put too ﬁne a point on it
+h ↔r
+As
+To wit
+As it were
+Case in point
+As an illustration
+sc.
+That is
+Especially
+That is to say
+To give an example
+i.e.
+Such as
+For example
+To rephrase it
+To give an instance
+Like
+Scilicet
+Particularly
+To be speciﬁc
+To put it another way
+Viz.
+Videlicet
+Speciﬁcally
+In plain English
+By way of explanation
+Namely
+Expressly
+For instance
+Take for example
+By way of illustration
+id est
+Specially
+To illustrate
+Strictly speaking
+parameterized by θ, we combine the generation scores using different prompts as follows:
+BARTSCORE-PROMPT = 1
+n
+n
+X
+i=1
+1
+mi
+mi
+X
+t=1
+log p([y : zi]t|[y : zi]<t, x, θ)
+(3)
+Where n is the number of prompts considered, mi is the target length after adding the i-th prompt.
+A.5
+Robustness to Language Pair Distance
+BE
+PR
+BL CO BA
+Syn
+Geo
+Pho
+Gen
+Inv
+Fea
+0.40
+0.45
+0.50
+0.55
+0.60
+0.65
+0.70
+0.75
+Figure 4: Pearson correlation be-
+tween language pair distance and
+correlation with human metrics.
+Translations between different language pairs contain different
+variances. Here we aim to measure how the performance
+of a metric will change considering the distance between a
+language pair. We use language vectors to measure the distance
+between two languages [46], and consider 6 distances, which
+are syntactic, geographic, phonological, genetic, inventory and
+featural distances. We plot the Pearson correlation heatmap
+in Fig. 4. We observe that the correlation doesn’t change
+much w.r.t. different distances across metrics. And the results
+show that all metrics have a signiﬁcant correlation with genetic
+distance. This indicates that metrics are good at measuring
+translation quality from genetically different languages. This
+may be because the translation from similar languages is easier
+than dissimilar languages, making translation systems less
+distinguishable.
+18

@@ -1,0 +1,2183 @@
+AutoLion Calibration
+Tutorials
+Version 2022
+Telephone:        (630) 325-5848, Available Monday - Friday, 8 A.M. - 5:30 P.M. (GMT-6)
+Fax:                    (630) 325-5849
+Email:                support@gtisoft.com
+ 
+   
+Web Address:   gtisoft.com
+Address:            601 Oakmont Lane, Suite 220
+ 
+                          Westmont, IL  60559 
+ 
+                          USA
+Copyright 2022 © Gamma Technologies. All rights reserved. All information contained in this manual is
+confidential and cannot be reproduced or transmitted in any form or by any means, electronic or mechanical, for
+any purpose, without the express written permission of Gamma Technologies.
+GT-SUITE
+
+
+2
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+This page is intentionally left blank.
+
+
+3
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+Table of Contents
+Autolion Calibration Tutorials ................................................................................................ 4
+GT-AutoLion Introduction ................................................................................................................. 4
+1
+Electrode Design ................................................................................................................................. 21
+2
+Cell Design ............................................................................................................................................ 26
+3
+Cell Calibration: OCV ......................................................................................................................... 41
+4
+Cell Calibration: Performance ......................................................................................................... 63
+5
+Calendar Aging Calibration ............................................................................................................. 90
+6
+Cycle Aging Calibration ................................................................................................................. 112
+7
+Index
+
+
+4
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+1
+GT-AutoLion Introduction
+In this tutorial, we will create an AutoLion model of a simple coin cell running a constant current
+discharge. 
+1. Select File 
+ Resources 
+ Create New Model to open the document creation wizard. Select the
+"GT-AutoLion (.autolion)" option and hit "Finish". This creates a blank GT-AutoLion model and
+automatically pre-populates the project library with templates commonly used in energy storage
+applications.
+2. Save the file as “AutoLionTutorial-Step1.autolion”
+3. The layout of GT-AutoLion is shown below. The toolbar is across the top and provides access to
+tools such as "Case Setup" and "Run Setup". The model map is located below the toolbar and is
+the area where parts will be placed and connected. The model tree is to the left of the model map
+and stores information about all the components in the GT model. The structure of the model tree
+is pre-defined to be Templates 
+ Objects 
+ Parts. Templates are general structures that can
+define components of systems, but they do not contain any data representing a specific
+component. The next level, objects, are instances of templates with data populated such that they
+represent specific types of components (i.e a specific cell). A part is an instance of an object that
+has been placed on the GT model map – these can be thought of as physical copies of objects (i.e
+10 cells).
+
+
+5
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+4. Currently in the model tree, there should not be any objects or parts under the ‘AutoLion’
+template. To create a new object, double-click on the 'AutoLion' template. This will automatically
+open an object editor, as shown below.
+
+
+6
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+5. First, name the object, ''MyCell''. Then, begin filling out the attributes required to define an
+AutoLion cell.
+6. The first attribute, “Cell Geometry” requires a reference object. Reference objects are special types
+of templates in GT that allow data to be stored and shared between objects, parts, and models
+easily. Reference objects are represented using grey boxes in the model tree, as shown below. The
+reference objects ‘CellGeometry-Coin,’ ‘CellGeometry-Cylindrical,’ ‘CellGeometry-PrismaticRED,’
+and ‘CellGeometry-PrismaticSED’ are all reference objects that can be used in the “Cell Geometry”
+attribute. Please note that there are already some pre-populated reference objects for some of
+these geometries, including multiple standard coin cell sizes (i.e CR 1025 and CR 2032) and
+multiple standard cylindrical cell sizes (i.e 18650, 20700, 21700, and 26650).
+
+
+7
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+7. In the “Cell Geometry” attribute, find the button on the right with three dots in it (…).  This button is
+called the value selector (which is how the rest of these tutorials will refer to this button. It is
+highlighted with [#1] in the image below. When the value selector is clicked, all of the options that
+are available to place in this attribute are shown, for example the geometry reference objects
+mentioned earlier. For this tutorial, simply select the CR 2032 coin cell geometry [#2].
+8. Next, change the “Load Type” attribute to “Current” and set the “Current Request” to zero.
+
+
+8
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+9. In the “Model Setup” folder, turn on the options to stop the simulation when the upper or lower
+cutoff voltages are reached. Additionally, change the Open Circuit Voltage of Empty Cell attribute
+to 2.8 Volts.  See image below.
+10. In the “Cathode” and “Anode folders, the “Active Material” attributes require reference objects. 
+Because it can be difficult to obtain properties for electrochemical materials, GT-AutoLion provides
+pre-calibrated active materials and electrolytes in the GT library, lowering the need for users to
+
+
+9
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+have detailed knowledge of the materials used in their Li-ion cells. In the “Cathode” folder, select
+the “NCM622” reference object and in the “Anode” select the “Graphite” reference object.
+11. Additionally, in the “Cathode” folder, change the “Capacity Loading” attribute to be 5 mAh/cm^2
+12. Next, in the “Assembly” folder, select the “LiPF6_in_EC-EMC” option for the electrolyte
+
+
+10
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+13. Click “Ok” to finalize the creation of this new object. After clicking “Ok” the tree should have a new
+object beneath the ‘AutoLion’ template named “MyCell,” as shown below.
+14. Next, create a part derived from the “MyCell” object by clicking and dragging “MyCell” onto the
+GT model map. This should create a new part named “MyCell-1”
+
+
+11
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+15. Once a “MyCell-1” part is created, double-click on it and click the “Show Preprocess Plot” button.
+This will automatically run a pre-processing step that analyzes the AutoLion cell and outputs a
+series of tables summarizing the design of the cell. This includes tables summarizing the total
+amount of area and volume of each layer of the cell, including the cathode, anode, separator, and
+foils:
+16. It also includes a “Design Report” table that summarizes the design of the electrodes (Cathode
+and Anode), including important design features like the Porosity of the electrodes, which defines
+how densely packed the active material is packed into the cathode and anode.
+
+
+12
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+17. Additionally, there is a table that summarizes the entire cell, including the “Operational Capacity”
+of the cell (0.00788 Ah, which will be used later in this tutorial).
+18. Next, find the “Current Request” attribute and change the value from “0” to “[Current]”. In GT,
+users can enter strings inside square brackets to denote that the value of an attribute will become
+a parameter. Parameters can be used to create global variables that can be used across multiple
+parts and attributes. Parameters can also be used to create multiple cases that vary the value of an
+attribute from case to case (i.e parameter sweeping). After “[Current]” is entered in the “Current
+Request” attribute, an Add Parameter dialog will appear that allows a long description of the
+parameter to be defined.
+
+
+13
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+19. Enter Run Setup by clicking the Run Setup button in the toolbar. Set the “Automatic Shut-Off
+When Steady-State” attribute to “off” and create a parameter named “SimulationDuration” for the
+first attribute:
+20. Still in Run Setup, click on the “ODE Control” folder and double-click on the value selector for the
+"Integrator and Solution Control" reference object. Select the "Level0" reference object and the
+"Explicit" option to copy the object without a link to the library. If you selected the "Implicit"
+option, the attribute values for this reference object are yellow, meaning the attributes are read-
+only. These attributes are read-only because this “Level0” reference object is implicitly linked to a
+GT object library (which allows objects to be shared across multiple models). Please find the “Break
+Implicit Link” button in the “Tools” section of the toolbar. This will make the attributes user
+editable.
+
+
+14
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+21. Change the “Maximum Integration Timestep” attribute from “def” to 1. This will define a timestep
+for GT’s ODE solution of 1 second.
+22. At this point, two parameters have been defined (Current and SimulationDuration). Once a
+parameter is defined, its value can be set or varied in Case Setup. Click on the “Case Setup” button
+in the toolbar to enter Case Setup. In Case Setup, define 4 cases that run 1C, 2C, 3C, and 4C
+discharges (discharging the cell in 1 hour, 30 minutes, 20 minutes, and 15 minutes respectively)
+following the following instructions:
+a) Click on the “Add Parameter” button in the toolbar and fill the dialog box with the following
+two parameters: C-Rate and Capacity.
+
+
+15
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+b) Case Setup should now have 3 parameters (3 rows) and one case (1 column):
+c) Click the “Append Case” button 3 times to add three cases to Case Setup.
+d) For the “Capacity” attribute, enter 0.00788 Ah. Populating this value in Case 1 should propagate
+the values to cases 2-4.
+e) For the “C-Rate” attribute, enter 1, 2, 3, and 4 for the values for each case, respectively. Case
+Setup should appear like the image below.
+f) Highlight the value of the “Current” attribute in Case 1. Use the “=” to begin writing an
+equation. In Case Setup, equations can be used to define the value of one parameter to be
+dependent on the value of another parameter. For the “Current” parameter, define a value of
+“=[C-Rate]*[Capacity] and for the “SimulationDuration” parameter, define a value of “=3600/[C-
+Rate]”.  Finally, in the Case Label, define a Case Label of “[C-Rate] C”
+
+
+16
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+g) Case Setup should ultimately look like the image below. The light pink background denotes
+that the value of the cell is calculated using an equation.
+23. Double-click on the “MyCell-1” part and note that there is now a new “Plots” folder. The Plots
+folder allows users to define what data will be stored about each part on the map. Go to the Plots
+folder and turn on all the plots in the “Main” folder. The plots in the “Main” folder will be static X-Y
+plots that are structured to have a quantity on the y-axis and time on the x-axis.
+24. Turn on the first four plots in the “Spatial Plots (Time)” folder. The plots in the “Spatial Plots
+(Time)” folder will be animated X-Y plots that are structured to have a quantity on the y-axis and a
+spatial location within a cell (broken down by anode, separator, and cathode) on the x-axis.  These
+plots will be animated in time. The frequency at which frames of these plots are saved is defined in
+by the “Spatial Plot Storage Frequency” attribute in the “Model Setup” folder.
+
+
+17
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+25. In the anode, cathode, and separator plot folders, turn on each of the “Li+ Concentration” plots.
+Additionally, define a location (or multiple locations) at which these plots will reflect data for. The
+image below uses 0, 0.5, and 1 (please note the numbers need to be separated by spaces).
+26. The plots in these folders will be static X-Y plots that are structured to have a quantity on the y-
+axis and time on the x-axis. The location (or locations) within the model that is used for the plotted
+quantity is defined with normalized locations within the anode, separator, and cathode following
+the structure in the image below.
+
+
+18
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+27. To run the model, click the “Run” button in the toolbar. This will show a Run Simulation Wizard
+that gives options to run the simulation on a local machine or a distributed high performance
+computing cluster. Select a “Local” run and click the “Finish” button.
+
+
+19
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+28. After clicking “Finish” GT-POST should open. Within GT-POST, the “Simulation Dashboard” will
+display the progress of the simulation and information from the solver. After the simulation is
+complete, click on the “View Results” button.
+
+
+20
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+29. This will open the results file (.gdx) in GT-POST. The default view should show the same model
+map that was created in GT-ISE but with a gray background. Click on the “MyCell-1” part to display
+the outputs of that part.
+30. Ensure that the results look appropriate, such as the “Voltage vs. Capacity” plot with all four cases
+highlighted, shown below.  Additionally, check to make sure the spatial plots animate properly and
+the static location-dependent plots also worked properly.
+
+
+21
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+2
+Electrode Design
+This tutorial will demonstrate how AutoLion can be used to help with Li-ion cell design.  This tutorial
+will also help as a discussion about the fundamentals of Li-ion cell design.  If you are new to Li-ion cell
+technology or Li-ion cell design, this tutorial is highly recommended to follow.
+In this tutorial, two different Li-ion coin cells will be built using GT-AutoLion.  The cells will have the
+exact same chemistry, but one will be designed for power density and one will be designed for energy
+density.  Power-dense cells are designed to be able to withstand high currents and powers for short
+periods of time; whereas energy-dense cells are designed to be able to deliver a lot of charge at a
+slow rate.
+The table below summarizes the main differences of Li-ion cells between power-dense and energy-
+dense cells. Please note that the illustrations are exaggerations
+Power
+Energy
+Description
+Cells that are able to deliver high discharge
+power, but over a short period of time
+Cells that can only deliver low power, but
+over a longer period of time
+Illustration
+Sandwich designed for power density
+Sandwich designed for energy density
+Electrode
+Description
+Less active material is placed in electrodes,
+resulting in lower capacity to store Li+; however,
+the higher porosity (amount of free space) allows
+Li+ to move more freely throughout electrodes
+More active material is placed in electrodes,
+resulting in higher capacity to store more
+Li+; however, the lower porosity does not
+allow Li+ to move as freely
+Application
+Hybrid-Electric Vehicles (HEV)
+Power Tools
+Battery-Electric Vehicles (BEV)
+Consumer Electronics
+Electrode
+Guidelines
+Thinner electrodes (~40 µm)
+Higher Porosity (>30%) 
+Thicker electrodes (~80 µm)
+Lower Porosity (<25%)
+Foil
+Guidelines
+Positive: ~12 µm
+Negative: ~9 µm
+Positive: ~9 µm
+Negative: ~6 µm
+Separator
+Guidelines
+Thinner Separators
+Thicker Separators
+
+
+22
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+1. Open the “AutoLionTutorial-Step1.autolion” file created during Tutorial 1 or open
+“AutoLionTutorial-Step1-begin.autolion” in the GT installation.
+2. Save the file as “AutoLionTutorial-Step2-EnergyCell.autolion.”  The cell that was built for Tutorial 1
+had many attributes that were appropriate for an energy-dense cell, so this model build is already
+complete!
+3. Save the file as “AutoLionTutorial-Step2-PowerCell.autolion”
+4. Open the “MyCell-1” part and double-click on the “CR2032” reference object (green text in the
+“Cell Geometry” attribute).  This will open the CR2032 reference object, which defines the geometry
+of the Li-ion cell. Please note that this reference object is currently read-only because it is linked to
+the GT-SUITE object library (which allows objects to be shared across multiple models). Please find
+the “Break Implicit Link” button in the “Tools” section of the toolbar. This will make the attributes
+user editable.
+5. Edit the values of the section defining the “Thicknesses” of the cell, as shown below.  Click "OK" to
+finalize these changes.
+
+
+23
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+6. Follow the same procedure to break the implicit link for the “NCM622” and “Graphite” reference
+objects, allowing the attributes to be changed.  In these reference objects, change the particle size
+to be smaller, specifically 7 microns for NCM622 and 10 microns for Graphite.
+
+
+24
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+7. Additionally, in the “MyCell-1” AutoLion object, change the “Capacity Loading” attribute in the
+“Cathode” folder to 1.5.
+8. In the “Main Folder” click the “Show Preprocess Plot” button to see the latest Design Report for the
+AutoLion cell.  Scroll down to the “Cell Specifications” table to note that the “Operational Capacity”
+should be 0.00236 Ah.
+9. In Case Setup, use this capacity to update the “Capacity” parameter.  This should automatically
+update the “Current” parameter for the four cases.
+
+
+25
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+10. Run both the “AutoLionTutorial-Step2-EnergyCell.autolion” and “AutoLionTutorial-Step2-
+PowerCell.autolion” models.  Open the results in GT-POST.
+11. Compare the results between the energy cell and the power cell.  Be sure to note the differences
+in the “Electrolyte Concentration” plots and other spatial plots turned on.  Even more important is
+the difference in how the energy-dense cell tends to decrease the amount of delivered capacity as
+the C-rate increases much more drastically than the power-dense cells, as summarized in the table
+below.
+Power
+Energy
+Description
+Cells that are able to deliver high discharge
+power, but over a short period of time
+Cells that can only deliver low power, but
+over a longer period of time
+Illustration
+Sandwich designed for power density
+Sandwich designed for energy density
+Voltage vs.
+Delivered
+Capacity Plot
+12. By only changing a handful of key AutoLion parameters (and without changing the chemistry of
+the Li-ion cell), we were able to have two very unique cells that behave very differently.
+
+
+26
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+3
+Cell Design
+The previous tutorial focused on the design tradeoffs at the electrode-level.  The previous tutorials
+used simple coin cell geometries, which can be powerful for determining electrode design; however,
+electrode designs need to be scaled from coin cells into cells that are able to power cars, planes,
+power tools, and consumer electronics.  This tutorial will demonstrate how finalized electrode designs
+can be scaled into true cells using cylindrical, rolled prismatic, and stacked prismatic shapes.
+Cylindrical Cell
+1. Open the “AutoLionTutorial-Step2-PowerCell.autolion” file created during Tutorial 2 or open
+“AutoLionTutorial-Step3-begin.autolion” in the GT installation.
+2. Save the file as “AutoLionTutorial-Step3-Cylindrical.autolion”
+3. Open the “MyCell-1” part and click on the value selector for the “CellGeometry” attribute (shown
+below).
+.
+4. This value selector will show the different options available for this attribute.  Double-click on the
+‘CellGeometry-Cylindrical’ reference template option.
+
+
+27
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+5. For this cylindrical geometry, use the default options for everything except the thicknesses and
+name the object "CylindricalGeometry"
+6. Go back to the “MyCell-1” part and click the “Show Preprocess Plot” button. Note that when the
+coin cell geometry was used, AutoLion calculated coated areas of 1.767 cm2 and 2.011 cm2 for the
+cathode and anode, and a cell capacity of 0.00236 Ah
+
+
+28
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+7. The cylindrical cell shows a much higher coated area, leading to a much higher capacity cell
+(1.62624 Ah)
+8. AutoLion’s various geometry reference objects automatically calculate the “Coated Area” of the
+cathode and anode
+9. For the cylindrical cell, AutoLion does this by asking for dimensions of the cell’s jelly roll including
+inner and outer diameters of the jelly roll (shown in image below), heights of the different layers
+(not shown, “into the page” of image below), and other detailed dimensions of the cylindrical cell:
+
+
+29
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+a) AutoLion then automatically calculates the lengths of the different layers (i.e cathode, anode,
+separator), as shown in the image below.
+b) Please note that these dimensions are shown in the “Lengths” table in AutoLion’s Design
+Report:
+
+
+30
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) After the lengths are calculated, the height of the cathode is multiplied by the “Total Coated
+Length” of the cathode and the height of the anode is multiplied by the “Total Coated Length”
+of the anode in order to calculate the coated areas of the cathode and anode.
+d) Because the “Capacity Loading” attribute defines the amount of active material placed in the
+cathode and anode per unit area (Units are mAh/cm2), as the coated areas of the cathode and
+anode are increased, the capacity of the cells are automatically increased, as well.
+10.In Case Setup, change the “Capacity” parameter to the Operational Capacity of this cylindrical cell,
+1.62624 Ah.
+11. Run the model:
+a) Please note that because the electrodes are designed for power density, the cell still behaves
+like a power-dense cell even after it has been scaled up to a cylindrical cell.
+
+
+31
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+12. Optionally, experiment with changing the electrode design parameters back to an energy-dense
+cell with the same cylindrical shape using the attribute values in the table below:
+Attribute
+Value for power dense
+Value for energy
+dense
+Cathode Thickness
+37 µm
+77.5 µm
+Anode Thickness
+42 µm
+86 µm
+Separator Thickness
+10 µm
+20 µm
+Cathode Foil Thickness
+12 µm
+15 µm
+Anode Foil Thickness
+9 µm
+8 µm
+Graphite Particle Size
+10 µm
+15 µm
+NCM622 Particle Size
+7 µm
+10 µm
+Cathode Loading
+1.5 mAh/cm^3
+5 mAh/cm^3
+Cell Capacity (Calculated)
+1.62624 Ah
+2.64670 Ah
+13. Update the “Cell Capacity” parameter in Case Setup to that of an energy cell
+14. Re-run the model to see latest results.
+
+
+32
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+Rolled Prismatic Cell
+1. Open the “AutoLionTutorial-Step2-PowerCell.autolion” file created during Tutorial 2 or open
+“AutoLionTutorial-Step3-begin.autolion” in the GT installation.
+2. Save the file as “AutoLionTutorial-Step3-RolledPrismatic.autolion”
+3. Open the “MyCell-1” part and click on the value selector for the “CellGeometry” attribute (shown
+below).
+4. This value selector will show the different options available for this attribute.  Double-click on the
+‘CellGeometry-PrismaticRED’ reference template option.
+
+
+33
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+5. Name the object "PrismaticGeometry" and for this prismatic geometry, use the default options for
+everything except the thicknesses:
+6. Go back to the “MyCell-1” part and click the “Show Preprocess Plot” button.
+7. Please note that the cell has a much higher coated area for both the cathode and anode, and the
+operational capacity is 23.19766 Ah.
+
+
+34
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+8. AutoLion’s various geometry reference objects automatically calculate the “Coated Area” of the
+cathode and anode.
+9. For the rolled prismatic cell, AutoLion does this by asking for dimensions of the cell’s jelly roll
+including the height, width, and thickness of the prismatically-shaped jelly roll and other detailed
+dimensions of the cylindrical cell:
+a) AutoLion then automatically calculates the lengths of the different layers (i.e cathode, anode,
+separator)
+b) Please note that these dimensions are shown in the “Lengths” table in AutoLion’s Design
+Report:
+c) After the lengths are calculated, the height of the cathode is multiplied by the “Total Coated
+Length” of the cathode and the height of the anode is multiplied by the “Total Coated Length”
+of the anode in order to calculate the coated areas of the cathode and anode.
+
+
+35
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+d) Because the “Capacity Loading” attribute defines the amount of active material placed in the
+cathode and anode per unit area (Units are mAh/cm2), as the coated areas of the cathode and
+anode are increased, the capacity of the cells are automatically increased, as well.
+10. In Case Setup, change the “Capacity” parameter to the Operational Capacity of this cylindrical cell,
+23.19766 Ah.
+11. Run the model.
+a) Please note that because the electrodes are designed for power density, the cell still behaves
+like a power-dense cell even after it has been scaled up to a nearly 24 Ah prismatic cell.
+Stacked Prismatic (i.e Pouch) Cell
+
+
+36
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+1. Open the “AutoLionTutorial-Step2-PowerCell.autolion” file created during Tutorial 2 or open
+“AutoLionTutorial-Step3-begin.autolion” in the GT installation.
+2. Save the file as “AutoLionTutorial-Step3-Pouch.autolion”
+3. Open the “MyCell-1” part and click on the value selector for the “CellGeometry” attribute (shown
+below).
+4. This value selector will show the different options available for this attribute.  Double-click on the
+‘CellGeometry-PrismaticSED’ reference template option.
+
+
+37
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+5. Name the object "Pouch" and for this stacked prismatic geometry, use the default options for
+everything except the thicknesses:
+6. Go back to the “MyCell-1” part and click the “Show Preprocess Plot” button.
+7. Please note that the cell has a much higher coated area for both the cathode and anode, and the
+operational capacity is 23.15313 Ah.
+8. AutoLion’s various geometry reference objects automatically calculate the “Coated Area” of the
+cathode and anode, as shown in the image above
+
+
+38
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+9. For the stacked prismatic cell, AutoLion does this by asking for dimensions of the cell and the
+height, width, and thicknesses of each of the layers in the cell
+a) AutoLion also requests for how the end-plates are assembled (single-sided or double-sided
+cathodes or anodes) and then automatically calculates how many battery layers, double-sided
+cathode plates, and double-sided anode plates there are in the cell, as shown in the image
+below.
+b) Where each of those terms are defined in the image below.
+
+
+39
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) After the number of anode and cathode layers are calculated, the total coated areas of the
+cathode and anode are calculated:
+d) Because the “Capacity Loading” attribute defines the amount of active material placed in the
+cathode and anode per unit area (Units are mAh/cm2), as the coated areas of the cathode and
+anode are increased, the capacity of the cells are automatically increased, as well.
+10. In Case Setup, change the “Capacity” parameter to the Operational Capacity of this cylindrical cell,
+23.15313 Ah.
+11. Run the model.
+
+
+40
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+a) Please note that because the electrodes are designed for power density, the cell still behaves
+like a power-dense cell even after it has been scaled up to a pouch cell.
+
+
+41
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+4
+Cell Calibration: OCV
+In this tutorial, we will begin the process of building and calibrating an AutoLion model to
+experimental test data.  This example will assume that no cell teardown was completed, meaning that
+we only have knowledge of the basics of the cell design.
+Summary of items known and unknown about cell
+Known
+Unknown
+Cell exterior dimensions: 21700 cylindrical cell
+Thicknesses of layers (cathode, anode, separator)
+Cell chemistry: NCM523 Cathode, Graphite
+Anode
+Particle Sizes
+Experimental Data
+Electrode porosity
+The “AutoLion Application Manual and Calibration Procedure” manual that comes with every
+installation of GT-AutoLion ($GTIHOME\v20xx\documents\Modeling_Applications\AutoLion.pdf)
+discusses the theory behind AutoLion as well as a step-by-step strategy for calibrating AutoLion
+models.  As laid out in the AutoLion Calibration Manual, one of the first steps in calibrating a model is
+to calibrate the Open Circuit Voltage of the cell by using the experimental results of a very low current
+discharge test (i.e C/20 or preferably C/100 or even C/1000).
+In this tutorial, we will be using experimental results of a cell undergoing C/20 discharge.  The cell in
+question is a 2.7 Ah cylindrical cell and the C/20 discharge test was run at 0.135 A.  The
+“C_over_20_ExperimentalData.xlsx” file in the same directory as the example models
+(\$GTIHOME\v20xx\tutorials\Modeling_Applications\Battery\AutoLion_Calibration\04-
+OCV_Calibration) contains the experimental data we will be using (plotted below).
+
+
+42
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+1. Select File 
+ Resources 
+ Create New Model to open the document creation wizard. Select the
+"GT-AutoLion (.autolion)" option and hit "Finish". This creates a blank GT-AutoLion model and
+automatically pre-populates the project library with templates commonly used in energy storage
+applications.
+2. Save the file as “AutoLionTutorial-Step4.autolion”
+3. Create a new 'AutoLion' object by double-clicking on the 'AutoLion' template and name it
+“MyCell.”
+4. For the first attribute, “Cell Geometry,” use the value selector to select the “Cylindrical21700” that
+is in the GT-SUITE object library.
+5. Set the “Load Type” attribute to “Current” and for the “Current Request” attribute, use an equals
+sign to type an equation “=2.7/20”
+
+
+43
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+6. Next, in the “Model Setup” folder:
+a) Define the Open Circuit Voltage of Full Cell and Empty Cell attributes to 4.2 V and 2.8 V,
+respectively.  The experimental results show that the operational window is between 4.2 and
+2.8 volts, and the cell supplier does not want users to go outside of those bounds, so we will
+use those bounds to define 100% and 0% SOC.
+b) Turn on the “Stop Simulation at Lower Cutoff Voltage” option.
+c) Create a new parameter to define the timestep size: [timestep]
+
+
+44
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+7. In the Cathode folder, select GT’s NCM523 active material from the material database library using
+the Value Selector.  Additionally, in the Anode folder, select GT’s Graphite active material.
+8. In the “Assembly” folder, select GT’s “LiPF6_in_EC-EMC-DMC” electrolyte
+
+
+45
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+9. Click ““Ok” to finalize the creation of this new object. After clicking “Ok” the tree should have a new
+object beneath the ‘AutoLion’ template named “MyCell.”  Next, create a part derived from the
+“MyCell” object by clicking and dragging “MyCell” onto the GT model map. This should create a
+new part named “MyCell-1”
+10. Next, we will create a 'SignalGenerator' to create a controls signal containing the experimental
+data and a 'MonitorSignal' to compare the simulation data to the experimental data.  First, double-
+click on the 'SignalGenerator' template to create a new object, name it “Experimental_Voltage” and
+for the “Constant or Dependency Reference Object” attribute, click on the value selector, and
+create a new 'ProfileTransient' and name it “C_over_20_Results”
+
+
+46
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+11. Copy the experimental data from the “C_over_20_ExperimentalData.xlsx” file in the directory to the
+two arrays in the 'ProfileTransient'.  Then, click “OK” to finish defining the “C_over_20_Results” and
+“Experimental_Voltage” objects.
+12. Next, double-click on the 'MonitorSignal' template to create a new monitor object and:
+
+
+47
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+a) Name it “Voltage”
+b) Change the “X-Axis Type” attribute to “Time”
+c) Set the Y1-Axis Label to “Voltage”
+d) Set the Y1-Axis Minimum and Maximum to 2.8 and 4.2, respectively
+e) In the “Plot Properties” folder, name Input Signal #1 as “Autolion” and Input Signal #2 as
+“Experimental”
+13. Drag a copy of the “Voltage” monitor object and a copy of the “Experimental_Voltage” signal
+generator onto the map to create parts.  Arrange these parts and the “MyCell-1” part as shown
+below. The 'AutoLion' template icon was changed by right-clicking on the part, going to the
+"Choose GTI-Supplied Part Icon" option, and selecting the last icon. 
+
+
+48
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+14. Connect the “Voltage” output signal from “MyCell-1” to the first input signal in the monitor and
+connect the signal generator to the second input signal in the monitor, as shown below.
+15. Go to Run Setup and:
+a) Set the “Automatic Shut-Off When Steady-State” attribute to “off”
+b) Set the “Maximum Simulation Duration (Time)” attribute to 25 hours.
+c) In the “ODEControl” folder, click on the value selector in the first column of the “Integrator and
+Solution Control” attribute, and select the “AutoLion_ElectricalLoad” reference object.
+
+
+49
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+d) Double-click on the “AutoLion_ElectricalLoad” reference object
+e) Go to Tools 
+ Break Implicit Object Link to break the link that this object has with GT’s object
+library
+f)
+Set the “Maximum Integration Time Step” attribute to the [timestep] parameter defined earlier.
+16. Go to Case Setup and set the “timestep” parameter to 200 seconds.  Because this simulation will
+run a C/20 discharge, AutoLion can take very large timesteps.
+
+
+50
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+17. Save the model and hit the “Run” button to run the first iteration of the AutoLion model.
+18. After the model has completed, click the “View Results” to open the .glx file in GT-POST.
+19. Click on the “Voltage” monitor to view the comparison between AutoLion and the Experimental
+data:
+20. Based upon these results, it is clear that the capacity of the AutoLion cell is much higher than the
+capacity of the physical (“Experimental”) cell.  The overall shape of the two curves seem very
+similar, but the AutoLion curve appears more “stretched” in the Time axis.  Because of this, we
+should go back to the AutoLion model and vary the Cathode’s “Capacity Loading” attribute until
+the capacity of the cell more aligns with the experimental data.
+21. Go back to GT-ISE and double-click on the AutoLion part to edit it, navigate to the “Cathode”
+folder and define a new parameter called “[CathodeLoading]” for the “Capacity Loading” attribute.
+
+
+51
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+22.In Case Setup:
+a) Click the “Append Cases” button 9 times or use the “Append Multiple Cases” option to append
+9 new cases
+b) Sweep the “CathodeLoading” attribute from 3.0 to 3.9 in increments of 0.1 across the 10 cases.
+This can also be done by entering 3 for Case 1 and "=[<]+0.1" for Case 2
+c) Define the “Case Label” for all cases to be “[CathodeLoading] mAh/cm^2”
+23. Re-run the model and view the results in the Monitor. The results from each case should resemble
+the plots below:
+
+
+52
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+24. Based upon these results, the best approximation for an accurate cathode capacity loading is 3.3
+mAh/cm^2.
+25. Go back to the model in GT-ISE
+26. Go to Case Setup and delete 9 of the 10 cases and selecting 3.3 mAh/cm^2 for the cathode
+loading parameter.
+27. Next, we will “promote” 7 other attributes that are critical to the cell balancing behavior in GT-
+AutoLion (please refer back to the AutoLion Calibration Manual for more on the theory behind
+these steps).  First, create a parameter for the Anode’s N/P Ratio attribute:
+
+
+53
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+28. Then, double-click on the NCM523 reference object, go to the Tools tab to break the implicit link
+to the GT library and create parameters for the following attributes:
+a) First Charge Capacity
+b) First Discharge Capacity
+c) Umax
+
+
+54
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+29. Repeat this for the anode’s Graphite active material:
+30. Go back to Case Setup and:
+a) Create a new Folder by clicking the 
+ icon where the Case Setup folders are defined (circled
+below) or select the option to "Add Folder" from the toolbar
+
+
+55
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+b) Name the folder “Cell Balancing”
+c) Click & Drag the new attributes into the “Cell Balancing” folder and populate them with the
+values shown below (apart from the Cathode Loading attribute, these are simply re-using the
+default values from GT-AutoLion):
+d) Please note that all of these parameters will have an effect on the “balance” of the cell, but the
+most important are certainly the “Cathode Loading” and the “N over P” parameters.  With that
+
+
+56
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+in mind, these will be the main balancing attributes we will use in order to match the
+experimental voltage of the cell.  In many cases, the prefills for material properties (such as first
+charge capacity, first discharge capacity, Umax) are good starting points, but if the OCV of the
+cell isn’t matching well, they can also be used in an optimization routine.
+31. One other attribute that we should promote to Case Setup is the initial SOC of the cell. In many
+cases, these types of discharge tests aren’t started from exactly 100% SOC.  A true 100% SOC can
+take quite some time to reach in an experimental setup; therefore, we can’t always assume that
+every experimental test starts at exactly 100% SOC.  This is especially important when calibrating
+the open circuit voltage because at C-rates of C/20, the polarization of the cell will be very low, and
+starting with an accurate initial SOC is more critical.
+32. In Case Setup, set the value of the [InitialSOC] parameter to be 0.99.
+33. Next, open the Design Optimizer by clicking on the “Optimization” button in the Toolbar then
+clicking on the “Design Optimizer” button.
+
+
+57
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+a) The GT-SUITE Design Optimizer is an advanced optimization toolbox that enables users to
+either optimize parameters for a certain design goal or (in this case) reverse engineer systems
+by varying unknown parameters to match experimental data (by minimizing the error between
+simulation and experimental results).
+b) GT-SUITE’s Design Optimizer has a number of pre-defined and pre-coded optimization
+routines that allow users to vary any number of parameters in order to run single objective or
+multi-objective optimization routines that can even do cross-case optimization routines.
+34. In the Design Optimizer:
+a) Select the “Integrated Design Optimizer” option
+b) Select the “Transient Targeting” option
+c) Select the “Optimize Each Case Independently” option
+d) Select the “Accelerated GA” search algorithm
+e) Define a population size of 20
+
+
+58
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+f) The goal of most optimization routines is to select a “response” or “result” and either minimize
+it, maximize it, or target a specific value for it. This optimization will use a “Transient Targeting”
+option which will take a target profile vs. time and a simulation result profile vs. time and
+calculate the root-mean-squared error between them.  The optimizer’s goal will be to minimize
+the root-mean-squared error by varying the unknown parameters or “factors.”
+g) This model only has one case setup in Case Setup (a C/20 discharge), which means that there is
+no need for the “Case Sweep and Cross-Case Studies” option to be used.
+h) The “Accelerated GA” in an advanced genetic algorithm that incorporates metamodeling
+between each generation.  The genetic algorithm is an optimization routine that borrows from
+the theory of evolution and uses the “survival of the fittest” idea to converge on optimized
+values.
+
+
+59
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+35. In the “Factors” section (top-right), select which factors should be included in the optimization
+routine and define the lower and upper limits:
+a) Use the value selector in the “Factor” row to select the “CathodeLoading” “N_over_P” and
+“InitialSOC” parameters
+b) Select the “Lower Limit / Upper Limit” option and set the limits as shown in the image below
+36. In the “Response” section (bottom-right):
+a) Use the Value Selector in the first column of the “Signal or Time RLT” attribute and navigate to
+the “Voltage” output signal from the “MyCell-1” part.
+b) Use the Value Selector in the first column of the “Target Profile” attribute and select the
+“C_over_20_Results” ‘ProfileTransient’ that was previously made.
+
+
+60
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) Check that the optimizer’s settings match the following image:
+37. Save the model and click the “Run” button to run the optimization.
+38. Upon running the model, the “Integrated Design Optimizer” should open and reveal a new user-
+interface similar to the one shown below.
+
+
+61
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+a) The plot on the left shows a plot summarizing the results with a normalized output of the
+results on the y-axis and the design iteration (“Design ID”) on the x-axis.  The plots on the right
+show plots of the factors on the y-axis used for each design iteration on the x-axis.
+b) Finally, the table on the bottom-right shows the results of the optimization in a tabular format.
+c) The table and plots have two-way communication, allowing users to select rows in the table,
+which will encircle the design ID in the plots above.  Additionally, users can also select points
+(or multiple points with a click+drag) and highlight those design IDs in the table. If we are only
+using a single solver license at a time, this optimization should take a less than 10 minutes, so
+feel free to treat yourself to a coffee or tea break while the optimization runs.
+39. When the optimization is completed, we can study the results in the optimizer’s UI or click the
+“View Results” button. This opens a .glx file (the results of the optimized design ID) and a .gu file
+(report file) that summarizes the results of the optimizer. In the .glx file, we can view the “Voltage”
+Monitor to see how well the AutoLion voltage matches the experimental results:
+
+
+62
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+40. Additionally, in the .gu file, the same plots that were in the optimizer are available, as well as some
+other statistics on the optimization, including a plot showing the relative sensitivity of all 3 of the
+factors.
+
+
+63
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+5
+Cell Calibration: Performance
+This tutorial will continue the process of calibrating an AutoLion model to match experimental test
+data.  The previous tutorial focused on “Cell Balance” or the result of the amount of active material
+in the cathode and anode, as well as the amount of Lithium-ions lost due to first charge and first
+discharge steps.  This tutorial will build upon the same model, but this time focusing on calibration
+of the “performance” of the cell – specifically the voltage, heat generation, and temperature during
+constant current discharge tests.
+Recall from Tutorial # 2 the discussion about power and energy dense cells:
+Power
+Energy
+Description
+Cells that are able to deliver high discharge
+power, but over a short period of time
+Cells that can only deliver low power, but
+over a longer period of time
+Illustration
+Sandwich designed for power density
+Sandwich designed for energy density
+Voltage vs.
+Delivered
+Capacity
+Plot
+With the cell in question, we are not sure about the details of the cell design, but we do know some of
+the overarching design principles, including the role that cathode, anode, and separator thickness,
+as well as particle size and porosity play a very important role in shaping the “personality” of a Li-
+ion cell.
+With that knowledge, this tutorial will show how users can take experimental data from constant
+current discharge tests and use GT’s design optimizer to minimize the error between simulation
+and experimental results by varying the unknown design parameters of the cell.
+In this tutorial, we will be using experimental results of a cell undergoing 1C, 2C, 3C, and 4C discharge
+tests.  The cell in question is the same 2.7 Ah cylindrical cell as was introduced in Tutorial # 4.  The
+
+
+64
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+“Discharge_Experimental_Data.xlsx” file (found in
+\$GTIHOME\v20xx\tutorials\Modeling_Applications\Battery\AutoLion_Calibration\05-
+Constant_Current_Discharge) contains the experimental data we will be using, and it includes the
+voltage of the cell and the temperature rise of the cell during these four constant-current
+discharge tests (plotted below).
+As mentioned in the AutoLion calibration cookbook, both the voltage drop and temperature rise will
+be used in the calibration procedure.  This is due to the incredibly tight relationship that
+temperature has on cell performance.
+1. Open the “AutoLionTutorial-Step4_Optimized.autolion” file created during Tutorial 4 or open
+“AutoLionTutorial-Step4_Optimized-final.autolion” in the GT installation.
+2. Save the file as “AutoLionTutorial-Step5.autolion.”  The model should resemble the image below.
+3. First, double-click on the ‘SignalGenerator’ template to create a new object, name it
+“Experimental_Temperature” and define a new ‘ProfileTransient’ called “ExperimentalTemperature”
+
+
+65
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+in the “Constant or Dependent Object” attribute.  For now, leave the “Arrays” folder in the
+ProfileTransient blank.
+4. Next, edit the “Experimental_Voltage” object and have it no longer point to the
+“C_over_20_Results” reference object and define a new ‘ProfileTransient’ named
+“ExperimentalVoltage.”  Again, leave the “Arrays” folder blank for now.
+
+
+66
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+5. Next, double-click on the ‘MonitorSignal’ template to create a new monitor.  Name it
+“Temperature,” Set the Y1-Axis label to “Temperature” and the Y1 Min & Max to 20 and 40,
+respectively.  Also, in the "Plot Properties" folder, name the first input signal “AutoLion” and the
+second “Experimental.”
+6. Create parts derived from the new objects and connect parts by connecting AutoLion’s
+temperature output signal and the output signal from the “Experimental_Temperature” part to the
+monitor, as shown below. Note that the temperature from the AutoLion part should be in Celsius.
+
+
+67
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+7. Next, we need to populate the ExperimentalTemperature and Experimental Voltage
+‘ProfileTransient’ objects.  In Tutorial #4, we simply copied & pasted the data from Excel into the
+ProfileTransient.  This way provided a simple, straightforward way to bring in experimental data;
+however, if changes were made to the Excel file, another copy & paste procedure would be
+required.  In this tutorial, we will setup an automated procedure for the data in GT to automatically
+update in case the Excel file is changed.
+a) In all of the array-shaped attributes in GT, GT-SUITE enables users to point to external files for
+array data by clicking on the value selector in the first data point.  To demonstrate this, open
+the “ExperimentalVoltage” reference object and click on the value selector circled below.
+
+
+68
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+b) Next, click on the “<File Name>” button at the top of the value selector.  This opens a wizard to
+aid in pointing to external files.
+c) Use the “Excel” radio button and use the “Browse…” button to find the Excel sheet named
+“Discharge_Experimental_Data.xlsx”
+
+
+69
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+d) Be sure to have the “Data Format” option set to “Columns” and the “Take Whole Column”
+check box on and simply click on the A3 cell.  This will automatically take every cell in the A-
+column starting at A3.
+
+
+70
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+e) After hitting Finish, the first attribute in the “Time” column will use an alpha-numeric code to
+point to the proper spot in the Excel file, as shown below.
+f) This alpha-numeric code is quite simple.  The first section defines which file is being point to,
+the second is the name of the Excel Worksheet (Excel “tab”), and the numbers after that
+determine what cells are used.  The first two numbers represent the start and end for the
+column number (columns are numbered starting at zero, so 0 is equivalent to Excel’s column
+
+
+71
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+A).  The second two numbers represent the start and end for the row numbers to be used
+(again, GT’s numbers start at zero so 2 is equivalent to Excel’s row 3).  Additionally, “-100” is a
+built-in code that GT interprets as “the rest of the column”
+g) If we repeat this process for the Voltage data by selecting cell B3 and taking the whole column,
+eventually we will have the following reference object:
+h) However, because we have 4 different sets of data, we will want to setup 4 cases in Case Setup
+and make sure that the experimental data being used is changing from case to case.
+8. Instead of having the alpha-numeric code directly in the reference object, we can promote the first
+row of an array data type as a parameter.  In the image below, 3 parameters are shown in the two
+reference objects defining the experimental data: TimeArray, VoltageArray, and TemperatureArray.
+
+
+72
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+9. Next, in Case Setup:
+a) Click on the “Add Parameter” button to create a new parameter named “C-Rate”
+b) Create 3 new cases by clicking the “Append Cases” button 3 times
+c) Setup the C-Rate to be 1, 2, 3, and 4 for each of the respective cases
+d) Change the Initial SOC parameter to be 1 for every case
+e) Change the Case Label to “[C-Rate] C”
+f) Set the “Timestep” to be “=10/[C-Rate]” – this will setup a Timestep size that has an inverse
+relationship with the C-Rate.  This is generally a good idea when running constant-current
+discharge tests because larger C-rates will calculate steeper slopes and more rigorous
+numerical integration will be required.
+g) Case Setup should look as follows:
+
+
+73
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+10. Still in Case Setup, use the Value Selector in the first case for the “TimeArray” “VoltageArray” and
+“TemperatureArray” parameters to point to the respective columns in the Excel sheets.  The
+eventual result should appear as follows.
+11. Please note that Case Setup will automatically propagate these values to Cases 2 and beyond,
+meaning that Cases 2-4 will still be pointing to the 1C data with the current setup.
+12. Next, manually edit the alpha-numeric codes shown above to not point to the “1C Discharge”
+Worksheet and instead point to the “[C-Rate]C Discharge” worksheet.  This will automatically use
+the value of the “C-Rate” parameter to point to the correct worksheet in the Excel File.
+13. The “Show Value / Show Formula button can be used to switch between showing the formula
+used to define the value of these attributes and showing the eventual value that will be used.
+
+
+74
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+14. Next, enter the AutoLion part and make the following changes:
+a) Set the Current Request to “=[C-Rate]*2.7” Amps
+b) Set the Initial SOC to 1
+c) In the “Thermal Behavior Folder, use the “Internal Thermal Solution” option.  This option will
+setup a simplified thermal model inside AutoLion that consists of a thermal node and a
+convective boundary condition (the mass and surface area required for the model are
+calculated automatically).  Set the initial and ambient temperatures to 21 Celsius:
+
+
+75
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+15. Next, enter Run Setup to edit the Simulation Duration to be “1/[C-Rate]” hours long.
+16. Run the model to sanity-check that everything in the model is setup correctly.  The results should
+resemble the plots shown below.
+
+
+76
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+17. Next, we need to make a small change to the behavior of the model.  Remember two important
+facts about this model setup:
+a) AutoLion will automatically stop the simulation after the cell’s voltage drops below 2.8 Volts
+b) The Optimization routine that we will use is the “Transient Targeting” option which will take a
+target profile vs. time and a simulation result profile vs. time and attempt the minimize the
+root-mean-squared error between them.
+c) With those key factors in mind, it is important to realize that the optimization routine will
+automatically be incentivized to output a cell that reaches 2.8 Volts early, which could lead our
+optimization routine to output a non-optimal cell.
+d) Please see the image below for a visualization of this problem specifically for the 4C case that
+has been setup:
+e) To address this problem, we will setup the simulation to run a constant current discharge until
+the AutoLion cell reaches 2.8 Volts (its lower cutoff voltage) and then change the boundary
+condition to be a constant voltage discharge (@2.8 Volts).  Then, we will setup the model to
+end once the entirety of the experimental data has been used.  This should give us simulation
+results as shown in the image below.
+
+
+77
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+18. To accomplish this, first double-click on the ‘EventManager’ template to create a new object and
+name it “CCCV_Discharge.”
+a) First, go to the “Inputs” folder and define a single input.  The “Input Descriptions” column
+allows letters, strings, spaces, and special characters to act as a “Long Name” and the “Input
+Name” column requires users to define variable names that cannot have spaces or special
+characters.  Define an input described as “Cell Voltage (V)” and named “Voltage” as shown in
+the image below.
+b) Then, go to the “Outputs” folder and define three outputs shown in the image below.  The
+“Mode” output is a special signal that AutoLion has to switch between voltage request, current
+request, power request, and resistance modes, when it is set to 1, the voltage request mode will
+be enabled and when it is set to 2, the current request mode will be enabled.
+
+
+78
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) Finally, in the “Events” folder, each row defines an event.  Each event will determine what the
+value of the outputs will be while the simulation is in the event and also require criteria to be
+reached that exit the event and go to the next event (defined in the “Next Event Number”
+attribute.  With the setup shown in the image below, the Event Manager will be in a Constant
+Current Discharge mode until the cell reaches 2.8 Volts, then it will transition to a Constant
+Voltage Discharge mode (holding the cell at 2.8 Volts) until the simulation time passes the
+“Experimental_Duration” parameter value, after which, the simulation will come to an end.
+d) Click “OK” to finish creating the new object
+19. Click and Drag on the “CCCV_Discharge” object to drag a new part on the model map and place it
+to the left of the AutoLion part, as shown below.
+
+
+79
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+20. Make 3 connections from the Event Manager to the AutoLion part and one connection from the
+AutoLion part to the Event Manager.  Ensure that the names of the input and output signals for
+each match, the resulting model is shown below.
+21.Next, re-open the AutoLion part and make the following changes:
+a) Set the “Load Type” to “Mixed Requests (External Signal)” – this mode is what enables the
+“Load Type” or “Mode” input signal to change which boundary condition is used in the
+
+
+80
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+AutoLion simulation and add the following values.  Also, please note that the attributes with a
+green background color indicate that the value shown is actually being overridden by an input
+signal.
+b) In the “Model Setup” folder, turn off the “Stop Simulation at Lower Cutoff Voltage” checkbox
+attribute.
+c) In “Case Setup”, set the Experimental_Duration for each case as shown in the image below. The
+values are based on the experimental duration of each C-rate in the Excel file.
+
+
+81
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+22. Re-run the model to sanity-check that this CCCV discharge has been setup.  The results should
+resemble the plots shown below.  Please note the subtle, but important difference between these
+results and the previously-shown results, specifically at the end of the 3C and 4C cases.
+23. Next, we will “promote” the important parameters required to effectively calibrate the
+performance of the Li-ion cell to Case Setup. Recall from Tutorial #2 that given a specific anode
+and cathode material, cell designers can design power-dense or energy-dense cells by varying a
+few key parameters.  The key parameters required to define the “personality” of a Lithium-ion cell
+are:
+a) Thickness of the cathode, separator, and anode
+b) Size of the particles in the cathode and anode
+24. With that in mind, edit the “Cylindrical21700” reference object which is used in the “MyCell”
+AutoLion object, and define parameters for the 3 thickness attributes mentioned above.  In the
+tools section of the object, select the "Break the Implicit Object" link and use square brackets to
+define parameters, and in the parameter definition window, give them a description.  In the images
+
+
+82
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+below, the names “CathodeThickness,” “AnodeThickness,” and “SeparatorThickness” were used for
+the names of the parameters.
+25. Also, edit the “NCM523” and “Graphite” reference objects that define the active materials in the
+“MyCell” AutoLion object.  In the images below, the names “CathodeParticleSize” and
+“AnodeParticleSize” were defined.
+
+
+83
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+26. Finally, the performance of a Lithium-ion cell is also greatly affected by the temperature.  This is
+because as the temperature of a cell increases, it can increase the diffusional and conductive
+properties of the electrolyte and active materials, which in turn, decreases the resistance of the cell.
+ Because the temperature of the cell greatly affects the voltage of the cell, we’ll also promote a 6th
+attribute for this performance calibration step: the heat transfer coefficient for the convective
+boundary condition. To do this, enter the “MyCell” object, go to the “Thermal Behavior” folder, and
+create a new parameter in the “Convective Heat Transfer Coefficient” attribute.  In the image below,
+the name “HTC” was defined.
+27. Next, in Case Setup, use the 
+ button or select the "Add Folder" button on the toolbar to
+create a new folder of parameters, and name it “Cell Performance”
+28. Move the 6 newly-created parameters into the “Cell Performance” folder by highlighting them and
+right-clicking to move them into the correct folder. Use the values that were originally defined for
+each of the parameters (values shown in the image below).
+
+
+84
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+29. Next, the Design Optimizer by clicking on the “Optimization” button in the Toolbar then clicking
+on the “Design Optimizer” button.
+a) The GT-SUITE Design Optimizer is an advanced optimization toolbox that enables users to
+either optimize parameters for a certain design goal or (in this case) reverse engineer systems
+by varying unknown parameters to match experimental data (by minimizing the error between
+simulation and experimental results).
+b) GT-SUITE’s Design Optimizer has a number of pre-defined and pre-coded optimization
+routines that allow users to vary any number of parameters in order to run single objective or
+multi-objective optimization routines that can even do cross-case optimization routines.
+30. In the Design Optimizer:
+a) Select the “Integrated Design Optimizer” option
+b) Select the “Transient Targeting option”
+c) Select the “Case Sweep and Cross-Case Studies” option
+
+
+85
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+d) Select the “Accelerated GA” option and define a population size of 40.
+e) The goal of most optimization routines is to select a “response” or “result” and either minimize
+it, maximize it, or target a specific value for it. This optimization will use a “Transient Targeting”
+option which will take a target profile vs. time and a simulation result profile vs. time and
+calculate the root-mean-squared error between them.  The optimizer’s goal will be to minimize
+the root-mean-squared error by varying the unknown parameters or “factors.”
+f) This model has 4 cases defined in Case Setup, the response of a cell at 1C, 2C, 3C, and 4C.  This
+“Case Sweep and Cross-Case Studies” option allows the optimizer to find a single optimized
+value for each “factor” that weighs the optimizer results across all 4 cases. 
+g) The “Accelerated GA” is an advanced genetic algorithm that incorporates metamodeling
+between each generation.  The genetic algorithm is an optimization routine that borrows from
+the theory of evolution and uses the “survival of the fittest” idea to converge on optimized
+values. 
+31. In the “Factors” section (top-right), select which factors should be included in the optimization
+routine and define the lower and upper limits:
+
+
+86
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+a) Use the value selector in the “Factor” row to select the “CathodeThickness” “AnodeThickness”
+“SeparatorThickness” “CathodeParticleSize” “AnodeParticleSize” and “HTC”
+b) Select the “Lower Limit / Upper Limit” option and set the limits as shown in the image below
+c) Set the "Case Handling" for all the factors to be "Sweep"
+32. In the “Response” section (bottom-right):
+a) Use the Value Selector in the first column of the “Signal or Time RLT” attribute and navigate to
+the “Voltage” output signal from the “MyCell-1” part.
+b) Use the Value Selector in the second column of the “Signal or Time RLT” attribute and navigate
+to the “Temperature”
+c) Use the Value Selector in the first column of the “Target Profile” attribute and select the
+“ExperimentalVoltage” ‘ProfileTransient’ that was previously made.
+d) Use the Value Selector in the second column of the “Target Profile” attribute and select the
+“ExperimentalTemperature” ‘ProfileTransient’ that was previously made.
+e) Define the “Term Weight” to be 5 in the voltage column and 1 in the temperature column.  This
+will indicate to the optimizer that the error for the voltage is 5 times more important than the
+error for the temperature.
+f) Define a parameter for both columns in the “CaseWeight” attribute
+
+
+87
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+33. Back in Case Setup, define the “CaseWeight” parameter to be “=[C-Rate]” which should result in
+the following Case Setup:
+34. Finally, one last important step needs to be taken to ensure that the cell balance, which was
+optimized in Tutorial # 4, is not disrupted by the optimizer.
+a) In its current state, the optimizer will vary the thickness of the cathode, anode, and separator,
+which will then change the total coated areas of the cathode and anode, which will change the
+total capacity of the cathode and anode (unit: Ah) because our cathode and anode “Coating” is
+defined using the “Loading” option (unit: mAh/cm^2).
+b) In order to provide a way for the optimizer to vary the thickness of the cathode, anode, and
+separator without changing the total capacity of the cathode & anode, we must change the
+cathode and anode “Coating” to be defined using the total “Capacity” option (unit: Ah).
+c) To do this, open the “MyCell” object, and click on the “Show Preprocess Plot” button and go to
+the “Report Tables” tab.  In the Report Tables, as mentioned in previous tutorials, many
+calculations are done, including the porosity and “First Charge Capacity (Total)” of the cathode
+and anode (image below).  In the image below, the cathode’s and anode’s first charge capacity
+are 3.14262 and 3.75201 Ah, respectively.
+
+
+88
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+35. Use these numbers in the “Capacity” option in the Cathode and Anode folders (shown below). Be
+sure to select the "Total" area option for both the cathode and anode as well
+36. Save the model and click the “Run” button to run the optimization.
+
+
+89
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+37. When the optimization is completed, we can study the results in the optimizer’s UI or click the
+“View Results” button.
+38. In the .glx file, we can view the “Voltage” and "Temperature" monitors to see how well the
+AutoLion voltages and temperatures matches the experimental results:
+
+
+90
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+6
+Calendar Aging Calibration
+After the performance of a cell is calibrated (“performance” in this case referring to the prediction of
+voltage and heat generation given any electrical boundary condition), the next most common step for
+calibration is the calibration of degradation mechanisms.
+Please refer to the Theory sections in the AutoLion Application Manual and Calibration Procedure for
+more information on the reasoning behind the procedure laid out in these tutorials.  To summarize,
+there are 5 degradation mechanisms available in GT-AutoLion: anodic film (SEI) layer growth, cathodic
+film (CEI) layer growth, anodic and cathodic active material isolation, and Lithium-plating.  All of these
+mechanisms can be used together and theoretically can be calibrated altogether; however, to make
+the calibration step easier, we suggest using calendar aging data to calibrate the SEI and CEI layer
+growth models (because these models are active even with zero current load) and then using the
+cycle aging data to further calibrate the remaining aging models (because the remaining three require
+current going through the cell in order to age it).
+This tutorial will walk through the process of building a model that calendar ages the Li-ion cell that
+we have been working with through tutorials 4 and 5 and calibrates the SEI and CEI layer growth
+models accordingly.
+An Excel file named “Calendar_Aging_Experimental_Data.xlsx” is in the same directory as this tutorial
+(\GTI\v20xx\tutorials\Modeling_Applications\Battery\AutoLion_Calibration\06-Calendar_Aging), and it
+contains degradation data for a Lithium-ion cell.  This data was obtained by storing the cell at three
+different temperatures (25°C, 35°C, and 45°C) for a year, and the cells’ capacity were tested every 30
+days by running a 1C discharge (2.7 Amps) with an ambient temperature of 25°C.  Plots of the data
+are shown in the image below.
+1. Open the “AutoLionTutorial-Step5_Optimized.autolion” file created during Tutorial 5 or open
+“AutoLionTutorial-Step4_Optimized-final.autolion” in the GT installation.
+2. Save the file as “AutoLionTutorial-Step6.autolion.”  The model should resemble the image below.
+
+
+91
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+3. First, a few steps are required to “clean up” the model and some of the data in the model. Because
+the current objective will be to build a model that undergoes a calendar aging scenario, please
+delete every part except for the “MyCell-1”
+4.  Next, enter the Design Optimizer and:
+a) Delete the first 3 rows in the “Transient Targeting” section and set the Case Weight attribute
+back to "def"
+
+
+92
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+b) Delete all the data in the “Factors” section
+c) In the top-left, select “OFF” to turn the design optimizer off.  This will also make the rest of the
+optimizer invisible
+5. Next, use GT’s built-in option to delete unused objects.  Go to the “Data” tab, find the “Delete
+Unused Objects” button and select “Objects.”  This will delete the unnecessary objects, including
+the “ExperimentalVoltage” and “ExperimentalTemperature” profiles.
+
+
+93
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+6. Enter the “MyCell-1” part and make the following changes:
+a) In the “Main” folder, set the “Load Type” attribute to “Current” and keep the “Current Request”
+as zero Amps.
+b) In the “Model Setup” folder, change the “Number of Control Volumes” to be 5, 3, 5, 8, 8 –
+because this simulation will be of a calendar aging model, and zero amps will be put through
+the cell, there will not be large gradients in the solution, so a coarse mesh can be defined to
+improve run time.
+
+
+94
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) In the “Thermal Behavior” folder, create a new parameter called “Temperature” and use it to
+define the “Initial Temperature” and “Ambient Temperature” attributes.
+7. In Run Setup, change the “Maximum Simulation Duration (Time)” attribute to 360 days.
+
+
+95
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+8. Next, enter Case Setup and:
+a) Delete Case 4 by highlighting it and clicking the “Delete Case” button
+b) Change the Case Label from “[C-Rate C]” to “[Temperature] C”
+c) Set the “Temperature” parameter for Case 1, 2, and 3 to be 25, 35, and 45, respectively
+d) Set the “timestep” parameter to 500 seconds for every case. Please note that when there is zero
+current going through a cell, GT-AutoLion can take very large timesteps because there will not
+be large gradients in the solution
+e) Use the “Delete Parameter --> Delete Unused Parameters option to delete any of the
+remaining unused parameters in Case Setup
+f) Case Setup should look as follows:
+9. Next, create a new ‘SignalGenerator’ object by double-clicking on the ‘SignalGenerator’ template in
+the project tree, name it “Experimental_SOH” and define a new parameter called
+“Experimental_SOH” for the “Constant or Dependency Reference Object” attribute:
+
+
+96
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+10. Create another ‘SignalGenerator’ object by double-clicking on the ‘SignalGenerator’ template in
+the project tree, name it “Time,” select “time_seconds” for the “Signal Type” attribute and type
+“ign” for the “Constant or Dependency Reference Object” attribute.
+11. Create a new ‘Gain’ object by double-clicking on the ‘Gain’ template in the project tree, name it
+“s_to_days” and define the gain attribute to be “=1/(60*60*24)”.  This gain block takes the time (in
+seconds) signal coming from the above signal generator, and converts it to days.
+
+
+97
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+12. Create another ‘Gain’ object by double-clicking on the ‘Gain’ template in the project tree, name it
+“SOH” and define the gain attribute to be “=1/2.78118”.  This gain block will divide the transient
+operational capacity of the cell by the initial operational capacity of the cell to calculate a transient
+state of health.
+13. Create a new ‘MonitorSignal’ object by double-clicking on the ‘MonitorSignal’ template in the
+project tree, name it “SOH_Monitor” and set the following attributes in the “Main” folder:
+a) X-Axis Type: time
+b) Y1-Axis Label:  SOH
+c) Y1-Axis Minimum: 0.7
+d) Y1-Axis Maximum: 1
+
+
+98
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+e) In the “Plot Properties” folder, define the Plot names to “AutoLion” and “Experimental”
+respectively
+14. Create parts from the 5 most recently-created objects and place them on the map as shown in the
+image below:
+
+
+99
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+15. Make the following connections:
+a) Connect the “Time” to “s_to_days” part, and make sure the output of “s_to_days” connects to
+AutoLion’s “Cycle Counter” input signal, which is in the Aging signal folder.  This input signal is
+used by AutoLion to indicate when a new “cycle” has been initiated.  When this is done,
+AutoLion will automatically update the capacity of the cell to reflect the amount of Lithium that
+has been lost due to various aging mechanisms
+b) Connect AutoLion’s “Characterized Capacity” output signal to the SOH gain block, connect the
+gain to the “AutoLion” input of the monitor, and connect the “Experimental_SOH” to the
+“Experimental” input of the monitor.
+c) The map should look as shown in the image below:
+
+
+100
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+16. Next, create 3 new ‘ProfileTransient’ objects by double-clicking on the ‘ProfileTransient’ template
+in the project tree, and name them “CalendarAging_SOH_##C” (where ## is either 25, 35, or 45),
+and copy the SOH data into the table.  Be careful to first change the unit in the “Time” column to
+days and then paste the data into GT.
+17. In Case Setup, use the Value Selector for the value of the “Experimental_SOH” parameter to call
+the appropriate ‘ProfileTransient’ that was created in the previous step.
+
+
+101
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+18. As mentioned in the introduction, the calendar aging data is often used to calibrate the film
+growth aging mechanisms in both the cathode and the anode.  Therefore, as a next step, enter the
+‘NCM523’ reference object that defines the cathode’s active material, navigate to the
+“Degradation” folder, and turn on the “Cathode CEI Layer Growth” radio button.  There should be
+pre-fills for the attributes, as shown in the image below. 
+19. Repeat this process in the “Graphite” active material by turning on the “Anode SEI Layer Growth”
+radio button.  There should also be pre-fills for these attributes, as shown in the images below.
+20. In the image above, the “CathodeFilmGrowth_ECDiff,” “CathodeFilmGrowth_kRate,”
+“AnodeFilmGrowth_ECDiff,” and “AnodeFilmGrowth_kRate” are reference objects, of the type
+
+
+102
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+‘DependencyArrhenius’ that define the EC Diffusivity and Reaction Rate Coefficient attributes of the
+cathodic film growth model and anode SEI layer growth model.  Using these reference objects,
+AutoLion can automatically define a temperature-dependent value of a property that increases
+with temperature following the Arrhenius equation such that:
+where:
+: Value of the property at Temperature, 
+: Value of the property at the reference temperature, 
+: Activation Energy
+: Gas Constant
+21. To make the calibration procedure more robust and computationally less expensive, we will use a
+piece-wise approach to calibrating these aging mechanisms with the following two steps:
+a) Define the reference temperature for these values as 25°C and calibrate the value of the
+property at the reference temperature (
+) using the experimental data at 25°C.
+b) Use the remaining experimental data (35°C and 45°C) to calibrate the activation energy of these
+Arrhenius dependencies (
+).
+22. Parameterize the “Value at Reference Temperature” and “Activation Energy” of the
+“CathodeFilmGrowth_ECDiff,” “CathodeFilmGrowth_kRate,” “AnodeFilmGrowth_ECDiff,” and
+“AnodeFilmGrowth_kRate” reference objects. If you enter the "Tools" section of the toolbar, select
+the "Break Implicit Object Link" to make the objects editable. Be sure to remember what the values
+of the pre-fills are because these pre-fills will be helpful starting points, or initial guesses, for the
+optimization procedure.
+
+
+103
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+23. Next, in Case Setup:
+a) Use the 
+ button or the "Add Folder" button on the toolbar to create a new folder of
+parameters, and name it “Cell Aging”
+b) Drag and drop the 8 newly-created parameters into the “Cell Aging” folder, and use the values that
+were originally defined for each of the parameters (values shown in the image below).
+c) Optionally, use the “Add Parameter 
+ Add Header” option to add blue headers to act as “breaks”
+to make the folder in Case Setup more visually appealing (as shown in the image below)
+
+
+104
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+24. This is a good point to run the model in order to make sure that everything is setup properly.  So,
+run the model and ensure that the model run time is ~20 seconds per case and that the results
+are similar to the ones shown below.
+25. As mentioned previously, a piece-wise methodology will be used to calibrate the calendar aging
+mechanisms, where the first step will be to calibrate the values at 25°C using the 25°C aging data. 
+To do this, first enter Case Setup and turn off Cases 2 and 3 so that only the 25°C case is turned on
+
+
+105
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+26. Then, enter the Design Optimizer and:
+a) Turn on the “Integrated Design Optimizer
+b) Ensure the “Transient Targeting” option is used
+c) Because we only have one case turned on in Case Setup, select the “Optimize Each Case
+Independently” option
+d) Continue to use the “Accelerated GA” search algorithm with the following options:
+
+
+106
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+e) Select each of the 4 “Values at 25C” in the “Factors” section and define a lower limit and upper
+limit for each of the attributes that is somewhere between 50% and 200% of the original value
+of the prefill, as shown below
+f) Finally, in the Transient Targeting section, be sure to select the output of the “SOH” part for the
+“Signal or Time RLT” and use the “[Experimental_SOH]” parameter for the target profile.  This
+will automatically compare the output of the “SOH” Gain block to the experimental profile of
+the SOH and calculate the integral of the RMS error vs. time.
+
+
+107
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+g) Altogether, the optimizer should appear as follows:
+27. Run the model to start the optimization.
+28. The results should look similar to the results below:
+
+
+108
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+29. When the optimization is completed, the optimizer will automatically save a new GT model file
+with “_Optimized” appended at the end of the model file name.  In this case, it will have saved a file
+named “AutoLionTutorial_Step6_Optimized.autolion.”  Open that file.
+30. In the .glx file, we can view the SOH monitor and see how well the AutoLion SOH matches the
+experimental results:
+a) Run a “Save As” operation on the newly opened file and save the model as
+“AutoLionTutorial_Step6b.autolion.”
+b) In Case Setup, the optimized values for the 4 attributes calibrated in the previous step should
+appear as follows in the “Cell Aging” folder.  While in Case Setup, please turn off Case 1 and
+turn on Case 2 and Case 3 using the checkboxes at the top of each Case. Additionally, copy the
+optimized values from Case 1 to Cases 2 and 3.
+
+
+109
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+31. Next, enter the Design Optimizer and:
+a) Turn the Integrated Design Optimizer on
+b) Change the “Case Handling” option from “Optimize Each Case Independently” to “Case Sweep
+and Cross-Case Studies” because we will be optimizing two cases and will be attempting to
+have identical values for the factors for each case.
+
+
+110
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) Next, in the “Factors” section, replace the parameters that define the values at 25° of the four
+aging mechanisms and place the activation the parameters that define the activation energies
+of the four aging mechanisms.  Like last time, define a lower limit and upper limit for each of
+the attributes that is somewhere between 50% and 200% of the original value of the prefill, as
+shown below.  Also be sure to set the “Case Handling” of each parameter to “Sweep.”
+d) The Targeting section should remain unchanged
+e) The full optimizer setup should appear as shown below
+
+
+111
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+f) Run the optimization again
+32. When the optimization is completed, the optimizer will automatically save a new GT model file
+with “_Optimized” appended at the end of the model file name.  In this case, it will have saved a file
+named “AutoLionTutorial_Step6b_Optimized.autolion.”  Use this file as the starting point for the
+next step in the tutorial.
+33. Additionally, in the .glx file, we can view the SOH monitor and see how well the AutoLion SOH
+matches the experimental results:
+
+
+112
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+7
+Cycle Aging Calibration
+This tutorial will walk through the process of building a model that cycle ages the Li-ion cell that we
+have been working with through tutorials 4-6 and calibrates the active material isolation models in the
+anode and cathode accordingly.
+An Excel file named “Cycle_Aging_Experimental_Data.xlsx” is in the same directory as this tutorial
+(\GTI\v20xx\tutorials\Modeling_Applications\Battery\AutoLion_Calibration\07-Cycle_Aging), and it
+contains degradation data for a Lithium-ion cell.  This data was obtained by cycling the cell from 4.2
+Volts to 2.8 Volts using a Constant-Current Discharge & Constant-Current-Constant-Voltage Charge
+cycling test at 3 different ambient temperatures, 25°C, 35°C, and 45°C for 1000 cycles.  Plots of the
+data are shown in the image below.
+1. Open the “AutoLionTutorial-Step6b_Optimized.autolion” file created during Tutorial 6 or open
+“AutoLionTutorial-Step6b_Optimized-final.autolion” in the GT installation.
+2. Save the file as “AutoLionTutorial-Step7.autolion.”  The model should resemble the image below.
+
+
+113
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+3. First, a few steps are required to “clean up” the model and some of the data in the model:
+a) Delete all the parts except the “MyCell-1” part and the “SOH” gain block.
+4. Next, enter the Design Optimizer and:
+a) Delete the first 3 rows in the “Transient Targeting” section
+
+
+114
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+b) Delete all the data in the “Factors” section
+c) In the top-left, select “OFF” to turn the design optimizer off.  This will also make the rest of the
+optimizer invisible
+5. Next, use GT’s built-in option to delete unused objects.  Go to the “Data” tab, find the “Delete
+Unused Objects” button and select “Objects.”  This will delete the unnecessary objects, including
+the calendar aging experimental data.
+
+
+115
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+6. Enter the “MyCell-1” part and in the “Main” folder, set the “Load Type” attribute to “Mixed
+Requests (External Signal).”  This will allow us to use an external signal to switch between modes of
+requesting current and requesting voltage, to make the switching between constant current and
+constant voltage modes easy to do.
+7. Find the ‘EventManager’ template in the Project Tree, double-click on it to create a new object,
+and:
+a) Name it “CC-CCCV”
+b) In the “Inputs” folder, define 2 inputs: “Current” and “Voltage” which will represent the current
+and the voltage of the cell, respectively.  Please note that when defining inputs in an
+‘EventManager,’ the “Input Descriptions” can have spaces and special characters, whereas, the
+“Input Names” cannot.
+
+
+116
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) In the “Outputs” folder, define 3 Outputs: “Load Type (1=Voltage Request, 2=Current Request)”,
+“Current Request” and “Voltage Request.”  The “Load Type” output will be set to a value of
+either 1 or 2, and when it is equal to 1, the AutoLion part will be in “Voltage Request” mode and
+will set its terminal voltage to the value defined in the “Voltage Request” output, and when the
+value is equal to 2, the AutoLion part will be in “Current Request” mode and will set its current
+to the value defined in the “Current Request” output.
+d) The “Events” folder is where we can define a series of repeated events in order to cycle through
+various modes of operation.  Each row in the Events folder is a unique “Event” that defines the
+values of the three outputs, as well as criterion in order to switch between different events. 
+Setup the Events Folder to have 4 events: a rest while the cell is fully charged (Event 1), a CC
+discharge (Event 2), CC Charge (Event 3), and a CV charge (Event 4).  The “Event Exit Criterion”
+is a simple mathematical operation that, when true, the EventManager will exit the current
+event and go to the event labeled in the “Next Event No.” column.
+
+
+117
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+e) Please note that “etime” is a built-in variable in the ‘EventManager’ which outputs the amount
+of time (in seconds) that the ‘EventManager’ has been in a specific event.  Therefore
+“etime>600” means that the model will exit event #1 after it has been resting for 10 minutes.
+8. Click and drag the newly created “CC-CCCV” object onto the map (to the left of “MyCell-1” part) to
+create a new part.  Also, make the “CC-CCCV-1” and “MyCell-1” parts taller in order to give more
+space for signal traffic between the two parts.
+9. Make 3 connections from the “CC-CCCV-1” part to the “MyCell-1” part and 2 connections from the
+“MyCell-1” part to the “CC-CCCV-1” part.  The three connections from the event manager to the
+AutoLion part will create red ‘ActuatorConns’ which are made anytime GT sends signals from its
+controls domain to physical parts and the two connectsion from the AutoLion part to the event
+manager will create yellow ‘SensorConns’ which are made anytime GT sends signals from physical
+parts to its controls domain.  Ensure that the ports used in each connection are correct (this can be
+checked by comparing the small grey text on each connection to the image below).
+
+
+118
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+10. Next, make some small changes in order to test to make sure that the controls in the model are
+working.  To do that, we can setup a model that only runs a handful of cycles.
+a) In Run Setup, temporarily change the “Maximum Simulation Duration (Time)” attribute to 1
+day.
+b) In Case Setup change the value of the “timestep” parameter from 100 seconds to 5 seconds
+and only turn on the first case.
+11. Turn on all of the plots in the “CC-CCCV-1” part
+12. Run the model
+13. The model should only take ~20 seconds to run, and the resulting Voltage vs. time, Current vs.
+time, and Active Event vs. time (Active Event of the EventManager) should appear similar to the
+plots below.
+
+
+119
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+14. Next, find the ‘EventCounter’ template in the Project Tree, double-click on it to create a new
+object, and:
+a) Name it “CycleCounter”
+b) In the “Variables” folder” define a variable called “ActiveEvent”
+c) In the “Main” folder, defined the Event Criterion to be “=ActiveEvent==2”
+
+
+120
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+d) In the “Signal Setup” folder, name the output “Cycle Number”. This output Event Counter will
+increase by one every time the ‘EventManager’ enters Event #2 (or starts a new CC discharge
+cycle).  The output of this part will be the cycle number. 
+15. Next, create a part that will stop the simulation after the cell has undergone the desired number of
+cycles by finding the ‘StopSimulation’ template in the Project Tree, double-clicking on it to create a
+new object, and:
+a) Name it “StopSimulation”
+b) Setup the Threshold Criterion to be “>=” and the Threshold to be a new parameter,
+“[NumberOfCycles]”
+c) Setup the model to “Skip to Next Case” and “Stop Immediately” when the criteria is met
+d) Setup the message to be “[NumberOfCycles] has completed”
+
+
+121
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+16. Drag and drop one of the “CycleCounter” objects and one of the “StopSimulation” objects onto
+the map to create parts
+17. Next, open the 'Template Library' and search for the 'Lookup1D' template and drag it into the
+model tree. 
+18. Double-click on the 'Lookup1D' template in the model tree to create a new object. Name the
+object "Experimental_SOH" and for the "Table or Function Object Name" attribute, set the value to
+be the "Experimental_SOH" parameter we previously created
+
+
+122
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+19. In the model tree, find the 'MonitorXY' template and double-click it to create a new object. Name
+the object "SOH_Monitor" and set the following values for the attributes in the "X Axis Properties"
+and "Y Axis Properties" folders below:
+20. Additionally, fill in the following values in the "Plot Properties" folder as shown below:
+
+
+123
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+21. Drag and place the "Experimental_SOH" and "SOH_Monitor" as shown in the image below:
+22. Create the following connections:
+a) Connect the “Active Event” signal from “CC-CCCV-1” signal to the “Active Event signal to
+“CycleCounter-1”
+
+
+124
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+b) Connect the “Cycle Number” signal from “CycleCounter-1” to the “Input 1” signal of the
+“StopSimulation-1” part
+c) Connect the “Cycle Number” signal from the “CycleCounter-1” part to the “Cycle Counter”
+signal of the “MyCell-1” part
+d) Connect the “Cycle Number” signal from “CycleCounter-1” to the “Input 1” signal of the
+“ExperimentalSOH-1” part
+
+
+125
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+e) Connect the “Output 1” signal from the “SOH-1” part to the “AutoLion” signal of the
+“SOH_Monitor-1” part
+f) Connect the “Cycle Number” signal from the “ExperimentalSOH-1” part to the “Experimental”
+signal of the “SOH_Monitor-1” part
+
+
+126
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+g) Connect the “Cycle Number” signal from the “CycleCounter-1” part to the "X Value” signal of
+the “MyCell-1” part
+23. Double-click on the "MyCell-1" part and turn on the plots in the "Main" and "Aging" folders.
+Ensure the map appears like the image below:
+24. Next, make some small changes in order to test to make sure that the controls in the model are
+working.  To do that, we can setup a model that runs 50 cycles.
+a) In Run Setup, change the “Maximum Simulation Duration (Time)” to be “=[NumberOfCycles]*3
+hours.
+
+
+127
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+b) In Case Setup define the “Number of Cycles” parameter to be 50.
+25. Run the model and ensure that the results match what is expected, including:
+a) The model stops after 50 cycles
+b) The model takes about 90 seconds to complete
+c) The model continues to run the CC discharge + CCCV charge cycle
+d) The “Theoretical Capacity Degradation” and “Lithium Loss” plots in the AutoLion part resemble
+these results below
+
+
+128
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+26. Next, open the Template Library and drag the XYTable object into the project tree. Create 3 new
+‘XYTable’ objects by double-clicking on the ‘XYTable’ template in the project tree, and name them
+“CycleAging_SOH_##C” (where ## is either 25, 35, or 45), and copy the SOH data from the
+provided Excel sheet into the table.
+27. As mentioned in the beginning of Tutorial 6, calendar aging data is often used to calibrate the film
+growth aging mechanisms in both the cathode and anode.  Then, these calibrated models can then
+be further built upon using cycle aging data in order to calibrate the active material isolation
+models in GT-AutoLion.  Therefore, as a next step, enter the ‘NCM523’ reference object that
+defines the cathode’s active material, navigate to the “Degradation” folder, and turn on the “Linear
+Model” under the “Active Material Isolation” header.  There should be a pre-fill for this attribute of
+2e-14, which can act as a good starting point for our optimization routine.
+28. Repeat this process in the “Graphite” active material by turning on the “Anode SEI Layer Growth”
+radio button.  There should also be a pre-fill of 2e-14 for this attribute.
+
+
+129
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+29. Parametrize the “Isolation Rate Coefficient” attributes using “[Cathode_AMI]” and “[Anode_AMI]”
+as the parameter names, as shown in the images below. Similar to the anode and cathode film
+growth models, the active material isolation models can use Arrhenius relationships to define a
+temperature-dependent rate constant.  These values usually are less temperature-dependent than
+the film growth models, though; so for the sake of simplicity, we will assume they are not
+temperature-dependent.
+30. Next, in Case Setup:
+a) Drag and drop the 2 newly-created parameters into the “Cell Aging” folder or right-click and
+select the  and use the pre-fill values of 2e-14 for both of them
+b) Optionally, use the “Add Parameter 
+ Add Header” option to add blue headers to act as
+“breaks” to make the folder in Case Setup more visually appealing (as shown in the image
+below)
+
+
+130
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+c) Turn Cases #2 and 3 back on
+d) Change the “Number of Cycles” from 50 cycles to 1000 cycles
+31. Next, enter the Design Optimizer and:
+a) Turn the Integrated Design Optimizer on
+b) Continue to use the “Case Sweep and Cross-Case Studies” option to ensure that the results
+from Cases 1-3 are all used to calibrate the factors in the optimization
+c) Continue to use the “Transient Targeting” option, but instead of using the “Entire Run” option
+(which calculates the error vs. time for the entire simulation duration), use the “Custom Signal”
+option, which allows the time-axis in the transient targeting option to be replaced with a
+
+
+131
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+custom signal (in this case “Cycle Number”).  Be sure to use the “Cycle Number” output from
+the “CycleCounter-1” EventCounter part for the “Signal for Integration” attribute
+d) The default “Transient Targeting” option calculates the error between the simulation result and
+the target result using an RMS calculation throughout the duration of the simulation, per the
+equation below.
+
+
+132
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+e) Whereas, the “Custom Signal” option allows the error between simulation result and target
+result RMS error to be calculated with a different “x” variable.
+f) Next, in the “Factors” section, place both of the “Isolation Rate Coefficient” parameters with the
+upper and lower limits shown in the image below.
+g) Finally, in the “Targeting” section, select the output of the “SOH” part for the “Signal or Time
+RLT” and once again define a parameter called “Experimental_SOH” for the target profile as well
+as setting the term weight back to "def".  This will automatically compare the output of the
+“SOH” Gain block to the experimental profile of the SOH and calculate the RMS error between
+them.
+h) Altogether, the Optimizer should appear as follows
+
+
+133
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials
+32. Next, enter Case Setup once again to define the value of the “Experimental_SOH” parameter to be
+the XYTables previously defined.
+33. Run the model to initiate the optimization process. Note that running model will take a lot of time
+to complete. 
+34. In the .glx file, we can view how well the AutoLion capacity degradation matches the experimental
+results:
+
+
+134
+AutoLion Calibration Tutorials 
+ 
+                                                                                                                                   © 2022 Gamma Technologies
+AutoLion Calibration Tutorials

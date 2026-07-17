@@ -1,0 +1,3062 @@
+ARF: Artistic Radiance Fields
+Kai Zhang1
+Nick Kolkin2
+Sai Bi2
+Fujun Luan2
+Zexiang Xu2
+Eli Shechtman2
+Noah Snavely1
+1Cornell University
+2Adobe Research
+Abstract. We present a method for transferring the artistic features of
+an arbitrary style image to a 3D scene. Previous methods that perform 3D
+stylization on point clouds or meshes are sensitive to geometric reconstruc-
+tion errors for complex real-world scenes. Instead, we propose to stylize
+the more robust radiance field representation. We find that the commonly
+used Gram matrix-based loss tends to produce blurry results without
+faithful brushstrokes, and introduce a nearest neighbor-based loss that is
+highly effective at capturing style details while maintaining multi-view
+consistency. We also propose a novel deferred back-propagation method
+to enable optimization of memory-intensive radiance fields using style
+losses defined on full-resolution rendered images. Our extensive evalua-
+tion demonstrates that our method outperforms baselines by generating
+artistic appearance that more closely resembles the style image. Please
+check our project page for video results and open-source implementations:
+https://www.cs.cornell.edu/projects/arf/.
+Keywords: Style transfer, neural radiance fields, 3D content creation
+1
+Introduction
+Creating artistic images often requires a significant amount of time and special
+expertise. Extending an artwork to dimensions beyond the 2D image plane, such
+as time (in the case of animation), or 3D space (in the case of sculptures or
+virtual environments), introduces new constraints and challenges. Hence, the
+styles employed by artists when moving their work beyond a static 2D canvas
+are constrained by the effort required to create a consistent visual experience.
+We propose Artistic Radiance Fields (ARF), a novel approach that can
+transfer the artistic features from a single 2D image to a full, real-world 3D
+scene, leading to artistic novel view renderings that are faithful to the style
+image. Our method converts a photorealistic radiance field [32,1,4] reconstructed
+from multiple images of complex, real-world scenes into a new, stylized radiance
+field that supports high-quality view-consistent stylized renderings from novel
+viewpoints, as shown in Fig. 1. The quality of these renderings is in contrast
+to previous 3D stylization works [16,14,33] that often suffer from geometrically
+inaccurate reconstructions of point cloud or triangle meshes and the lack of style
+details.
+We formulate the stylization of radiance fields as an optimization problem; we
+render images of the radiance fields from different viewpoints in a differentiable
+
+
+2
+K. Zhang et al.
+Reconstructed radiance feld 
+Novel views of stylized scene 
+Style images
+Fig. 1. We propose ARF, a novel approach for 3D stylization. Our approach utilizes
+a pre-reconstructed radiance field of a real scene (left) and converts it into an artistic
+radiance field by matching feature activations extracted from an input 2D style image
+(middle), leading to high-quality stylized novel view synthesis (right). Our approach
+produces consistent results across viewpoints; please refer to our supplementary video.
+manner, and minimize a content loss between the rendered stylized images and
+the original captured images, and also a style loss between the rendered images
+and the style image. While previous methods [16,14,33] apply the commonly-used
+Gram matrix-based style loss for 3D stylization, we observe that such a loss leads
+to averaged-out style details that degrades the quality of the stylized renderings.
+This limitation motivates us to apply a novel style loss based on Nearest
+Neighbor Feature Matching (NNFM) that is better suited to the creation of
+high-quality 3D artistic radiance fields. In particular, for each feature vector in
+the VGG feature map of a rendered image, we find its nearest neighbor (NN)
+feature vector in the style image’s VGG feature map and minimize the distance
+between the two feature vectors. Unlike a Gram matrix describing global feature
+statistics across the entire image, NN feature matching focuses on local image
+descriptions, better capturing distinctive local details. Coupled with our style
+loss, we also enforce a VGG feature-based content loss – that balances stylization
+and content preservation – and a simple color transfer technique – that improves
+the color match between our final renderings and the input style.
+Volumetric radiance field rendering consumes a lot of memory and often can
+only regress sparsely sampled pixels during training, and not the full images nec-
+essary for computing the VGG features used in many style losses. We contribute
+a practical innovation that allows us to perform optimization on high-resolution
+images. In particular, we devise a method we call deferred back-propagation
+that enables memory-efficient auto-differentiation of scene parameters with im-
+age losses computed on full-resolution images (e.g., VGG-based style losses) by
+accumulating cached gradients in a patch-wise fashion.
+
+
+ARF: Artistic Radiance Fields
+3
+We demonstrate that ARF can robustly transfer detailed artistic features from
+diverse and challenging 2D style exemplars to a variety of complex 3D scenes,
+resulting in significantly better visual quality compared to previous methods,
+which tend to yield over-smoothed and blurry stylized novel views (see Figures 4,
+5, and 6). In our user studies, our method is also consistently preferred over
+baselines.
+In summary, our contributions are:
+– A novel radiance field-based approach for 3D scene stylization that can
+faithfully transfer detailed style features from a 2D image to a 3D scene and
+produces consistent stylized novel views of high visual quality.
+– We find that Nearest Neighbor Feature Matching (NNFM) loss better pre-
+serves details in the style images than the Gram-matrix-based loss commonly
+used in prior 3D stylization works.
+– A deferred back-propagation method for differentiable volumetric rendering,
+allowing for computation of losses on full-resolution images while significantly
+reducing the GPU memory footprint.
+2
+Related Work
+In this section, we review related work to provide context for our own work.
+Image style transfer. Since Gatys et al. [11] introduced neural style transfer,
+significant progress has been made towards artistic stylization [25,22], image
+harmonization [49,29,40], color matching [43,42,28], texture synthesis [36,23,13]
+and beyond [18]. These style transfer approaches leverage features extracted by
+a pre-trained convolutional neural network (e.g., VGG-19 [39]) and optimize
+for a set of loss functions (typically a content loss capturing an input photo’s
+features and a style loss matching a target image’s feature statistics, e.g., encoded
+in a Gram matrix) to achieve good performance for painterly style transfer.
+Depending on whether the style transfer is achieved via iterative optimization on
+a single input or with a forward pass from a pre-trained generative model, existing
+methods can be categorized as optimization-based and feed-forward-based:
+Optimization-based style transfer. Gatys et al. [11] perform style transfer
+via iterative optimization to minimize content and style losses. Many follow-up
+works [7,22,36,12,21,30,25] have investigated alternative style loss formulations to
+further improve the quality of semantic consistency and high-frequency style de-
+tails like brushstrokes. Unlike neural style transfer methods that encode statistics
+of style features with a single Gram matrix, Chen and Schmidt [7], CNNMRF [22],
+Deep Image Analogy [25] and NNST [20] propose to search for nearest neighbors
+and minimize distances between features extracted from corresponding content
+and style patches in a coarse-to-fine fashion. These methods achieve impressive
+2D stylization quality when provided with source and target images that share
+similar semantics. Our approach draws inspiration from this line of work and is
+the first to introduce nearest neighbor feature matching (NNFM) for 3D styl-
+ization. Our NNFM loss is most similar to that proposed in [20] for 2D style
+
+
+4
+K. Zhang et al.
+transfer. However, when stylizing 3D radiance fields, we find that we can achieve
+the same level of stylistic detail more efficiently by only applying stylization at
+the final scale (as opposed to coarse-to-fine) and by skipping the style image
+augmentations (rotation and/or scaling) used in [22,20].
+Feed-forward style transfer. Rather than performing iterative optimization,
+feed-forward approaches [17,2,9,35,44,38,24] train neural networks that can cap-
+ture the style information of the style image and transfer it to the input image
+using a single forward pass. While fast, these methods often struggle to faithfully
+reproduce stylistic feature like colors and brushstrokes, and yield lower visual
+quality compared to optimization-based techniques. For the sake of creating high-
+quality artistic radiance fields, we do not pursue this direction as a component of
+ARF.
+Video style transfer. Stylizing each video frame separately with a 2D style
+transfer method often leads to flickering artifacts in the resulting stylized videos.
+Video style transfer [37] techniques address this problem by enforcing an addi-
+tional temporal coherency loss across frames [6,15,37,41]. Alternative approaches
+rely on aligning and fusing style features according to their similarity to content
+features [10,27] to maintain temporal consistency. Despite sharing the similar
+challenge of consistency across views, stylizing a 3D scene is a distinct problem
+from video stylization, because it requires synthesizing novel views while main-
+taining style consistency, which in turn is best achieved through stylization in
+3D rather than 2D image space.
+3D style transfer. 3D style transfer aims to transform the appearance of a
+3D scene so that its renderings from different viewpoints match the style of
+a desired image. Previous approaches represent real world scenes using point
+clouds [16,33] or triangle meshes [45,31]. For example, Huang et al. [16] and
+Mu et al. [33] use featurized 3D point clouds modulated with the style image,
+followed by a 2D CNN renderer to produce stylized renderings. Yin et al. [45]
+create novel geometric and texture variations of 3D meshes by transferring the
+shape and texture style from one textured mesh to another. The performance of
+such methods is limited by the quality of the geometric reconstructions, which
+oftentimes contain noticeable artifacts for complex real-world scenes. In contrast,
+we perform style transfer on radiance fields [32,26,47,48,5] which have been shown
+to more faithfully reproduce the appearance of real world scenes. A work closely
+relevant to ours is that of Chiang et al. [8], who apply neural radiance fields for
+scene representation and rely on pre-trained style hypernetworks for appearance
+stylization. However, their method produces over-smoothed and blurry stylization
+results, and cannot capture the detailed structures of the style image such as
+brushstrokes, due to the limitation of pre-trained feed-forward models. We show
+that our approach can more faithfully capture distinctive details in the style
+exemplar while preserving recognizable scene content.
+
+
+ARF: Artistic Radiance Fields
+5
+...
+    Multiview photos
+Photorealistic radiance feld
+      Artistic radiance feld
+style
+Stylized free-view navigation
+style
+NNFM
+NNFM: Nearest Neighbor Feature Matching
+style
+rendered img
+VGG-16
+VGG-16
+content features
+               NN search
+minimizing cosine distance
+style features
+optimization
+Fig. 2. Overview of our method. We first reconstruct a photo-realistic radiance field
+from multiple photos. We then stylize this reconstruction using an exemplar style image
+through the use of a nearest neighbor feature matching (NNFM) style loss. Once this
+stylization is done, we can obtain consistent free-viewpoint stylized renderings. We
+invite readers to watch the supplemental videos to better appreciate our results.
+3
+Background of Radiance Fields
+NeRF [32] proposes neural radiance fields to model and reconstruct real scenes,
+achieving photo-realistic novel view synthesis results. In general, the radiance
+field representation can be seen as a 5D function that maps any 3D location x
+and viewing direction d to volume density σ and RGB color c:
+  \ s igma , \mathbf { c} = \textsc {RadianceField}(\mathbf {x}, \mathbf {d}). 
+(1)
+This representation can be rendered from any viewpoint via differentiable volume
+rendering, and hence can be optimized to fit a collection of input photos captured
+from multiple views, and then later used for synthesizing photo-realistic novel
+views. We move beyond photo-realism and add an artistic feel to the radiance
+field by stylizing it using an exemplar style image, such as a painting or sketch.
+4
+Stylizing Radiance Fields
+In this section, we describe our radiance fields stylization technique in detail.
+Given a photo-realistic radiance field reconstructed from photos of a real scene, our
+approach transforms it into an artistic style by stylizing the 3D scene appearance
+with a 2D style image. We achieve this by fine-tuning the radiance field using a
+novel nearest neighbor feature matching style loss (Sec. 4.1) that can transfer
+detailed local style structures. We also introduce a deferred back-propagation
+technique that enables radiance field optimization with full-resolution images
+(Sec. 4.2) in the face of limited GPU memory. We apply a view-consistent color
+transfer technique to further enhance our final visual quality (Sec. 4.3).
+
+
+6
+K. Zhang et al.
+4.1
+Style transfer losses
+Artwork often features unique visual details; for instance, the Van Gogh’s The
+Starry Night is characterized by long and curvy brushstrokes. In general, neural
+features produced by pre-trained neural networks (like VGG) can effectively
+capture such details and have been successfully used for 2D style transfer [11].
+However, it is challenging to transfer such rich visual details to 3D scenes using
+prior VGG-based style losses, since the style information measured by such losses
+are generally based on global statistics that do not necessarily capture the local
+details well in a view-consistent way.
+To address this, we propose to use the Nearest Neighbor Feature Matching
+(NNFM) loss to transfer complex high-frequency visual details from a 2D style
+image to a 3D scene (parameterized by a radiance field), consistently across
+multiple viewpoints. In particular, let Istyle denote the style image, and Irender
+denote an image rendered from the radiance field at a selected viewpoint. We
+extract the VGG feature map Fstyle and Frender for Istyle and Irender, respectively.
+Let Frender(i, j) denote the feature vector at pixel location (i, j) of the feature
+map Frender. Our NNFM loss can be written as:
+  \ell _{\text rm {nnf m }
+}
+(
+{\b
+old
+symbo l
+ 
+{F}_{\text rm {render}}} , \
+b
+oldsymbol {F}_{\textrm {style}})&=\frac {1}{N}\sum _{i, j} \min _{i', j'} D\big ({\boldsymbol {F}_{\textrm {render}}}(i, j),\boldsymbol {F}_{\textrm {style}}(i',j')\big ), \label {eq:nnfm}
+(2)
+where N is the number of pixels in Frender, and D(v1, v2) computes the cosine
+distance between two vectors v1, v2:
+  D(\ bol d s y mb
+o l {
+v
+}_
+1 , \b
+o ldsymbol {v}_2)=1-\boldsymbol {v}_1^T\boldsymbol {v}_2/\sqrt {\boldsymbol {v}_1^T\boldsymbol {v}_1 \boldsymbol {v}_2^T\boldsymbol {v}_2}. \label {eq:cosine_dist}
+(3)
+In short, for each feature in Frender, we minimize its cosine distance (Eq. (3)) to
+its nearest neighbor in the style image’s VGG feature space (Fstyle).
+Note that our loss does not rely on global statistics. This grants more flexi-
+bility to the optimization process, which can focus on adjusting the local scene
+appearance to perceptually match the style image in a given image rendered from
+a given training viewpoint.
+Controlling stylization strength. Using our NNFM loss alone can sometimes
+lead to overly strong stylization, making the content harder to recognize. To
+address this issue, we add an additional content-preserving loss penalizing the ℓ2
+difference between the feature maps of rendered and content images:
+  \ell =\ell _{\ textrm { n n fm}}({\bold symbol {F}_{\textrm {render}}}, \boldsymbol {F}_{\textrm {style}})+\lambda \cdot \ell _2({\boldsymbol {F}_{\textrm {render}}}, \boldsymbol {F}_{\textrm {content}}), \label {eqn:finalloss}
+(4)
+where λ is a weight controlling stylization strength: a larger λ preserves more con-
+tent, while a smaller λ leads to stronger stylization. Note that Frender, Fstyle, Fcontent
+are extracted by exactly the same feature extractors. (See Sec. 4.4 for details)
+
+
+ARF: Artistic Radiance Fields
+7
+Fig. 3. Illustration of deferred back-propagation. We first disable auto-differentiation
+to render a full-resolution image; then we compute the image loss (e.g., a style loss
+defined by NNFM or by a Gram matrix), and cache its gradients with respect to pixel
+values of the full-resolution image. Next, we back-propagate the cached gradients to
+scene parameters and accumulate in a patch-wise manner; for each patch, we re-render
+it with enabled auto-differentiation, and apply the chain rule to back-propagate the
+corresponding cached patch gradients to scene parameters for accumulation. This way,
+we correctly compute the gradients of a loss imposed on the full-resolution rendered
+image with respect to the scene parameters, with the same GPU memory footprint of
+rendering a single small patch differentiably.
+4.2
+Deferred back-propagation
+We stylize a radiance field by minimizing our loss (Eqn. 4) imposed on images
+rendered using differentiable volume rendering. However, such rendering is very
+memory-inefficient in practice, because the color of each pixel is composited from
+a large number of samples along the ray. As a result, rather than rendering a
+full-resolution image at each optimization iteration, many methods randomly
+sample a sparse set of pixels for rendering. While such sparse pixel sampling is a
+reasonable strategy when minimizing a loss computed independently per-pixel,
+such as an ℓ1/ℓ2 loss, it does not work for complex CNN-based losses, such as
+our NNFM loss or a Gram-matrix style loss, which require full-resolution images.
+We propose a simple technique termed deferred back-propagation that can
+directly optimize on full-resolution images, allowing for more sophisticated and
+powerful image losses to be used in practice with radiance fields representation. As
+shown by Fig. 3, we first render a full-resolution image with auto-differentiation
+disabled; then we compute the image loss and its gradient with respect to the
+rendered image’s pixel colors, which produces a cached gradient image; finally, in a
+patch-wise manner, we re-render the pixel colors with enabled auto-differentiation,
+and back-propagate the cached gradients to the scene parameters for accumulation.
+In this way, gradient back-propagation is deferred from the full-resolution image
+rendering stage to the patch-wise re-rendering stage, reducing the GPU memory
+cost from that of rendering a full-resolution image to that of rendering a small
+patch. In our work we apply this technique for the stylization task by optimizing
+
+
+8
+K. Zhang et al.
+our style loss, and also by optimizing the standard Gram loss for comparison
+(see Fig. 7).
+4.3
+View-consistent color transfer
+While our style and content losses can perceptually transfer styles and preserve
+the original content, we find they can lead to color mismatches between rendered
+images and the style image. We devise a simple technique to address this issue
+which leads to much better stylization quality (see Fig. 7). We first recolor the
+training views via color transfer from the style image. These recolored images are
+used to pre-optimize our artistic radiance field as initialization for our stylization
+optimization based on Eq. 4. These color transferred images are also used for
+our content preservation loss. Additionally, after the 3D stylization process, we
+again perform a color transfer to images rendered to the training viewpoints, and
+apply the same color transformation directly to the color values produced from
+rendering the radiance fields.
+As to the color transfer method, we adopt a simple linear transformation
+of colors in RGB space, parameters of which are estimated by matching color
+statistics of an image set to those of an image. Specifically, let
+
+ci
+	m
+i=1 be the set
+of all pixel colors in an image set to be recolored, and let
+
+si
+	n
+i=1 be the set of all
+pixel colors of the style image; we analytically solve for a linear transformation A
+such that E
+
+Ac] = E
+
+s
+
+and Cov
+
+Ac
+
+= Cov
+
+s
+
+, i.e., the mean and covariance
+of the color-transformed image set match those of the style image.
+4.4
+Implementation details
+To represent a radiance field, our work primarily uses the recently-proposed
+Plenoxels [46] for its fast reconstruction and rendering speed. However, our
+framework is agnostic to the radiance field representation. To demonstrate this,
+we apply our proposed techniques to stylize NeRF [32] and TensoRF [46], and
+in each case achieve high visual quality with faithful style transfer, as shown in
+Fig. 8.
+During stylization, we fix the density component of the initial photorealistic
+radiance field, and only optimize the appearance component when converting
+to an artistic radiance field. We also discard the view-dependent appearance
+modelling,1 To extract feature maps Frender, Fstyle, Fcontent in Eq. 4, we use a
+pretrained VGG-16 network that consists of 5 layer blocks: conv1, conv2, conv3,
+conv4, conv5.2 We use the conv3 block as the feature extractor, because we
+1 In Plenoxels, radiance fields are represented as a mixture of spherical harmonics at
+each point. To discard view-dependence, we simply move all spherical harmonics
+components except the first one. For TensoRF, we zero out the view directions when
+inputting them to the MLP.
+2 In VGG-16, each layer block begins with a max-pooling layer that downsamples
+the feature map by 2. Inside each layer block, feature maps are of the same spatial
+resolution and hence can be concatenated to form a single feature map for this block.
+
+
+ARF: Artistic Radiance Fields
+9
+empirically find that it captures style details better than the other blocks, as
+shown in Fig. 9. We set the content-preserving weight λ = 0.001 in Eqn. 4
+for all forward-facing captures, and λ = 0.005 for all 360◦captures. At each
+stylization iteration, we render an image for computing losses from a viewpoint
+randomly selected out of all the training viewpoints used for reconstructing
+photo-realistic radiance fields. We perform the stylization optimization for 10
+epochs with learning rate exponentially decayed from 1e-1 to 1e-2.
+5
+Experiments
+We evaluate our method by performing both quantitative and qualitative com-
+parisons to baseline methods. We show stylization results for various real world
+scenes guided by different style images. The experimental results show that our
+method significantly outperforms baseline methods in terms of generating stylized
+renderings that are more faithful to the input style image, while maintaining
+the recognizable semantic and geometric features of the original scene. We invite
+readers to watch our supplemental videos for better assessment of 3D stylization
+quality.
+Datasets. We conduct extensive experiments on multiple real-world scenes
+including four forward-facing captures: Flower, Orchids, Horns, Trex, from [32],
+and seven 360◦captures: Family, Horse, Playground, Truck, M60, Train from
+the Tanks and Temples dataset [19], as well as the Real Lego dataset from [1].
+All scenes contain complex structures and intricate details that are difficult to
+reconstruct with previous triangle mesh or point cloud-based methods. We also
+experiment with a diverse set of style images including a neon tiger, Van Gogh’s
+The Starry Night, sketches, etc., to test our method’s ability to handle a diverse
+range of style exemplars.
+Baselines. We compare our method to state-of-the-art methods [16,8] for 3D
+style transfer quality. Specifically, Huang et al. [16] adopt point clouds featurized
+by VGG features averaged across views as a scene representation, and transform
+the pointwise features by modulating them with the encoding vector of a style
+image for stylization. Chiang et al. [8] use implict MLPs as in NeRF++ [48] to
+reconstruct a radiance field for a scene, then update the weights of the radiance
+prediction branch using a hypernetwork that takes a style image as input. For
+both methods, we use their released code and pre-trained models. We chose
+not to compare to off-the-shelf video stylization methods, because prior work
+has demonstrated that they are less competitive compared to 3D style transfer
+approaches [16,8].
+Qualitative comparisons. We show visual comparisons between methods in
+Fig. 4 (forward-facing captures) and Fig. 5 (360◦captures). Visually, we see
+that our results exhibit a better style match to the exemplar image compared to
+the baselines. For instance, in the Flower scene in Fig. 4, our method faithfully
+captures both the color tone and the brushstrokes of The Starry Night, while the
+baseline method of Huang et al. [16] generates over-smoothed results without less
+
+
+10
+K. Zhang et al.
+detailed structures. Moreover, Huang et al. also fails to recover complex geometric
+structures such as leaves of the plants due to inaccuracies in the reconstructed
+point cloud. In comparison, our method effectively reconstructs and preserves
+the geometric and semantic content of the original scene, thanks to the more
+robust radiance fields representation.
+Chiang et al. [8] only transfers the overall color tone of the style image to the
+scene and fails to recover the rich details that our method does. For example,
+in the Family statue scene in Fig. 5, our method captures the subtle textural
+details of the watercolor feather style image, and reproduces them in the stylized
+renderings. In contrast, the method of Chiang et al. [8] generates blurry results
+with no such intricate structures, because their hypernetwork is trained on a
+fixed dataset of style images and often fails to capture the details of an unseen
+style input. Our method benefits from both the optimization-based framework as
+well as our NNFM style loss, which greatly boost the 3D stylization performance.
+We show additional results from our method in Fig. 6. Our method is robust to
+different scenes with varying levels of complexity and also generates consistently
+superior results under a variety of styles. We refer the readers to the supplementary
+videos for more visual comparisons and results.
+User study. We also perform a user study to compare our methods to baseline
+methods. A user is presented with a sequence of stylization results, where for
+each result the user is shown a style image, a video of the original scene, and
+two corresponding stylized videos produced with our method and a baseline
+method. The user is then asked to select the result that better matches the
+style of the given style image. In total, we collect ratings covering 25 randomly
+selected (scene, style) pairs. We divided the questions into 5 batches, each with 5
+questions, and asked a large group of users to rate a randomly selected batch.
+We collected an average of ∼12 ratings for each individual pair. We found that
+users prefer our method over the baseline Huang et al. [16] 86.8% of the time,
+and over the baseline Chiang et al. [8] 94.1% of the time. These results show a
+clear preference for our method.
+Ablations. We perform ablation studies to justify our design choices. We first
+compare our NNFM loss to the prior Gram-based and CNNMRF losses. As we
+can see from Fig. 7, our NNFM loss generates significantly better results and
+more faithfully preserves the style details of the example images compared to
+the other two losses. In Fig. 7, we also validate the necessity of the color transfer
+stage. Without color transfer, the generated results tend to have different color
+tones from the style images, leading to a degraded style match. Our color transfer
+method effectively addresses this issue. Finally, we perform an ablation of using
+the feature map at different layers of the VGG-16 network for computing NNFM
+loss in Fig. 9. We find that our choice of the conv3 layer block preserves stylistic
+details better than other layers.
+Limitations. Our method has a few limitations. First, geometric artifacts, e.g.,
+floaters, in the radiance fields can cause artifacts in both the photorealistic
+
+
+ARF: Artistic Radiance Fields
+11
+Huang et al.
+Our
+Flower
+Orchids
+Horns
+Trex
+Style
+Style
+Huang et al.
+Our
+Fig. 4. Comparison with the baseline method Huang et al. [16] on real-world forward-
+facing data. Our stylized novel views contain significantly more faithful style details.
+Additionally, the method of Huang et al. [16] requires reconstructing meshes from
+images, an error-prone process. Such errors can impact the quality of stylized novel
+views, as can be seen in the leaves in the Flower and Orchids scenes, and in ceiling of
+Trex. In contrast, our method, based on radiance fields, exhibits many fewer geometric
+artifacts. We invite readers to watch our supplemental videos for better comparisons.
+
+
+12
+K. Zhang et al.
+Our
+Huang et al.
+Chiang et al.
+Our
+Huang et al.
+Chiang et al.
+Our
+Huang et al.
+Chiang et al.
+Fig. 5. Comparison with the baseline methods Huang et al. [16] and Chiang et al. [8]
+on real-world Tanks and Temples data. Our results match both the colors and details
+of the style image most faithfully, while preserving sharp and recognizable content. We
+invite readers to watch our supplemental videos for better comparisons.
+
+
+ARF: Artistic Radiance Fields
+13
+Fig. 6. More artistic radiance fields for scenes shown in this paper. The leftmost image
+in each row is the style image, and the rest are stylized novel views rendered from
+corresponding artistic radiance fields (two novel views are shown for each artistic
+radiance field). Our method can generate compelling results for a wide range of (real
+world scene, style image) pairs. We refer the readers to our supplemental videos for
+more visualizations.
+
+
+14
+K. Zhang et al.
+Our full pipeline
+No color transfer
+NNFM loss →Gram loss
+NNFM loss →CNNMRF loss
+Fig. 7. Ablation studies of color transfer and NNFM loss. Without color transfer, there
+is a noticeable color mismatch between the synthesized views and the style image (shown
+as insets in the first column). Replacing the NNFM loss with the commonly-used Gram
+loss [11] leads to less compelling results with many more artifacts. Our NNFM loss also
+generates more faithful 3D stylization results than the prior CNNMRF loss [22].
+(a) ARF + Plenoxels
+(c) ARF + TensoRF
+(b) ARF + NeRF
+Fig. 8. Applicability across different radiance field representations. Our ARF method
+is applicable to a variety of radiance fields representations, including Plenoxels [46],
+NeRF [32] and TensoRF [4], in each case producing high-quality 3D stylization results.
+and our stylized renderings. Such floaters can be removed by adding additional
+regularizers on volume density to the loss during optimization [3,34]. Second,
+although our artistic radiance fields can be rendered in real time once optimized,
+a relatively time-consuming optimization procedure is still required for every
+style image (∼3 mins for forward-facing captures, and ∼20 mins for 360 captures
+on a single NVIDIA RTX 3090 GPU). Third, our reconstructed artistic radiance
+fields do not support manual editing. Enabling artists to interactively edit them
+is highly desirable for the sake of facilitating creativity.
+
+
+ARF: Artistic Radiance Fields
+15
+Fig. 9. Ablation studies of extrating features for losses in Eq. 4 using different layer
+blocks of the VGG-16 network. We find that conv3 layer block generates more visually
+pleasing results than other layers.
+6
+Conclusion
+We have presented a method to reconstruct artistic radiance fields from photo-
+realistic radiance fields given user-specified style exemplars. The reconstructed
+artistic radiance fields can then be used to render high-quality stylized novel views
+that faithfully mimic the input style image in terms of color tone and style details
+like brushstrokes, enabling an immersive experience of an artistic 3D scene. Key
+to our method’s success is the proposed coupling of the nearest neighbor featuring
+matching loss and view-consistent color transfer, rather than the commonly-used
+Gram loss. We demonstrate that our method achieves superior 3D stylization
+quality over baselines through evaluations across various 3D scenes and 2D styles.
+Acknowledgements. We would like to thank Adobe artist Daichi Ito for helpful
+discussions about 3D artistic styles.
+References
+1. Alex Yu and Sara Fridovich-Keil, Tancik, M., Chen, Q., Recht, B., Kanazawa, A.:
+Plenoxels: Radiance fields without neural networks (2021)
+2. An, J., Huang, S., Song, Y., Dou, D., Liu, W., Luo, J.: Artflow: Unbiased image style
+transfer via reversible neural flows. In: Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition. pp. 862–871 (2021)
+3. Barron, J.T., Mildenhall, B., Verbin, D., Srinivasan, P.P., Hedman, P.: Mip-nerf
+360: Unbounded anti-aliased neural radiance fields. CVPR (2022)
+4. Chen, A., Xu, Z., Geiger, A., , Yu, J., Su, H.: Tensorf: Tensorial radiance fields
+(2022)
+5. Chen, A., Xu, Z., Zhao, F., Zhang, X., Xiang, F., Yu, J., Su, H.: MVSNeRF: Fast
+generalizable radiance field reconstruction from multi-view stereo. In: Proceedings
+of the IEEE/CVF International Conference on Computer Vision. pp. 14124–14133
+(2021)
+
+
+16
+K. Zhang et al.
+6. Chen, D., Liao, J., Yuan, L., Yu, N., Hua, G.: Coherent online video style transfer.
+In: Proceedings of the IEEE International Conference on Computer Vision. pp.
+1105–1114 (2017)
+7. Chen, T.Q., Schmidt, M.: Fast patch-based style transfer of arbitrary style. arXiv
+preprint arXiv:1612.04337 (2016)
+8. Chiang, P.Z., Tsai, M.S., Tseng, H.Y., Lai, W.S., Chiu, W.C.: Stylizing 3d scene
+via implicit representation and hypernetwork. In: Proceedings of the IEEE/CVF
+Winter Conference on Applications of Computer Vision. pp. 1475–1484 (2022)
+9. Chiu, T.Y., Gurari, D.: Iterative feature transformation for fast and versatile
+universal style transfer. In: European Conference on Computer Vision. pp. 169–184.
+Springer (2020)
+10. Deng, Y., Tang, F., Dong, W., Huang, H., Ma, C., Xu, C.: Arbitrary video style
+transfer via multi-channel correlation. arXiv preprint arXiv:2009.08003 (2020)
+11. Gatys, L.A., Ecker, A.S., Bethge, M.: Image style transfer using convolutional
+neural networks. In: Proceedings of the IEEE conference on computer vision and
+pattern recognition. pp. 2414–2423 (2016)
+12. Gu, S., Chen, C., Liao, J., Yuan, L.: Arbitrary style transfer with deep feature
+reshuffle. In: Proceedings of the IEEE Conference on Computer Vision and Pattern
+Recognition. pp. 8222–8231 (2018)
+13. Heitz, E., Vanhoey, K., Chambon, T., Belcour, L.: A sliced wasserstein loss for
+neural texture synthesis. In: Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition. pp. 9412–9420 (2021)
+14. H¨
+ollein, L., Johnson, J., Niessner, M.: StyleMesh: Style transfer for indoor 3D scene
+reconstructions. arXiv preprint arXiv:2112.01530 (2021)
+15. Huang, H., Wang, H., Luo, W., Ma, L., Jiang, W., Zhu, X., Li, Z., Liu, W.: Real-
+time neural style transfer for videos. In: Proceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition. pp. 783–791 (2017)
+16. Huang, H.P., Tseng, H.Y., Saini, S., Singh, M., Yang, M.H.: Learning to stylize novel
+views. In: Proceedings of the IEEE/CVF International Conference on Computer
+Vision. pp. 13869–13878 (2021)
+17. Huang, X., Belongie, S.: Arbitrary style transfer in real-time with adaptive instance
+normalization. In: Proceedings of the IEEE international conference on computer
+vision. pp. 1501–1510 (2017)
+18. Jing, Y., Yang, Y., Feng, Z., Ye, J., Yu, Y., Song, M.: Neural style transfer: A review.
+IEEE transactions on visualization and computer graphics 26(11), 3365–3385 (2019)
+19. Knapitsch, A., Park, J., Zhou, Q.Y., Koltun, V.: Tanks and temples: Benchmarking
+large-scale scene reconstruction. ACM Transactions on Graphics 36(4) (2017)
+20. Kolkin, N., Kucera, M., Paris, S., Sykora, D., Shechtman, E., Shakhnarovich, G.:
+Neural neighbor style transfer. arXiv e-prints pp. arXiv–2203 (2022)
+21. Kolkin, N., Salavon, J., Shakhnarovich, G.: Style transfer by relaxed optimal
+transport and self-similarity. In: Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition. pp. 10051–10060 (2019)
+22. Li, C., Wand, M.: Combining markov random fields and convolutional neural
+networks for image synthesis. In: Proceedings of the IEEE conference on computer
+vision and pattern recognition. pp. 2479–2486 (2016)
+23. Li, Y., Fang, C., Yang, J., Wang, Z., Lu, X., Yang, M.H.: Diversified texture
+synthesis with feed-forward networks. In: Proceedings of the IEEE Conference on
+Computer Vision and Pattern Recognition. pp. 3920–3928 (2017)
+24. Li, Y., Fang, C., Yang, J., Wang, Z., Lu, X., Yang, M.H.: Universal style transfer via
+feature transforms. Advances in neural information processing systems 30 (2017)
+
+
+ARF: Artistic Radiance Fields
+17
+25. Liao, J., Yao, Y., Yuan, L., Hua, G., Kang, S.B.: Visual attribute transfer through
+deep image analogy. ACM Trans. Graph. (2017)
+26. Liu, L., Gu, J., Zaw Lin, K., Chua, T.S., Theobalt, C.: Neural sparse voxel fields.
+Advances in Neural Information Processing Systems 33, 15651–15663 (2020)
+27. Liu, S., Lin, T., He, D., Li, F., Wang, M., Li, X., Sun, Z., Li, Q., Ding, E.: Adaattn:
+Revisit attention mechanism in arbitrary neural style transfer. In: Proceedings
+of the IEEE/CVF International Conference on Computer Vision. pp. 6649–6658
+(2021)
+28. Luan, F., Paris, S., Shechtman, E., Bala, K.: Deep photo style transfer. In: Pro-
+ceedings of the IEEE conference on computer vision and pattern recognition. pp.
+4990–4998 (2017)
+29. Luan, F., Paris, S., Shechtman, E., Bala, K.: Deep painterly harmonization. Com-
+puter Graphics Forum 37(4), 95–106 (2018)
+30. Mechrez, R., Talmi, I., Zelnik-Manor, L.: The contextual loss for image transforma-
+tion with non-aligned data. In: Proceedings of the European conference on computer
+vision (ECCV). pp. 768–783 (2018)
+31. Michel, O., Bar-On, R., Liu, R., Benaim, S., Hanocka, R.: Text2mesh: Text-driven
+neural stylization for meshes. arXiv preprint arXiv:2112.03221 (2021)
+32. Mildenhall, B., Srinivasan, P.P., Tancik, M., Barron, J.T., Ramamoorthi, R., Ng, R.:
+Nerf: Representing scenes as neural radiance fields for view synthesis. In: European
+conference on computer vision. pp. 405–421. Springer (2020)
+33. Mu, F., Wang, J., Wu, Y., Li, Y.: 3d photo stylization: Learning to generate stylized
+novel views from a single image. arXiv preprint arXiv:2112.00169 (2021)
+34. Niemeyer, M., Barron, J.T., Mildenhall, B., Sajjadi, M.S.M., Geiger, A., Radwan,
+N.: Regnerf: Regularizing neural radiance fields for view synthesis from sparse
+inputs. In: Proc. IEEE Conf. on Computer Vision and Pattern Recognition (CVPR)
+(2022)
+35. Park, D.Y., Lee, K.H.: Arbitrary style transfer with style-attentional networks.
+In: proceedings of the IEEE/CVF conference on computer vision and pattern
+recognition. pp. 5880–5888 (2019)
+36. Risser, E., Wilmot, P., Barnes, C.: Stable and controllable neural texture synthesis
+and style transfer using histogram losses. arXiv preprint arXiv:1701.08893 (2017)
+37. Ruder, M., Dosovitskiy, A., Brox, T.: Artistic style transfer for videos and spherical
+images. International Journal of Computer Vision 126(11), 1199–1219 (2018)
+38. Sheng, L., Lin, Z., Shao, J., Wang, X.: Avatar-net: Multi-scale zero-shot style transfer
+by feature decoration. In: Proceedings of the IEEE Conference on Computer Vision
+and Pattern Recognition. pp. 8242–8250 (2018)
+39. Simonyan, K., Zisserman, A.: Very deep convolutional networks for large-scale
+image recognition. arXiv preprint arXiv:1409.1556 (2014)
+40. Tsai, Y.H., Shen, X., Lin, Z., Sunkavalli, K., Lu, X., Yang, M.H.: Deep image
+harmonization. In: Proceedings of the IEEE Conference on Computer Vision and
+Pattern Recognition. pp. 3789–3797 (2017)
+41. Wang, W., Xu, J., Zhang, L., Wang, Y., Liu, J.: Consistent video style transfer via
+compound regularization. In: Proceedings of the AAAI Conference on Artificial
+Intelligence. vol. 34, pp. 12233–12240 (2020)
+42. Xia, X., Xue, T., Lai, W.s., Sun, Z., Chang, A., Kulis, B., Chen, J.: Real-time
+localized photorealistic video style transfer. In: Proceedings of the IEEE/CVF
+Winter Conference on Applications of Computer Vision. pp. 1089–1098 (2021)
+43. Xia, X., Zhang, M., Xue, T., Sun, Z., Fang, H., Kulis, B., Chen, J.: Joint bilateral
+learning for real-time universal photorealistic style transfer. In: European Conference
+on Computer Vision. pp. 327–342. Springer (2020)
+
+
+18
+K. Zhang et al.
+44. Yao, Y., Ren, J., Xie, X., Liu, W., Liu, Y.J., Wang, J.: Attention-aware multi-stroke
+style transfer. In: Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition. pp. 1467–1475 (2019)
+45. Yin, K., Gao, J., Shugrina, M., Khamis, S., Fidler, S.: 3dstylenet: Creating 3d shapes
+with geometric and texture style variations. In: Proceedings of the IEEE/CVF
+International Conference on Computer Vision. pp. 12456–12465 (2021)
+46. Yu, A., Li, R., Tancik, M., Li, H., Ng, R., Kanazawa, A.: Plenoctrees for real-time
+rendering of neural radiance fields. In: Proceedings of the IEEE/CVF International
+Conference on Computer Vision. pp. 5752–5761 (2021)
+47. Yu, A., Ye, V., Tancik, M., Kanazawa, A.: pixelnerf: Neural radiance fields from
+one or few images. In: Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition. pp. 4578–4587 (2021)
+48. Zhang, K., Riegler, G., Snavely, N., Koltun, V.: Nerf++: Analyzing and improving
+neural radiance fields. arXiv preprint arXiv:2010.07492 (2020)
+49. Zhang, L., Wen, T., Shi, J.: Deep image blending. In: Proceedings of the IEEE/CVF
+Winter Conference on Applications of Computer Vision. pp. 231–240 (2020)
+Appendix
+  \boldsym bo l { Ac}=\b oldsy mbol {U_s}\bol d sy mbol {\ Lam
+bd a  _s
+}
+^
+{ \ f
+r ac 
+{ 1
+}
+{
+2 }
+}
+\
+b o l
+d
+s
+ym
+b o
+l
+ 
+{
+U_s}^T\boldsymbol {U_c} \boldsymbol {\Lambda _c}^{-\frac {1}{2}}\boldsymbol {U_c}^T\big (\boldsymbol {c}-\mathrm {E}\big [\boldsymbol {c}\big ]\big )+\mathrm {E}\big [\boldsymbol {s}\big ],
+(5)
+where Us, Λs, Uc, Λc are obtained via the following eigen-decompositions of
+covariance matrices Cov
+
+c
+
+, Cov
+
+s
+
+:
+  \
+m
+a
+t
+h rm {C o
+v
+}\b
+ig 
+[
+\
+b
+o ldsym b
+o l {c}\big ]&=\boldsymbol {U_c}\boldsymbol {\Lambda _c}\boldsymbol {U_c}^T\\ \mathrm {Cov}\big [\boldsymbol {s}\big ]&=\boldsymbol {U_s}\boldsymbol {\Lambda _s}\boldsymbol {U_s}^T.
+(7)
+Proof of E
+
+Ac
+
+= E
+
+s
+
+:
+ 
+ 
+\m
+a
+t hrm
+ 
+{
+E } \
+b ig 
+[ \
+b
+o
+l d
+s
+y
+m
+b
+o
+l
+ {
+A
+c
+}\
+b i
+g
+ 
+]
+&=\
+b o l d
+s
+y
+m
+b o
+l
+ 
+{
+U_s}\boldsymbol {\Lambda _s}^{\frac {1}{2}}\boldsymbol {U_s}^T\boldsymbol {U_c} \boldsymbol {\Lambda _c}^{-\frac {1}{2}}\boldsymbol {U_c}^T\big (\mathrm {E}\big [\boldsymbol {c}\big ]-\mathrm {E}\big [\boldsymbol {c}\big ]\big )+\mathrm {E}\big [\boldsymbol {s}\big ] \\ &=\boldsymbol {0}+\mathrm {E}\big [\boldsymbol {s}\big ]=\mathrm {E}\big [\boldsymbol {s}\big ].
+(9)
+Proof of Cov
+
+Ac
+
+= Cov
+
+s
+
+:
+  \
+m
+at
+h
+r m {
+C
+ov}
+\
+b
+i g  
+[ \bo
+l d
+s
+y
+m b
+o l
+ 
+{Ac}
+\ big
+ 
+]
+& = \
+m a thr
+m
+ {C
+o v
+}
+\
+b i
+g  
+[
+\ bold
+s
+y
+m b o
+l  {
+U_s}
+\ bol
+d
+s
+y m b
+o l  {\
+L a
+m
+b
+d a
+ _ s}^
+{
+\
+f
+r ac {
+1 }
+{
+2
+} }
+\ bo l dsym
+b
+o
+l  {
+U _s
+}^T\
+b old
+s
+y
+m b o
+l  { U _c} 
+\
+b
+o l d
+s ym
+bol 
+{ \La
+m
+b
+d
+a _c}^{-\frac {1}{2}}\boldsymbol {U_c}^T\boldsymbol {c}\big ]\\ &=\boldsymbol {U_s}\boldsymbol {\Lambda _s}^{\frac {1}{2}}\boldsymbol {U_s}^T\cdot \mathrm {Cov}\big [\boldsymbol {U_c} \boldsymbol {\Lambda _c}^{-\frac {1}{2}}\boldsymbol {U_c}^T \boldsymbol {c}\big ]\cdot (\boldsymbol {U_s}\boldsymbol {\Lambda _s}^{\frac {1}{2}}\boldsymbol {U_s}^T)^T\\ &=\boldsymbol {U_s}\boldsymbol {\Lambda _s}^{\frac {1}{2}}\boldsymbol {U_s}^T\cdot \boldsymbol {U_c} \boldsymbol {\Lambda _c}^{-\frac {1}{2}}\boldsymbol {U_c}^T\cdot \mathrm {Cov}\big [\boldsymbol {c}\big ] \cdot (\boldsymbol {U_c} \boldsymbol {\Lambda _c}^{-\frac {1}{2}}\boldsymbol {U_c}^T)^T \cdot (\boldsymbol {U_s}\boldsymbol {\Lambda _s}^{\frac {1}{2}}\boldsymbol {U_s}^T)^T\\ &=\boldsymbol {U_s}\boldsymbol {\Lambda _s}^{\frac {1}{2}}\boldsymbol {U_s}^T\cdot \boldsymbol {I} \cdot (\boldsymbol {U_s}\boldsymbol {\Lambda _s}^{\frac {1}{2}}\boldsymbol {U_s}^T)^T\\ &=\mathrm {Cov}\big [\boldsymbol {s}\big ].
+(14)
+
+
+ARF: Artistic Radiance Fields
+19
+Fig. 10. Ablation studies of color transfer methods. We execute the color transfer
+algorithm described in Sec. 4.3 in RGB color space (a); this tends to generate better
+results than running it in HSV (b) and LAB (c) color spaces, and replacing it with
+histogram matching (d).
+
+
+Ref-NPR: Reference-Based Non-Photorealistic Radiance Fields for
+Controllable Scene Stylization
+Yuechen Zhang1,2
+Zexin He1
+Jinbo Xing1
+Xufeng Yao1
+Jiaya Jia1,2
+1The Chinese University of Hong Kong
+2SmartMore
+{yczhang21, zxhe22, jbxing, xfyao, leojia}@cse.cuhk.edu.hk
+stylized novel views
+ARF
+Stylized reference view
+Reference view
+:
+:
+(
+)
+(
+)
+ARF
+Ref-NPR
+Ref-NPR
+Figure 1. Given a pair of one reference view from a radiance ﬁeld and its stylization, Ref-NPR propagates style more faithfully to novel
+views with semantic correspondence compared with state-of-the-art scene stylization method ARF [45].
+Abstract
+Current 3D scene stylization methods transfer textures
+and colors as styles using arbitrary style references, lack-
+ing meaningful semantic correspondences. We introduce
+Reference-Based Non-Photorealistic Radiance Fields (Ref-
+NPR) to address this limitation. This controllable method
+stylizes a 3D scene using radiance ﬁelds with a single styl-
+ized 2D view as a reference. We propose a ray registra-
+tion process based on the stylized reference view to ob-
+tain pseudo-ray supervision in novel views. Then we ex-
+ploit semantic correspondences in content images to ﬁll oc-
+cluded regions with perceptually similar styles, resulting in
+non-photorealistic and continuous novel view sequences.
+Our experimental results demonstrate that Ref-NPR out-
+performs existing scene and video stylization methods re-
+garding visual quality and semantic correspondence. The
+code and data are publicly available on the project page at
+https://ref-npr.github.io.
+1. Introduction
+In the past decade, there has been a rising demand for
+stylizing and editing 3D scenes and objects in various ﬁelds,
+including augmented reality, game scene design, and digital
+artwork. Traditionally, professionals achieve these tasks by
+creating 2D reference images and converting them into styl-
+ized 3D textures. However, establishing direct cross-modal
+correspondence is challenging and often requires signiﬁcant
+time and effort to obtain stylized texture results similar to
+the 2D reference schematics.
+A critical challenge in the 3D stylization problem is to
+ensure that stylized results are perceptually similar to the
+given style reference. Beneﬁting from radiance ﬁelds [2,
+10, 28, 29, 37, 46], recent novel-view stylization meth-
+ods [5,8,15,16,30,45] greatly facilitated style transfer from
+an arbitrary 2D style reference to 3D implicit representa-
+tions. However, these methods do not provide explicit con-
+trol over the generated results, making it challenging to
+specify the regions where certain styles should be applied
+and ensure the visual quality of the results. On the other
+hand, reference-based video stylization methods allow for
+the controllable generation of stylized novel views with bet-
+ter semantic correspondence between content and style ref-
+erence, as demonstrated in works like [17, 38]. However,
+these methods may diverge from the desired style when styl-
+izing a frame sequence with unseen content, even with the
+assistance of stylized keyframes.
+To address the aforementioned limitations, we propose
+1
+arXiv:2212.02766v2  [cs.CV]  26 Mar 2023
+
+
+a new paradigm for stylizing 3D scenes using a single
+stylized reference view. Our approach, called Reference-
+Based Non-Photorealistic Radiance Fields (Ref-NPR), is a
+controllable scene stylization method that takes advantage
+of volume rendering to maintain cross-view consistency
+and establish semantic correspondence in transferring style
+across the entire scene.
+Ref-NPR utilizes stylized views from radiance ﬁelds
+as references instead of arbitrary style images to achieve
+both ﬂexible controllability and multi-view consistency.
+A reference-based ray registration process is designed to
+project the 2D style reference into 3D space by utilizing the
+depth rendering of the radiance ﬁeld. This process provides
+pseudo-ray supervision to maintain geometric and percep-
+tual consistency between stylized novel views and the styl-
+ized reference view. To obtain semantic style correspon-
+dence in occluded regions, Ref-NPR performs template-
+based feature matching, which uses high-level semantic fea-
+tures as implicit style supervision. The correspondence in
+the content domain is utilized to select style features in the
+given style reference, which are then used to transfer style
+globally, especially in occluded regions. By doing so, Ref-
+NPR generates the entire stylized 3D scene from a single
+stylized reference view.
+Ref-NPR produces visually appealing stylized views that
+maintain both geometric and semantic consistency with the
+given style reference, as presented in Fig. 1. The generated
+stylized views are perceptually consistent with the refer-
+ence while also exhibiting high visual quality across various
+datasets. We have demonstrated that Ref-NPR, when using
+the same stylized view as reference, outperforms state-of-
+the-art scene stylization methods [30,45] both qualitatively
+and quantitatively.
+In summary, our paper makes three contributions.
+Firstly, we introduce a new paradigm for stylizing 3D
+scenes that allows for greater controllability through the
+use of a stylized reference view. Secondly, we propose a
+novel approach called Ref-NPR, consisting of a reference-
+based ray registration process and a template-based feature
+matching scheme to achieve geometrically and percep-
+tually consistent stylizations.
+Finally, our experiments
+demonstrate that Ref-NPR outperforms state-of-the-art
+scene stylization methods such as ARF and SNeRF both
+qualitatively and quantitatively.
+More comprehensive
+results and a demo video can be found in the supplementary
+material and on our project page.
+2. Related Works
+2.1. Stylization in 2D
+Arbitrary style transfer is a well-studied problem in Non-
+Photorealistic Rendering (NPR) [12, 23]. Gatys et al. [11]
+ﬁrst introduced the idea of representing image style as high-
+level features extracted from pre-trained deep neural net-
+works. Since then, various parametric image style transfer
+methods [4, 18, 20, 22, 24, 25] have been developed to gen-
+erate high-quality stylized images efﬁciently. Video styliza-
+tion methods that use arbitrary style input [3, 7, 32, 41, 42]
+mainly focus on maintaining temporal coherence to achieve
+continuous stylized frames. Nonetheless, these stylization
+methods lack interpretability and controllability, even when
+using stylized keyframes as reference.
+Example-based stylization methods use multiple style ref-
+erences to stylize images while ensuring semantic corre-
+spondences between them. Methods such as [14, 26] use
+multi-level semantic feature matching to establish dense
+correspondences between the content image and the style
+reference with similar semantics. To facilitate this feature
+matching, some methods use explicit alignments such as
+warping or content-aligned stylizing [17,33,34,38]. These
+methods offer controllability by allowing editing of the style
+reference, but they are not suitable for stylizing novel views
+as they cannot correctly stylize unseen regions using 2D
+reference-based methods.
+2.2. Stylization in 3D
+Reference-based 3D stylization methods have achieved
+promising results without the use of radiance ﬁelds, as
+seen in previous works such as Texture Map [1], Texture
+Field [31], StyLit [9, 36], and StyleProp [13]. However,
+these methods have their limitations. For instance, Texture
+Field is trained on a restricted ShapeNet dataset, limiting
+the stylization of 3D objects within the trained categories.
+StyLit, on the other hand, treats each view of a 3D object
+as multi-channel 2D guidance and applies texture mapping,
+resulting in ﬂickering artifacts due to a lack of geometric
+prior. Although StyleProp utilizes multi-view correspon-
+dence maps to obtain stylized novel views, it can only work
+on viewing directions around the reference view.
+Stylizing radiance ﬁelds has recently emerged as a popu-
+lar topic in computer vision research, driven by the grow-
+ing popularity of radiance ﬁelds [5, 8, 28]. Huang et al.
+[15] pioneered the application of scene stylization on im-
+plicit 3D representations, followed by StylizedNeRF [16],
+CLIP-NeRF [39], NeRF-Art [40], INS [8], SNeRF [30], and
+ARF [45], which focus on various degrees, like text-driven
+stylization in CLIP feature space, stylization using uniﬁed
+representation, memory efﬁciency, and stylization quality.
+However, these methods lack explicit correspondence mod-
+eling, leading to uncontrollable stylized novel views that
+differ perceptually from the style reference.
+To address
+this issue, we propose Ref-NPR. This reference-guided con-
+trollable scene stylization method generates stylized novel
+views with geometric and semantic consistency with a given
+stylized view reference.
+2
+
+
+Editing / 2D stylization
+Reference
+camera "!
+Photorealistic
+radiance field #"
+Reference $!
+Stylized reference %!
+Reference Ray
+Registration (R3)
+Template-based
+Correspondence 
+Module (TCM)
+NP radiance field
+##"
+…
+cameras
+"$
+ℒ%&'&(
+ℒ)*+,
+ℒ(*)
+…
+Stylized rendering results
+cameras
+Φ
+cameras
+Φ
+$$
+%$
+Figure 2. The workﬂow of Ref-NPR. Given a pre-trained photorealistic radiance ﬁeld ωP, we can provide a stylized reference view SR to
+obtain reference-based supervisions Lref, Lfeat, and Lcolor. Those loss constraints are used to optimize a non-photorealistic (NP) radiance
+ﬁeld ωNP. During inference, with such NP radiance ﬁeld, stylized results ST could be rendered from an arbitrary set of camera poses ϕT ,
+corresponding to the original views IT rendered by ωP.
+3. Ref-NPR
+Fig. 2 outlines the process of Ref-NPR using a single
+reference view as an example. Ref-NPR aims to stylize a
+pre-trained photorealistic radiance ﬁeld with the help of one
+or a few pairs of reference views and their corresponding
+stylizations. The ﬁrst step involves rendering a reference
+view IR from a speciﬁc reference camera ϕR using a pre-
+trained photorealistic radiance ﬁeld ωP. Next, the reference
+view IR is stylized by either manually editing or by utiliz-
+ing structure-preserving 2D-stylization algorithms such as
+Gatys [11] or AdaIN [20] to obtain a stylized reference view
+SR based on IR.
+To enable explicit supervision from the stylized refer-
+ence view SR to novel views, we propose a Reference Ray
+Registration (R3) process introduced in section 3.2. This
+process produces a set of reference-dependent pseudo-rays
+ΓR, which are correlated rays produced between the refer-
+ence camera ϕR and the set of training camera poses Φ. Ad-
+ditionally, we use a Template-based Correspondence Mod-
+ule (TCM) in section 3.3 to obtain implicit style supervision
+in occluded regions of the reference view. Together, R3 and
+TCM provide explicit and implicit supervision to optimize
+a new non-photorealistic (NP) radiance ﬁeld ωNP in section
+3.4, allowing us to access stylized rendering results of arbi-
+trary target views.
+3.1. Preliminary: Radiance Field Rendering
+Volume rendering [19,28] uses camera rays to sample a
+3D radiance ﬁeld ω to render images. A camera ray r(t) =
+o+td is deﬁned by an origin o ∈R3 and a direction d ∈R3
+pointing towards the center of a pixel in the image. The
+radiance ﬁeld is sampled at N points along the ray, denoted
+by {r(ti)|i = 1 . . . N, ti < ti+1}. At each sample point, the
+radiance ﬁeld returns a density value σi = σ(r(ti)) and a
+view-dependent color ci = c(r(ti), d). The accumulated
+pixel color ˆ
+C(r) of the ray r is estimated in the discrete
+context, as formulated in [28]:
+ˆ
+C(r) =
+N
+X
+i=1
+Ti(1 −exp(−σi(ti+1 −ti)))ci,
+(1)
+where Ti = exp
+
+−
+i−1
+X
+j=1
+σj(tj+1 −tj)
+
+,
+(2)
+which estimates the accumulated transmittance along the
+ray from t1 to ti. During training, the radiance ﬁeld is opti-
+mized by directly minimizing the discrepancy between the
+predicted pixel color ˆ
+C(r) and the ground truth pixel color
+C(r) for each ray, which is denoted by
+Lω =
+X
+r
+∥ˆ
+C(r) −C(r)∥2
+2.
+(3)
+Once the radiance ﬁeld is optimized, depth estimation
+can be performed by mapping the ray r to an exact 3D po-
+sition in the scene. This is achieved by setting a threshold
+σz on the accumulated density Ti calculated in Equation 2.
+The ﬁrst sample that exceeds this threshold is interpreted as
+the intersection point between the ray and the scene. The
+length of the ray r is then deﬁned as the distance between
+the camera origin o and the intersection point, denoted by
+l(r) = min{ti|
+i−1
+X
+j=1
+σj(tj+1 −tj) ≥σz}.
+(4)
+Then we write the intersection point corresponding to ray r
+as x(r) = o + l(r)d, which is our desired mapping.
+3
+
+
+Rendered depth !!
+""
+Reference
+camera #!
+Reference
+dictionary $ 
+…
+Other camera poses #$,
+% = 1, … , *
+""
+!%, !&, … , !'
+! 
+Score function
+Reference-dependent 
+supervision Γ!
+…
+…
+Radiance field
+Stylized reference ,!
+Figure 3. Reference Ray Registration. To create a reference
+dictionary D for a stylized reference view SR with camera pose
+ϕR, we estimate pseudo-depths from ωP. Then, we apply a ray
+registration process to train camera poses and acquire a collection
+ΓR consisting of pseudo-rays and their assigned colors.
+3.2. Reference Ray Registration
+Ref-NPR differs from existing scene stylization meth-
+ods [16, 30, 45] by incorporating an additional objective of
+establishing semantic consistency between the stylized ref-
+erence view and novel views. This objective is also pursued
+by some scene modeling methods [6,43,44], which use 3D
+information such as depth to enhance rendering quality. No-
+tably, precise 3D positions and camera parameters enable
+pixel-wise correspondence between views with a closed-
+form solution. This is utilized in many methods, such as
+homographic warping. In Ref-NPR, the radiance ﬁeld ωP is
+used to estimate pseudo-depth information based on Eq. (4).
+R3, or Reference Ray Registration, utilizes pseudo-depth
+information to obtain reference-related novel view supervi-
+sion as shown in Fig. 3. Using the depth rendering property,
+pixels in the stylized reference view SR can be mapped to
+3D space by estimating their respective ray lengths. A ref-
+erence dictionary D is constructed, where the element at in-
+dex (x, y, z) contains all the rays that terminate in the voxel
+with the same index. This is achieved using a quantiza-
+tion operator Q(·), which maps 3D positions to their corre-
+sponding voxels. The reference dictionary is formally de-
+ﬁned as
+D(x,y,z) = {ri ∈ϕR| Q(x(ri)) = (x, y, z)},
+(5)
+in which ϕR is the reference camera and x(ri) is the inter-
+section point of ri estimated from the pseudo-depth l(ri)
+according to Eq. (4). By splitting 3D space into discrete
+voxels, each entry in D may be mapped with multiple rays
+or none at all, depending on the estimated pseudo-depths.
+For each ray ri ∈ϕR, we use ˆ
+CR(·) to denote the stylized
+color according to the stylized reference view SR.
+Now that SR is propagated to 3D space with such refer-
+ence dictionary, we thus register each ray rj ∈Φ from the
+training views as a pseudo-ray ˆ
+rj ∈ϕR in a best-matching
+manner, through minimizing the Euclidean distance of two
+corresponding intersection points in 3D space. Further, to
+avoid the over-matching problem coming from the gap of
+ray directions, we deploy a constraint that the angle spanned
+between directions of matched rays should not exceed a cer-
+tain threshold θ, i.e., ∠(dri, drj) < θ. We formulate the ray
+registration process as
+ˆ
+rj =
+arg min
+ri∈D(x,y,z),
+∠(dri,drj )<θ
+∥x(ri) −x(rj)∥2,
+(6)
+where Q(x(rj)) = (x, y, z), rj ∈Φ.
+(7)
+Ray registration ﬁnds a ray in the dictionary whose inter-
+section point drops into the same voxel D(x,y,z) as the ray
+of interest. Eventually, we construct reference-dependent
+pseudo-ray supervision as ΓR by collecting each validated,
+registered ray rj and assign its color in accordance to
+the corresponding reference ray ˆ
+rj. Such a collection of
+pseudo-rays and their stylized colors with the aforemen-
+tioned ˆ
+CR(·) is deﬁned as
+ΓR = {(rj, ˆ
+CR(ˆ
+rj)) | rj ∈Φ ∪ϕR,ˆ
+rj ̸= ∅},
+(8)
+where Φ is the collection of all accessible camera poses.
+3.3. Template-Based Semantic Correspondence
+While R3 is effective in generating pseudo-ray supervi-
+sion around the given reference camera pose ϕR, it strug-
+gles to register reference rays to occluded regions under
+such a camera, especially for 360◦scenes in [21, 28]. To
+overcome this limitation, we leverage the common assump-
+tion in scene stylization that the semantic correspondence
+in the entire scene should be consistent before and after
+stylization. Based on this, we use the stylized reference
+view SR based on source content IR to establish a content-
+style mapping as a template. We then broadcast such ref-
+erence style to novel views with semantically similar con-
+tent. To achieve this, we introduce a Template-based Cor-
+respondence Module (TCM) that utilizes this content-style
+correspondence to construct a semantic correlation within
+the content domain.
+As illustrated in Fig. 4, for each content domain view I
+rendered from ωP under some certain camera pose ϕ ∈Φ,
+we obtain its high-level semantic feature map FI from a
+pre-trained semantic feature extractor (e.g., VGG16 [35]).
+Similarly, we denote the extracted feature maps for content
+reference IR and style reference SR by FIR and FSR, re-
+spectively, and use a superscript to index each element in the
+feature maps. We therefore construct our desired guidance
+feature FG for further supervision, described by a search-
+and-replace process on 2D position (i, j) as
+4
+
+
+Source
+feature "!
+Reference content 
+feature ""!
+Reference style
+feature "
+#!
+nearest
+search
+indexing
+replacement
+Semantic
+extractor
+Radiance
+field #$%
+semantic
+extractor
+Content 
+domain view
+$
+camera
+pose %
+Guidance 
+feature "&
+Predicted feature "
+#
+&
+ℒ!"#$
+Figure 4. Template-based Correspondence Module (TCM). To
+get the implicit style supervision of one view, the content domain
+view I is passed to a semantic extractor to obtain its semantic fea-
+ture FI. Then a search-replacement process is conducted to re-
+place the reference feature according to the correspondence in the
+content domain. The resulting guidance feature FG serves as im-
+plicit supervision to optimize the radiance ﬁeld ωNP.
+F (i,j)
+G
+= F (i∗,j∗)
+SR
+,
+(9)
+where (i∗, j∗) = arg min
+i′,j′
+dist
+F (i,j)
+I
+, F (i′,j′)
+IR
+
+.
+(10)
+Here we use dist(a, b) to denote the distance between two
+feature vectors a and b, which is proved to be effective [22,
+45] by taking the form of cosine distance when evaluating
+semantic features.
+Finally, for a stylized view S rendered from the NP ra-
+diance ﬁeld ωNP under the camera pose ϕ, we conduct im-
+plicit feature-level supervision by forcing its semantic fea-
+ture ˆ
+FS to imitate the aforesaid guidance feature FG.
+3.4. Ref-NPR Optimization
+With the previously discussed collection ΓR and guid-
+ance feature FG as supervision, we optimize Ref-NPR and
+obtain the stylized scene representation ωNP.
+In each training iteration, we sample a subset from ΓR
+and denote the set of reference-dependent rays as Ns. For
+each sampled reference ray rk ∈Ns, ˆ
+CR(ˆ
+rk) is the as-
+signed color of the corresponding pseudo-ray ˆ
+rk, as deﬁned
+in Eq. (6), and we further denote ˆ
+CNP(rk) to be the styl-
+ized color rendered from ωNP. This explicit supervision is
+formulated as the reference loss
+Lref =
+1
+|Ns|
+X
+rk∈Ns
+∥ˆ
+CNP(rk) −ˆ
+CR(ˆ
+rk)∥2
+2 .
+(11)
+As for implicit supervision, the discrepancy between FG
+and ˆ
+FS should be minimized, as discussed in Sec. 3.3. To
+maintain the original content structure during such implicit
+stylization, we also minimize the mean squared distance be-
+tween content feature FI and stylized feature ˆ
+FS, according
+to [11]. This implicit supervision is formulated as the fea-
+ture loss
+Lfeat = 1
+N
+N
+X
+i,j
+dist(FG, ˆ
+FS) + λ′∥FI −ˆ
+FS∥2
+2
+
+,
+(12)
+where λ′ is a balancing factor.
+However, as discussed in [22,45], optimizing the cosine
+distance between feature vectors cannot effectively elimi-
+nate color mismatches. To address this issue, we transfer
+the average color in a patch by a coarse color-matching loss
+Lcolor = 1
+N
+N
+X
+i,j
+∥¯
+C(i,j)
+NP −¯
+C(i∗,j∗)
+R
+∥2
+2,
+(13)
+in which ¯
+C(i,j)
+NP
+is the ωNP-rendered average color of the
+patch at feature-level index (i, j), and ¯
+C(i∗,j∗)
+R
+is the aver-
+age color of reference patch matched by minimizing feature
+distance, as described in Eq. (10). Since semantic features
+are extracted at the image level, considering the memory
+limitation caused by back-propagation, we follow the gra-
+dient cache strategy in [45] and optimize ωNP patch-wisely.
+Ultimately, the overall objective is LNP = λfLfeat +
+λrLref + λcLcolor, where λ(·) are the balancing factors.
+Once ωNP is optimized, we may consider it to be a normal
+radiance ﬁeld and render stylized novel views with arbitrary
+camera poses.
+4. Experiments
+4.1. Implementation Details
+Ref-NPR is based on the ARF codebase [45] and uses
+Plenoxels [10] as the radiance ﬁeld for scene representa-
+tion. We follow Plenoxels’s training scheme to obtain the
+photorealistic radiance ﬁeld ωP. As we do not expect a
+view-dependent color change in stylized scenes, follow-
+ing [16, 45], we discard view-dependent rendering and ap-
+ply a view-independent ﬁtting on training views for two
+epochs before optimizing ωNP.
+Then, content domain
+views I are rendered from ωP after this view-independent
+training. In addition, to keep the same geometrical struc-
+ture of the scene, we do not optimize the density function
+σ(r(ti)) in ωNP [10,45].
+In R3, we set reference dictionary D as a cube contain-
+ing 2563 voxels. To parallelize the registration, we store at
+most 8 rays at each entry D(x,y,z). The angle constraint of
+directions in Eq. (6) is empirically set to cos(θ) > 0.6 for
+ray registration. For each training step, we set the num-
+ber of pseudo-ray samples to be |Ns| = 106, with half
+of them from ϕR and the other half from rays registered
+in correlated views. In TCM, we use VGG16 [35] as the
+semantic feature extractor.
+We concatenate features that
+5
+
+
+Texler
+ARF
+Ref-NPR
+Texler
+ARF
+Ref-NPR
+SNeRF
+Ref-NPR
+ARF
+Texler
+SNeRF
+(a)
+(b)
+(c)
+SNeRF
+Figure 5. Qualitative comparisons in novel-view stylization. For each example, we provide the reference view (top) and its corresponding
+stylized reference view (bottom) on the left. We compare Ref-NPR with other methods in Synthetic (a) [28], LLFF (b) [27], zoomed-in on
+the ﬂower and the occluded regions, and T&T (c) [21]. Semantic consistencies are highlighted.
+have passed through the activation layers in stages 3 and
+4 (relu 3 ∗, relu 4 ∗), and use them for Lfeat. Balancing
+factors among loss terms are set to λ′ = 5 × 10−3, λc = 5,
+and λr = λf = 1. We train each scene on one NVIDIA
+3090 GPU for 10 epochs. Before training the ﬁnal 3 epochs,
+for a smoother content update, we replace ωP with a frozen
+ωNP as the content view generator in TCM, and minimize
+Lref and Lfeat only, with λf = 0.2 and λ′ = 0.
+4.2. Datasets
+We evaluate the performance of Ref-NPR on three stan-
+dard datasets.
+Synthetic [28] is a well-deﬁned synthetic dataset for 3D ob-
+jects. Stylizing the views of 3D models with a foreground
+mask using a full-image style reference is a challenging yet
+meaningful task, which is missed in many existing scene
+stylization methods [15, 16, 30, 45]. To avoid overﬂow of
+the stylized view on the mask boundary, we apply a 2D mor-
+phological erosion on the foreground mask in R3.
+LLFF [27] is a real-world high-resolution dataset for novel
+view synthesis, and we choose a resolution that is 4× down-
+sampled, following [10,45].
+Tanks and Temples (T&T) [21] is a 360◦scene dataset for
+novel view synthesis and scene reconstruction with 200 to
+300 high-resolution training views for each scene. In R3, we
+register only the rays in Plenoxels’s foreground model [10]
+apart from the reference view to make the dictionary more
+compact. We follow the ofﬁcial training and testing splits
+for all datasets.
+6
+
+
+(a) w/o !!"#
+(b) "$ only
+full model
+(c) w/o !#"%&
+(d) w/o !'()(!
+)
+(
+:
+Figure 6. Ablations on the effectiveness of respective loss components.
+4.3. Comparisons
+We compare our Ref-NPR with two recent scene styliza-
+tion methods: ARF [45] and a reimplemented SNeRF on
+Plenoxels [10, 30]. Besides, we include a reference-based
+video stylization method by Texler et al. [38] for a more
+comprehensive comparison.
+Qualitative comparison. We present qualitative compar-
+isons with state-of-the-art video and scene stylization meth-
+ods in Fig. 5. The method of Texler et al. [38] produces
+novel views with proper low-level color distribution but
+suffers from limited correspondence in the scene, leading
+to ﬂickering effects as shown in Fig. 5(a). ARF [45] and
+SNeRF [30] maintain geometric consistency in novel views
+but lack content-style correlation, whether the style refer-
+ence is manually created (Fig. 5(a-b)) or generated by a 2D-
+neural stylization method [22] in Fig. 5(c). In contrast, Ref-
+NPR signiﬁcantly improves both geometric and semantic-
+style consistency in each example. Additionally, Ref-NPR
+beneﬁts from TCM to ﬁll occluded regions with perceptu-
+ally reasonable visual contents. More detailed comparisons
+can be found in the supplementary materials.
+Quantitative comparison. In order to evaluate the qual-
+ity of reference-based stylization, we adopt a metric used
+by CCPL [42] that measures the consistency between the
+style reference image SR and the top 10 nearest test novel
+views using LPIPS [48]. Additionally, we report the long-
+range cross-view consistency ability as a stability metric,
+following the approach of SNeRF. We also evaluate the ro-
+bustness of the methods by running them iteratively and
+measuring the PSNR between rendered results. Further de-
+tails on the evaluation metrics are provided in the appendix.
+The results presented in Tab. 1 demonstrate that Ref-NPR
+achieves higher perceptual similarity and cross-view ge-
+ometric consistency than state-of-the-art scene stylization
+methods. Moreover, we conduct a user study to evaluate
+the perceptual quality of the stylization sequences. We ap-
+ply ten stylization sequences of four shufﬂed methods and
+metric
+Texler
+SNeRF
+ARF
+Ref-NPR
+Stability
+
+
+
+
+Ref-LPIPS ↓
+0.335
+0.405
+0.394
+0.339
+Robustness ↑
+18.69
+26.03
+26.34
+28.11
+Table 1. Quantitative comparisons. We evaluate the stability, refer-
+ence similarity, and robustness among stylization methods. Meth-
+ods except Texler get the same stability as they adopt the same
+optimized density ﬁeld.
+metric
+Texler
+SNeRF
+ARF
+Ref-NPR
+Avg. rank ↓
+2.92
+2.83
+2.52
+1.73
+Ours preference
+79.3%
+78.1%
+70.6%
+-
+Table 2. User study results. We report the average ranking and
+pairwise preference rate of Ref-NPR.
+collect 33 responses for each sequence based on the visual
+quality. The user study results are presented in Tab. 2.
+4.4. Ablation Studies
+We perform several ablation studies to investigate the ef-
+fectiveness of the different components of Ref-NPR. First,
+we conduct a module-wise ablation to evaluate the contri-
+butions of the supervision components in R3 and TCM. Our
+results in Fig. 6 (a-d) demonstrate that the removal of any
+of these components leads to a degradation in the quality of
+the stylized images. For instance, removing the pseudo-ray
+supervision Lref (a) or supervising on the reference view
+only (b) results in a loss of detailed textures. While discard-
+ing the feature supervision Lfeat (c) causes a photo-realistic
+colorization in occluded regions. Moreover, neglecting the
+color supervision Lcolor (d) can cause color mismatches in
+occluded regions. The combination of R3 and TCM in the
+full Ref-NPR model compensates for these shortcomings
+and leverages the strengths of each module.
+We also validate the effectiveness of implicit supervision
+in TCM. As depicted in Fig. 7, we observed that without
+7
+
+
+w/ TCM
+w/o TCM
+w/o TCM
+w/ TCM
+Figure 7. Ablation study on TCM. Beneﬁting from multi-view
+correspondence, TCM can effectively ﬁll meaningful styles in oc-
+cluded regions.
+TCM, the occluded regions often failed to obtain desired
+correspondence due to the lack of supervision in the seman-
+tic feature space. TCM effectively matches features within
+the same content domain. This demonstrates the crucial role
+of TCM in achieving accurate and consistent stylization.
+5. Discussions
+Adapt to general style transfer. We have demonstrated the
+ability of Ref-NPR to use arbitrary style images as reference
+for style transfer. In particular, as shown in Fig. 8, we gen-
+erate three reference views of the same scene using differ-
+ent 2D stylization methods [11, 20, 22] and feed them into
+Ref-NPR to render three sets of stylized novel views, each
+preserving the characteristics of the corresponding style ref-
+erence. This extension allows Ref-NPR to be more ﬂexi-
+ble in working with various style reference images and pro-
+vides a more controllable solution than other scene styliza-
+tion methods [15,16,30,45].
+Stylized reference
+Novel view results
+NNST
+AdaIN
+Gatys
+Reference view
+Style image 
+Figure 8.
+The pipeline of Ref-NPR naturally extends to arbi-
+trary style reference. Images are cropped for a better presentation.
+Method-related style textures are highlighted.
+Multi-reference. To accommodate the stylization of large-
+scale scenes, it is essential to extend Ref-NPR to handle
+multiple style references.
+This can be achieved by reg-
+istering rays using all stylized reference views in R3 and
+expanding the capacity of styles and content features in
+TCM. An example of multi-reference input in the Play-
+ground scene [21] is shown in Fig. 9. Using two additional
+stylized views, Ref-NPR achieves better feature matching
+and richer style content.
+add additional reference
+Style reference
+Rendering result
+Figure 9. Multi-reference results of a 360◦scene.
+Limitations. Ref-NPR is a versatile method. However, it
+may not perform well when no meaningful semantic cor-
+respondence is found in the reference view, as depicted in
+Fig 10. Additionally, feature matching may also fail in styl-
+izing objects with intricate geometric structures.
+(a)
+(b)
+Figure 10. Failure cases of Ref-NPR. Feature matching may fail
+when (a) stylizing intricate geometric structures, or (b) stylizing a
+large scene with a single reference.
+6. Conclusion
+This paper introduces Ref-NPR, a new framework for
+controllable non-photorealistic 3D scene stylization based
+on radiance ﬁelds. Ref-NPR can generate high-quality se-
+mantic correspondence and geometrically consistent styl-
+izations for novel views by utilizing a stylized reference
+view. The proposed framework can potentially enhance the
+efﬁciency of human creativity in professional visual content
+creation.
+Acknowledgement. This work is partially supported by
+ITF Partnership Research Programme (No.PRP/65/20FX)
+and Shenzhen Science and Technology Program KQTD20-
+210811090149095.
+We are grateful to Shaozuo Yu and
+Mingxuan Zuo for their meaningful discussions.
+8
+
+
+References
+[1] Sai Bi, Nima Khademi Kalantari, and Ravi Ramamoorthi.
+Patch-based optimization for image-based texture mapping.
+ACM Trans. Graph., 36(4), 2017. 2
+[2] Anpei Chen, Zexiang Xu, Andreas Geiger, Jingyi Yu, and
+Hao Su. Tensorf: Tensorial radiance ﬁelds. In ECCV, 2022.
+1
+[3] Dongdong Chen, Jing Liao, Lu Yuan, Nenghai Yu, and Gang
+Hua. Coherent online video style transfer. In ICCV, pages
+1105–1114, 2017. 2
+[4] Tian Qi Chen and Mark W. Schmidt. Fast patch-based style
+transfer of arbitrary style. ArXiv, abs/1612.04337, 2016. 2
+[5] Pei-Ze Chiang, Meng-Shiun Tsai, Hung-Yu Tseng, Wei-
+Sheng Lai, and Wei-Chen Chiu.
+Stylizing 3d scene via
+implicit representation and hypernetwork. In CVPR, pages
+1475–1484, 2022. 1, 2
+[6] Kangle Deng, Andrew Liu, Jun-Yan Zhu, and Deva Ra-
+manan.
+Depth-supervised NeRF: Fewer views and faster
+training for free. In CVPR, June 2022. 4
+[7] Yingying Deng, Fan Tang, Weiming Dong, Haibin Huang,
+Chongyang Ma, and Changsheng Xu. Arbitrary video style
+transfer via multi-channel correlation. In AAAI, volume 35,
+pages 1210–1217, 2021. 2
+[8] Zhiwen Fan, Yifan Jiang, Peihao Wang, Xinyu Gong, Dejia
+Xu, and Zhangyang Wang. Uniﬁed implicit neural styliza-
+tion. In ECCV, pages 636–654. Springer, 2022. 1, 2, 13
+[9] Jakub Fiˇ
+ser, Ondˇ
+rej Jamriˇ
+ska, Michal Luk´
+aˇ
+c, Eli Shecht-
+man, Paul Asente, Jingwan Lu, and Daniel S`
+ykora. Stylit:
+illumination-guided example-based stylization of 3d render-
+ings. ACM Trans. Graph., 35(4):1–11, 2016. 2
+[10] Sara Fridovich-Keil, Alex Yu, Matthew Tancik, Qinhong
+Chen, Benjamin Recht, and Angjoo Kanazawa. Plenoxels:
+Radiance ﬁelds without neural networks. In CVPR, 2022. 1,
+5, 6, 7, 11
+[11] Leon A Gatys, Alexander S Ecker, and Matthias Bethge. Im-
+age style transfer using convolutional neural networks. In
+CVPR, pages 2414–2423, 2016. 2, 3, 5, 8, 11
+[12] Bruce Gooch and Amy Gooch. Non-photorealistic render-
+ing. AK Peters/CRC Press, 2001. 2
+[13] Filip Hauptﬂeisch, Ondrej Texler, Aneta Texler, Jaroslav
+Kriv´
+anek, and Daniel S`
+ykora.
+Styleprop:
+Real-time
+example-based stylization of 3d models.
+In Computer
+Graphics Forum, volume 39, pages 575–586. Wiley Online
+Library, 2020. 2
+[14] Mingming He, Jing Liao, Dongdong Chen, Lu Yuan, and Pe-
+dro V Sander. Progressive color transfer with dense semantic
+correspondences. ACM Trans. Graph., 38(2):1–18, 2019. 2
+[15] Hsin-Ping Huang, Hung-Yu Tseng, Saurabh Saini, Maneesh
+Singh, and Ming-Hsuan Yang.
+Learning to stylize novel
+views. In ICCV, 2021. 1, 2, 6, 8
+[16] Yi-Hua Huang, Yue He, Yu-Jie Yuan, Yu-Kun Lai, and Lin
+Gao. Stylizednerf: Consistent 3d scene stylization as stylized
+nerf via 2d-3d mutual learning. In CVPR, 2022. 1, 2, 4, 5, 6,
+8
+[17] Ondˇ
+rej Jamriˇ
+ska, ˇ
+S´
+arka Sochorov´
+a, Ondˇ
+rej Texler, Michal
+Luk´
+aˇ
+c, Jakub Fiˇ
+ser, Jingwan Lu, Eli Shechtman, and Daniel
+S`
+ykora. Stylizing video by example. ACM Trans. Graph.,
+38(4):1–11, 2019. 1, 2
+[18] Justin Johnson, Alexandre Alahi, and Li Fei-Fei. Perceptual
+losses for real-time style transfer and super-resolution. In
+ECCV, pages 694–711. Springer, 2016. 2
+[19] James T Kajiya and Brian P Von Herzen. Ray tracing volume
+densities. ACM Trans. Graph., 18(3):165–174, 1984. 3
+[20] Tero Karras, Samuli Laine, and Timo Aila. A style-based
+generator architecture for generative adversarial networks. In
+CVPR, pages 4401–4410, 2019. 2, 3, 8
+[21] Arno Knapitsch, Jaesik Park, Qian-Yi Zhou, and Vladlen
+Koltun. Tanks and temples: Benchmarking large-scale scene
+reconstruction. ACM Trans. Graph., 36(4), 2017. 4, 6, 8, 11
+[22] Nicholas Kolkin, Michal Kucera, Sylvain Paris, Daniel
+Sykora, Eli Shechtman, and Greg Shakhnarovich.
+Neural
+neighbor style transfer. arXiv e-prints, pages arXiv–2203,
+2022. 2, 5, 7, 8
+[23] Jan Eric Kyprianidis, John Collomosse, Tinghuai Wang, and
+Tobias Isenberg. State of the” art”: A taxonomy of artis-
+tic stylization techniques for images and video.
+TVCG,
+19(5):866–885, 2012. 2
+[24] Yijun Li, Chen Fang, Jimei Yang, Zhaowen Wang, Xin Lu,
+and Ming-Hsuan Yang. Universal style transfer via feature
+transforms. NeurIPS, 30, 2017. 2
+[25] Yijun Li, Ming-Yu Liu, Xueting Li, Ming-Hsuan Yang, and
+Jan Kautz. A closed-form solution to photorealistic image
+stylization. In ECCV, pages 453–468, 2018. 2
+[26] Jing Liao, Yuan Yao, Lu Yuan, Gang Hua, and Sing Bing
+Kang. Visual attribute transfer through deep image analogy.
+ACM Trans. Graph., 36(4):120, 2017. 2
+[27] Ben Mildenhall, Pratul P. Srinivasan, Rodrigo Ortiz-Cayon,
+Nima Khademi Kalantari, Ravi Ramamoorthi, Ren Ng, and
+Abhishek Kar. Local light ﬁeld fusion: Practical view syn-
+thesis with prescriptive sampling guidelines.
+ACM Trans.
+Graph., 2019. 6, 11
+[28] Ben Mildenhall, Pratul P. Srinivasan, Matthew Tancik,
+Jonathan T. Barron, Ravi Ramamoorthi, and Ren Ng. Nerf:
+Representing scenes as neural radiance ﬁelds for view syn-
+thesis. In ECCV, 2020. 1, 2, 3, 4, 6
+[29] Thomas M¨
+uller, Alex Evans, Christoph Schied, and Alexan-
+der Keller. Instant neural graphics primitives with a multires-
+olution hash encoding. ACM Trans. Graph., 41(4):102:1–
+102:15, July 2022. 1
+[30] Thu Nguyen-Phuoc, Feng Liu, and Lei Xiao. Snerf: stylized
+neural implicit representations for 3d scenes. arXiv preprint
+arXiv:2207.02363, 2022. 1, 2, 4, 6, 7, 8, 11, 12, 13
+[31] Michael Oechsle, Lars Mescheder, Michael Niemeyer, Thilo
+Strauss, and Andreas Geiger. Texture ﬁelds: Learning tex-
+ture representations in function space. In Proceedings of the
+IEEE/CVF International Conference on Computer Vision,
+pages 4531–4540, 2019. 2
+[32] Manuel Ruder, Alexey Dosovitskiy, and Thomas Brox.
+Artistic style transfer for videos and spherical images. IJCV,
+126(11):1199–1219, 2018. 2
+[33] Ahmed Selim, Mohamed Elgharib, and Linda Doyle. Paint-
+ing style transfer for head portraits using convolutional neu-
+ral networks. ACM Trans. Graph., 35(4):1–18, 2016. 2
+9
+
+
+[34] YiChang Shih, Sylvain Paris, Connelly Barnes, William T
+Freeman, and Fr´
+edo Durand. Style transfer for headshot por-
+traits. ACM Trans. Graph., 2014. 2
+[35] Karen Simonyan and Andrew Zisserman. Very deep con-
+volutional networks for large-scale image recognition.
+In
+Yoshua Bengio and Yann LeCun, editors, ICLR, 2015. 4,
+5, 11
+[36] Daniel S`
+ykora, Ondˇ
+rej Jamriˇ
+ska, Ondrej Texler, Jakub Fiˇ
+ser,
+Michal Luk´
+aˇ
+c, Jingwan Lu, and Eli Shechtman. Styleblit:
+Fast example-based stylization with local guidance. In Com-
+puter Graphics Forum, volume 38, pages 83–91. Wiley On-
+line Library, 2019. 2
+[37] Matthew Tancik, Vincent Casser, Xinchen Yan, Sabeek Prad-
+han, Ben Mildenhall, Pratul P. Srinivasan, Jonathan T. Bar-
+ron, and Henrik Kretzschmar.
+Block-nerf: Scalable large
+scene neural view synthesis. In CVPR, pages 8248–8258,
+June 2022. 1
+[38] Ondˇ
+rej Texler, David Futschik, Michal Kuˇ
+cera, Ondˇ
+rej
+Jamriˇ
+ska, ˇ
+S´
+arka Sochorov´
+a, Menglei Chai, Sergey Tulyakov,
+and Daniel S´
+ykora. Interactive video stylization using few-
+shot patch-based training.
+ACM Trans. Graph., 39(4):73,
+2020. 1, 2, 7, 11, 12, 13
+[39] Can Wang, Menglei Chai, Mingming He, Dongdong Chen,
+and Jing Liao. Clip-nerf: Text-and-image driven manipula-
+tion of neural radiance ﬁelds. In CVPR, pages 3835–3844,
+2022. 2
+[40] Can Wang, Ruixiang Jiang, Menglei Chai, Mingming He,
+Dongdong Chen, and Jing Liao. Nerf-art: Text-driven neural
+radiance ﬁelds stylization. arXiv preprint arXiv:2212.08070,
+2022. 2
+[41] Wenjing Wang, Shuai Yang, Jizheng Xu, and Jiaying Liu.
+Consistent video style transfer via relaxation and regulariza-
+tion. TIP, 29:9125–9139, 2020. 2
+[42] Zijie Wu, Zhen Zhu, Junping Du, and Xiang Bai. Ccpl: Con-
+trastive coherence preserving loss for versatile style transfer.
+In ECCV, 2022. 2, 7, 11
+[43] Dejia Xu, Yifan Jiang, Peihao Wang, Zhiwen Fan, Humphrey
+Shi, and Zhangyang Wang. Sinnerf: Training neural radiance
+ﬁelds on complex scenes from a single image. In ECCV,
+2022. 4
+[44] Qiangeng Xu, Zexiang Xu, Julien Philip, Sai Bi, Zhixin Shu,
+Kalyan Sunkavalli, and Ulrich Neumann. Point-nerf: Point-
+based neural radiance ﬁelds. In CVPR, pages 5438–5448,
+2022. 4
+[45] Kai Zhang, Nick Kolkin, Sai Bi, Fujun Luan, Zexiang Xu,
+Eli Shechtman, and Noah Snavely. Arf: Artistic radiance
+ﬁelds.
+In Computer Vision–ECCV 2022: 17th European
+Conference, Tel Aviv, Israel, October 23–27, 2022, Proceed-
+ings, Part XXXI, pages 717–733. Springer, 2022. 1, 2, 4, 5,
+6, 7, 8, 12, 13, 17
+[46] Kai Zhang, Gernot Riegler, Noah Snavely, and Vladlen
+Koltun. Nerf++: Analyzing and improving neural radiance
+ﬁelds. arXiv:2010.07492, 2020. 1
+[47] Lvmin Zhang and Maneesh Agrawala. Adding conditional
+control to text-to-image diffusion models, 2023. 13, 15
+[48] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman,
+and Oliver Wang. The unreasonable effectiveness of deep
+features as a perceptual metric. In CVPR, 2018. 7
+10
+
+
+Ref-NPR: Reference-Based Non-Photorealistic Radiance Fields for
+Controllable Scene Stylization: Supplementary Material
+A. Supplementary Materials
+We have prepared supplementary materials, including a
+document and a video, to provide a more comprehensive
+understanding of Ref-NPR. In the document, we discuss the
+technical details of our implementation in Sec. B, and pro-
+vide visualizations in Sec. C to better illustrate the proposed
+modules in Ref-NPR. Moreover, we present additional ex-
+amples and visualizations in Sec. D to demonstrate the per-
+formance and controllability of our method. Furthermore,
+we have prepared a video that showcases the results and
+comparisons of Ref-NPR. We also provide live demo ex-
+amples on the project page.
+Video link
+https://youtu.be/jnsnrTwVSBw.
+Project page https://ref-npr.github.io.
+B. Technical Details
+Implementation details.
+Two worth-noting details may
+affect the visual quality of stylization results when imple-
+menting Ref-NPR.
+• Before computing image-level loss terms (Lcolor and
+Lfeat), for LLFF [27] and T&T [21] dataset, we down-
+sample both stylized and content views by 2x to speed
+up the calculation of patch-wise feature distance.
+• Different from the implicit feature loss Lfeat, in or-
+der to get a high-level semantic color mapping for the
+color-matching loss Lcolor, we evaluate distances be-
+tween features extracted by the last stage (i.e., stage
+5) of VGG backbone [35]. Besides, when calculating
+Lcolor, we exclude the position of interest (i, j) where
+the semantic feature is not close enough to any feature
+in the reference view, to avoid over-matching. Such
+a constraint of the feature distance for valid position
+(i, j) is formulated as
+min
+i′,j′ dist(F (i,j)
+I
+, F (i′,j′)
+IR
+) < 0.4 .
+(14)
+Details of comparison. Our experiments on Texler [38] are
+conducted using their ofﬁcial implementation. As the refer-
+ence view can be freely chosen, it is possible that continu-
+ous views with high-quality temporal coherence do not ap-
+pear in the test sequence. Therefore, we only use the RGB
+image sequence as input and follow the default training set-
+tings by training each scene for 30,000 iterations. However,
+it is important to note that Texler’s method is unsuitable for
+videos with large movements and rotations, and we train it
+on the template view. Despite applying the Gaussian mix-
+ture strategy with a dense sample rate, error accumulation
+still leads to artifacts in the output.
+Regarding SNeRF [30], we re-implement it based on
+Plenoxels [10] and use Gatys [11] as the stylization method.
+We train the stylization step for 10 iterations and the entire
+scene stylization for 10 epochs for each training view.
+Quantitative comparison.
+In Sec. 4.3, we propose a
+reference-based perceptual similarity metric to evaluate our
+method. The detailed LPIPS scores for each scene are re-
+ported in Tab. B.1. It is worth noting that the scene-wise
+LPIPS scores exhibit signiﬁcant variations. We speculate
+that these ﬂuctuations may be due to the substantial dif-
+ferences in camera poses between the reference view and
+all other test views.
+Additionally, Texler [38] achieves
+slightly better reference-related LPIPS scores. However, it
+fails to produce satisfactory results when the camera pose
+diverges signiﬁcantly from the reference camera ϕR, as
+demonstrated in Fig. D.7 and the supplementary video.
+Fig. B.1 (a) depicts the procedure of the designed LPIPS
+evaluation in the paper. As only the reference image is given
+to evaluate the visual quality, we utilize LPIPS referring to
+CCPL [42] as a metric for frame-wise stylization consis-
+tency. The closest ten frames represent a frame-wise con-
+sistency of stylization results with the given style reference.
+Fig. B.1 (b) depicts our experiments investigating the ro-
+bustness of stylization methods. For a stylized NeRF ωNP,
+we render a set of views as the style reference and use them
+to get a set of stylized NeRFs. Given the same camera path,
+we compute the PSNR of rendering results between them
+and ωNP.
+C. Method Visualizations
+Reference ray registration. Fig. C.2 gives two concrete
+examples of how ray registration provides supervision in
+reference-dependent areas. Rays related to the stylized ref-
+erence SR are projected to each training view to provide
+pseudo-ray supervision.
+Template-based feature matching. Except for explicit su-
+pervision in R3, the implicit supervision provided by TCM
+is essential to occluded regions. Fig. C.3 shows two exam-
+ples of patch-wise replacement results. For guidance fea-
+ture FG, we select VGG features at stages 3 and 4. Since
+11
+
+
+(a) Ref-LPIPS
+(b) Robustness
+Render path
+Reference view
+Nearest views
+Stylized views
+Radiance Fields
+Rendered 
+sequences
+PSNR
+LPIPS
+Figure B.1. Left: An illustration of the Ref-LPIPS and robustness test. Right: Tested views for robustness.
+Ref-LPIPS ↓
+Geo. Consist.
+Chair
+Ficus
+Hotdog
+Mic
+Flower
+Horn
+Truck
+Playground
+Average
+Texler [38]
+
+0.167
+0.120
+0.216
+0.119
+0.230
+0.488
+0.667
+0.675
+0.335
+ARF [45]
+
+0.185
+0.123
+0.300
+0.146
+0.619
+0.502
+0.683
+0.592
+0.394
+SNeRF [30]
+
+0.188
+0.129
+0.283
+0.138
+0.646
+0.492
+0.702
+0.663
+0.405
+Ref-NPR
+
+0.164
+0.122
+0.273
+0.126
+0.289
+0.471
+0.669
+0.596
+0.339
+Table B.1. Reference-related novel view LPIPS for each test scene.
+reference view
+training views with registered rays
+Figure C.2. Two examples to visualize registered rays in R3. We
+paste pseudo-rays on content images in the ﬁrst example for a bet-
+ter presentation.
+the patch-wise semantic feature is a high-level representa-
+tion for each patch, the receptive ﬁeld is much larger than
+the corresponding image patch.
+Conversely, directly using patch replacement results at
+the same stages for the color supervision Lcolor may result
+in a color mismatch problem, as highlighted in Fig. C.2.
+reference view
+feature supervision
+color supervision
+stage 3
+stage 4
+stage 5
+Figure C.3. Two examples of patch-wise replacement on VGG
+feature at the last three stages to visualize the semantic correspon-
+dence. Color mismatch problems in shallow semantic features are
+highlighted.
+This problem is mainly caused by the receptive ﬁeld differ-
+ence between the feature patch and the image patch. Hence,
+as mentioned in Sec. B, we evaluate feature distances at the
+last VGG stage for color-matching supervision.
+Loss balancing ablation. In addition to the ablation stud-
+ies on the microphone example provided in Sec. 4.4, we
+conduct another ablation on the scene ﬂower to discuss the
+effectiveness of color-matching loss Lcolor and the smooth
+content update strategy, which is described in Sec. 4.1.
+For the same content view in Fig. C.4 (a), the color
+12
+
+
+(d) full model
+(c) w/o smooth update
+(b) w/o !!"#"$
+(a) content image
+Figure C.4. Ablation on the color-matching loss and smooth up-
+date strategy. The occluded region is zoomed in.
+mismatch problem would exist in occluded regions when
+we remove the color-matching loss Lcolor, as shown in
+Fig. C.4 (b). In Fig. C.4 (c), we ﬁnd that the stylized view
+without applying the smooth update strategy leads to oc-
+cluded regions being under-stylized, which implies that the
+quality of semantic correspondence in the original content
+domain needs to be enhanced by TCM. A full model in
+Fig. C.4 (d) clearly shows a satisfying stylization result in
+terms of both color and style.
+Discussion on TCM matching. We also validate the how
+effectiveness of the patch-wise matching scheme in TCM.
+Unlike epipolar correspondence, the deep semantic feature
+is calculated in 2D patch-wisely. The correspondence is
+only computed once and costs around 2 seconds for a set
+with 100 images. As shown in Fig. C.5 (a), a direct match
+with the stylized view often fails to get desired correspon-
+dence due to the domain gap in the semantic feature space.
+Conversely, in Fig. C.5 (b), TCM matches features within
+the same content domain. Hence the semantic correspon-
+dence is preserved at each level of semantic features.
+stage 3
+stage 4
+stage 5
+(a)
+(b)
+Figure C.5. Patch-wise replacement results on features from the
+last three stages of VGG backbone. (a) Matching with the style
+reference directly. (b) Matching with the content reference (TCM).
+D. More Results
+Comparsion with INS. We test INS [8] on examples with
+the same reference cases in Fig. 5 and Fig. D.10. Results
+are shown in Fig. D.6. Due to its simple supervision design,
+INS cannot generate satisfying results which contain local
+correspondence.
+*Click image for animated version
+Figure D.6. Examples with INS.
+More comparisons. Fig. D.7 offers two additional exam-
+ples to compare our method with [30,38,45]. As discussed
+in Sec. 4.2, Texler can generate novel-view stylized results
+with a proper color distribution, but consistent results with
+the reference stylized view can be only obtained under the
+condition that the test camera pose is around the reference.
+More speciﬁcally, it fails to generate reasonable style in the
+occluded regions and has some ﬂickering or ghosting arti-
+facts in a continuous sequence. Two scene stylization meth-
+ods [30, 45] are unable to ﬁnd a desired style mapping to
+the entire scene. Neither in the reference-related regions
+nor the occluded regions. By contrast, results generated by
+Ref-NPR keep both semantic correspondence and geomet-
+ric consistency with the reference view.
+Flexibility & controllability. In Sec. 5, we show the ability
+of Ref-NPR to adapt with an arbitrary image as reference.
+Fig. D.10 gives two examples to demonstrate the ﬂexibil-
+ity of Ref-NPR, where the stylized reference view is gen-
+erated by selecting one stylized view from ARF for each
+scene. In Fig. D.10 (a), we manually edit the selected view
+and take it as the style reference. Ref-NPR faithfully re-
+produces the textures in the edited regions. Meanwhile, as
+shown in Fig. D.10 (b), our method can reproduce the orig-
+inal novel-view stylizations by ARF through feeding in a
+stylized view as reference, which requires high-quality se-
+mantic correspondence.
+Except for the local editing and scene stylization repro-
+ducing, the controllability of Ref-NPR can also be rep-
+resented by adapting scene stylization to various styles.
+Fig. D.9 shows two examples of applying multiple styles
+to the same scene.
+Ref-NPR is capable of producing a
+faithful stylization result for each style owing to the model-
+ing of cross-view semantic correspondence. Additionally,
+as shown in Fig. D.8, powered by controllable diffusion
+models [47], Ref-NPR is capable of text-driven controllable
+scene stylization as well.
+13
+
+
+SNeRF
+Ref-NPR
+ARF
+Texler
+ARF
+Texler
+SNeRF
+Ref-NPR
+Figure D.7. Additional examples for qualitative comparisons.
+14
+
+
+Pokémon
+Kyoto
+animation
+CyberPunk
+Picasso
+Kyoto
+animation
+Chinese
+Painting
+Figure D.8. Controllable scene stylization with ControlNet [47] and Ref-NPR. A text-driven stylization with an image diffusion model is
+used to generate reference (the second column), then Ref-NPR can propagate it to the whole scene.
+15
+
+
+Figure D.9. Examples to show the controllability of Ref-NPR with hand drawing styles. Stylized novel-view rendering results are satisfac-
+tory with references in different styles.
+16
+
+
+ARF
+Ref-NPR
+stylize
+edit
+ARF
+Ref-NPR
+one stylized view
+(a)
+(b)
+stylized novel views
+Figure D.10. Examples to show the ﬂexibility of Ref-NPR: (a) reference editing based on a stylized view, and (b) reproducing novel-view
+stylization given one stylized view generated by ARF [45] as reference.
+17
+
+
+ReGS: Reference-based Controllable Scene Stylization
+with Gaussian Splatting
+Yiqun Mei∗
+Jiacong Xu*
+Vishal M. Patel
+Johns Hopkins University
+{ymei7,jxu155, vpatel36}@jhu.edu
+Abstract
+Referenced-based scene stylization that edits the appearance based on a content-
+aligned reference image is an emerging research area. Starting with a pretrained
+neural radiance field (NeRF), existing methods typically learn a novel appearance
+that matches the given style. Despite their effectiveness, they inherently suffer from
+time-consuming volume rendering, and thus are impractical for many real-time
+applications. In this work, we propose ReGS, which adapts 3D Gaussian Splatting
+(3DGS) for reference-based stylization to enable real-time stylized view synthesis.
+Editing the appearance of a pretrained 3DGS is challenging as it uses discrete Gaus-
+sians as 3D representation, which tightly bind appearance with geometry. Simply
+optimizing the appearance as prior methods do is often insufficient for modeling
+continuous textures in the given reference image. To address this challenge, we
+propose a novel texture-guided control mechanism that adaptively adjusts local
+responsible Gaussians to a new geometric arrangement, serving for desired texture
+details. The proposed process is guided by texture clues for effective appearance
+editing, and regularized by scene depth for preserving original geometric structure.
+With these novel designs, we show ReGS can produce state-of-the-art stylization
+results that respect the reference texture while embracing real-time rendering speed
+for free-view navigation.
+1
+Introduction
+Stylizing a 3D scene based on a 2D artwork is an active research area in both computer vision and
+graphics [1, 2, 3, 4, 5, 6, 7]. One important direction of stylization aims to precisely stylize the scene
+appearance based on a 2D content-aligned reference image drawn by users [10]. Such problem has
+numerous applications in digital art, film production and virtual reality. In the classical graphics
+pipeline, completing this task requires experienced 3D artists to manually create a UV texture map as
+input to the shader, a tedious process requiring professional knowledge, significant time, and effort.
+Over the past decades, tremendous progress has been made in automatic scene stylization by lever-
+aging view synthesis methods. While early attempts [1, 2, 12, 13] suffer from geometry errors of
+point clouds or meshes, more recent methods [9, 8, 3, 4, 5, 6, 7] rely on radiance field (NeRF) [14], a
+powerful implicit 3D representation, to deliver high-quality renditions that are perceptually similar
+to the reference image. A typical stylization workflow starts from a pretrained NeRF model of the
+target scene, followed by an appearance optimization phase to match the given style. The density
+function is always fixed to maintain the scene geometry [8, 9, 3, 10, 6] . Despite their promising
+results, NeRF-based approaches consume high training and rendering costs in order to obtain satis-
+factory results. Although some recent efforts make fast training possible [15, 16, 17, 18, 19, 20], the
+improvement in efficiency often comes at the price of degraded visual quality. Meanwhile, real-time
+rendering at inference time still remains challenging.
+∗Equal contribution
+Preprint. Under review.
+arXiv:2407.07220v1  [cs.CV]  9 Jul 2024
+
+
+Reference
+Naïve 3DGS
+ReGS (Ours)
+ReGS (Ours)
+Naïve 3DGS
+Original View
+Figure 1: Given a pretrained 3DGS model of the target scene and its paired style reference, ReGS
+enables real-time stylized view synthesis (at 134 FPS) with high-fidelity texture well-aligned with
+the reference. In contrast, only optimizing the appearance of 3DGS (denoted as Naive 3DGS), as
+previous methods [8, 9, 3, 10, 6] do, fails to capture many texture details in the reference. We tackle
+the challenges in high-fidelity appearance editing with a texture-guided control mechanism that is
+significantly more effective than the default density control [11] in addressing texture underfitting.
+Side-by-side comparisons with default density control can be found in Figure 5.
+Recently, 3D Gaussian Splatting (3DGS) [11] has become an emerging choice for representing 3D
+scenes. 3DGS creates millions of colored Gaussians with learnable attributes to jointly represent the
+target scene geometry and appearance. Importantly, it adopts splatting-based rasterization [21] to
+replace the time-consuming volume rendering of NeRF models, providing remarkably faster rendering
+speed while maintaining comparable visual quality. However, as it uses discrete 3D Gaussians to
+represent the reconstructed scene, optimizing their appearance with a fixed geometry layout (as NeRF-
+based methods do) is often inadequate to capture the continuous texture variance in the reference
+image. This “appearance-geometry entanglement" makes applying 3DGS to applications that require
+novel appearance, i.e. stylization, challenging. For 3DGS, how to properly control and edit the
+appearance without distorting the original geometry remains under-explored.
+In this paper, we present a novel reference-based scene stylization method using 3DGS, dubbed
+ReGS, to enable real-time stylized view synthesis with high-fidelity textures well-aligned with the
+given reference. Similar to previous methods, our approach starts with a pretrained 3D Gaussian
+model of the target scene. The core enabler of ReGS is a novel texture-guided control procedure
+that makes high-fidelity appearance editing with ease. In particular, we adaptively adjust the local
+arrangement of responsible Gaussians in the appearance underfitting regions to a state that the desired
+textures specified in the reference image can be faithfully expressed. The control process is designed
+to (1) automatically identify target local Gaussians using texture clues, and (2) structurally distribute
+tiny Gaussians for fast detail infilling while (3) sticking to the original scene structure via a depth-
+based regularization. With these novel designs, ReGS is able to learn consistent 3D appearance that
+accurately follows the given reference image.
+Following [10], we train ReGS on a set of pseudo-stylized images for view consistency, which
+are synthetic multi-view data created using extracted scene depth, alongside with a template-based
+matching loss to ensure style spread to the occluded regions. By combining these techniques with
+the proposed texture-guided control, ReGS is capable of producing visually appealing stylization
+results that attain both geometric and perceptual consistency. Through extensive experiments, we
+demonstrate that ReGS achieves state-of-the-art visual quality compared to existing stylization
+methods while enabling real-time view synthesis by embracing the fast rendering speed of Gaussian
+Splatting.
+2
+Related Work
+2.1
+3D Scene Representation
+Neural Radiance Field. Reconstructing 3D scene from multi-view collections is a long-standing
+problem in computer vision. Early approaches adopting explicit mesh [22, 23, 24, 25] or voxel [26,
+2
+
+
+27, 28] based representations often suffer from geometry error and lack of appearance details [29].
+Recent methods [30, 31, 32, 33, 34, 35] adopt learnable radiance fields [14] to capture 3D scene
+implicitly and outperform previous techniques by a large margin. However, NeRF models require
+millions of network queries for a single rendition that can be extremely time and resource-consuming.
+To reduce the training time, advanced methods adopt explicit/hybrid representations including
+voxel grid [18, 16, 15, 36, 37], octree [38, 39, 40], planes [41, 42, 17, 43] and hash grid [20], and
+successfully reduce the training time from days to minutes. Nevertheless, the rendering speed at
+inference time is still limited by their volumetric nature, which requires dense sampling along a ray
+to generate a single pixel.
+3D Gaussian Splatting. Recently, 3D Gaussian Splatting (3DGS) [11] achieves real-time novel view
+synthesis based on a differentiable rasterizer [21] that efficiently projects millions of 3D Gaussians
+to a 2D canvas. Given its high efficiency, 3DGS becomes a promising solution to enable real-time
+vision applications, such as human avatar [44, 45, 46, 47], 3D object and immersive scene creation
+[48, 49, 50, 51], relighting [52, 53, 54, 55], surface or mesh reconstruction [56, 57], 3D segmentation
+[58, 59, 60], and SLAM [61, 62, 63]. Motivated by its high efficiency, our work explores 3DGS to
+enable real-time stylized view navigation.
+2.2
+2D Stylization
+Arbitrary Style Transfer. Our method is related to the general 2D stylization [64], which transfers
+the style from an artwork to a target image while maintaining the original content structure. In
+the pioneering work, Gatys et al. [65] introduce an iterative scheme that progressively reduces the
+difference between the Gram statistics of generated image and style image features, yet lengthy
+optimization is required per style. To improve efficiency, later methods [66, 67, 68, 69, 70] focus
+on arbitrary image/video stylization by transferring the content image to target style spaces in a
+zero-shot manner. For example, Huang et al. [67] introduce AdaIN, which achieves real-time
+stylization by matching content features with the mean and standard deviation of style features.
+Linear style transfer [66] instead predicts a linear transformation matrix based on both content and
+style pairs. For video stylization, it is crucial to maintain temporal coherence of the stylized frames.
+Techniques [71, 72, 73, 74, 75, 76], such as flow-based wrapping [72], global SSIM constraint [75],
+and inter-frame feature similarity [76], are proposed to ensure the consistency.
+Optimization-based Style Transfer. While arbitrary style transfer is desirable in terms of flexibility,
+they often fall short of reproducing small stylistic patterns and lack high-frequency details [8, 77].
+Optimization-based Stylization [78, 79, 80, 81, 82, 77] is still the primary choice to ensure visual
+quality. For instance, a coarse-to-fine strategy is proposed by Liao et al. [82] to compute the nearest-
+neighbor field and build a semantically meaningful mapping between input and style images for visual
+attribute transfer. Kolkin et al. [77] reach state-of-the-art stylization quality by replacing the content
+features with the nearest style feature. To enable better controllability, example-based methods
+[83, 84, 85, 86] perform wrapping or stylizing based on the aligned correspondences between the
+style reference and content images. However, their 2D alignment is generally unsuitable for 3D
+scenes due to occlusions, leading to flickering effects [10].
+2.3
+3D Stylization
+3D scene stylization extends artistic works beyond the 2D canvas [87]. Early works [1, 2] typically
+back-project image colors as 3D point cloud for processing, and project stylized point features back
+to 2D for view synthesis. Yet, using point cloud often fails to represent complicated geometry and
+produces artifacts for complex scenes [8].
+Benefiting from NeRF, methods stylizing radiance fields [9, 8, 3, 4, 5, 6, 7] have shown visually
+compelling and geometry-consistent results than previously possible. Similar to image stylization,
+several works [9, 3, 6, 7] deal with arbitrary or multiple style transfer using various techniques such
+as 2D-3D mutual learning [3], deferred style transformation [9], and hypernetwork [6]. While a
+universal stylizer might be desirable, these methods can only transfer the overall color tone and
+lack detailed style patterns, i.e. brushstrokes. Per-style optimization is still required for better visual
+quality. Among these methods [4, 8, 5, 88], ARF [8] shows state-of-the-art stylization capability
+by progressively matching the generated features with the closest style feature via nearest neighbor
+search. However, these methods are designed for transferring styles from an arbitrary reference and
+3
+
+
+Multi-View Images
+Style Reference
+Texture-Guided Control
+a. Content 3DGS
+b. Stylized 3DGS
+Optimize
+Render
+d. Real-Time Stylized Scene Navigation
+c. Texture-Guided Gaussian Control
+Texture
+Underfitting
+Structured
+Densification
+Updated
+Gaussians
+Split
+Optimization
++Depth 
+Regularization
+Figure 2: An overview of ReGS. (a) The proposed method starts with a pretrained content 3DGS
+of the target scene, and (b) outputs a stylized 3DGS that follows the reference. (c) We propose
+Texture-Guided Gaussian Control that can progressively resolve texture underfitting by automatically
+locating responsible Gaussians and adjusting local geometry layout for fitting high-frequency textures.
+(d) Once training is done, our method enables real-time stylized scene navigation.
+lack controllability over generated results. To this end, Ref-NPR [10] introduces a reference-based
+scheme that controls stylized appearance based on a content-aligned reference image. Our work also
+focuses on this setting.
+3
+Method
+An overview of ReGS is shown in Figure 2. ReGS takes a pretrained 3DGS model (Figure 2 (a)) of
+the target scene as well as a content-aligned reference image as inputs. It outputs a stylized 3DGS
+model (Figure 2 (b)) that bakes the texture of the reference image into the scene and enables real-time
+stylized views synthesis (Figure 2 (d)).
+As 3DGS represents a scene as discrete Gaussians, simply optimizing its appearance often cannot
+capture the continuous texture details in the reference image. We introduce a texture-guided control
+mechanism to progressively address this challenge (Sec. 3.2). To ensure no geometry distortion
+happens during optimization, we propose a geometry regularization using scene depth (Sec. 3.3). We
+then introduce two techniques to encourage perceptual-consistent renditions (Sec. 3.4). Finally, we
+describe our training objectives in Sec. 3.5.
+3.1
+Preliminary: 3D Gaussian Splatting
+Before introducing our method, we first provide a brief review of 3D Gaussian Splatting [11]. 3DGS
+represents the scene explicitly by a collection of learnable Gaussians. Each 3D Gaussian is attributed
+by a positional vector µ ∈R3 and a 3D covariance matrix Σ ∈R3×3. Its influence on a space point
+x is proportional to a Gaussian distribution:
+G(x) = e−1
+2 (x−µ)⊤Σ−1(x−µ).
+(1)
+By definition, the covariance matrix should be positive semi-definite. This is achieved by decomposing
+Σ into a scaling matrix S and a quaternion R i.e. Σ = RSS⊤R⊤. Each Gaussian also stores an
+opacity value αi and a view-dependent color represented by Spherical Harmonic (SH) coefficients.
+The rendering procedure is implemented as splatting-based rasterization [21] which projects Gaussians
+to a 2D canvas. The projected 2D splats are then sorted based on the depth to the camera. After
+sorting, the final color for each pixel is computed through α-blending:
+C =
+n
+X
+i=1
+ciα′
+i
+i−1
+Y
+j=1
+(1 −α′
+j),
+(2)
+4
+
+
+Stylized  Pseudo Views via Depth-based Warping  
+(a) Rendered depth images
+(b) Synthesized pseudo views
+Style Reference
+Figure 3: Examples of (a) rendered depth maps using Eq.3 and (b) synthesized stylized pseudo views.
+where ci is a view-dependent color of the i-th Gaussian computed from SH. α′
+i is the multiplication
+result of the learned opacity αi and evaluated value of the projected 2D Gaussian.
+During optimization, heuristic controls are employed to adaptively manage the density of Gaussians
+to better represent the scene. Specifically, it densifies Gaussians with large positional gradients to
+capture missing geometry and prunes Gaussians with small opacity to improve compactness.
+3.2
+Texture-Guided Gaussian Control
+As a discrete scene representation, the geometry layout and arrangement of Gaussians essentially
+limit the range of appearance it can express. For example, as shown in Figure 2 (c), appearance
+underfitting happens frequently at the area where local granularity of Gaussians is greater than the
+variance of the texture, e.g. a smooth colored surface in the original scene is painted with rich details
+in the reference view. ReGS addresses such challenges via a novel texture-guided control that splits
+these responsible local Gaussians into a denser set suitable for high-frequency texture. Specifically,
+the proposed mechanism automatically identifies responsible Gaussians using texture clues and
+structurally replaces them with a denser set of tiny Gaussians to compensate for the missing details.
+We describe important designs of the proposed algorithm below.
+Texture Guidance. The control algorithm is directly guided by texture clues. Specifically, we
+accumulate color gradients of all Gaussians over iterations and select Gaussians with larger gradient
+magnitude than a threshold for densification. We found that a larger color gradient corresponds to
+Gaussians that have large texture errors while the optimization struggles to find the correct colors
+to reduce the loss. This control scheme shares a similar spirit with the original control scheme in
+3DGS, where they leverage positional gradients to locate Gaussians responsible for missing geometric
+features. But in stylization, scene geometry is already well-reconstructed through pretraining, and
+therefore, the positional gradient is no longer informative. As demonstrated in Figure 5, our color-
+based control scheme is more sensitive for pinpointing Gaussians with missing textures than the
+positional-based solution. In practical implementation, we increase density based on the gradient
+statistics of every 100 iterations.
+Structured Densification. Traditional mesh subdivision [89] cuts large faces into more sub-faces to
+express surface details. Sharing a similar spirit, we structurally split each responsible Gaussians into
+a structured denser set to better represent texture details. Intuitively, after densification, newly added
+Gaussians need to approximate the original space coverage to avoid inducing large geometry errors,
+and they should be sufficiently small and form a dense set to capture appearance variance. Based
+on these considerations, we propose a structured densification scheme that adds tiny Gaussians into
+the most representative locations surrounding their parent Gaussian. Specifically, we use nine tiny
+Gaussians to replace a parent Gaussian. Eight of them correspond to eight separate octants divided
+by the equatorial plane and perpendicular meridian planes of the original ellipsoid. And the rest
+is placed at the original center. We reduce their size by shrinking the scales with a factor of 8 and
+copy remaining parameters from their parent Gaussian. We empirically found this setup can roughly
+maintain a space coverage that approximates the original geometry. As optimization continues, the
+densified Gaussians are progressively updated to infill missing textures.
+3.3
+Depth-based Geometry Regularization
+While our control mechanism progressively improves texture details, it is essential to ensure the
+original scene geometry is preserved after optimization. We resort to the scene depth as an additional
+regularization to penalize geometry changes. Examples of rendered depth are shown in Figure 3 (a).
+5
+
+
+Formally, we derive the scene depth via a α-blending-based equation:
+d =
+n
+X
+i=1
+diα′
+i
+i−1
+Y
+j=1
+(1 −α′
+j),
+(3)
+where the di is the z-buffer associated with the ith Gaussian and αi′ is the same evaluated opacity in
+Eq. 2. di is computed by projecting the 3D location µ to the camera space.
+The depth regularization is defined as the L1 distance between a depth image Di rendered from
+original scene model m and a depth image b
+Di rendered from the stylized model b
+m using the same
+camera pose ϕi i.e. Ldepth = ∥b
+Di −Di∥1.
+3.4
+View-Consistent Stylization
+For stylization, it is necessary to ensure the stylized appearance is consistent across different
+viewpoints and inpaints the occluded areas. Following [10], we adopt two strategies to address them.
+Stylized Pseudo View Supervision. An image with paired depth contains sufficient information to
+re-render from nearby viewpoints [90]. This allows us to create a set of stylized pseudo views for
+obtaining additional supervision from the reference image. Our synthesis approach is very similar
+to classic depth-based 3D warping [90, 91]. Specifically, we back-project the reference image SR
+to the world space using the depth image DR and its camera pose ϕR. Then, we re-project these
+3D points back to a new viewpoint ϕi. The resulting 2D image Si is used as an additional style
+supervision. Examples of the created pseudo views are shown in Figure 3 (b). It is important to make
+sure supervision only happens on meaningful pixels, i.e. they are projections of 3D points that are
+visible from the current viewpoint ϕi. Therefore, we conduct a visibility check by comparing the
+depth between the 2D projections of the 3D points and the depth image Di from the current viewpoint
+ϕi. This results in a visibility mask Mi. Given the pseudo views and visibility masks, one can define
+a pseudo view supervision loss as
+Lview =
+1
+∥Mi∥0
+∥Mi b
+Si −MiSi∥1,
+(4)
+where ∥.∥0 is the ℓ0-norm that counts the number of valid pixels and b
+Si is renderings of the stylized
+model b
+m.
+Template Correspondence Matching (TCM) Loss. To ensure stylized appearance spreads to the
+occluded areas, we adopt the same TCM loss proposed in [10]. We briefly describe it here and refer
+readers to [10] for more details. TCM regularizes the difference of semantic correspondences before
+and after stylization. Given the style reference SR, its corresponding view IR, and a scene image Ii
+rendered from a camera pose ϕi, it constructs a guidance feature FG by F (x,y)
+Gi
+= F (x∗,y∗)
+SR
+where
+(x∗, y∗) = argmin
+x′,y′
+dist(F (x,y)
+Ii
+, F (x′,y′)
+IR
+).
+(5)
+Here, FSR, FIR, FIi denote deep semantic features of image SR IR, and Ii extracted by an ImageNet
+pretrained VGG [92]. dist denotes the cosine distance. After obtaining the guidance feature, TCM
+loss is defined as a cosine distance loss:
+LT CM = dist(Fb
+si, FGi),
+(6)
+where Fb
+si is the extracted VGG features of the generated stylized view b
+Si.
+3.5
+Training Objectives
+Besides aforementioned depth loss Ldepth, pseudo view supervision loss Lview and TCM loss LT CM,
+ReGS further optimizes a reconstruction loss Lrec and a coarse color-matching loss Lcolor [10]. The
+reconstruction loss is defined as the L1 distance between the reference SR and the corresponding
+stylized output ˆ
+SR to enforce appearance baking. The color-matching loss is defined as
+Lcolor = ∥b
+S(x,y)
+i
+−S(x∗,y∗)
+R
+∥2
+2,
+(7)
+where S(x,y) denotes the average color of a patch associated with feature-level index (x, y). Feature-
+level index is computed using Eq. 5. This loss is directly adapted from [10] to encourage overall
+6
+
+
+Reference
+(a) Appearance Only
+(b) w/o Depth
+(c) w/o Pseudo View
+(d) Ours
+Figure 4: Ablation study on different components of ReGS. (a) Optimizing only the appearance of
+a 3DGS model cannot reproduce texture details. (b) Removing depth regularization causes Gaussians
+to float out from the surface and distort the origin geometry. (c) Without pseudo-view supervision,
+results lack view consistency. (d) Our full model produces the best results that faithfully respect the
+texture in the reference.
+color matching in the occluded area. The overall loss for ReGS can be expressed as
+L = λrecLrec + λdepthLdepth + λviewLview + λtcmLT CM + λcolorLcolor
+(8)
+where λ(.) denotes the balancing parameter.
+3.6
+Implementation and Training Details
+ReGS uses 3D Gaussians [11] as the scene representation and is built upon their official codebase. We
+follow the default parameter settings to obtain the pretrained 3D Gaussian model of the photo-realistic
+scene. For stylization, as we do not expect view-dependent effects, we discard the higher order SH
+and only render diffuse color in the stylization phase. Therefore, content images used in LT CM and
+Lcolor are the results of this diffuse model.
+For texture-guided control, we start accumulating gradients after a warm-up of 100 iterations and then
+perform the densification operation based on the color gradient statistics of every 100 iterations. The
+control process stops when it reaches half of the total iterations. The gradient threshold is empirically
+set to 1e −5 at the beginning, and we linearly reduce it to 5e −6 to allow for refining tiny details in
+the later training stage. Following [10, 8], we use the ImageNet pretrained VGG16 [92] as the feature
+extractor and use the features produced by relu_3 and relu_4 in LT CM. For balancing parameters
+we set λrec = λtcm = 1, λdepth = 10, λview = 2, and λcolor = 15. At each iteration, we always
+sample two views: the reference view and a random view. We train our model for 3000 iterations.
+The proposed method is implemented using PyTorch and trained on one A5000 GPU.
+4
+Experiments
+In this section, we demonstrate the stylization quality and our designs through extensive experiments.
+More experiment results and ablation can be found in the supplemental file and accompanied
+video.
+4.1
+Datasets
+The only available reference-based stylization dataset is provided by [10]. The dataset contains 12
+selected scenes from Blender [14], LLFF [93], and Tanks and Temples [94]. Each scene is paired
+with a content-aligned reference image.
+4.2
+Ablation Study
+We conduct controlled experiments to analyze the effectiveness of each design choice in ReGS.
+Results are illustrated in Figures 4 & 5. As illustrated in Figure 4, replacing any components of
+ReGS will harm the stylization quality. For example, Figure 4 (a) shows that optimizing only the
+appearance with fixed geometry arrangement like previous methods [8, 6, 3, 9, 10] do fails to recover
+the texture details. As shown in Figure 4 (b), after removing depth regularization, Gaussians float
+out from the surface and distort the original scene geometry. Similarly, discarding the pseudo view
+supervision will induce view-inconsistency as highlighted in the inset (Figure 4 (c)). The full model
+overcomes these issues and produces more visually appealing results that follow the given reference.
+7
+
+
++0.05 Million
++0.15 Million
++0.25 Million
+Texture-Guided
+Default
+Input & Ref
+Figure 5: Effectiveness of Texture-Guided Control. We conduct controlled experiments by limiting
+the number of newly densified Gaussians throughout optimization. The pretrained model contains
+0.3M Gaussians. The proposed texture-guided control can more faithfully reproduce the target texture
+details with a small number of Gaussians added (0.05M). The default strategy struggles to capture
+high-frequency details, even with a large number of Gaussians added (0.25M).
+Effectiveness of Texture-Guided Control. The core enabler of ReGS is the proposed texture-guided
+control mechanism that makes high-fidelity appearance editing with ease. Here, we demonstrate
+its effectiveness by comparing it with the default positional-gradient-guided density control [11]
+in addressing texture underfitting. Specifically, we conduct controlled experiments by setting a
+series of limits on the total number of Gaussians that can grow throughout optimization. Results are
+reported in Figure 5. One can see that by growing a very small amount of Gaussians (0.05M), the
+proposed texture-guided method can quickly infill most of the missing details. With more Gaussians
+added, it can further faithfully reproduce the given texture. In contrast, even with a large amount
+of new Gaussians (0.25M) created, the default method can barely capture high-frequency texture
+details. This is mainly because positional gradient is not sensitive to texture errors. As such, it fails
+to grow Gaussians in the regions with texture underfitting. And further moving these incorrectly
+placed Gaussians to the correct place for texture infilling is challenging. These results demonstrate
+our method is indeed more favorable for addressing appearance underfitting. Study on structured
+densification can be found in the supplement.
+Table 1: Quantitative comparison of different stylization methods.
+Metric
+ARF [8]
+SNeRF [4]
+Ref-NPR [10]
+ReGS (Ours)
+Ref-LPIPS↓
+0.394
+0.405
+0.339
+0.202
+Robustness↑
+26.34
+26.03
+28.11
+31.27
+Speed (fps)
+16.5
+16.3
+16.4
+91.4
+4.3
+Compare with State-of-the-art Methods
+To evaluate stylization performance, we compare our method with three state-of-the-art baselines:
+ARF [8], SNeRF [4], and Ref-NPR [10]. ARF [8] and SNeRF [4] are general stylization methods
+that conduct style transfer without considering content correspondence. Ref-NPR [10] is a reference-
+based stylization method similar to ours that aims to precisely edit the 3D appearance based on the
+reference. All baselines are NeRF-based approaches built upon Plenoxels [15].
+Qualitative Evaluation. We report qualitative results in Figure 6. As shown, ARF [8] and SNeRF [4]
+cannot generate semantic-consistent results with respect to the reference image as they ignore content
+correspondence. In contrast, Ref-NPR [10] produces more controllable results but yields artifacts.
+In some challenging cases (e.g. last row in Figure 6), it also fails to achieve semantic consistent
+stylization (i.e. green tree in the reference image is colored as white). In contrast, our method achieves
+better results that reproduce the desired texture, including challenging high-frequency ones.
+Quantitative Evaluation. We present quantitative results in Table 1. Results are averaged over
+all scenes. We follow the protocol from [10] and report Ref-LPIPS and Robustness. Ref-LPIPS
+computes LPIPS [95] score between the reference image and the 10 nearest test views. To calculate
+robustness, we first (1) train a stylized base model mb and use it to render a set of stylized views
+8
+
+
+ARF
+Ref-NPR
+Ours
+SNeRF
+ARF
+Ref-NPR
+Ours
+SNeRF
+ARF
+Ref-NPR
+Ours
+SNeRF
+Figure 6: Visual comparisons with state-of-the-art methods. Paired reference and content view are
+shown on the left. Our method produces visual-compelling results that precisely follow the texture of
+the given reference, including the challenging high-frequency details such as the leaf in the second
+example. Baseline methods [10, 8, 4] either lack semantic consistency or produce artifacts.
+as new references; (2) then we use these references to train another set of stylized models and (3)
+compute PSNR results between images produced by them and mb (using the same camera path).
+To measure run-time efficiency, we also report run-time FPS on a single A5000 GPU. As shown in
+Table 1, our method achieves the best results in terms of both quality and efficiency. Notably, our
+method enables real-time stylized view synthesis at 91 FPS.
+5
+Conclusion
+In this work, we introduce ReGS, which adapts Gaussian Splatting for reference-based controllable
+scene stylization. ReGS adopts a novel texture-guided control mechanism to make high-fidelity
+appearance editing with ease. This is achieved by adaptively replacing responsible Gaussians with a
+denser set to express the desired appearance details. The control process is guided by texture clues for
+appearance editing while preserving original scene geometry through a depth-based regularization.
+We demonstrate the state-of-the-art scene stylization quality and effective designs of ReGS through
+extensive experiments. Benefiting from the high efficiency of 3DGS, our method naturally enables
+real-time stylized view synthesis. Discussions of limitations can be found in the supplemental file.
+9
+
+
+References
+[1] Hsin-Ping Huang, Hung-Yu Tseng, Saurabh Saini, Maneesh Singh, and Ming-Hsuan Yang. Learning to
+stylize novel views. In ICCV, pages 13869–13878, 2021.
+[2] Fangzhou Mu, Jian Wang, Yicheng Wu, and Yin Li. 3d photo stylization: Learning to generate stylized
+novel views from a single image. In CVPR, pages 16273–16282, 2022.
+[3] Yi-Hua Huang, Yue He, Yu-Jie Yuan, Yu-Kun Lai, and Lin Gao. Stylizednerf: consistent 3d scene
+stylization as stylized nerf via 2d-3d mutual learning. In CVPR, pages 18342–18352, 2022.
+[4] Thu Nguyen-Phuoc, Feng Liu, and Lei Xiao. Snerf: stylized neural implicit representations for 3d scenes.
+ACM Transactions on Graphics (TOG), 41(4):1–11, 2022.
+[5] Can Wang, Ruixiang Jiang, Menglei Chai, Mingming He, Dongdong Chen, and Jing Liao. Nerf-art:
+Text-driven neural radiance fields stylization. IEEE Transactions on Visualization and Computer Graphics,
+2023.
+[6] Pei-Ze Chiang, Meng-Shiun Tsai, Hung-Yu Tseng, Wei-Sheng Lai, and Wei-Chen Chiu. Stylizing 3d
+scene via implicit representation and hypernetwork. In WACV, pages 1475–1484, 2022.
+[7] Zhiwen Fan, Yifan Jiang, Peihao Wang, Xinyu Gong, Dejia Xu, and Zhangyang Wang. Unified implicit
+neural stylization. In ECCV, pages 636–654. Springer, 2022.
+[8] Kai Zhang, Nick Kolkin, Sai Bi, Fujun Luan, Zexiang Xu, Eli Shechtman, and Noah Snavely. Arf: Artistic
+radiance fields. In ECCV, pages 717–733. Springer, 2022.
+[9] Kunhao Liu, Fangneng Zhan, Yiwen Chen, Jiahui Zhang, Yingchen Yu, Abdulmotaleb El Saddik, Shijian
+Lu, and Eric P Xing. Stylerf: Zero-shot 3d style transfer of neural radiance fields. In CVPR, pages
+8338–8348, 2023.
+[10] Yuechen Zhang, Zexin He, Jinbo Xing, Xufeng Yao, and Jiaya Jia. Ref-npr: Reference-based non-
+photorealistic radiance fields for controllable scene stylization. In CVPR, pages 4242–4251, 2023.
+[11] Bernhard Kerbl, Georgios Kopanas, Thomas Leimkühler, and George Drettakis. 3d gaussian splatting for
+real-time radiance field rendering. ACM Transactions on Graphics (ToG), 42(4):1–14, 2023.
+[12] Lukas Höllein, Justin Johnson, and Matthias Nießner. Stylemesh: Style transfer for indoor 3d scene
+reconstructions. In CVPR, pages 6198–6208, 2022.
+[13] Jakub Fišer, Ondˇ
+rej Jamriška, Michal Lukáˇ
+c, Eli Shechtman, Paul Asente, Jingwan Lu, and Daniel S`
+ykora.
+Stylit: illumination-guided example-based stylization of 3d renderings. ACM Transactions on Graphics
+(TOG), 35(4):1–11, 2016.
+[14] Ben Mildenhall, Pratul P Srinivasan, Matthew Tancik, Jonathan T Barron, Ravi Ramamoorthi, and Ren
+Ng. Nerf: Representing scenes as neural radiance fields for view synthesis. Communications of the ACM,
+65(1):99–106, 2021.
+[15] Sara Fridovich-Keil, Alex Yu, Matthew Tancik, Qinhong Chen, Benjamin Recht, and Angjoo Kanazawa.
+Plenoxels: Radiance fields without neural networks. In CVPR, pages 5501–5510, 2022.
+[16] Cheng Sun, Min Sun, and Hwann-Tzong Chen. Direct voxel grid optimization: Super-fast convergence for
+radiance fields reconstruction. In CVPR, pages 5459–5469, 2022.
+[17] Anpei Chen, Zexiang Xu, Andreas Geiger, Jingyi Yu, and Hao Su. Tensorf: Tensorial radiance fields. In
+ECCV, pages 333–350. Springer, 2022.
+[18] Lingjie Liu, Jiatao Gu, Kyaw Zaw Lin, Tat-Seng Chua, and Christian Theobalt. Neural sparse voxel fields.
+Advances in Neural Information Processing Systems, 33:15651–15663, 2020.
+[19] David B Lindell, Julien NP Martel, and Gordon Wetzstein. Autoint: Automatic integration for fast neural
+volume rendering. In CVPR, pages 14556–14565, 2021.
+[20] Thomas Müller, Alex Evans, Christoph Schied, and Alexander Keller. Instant neural graphics primitives
+with a multiresolution hash encoding. ACM Transactions on Graphics (ToG), 41(4):1–15, 2022.
+[21] Matthias Zwicker, Hanspeter Pfister, Jeroen Van Baar, and Markus Gross. Ewa volume splatting. In
+Proceedings Visualization, 2001. VIS’01., pages 29–538. IEEE, 2001.
+10
+
+
+[22] Michael Waechter, Nils Moehrle, and Michael Goesele. Let there be color! large-scale texturing of 3d
+reconstructions. In ECCV, pages 836–850. Springer, 2014.
+[23] PE DEBEC. Modeling and rendering architecture from photographs: A hybrid geometry-and image-based
+approach. In Proc. SIGGRAPH’96, 1996.
+[24] Shichen Liu, Tianye Li, Weikai Chen, and Hao Li. Soft rasterizer: A differentiable renderer for image-based
+3d reasoning. In ICCV, pages 7708–7717, 2019.
+[25] Renke Wang, Guimin Que, Shuo Chen, Xiang Li, Jun Li, and Jian Yang. Creative birds: Self-supervised
+single-view 3d style transfer. In ICCV, pages 8775–8784, 2023.
+[26] Kiriakos N Kutulakos and Steven M Seitz. A theory of shape by space carving. International journal of
+computer vision, 38:199–218, 2000.
+[27] Steven M Seitz and Charles R Dyer. Photorealistic scene reconstruction by voxel coloring. International
+Journal of Computer Vision, 35:151–173, 1999.
+[28] Richard Szeliski and Polina Golland. Stereo matching with transparency and matting. In ICCV, pages
+517–524. IEEE, 1998.
+[29] Kyle Gao, Yina Gao, Hongjie He, Dening Lu, Linlin Xu, and Jonathan Li. Nerf: Neural radiance field in
+3d vision, a comprehensive review. arXiv preprint arXiv:2210.00379, 2022.
+[30] Jonathan T Barron, Ben Mildenhall, Matthew Tancik, Peter Hedman, Ricardo Martin-Brualla, and Pratul P
+Srinivasan. Mip-nerf: A multiscale representation for anti-aliasing neural radiance fields. In ICCV, pages
+5855–5864, 2021.
+[31] Jonathan T Barron, Ben Mildenhall, Dor Verbin, Pratul P Srinivasan, and Peter Hedman. Mip-nerf 360:
+Unbounded anti-aliased neural radiance fields. In CVPR, pages 5470–5479, 2022.
+[32] Ricardo Martin-Brualla, Noha Radwan, Mehdi SM Sajjadi, Jonathan T Barron, Alexey Dosovitskiy, and
+Daniel Duckworth. Nerf in the wild: Neural radiance fields for unconstrained photo collections. In CVPR,
+pages 7210–7219, 2021.
+[33] Alex Yu, Vickie Ye, Matthew Tancik, and Angjoo Kanazawa. pixelnerf: Neural radiance fields from one or
+few images. In CVPR, pages 4578–4587, 2021.
+[34] Dor Verbin, Peter Hedman, Ben Mildenhall, Todd Zickler, Jonathan T Barron, and Pratul P Srinivasan.
+Ref-nerf: Structured view-dependent appearance for neural radiance fields. In CVPR, pages 5481–5490,
+2022.
+[35] Xin Huang, Qi Zhang, Ying Feng, Hongdong Li, Xuan Wang, and Qing Wang. Hdr-nerf: High dynamic
+range neural radiance fields. In CVPR, pages 18398–18408, 2022.
+[36] Cheng Sun, Min Sun, and Hwann-Tzong Chen. Direct voxel grid optimization: Super-fast convergence for
+radiance fields reconstruction. In CVPR, pages 5459–5469, 2022.
+[37] Peter Hedman, Pratul P Srinivasan, Ben Mildenhall, Jonathan T Barron, and Paul Debevec. Baking neural
+radiance fields for real-time view synthesis. In ICCV, pages 5875–5884, 2021.
+[38] Alex Yu, Ruilong Li, Matthew Tancik, Hao Li, Ren Ng, and Angjoo Kanazawa. Plenoctrees for real-time
+rendering of neural radiance fields. In ICCV, pages 5752–5761, 2021.
+[39] Liao Wang, Jiakai Zhang, Xinhang Liu, Fuqiang Zhao, Yanshun Zhang, Yingliang Zhang, Minye Wu,
+Jingyi Yu, and Lan Xu. Fourier plenoctrees for dynamic radiance field rendering in real-time. In CVPR,
+pages 13524–13534, 2022.
+[40] Haotian Bai, Yiqi Lin, Yize Chen, and Lin Wang. Dynamic plenoctree for adaptive sampling refinement in
+explicit nerf. In ICCV, pages 8785–8795, 2023.
+[41] Eric R Chan, Connor Z Lin, Matthew A Chan, Koki Nagano, Boxiao Pan, Shalini De Mello, Orazio Gallo,
+Leonidas J Guibas, Jonathan Tremblay, Sameh Khamis, et al. Efficient geometry-aware 3d generative
+adversarial networks. In CVPR, pages 16123–16133, 2022.
+[42] Ang Cao and Justin Johnson. Hexplane: A fast representation for dynamic scenes. In CVPR, pages
+130–141, 2023.
+[43] Sara Fridovich-Keil, Giacomo Meanti, Frederik Rahbæk Warburg, Benjamin Recht, and Angjoo Kanazawa.
+K-planes: Explicit radiance fields in space, time, and appearance. In CVPR, pages 12479–12488, 2023.
+11
+
+
+[44] Liangxiao Hu, Hongwen Zhang, Yuxiang Zhang, Boyao Zhou, Boning Liu, Shengping Zhang, and Liqiang
+Nie. Gaussianavatar: Towards realistic human avatar modeling from a single video via animatable 3d
+gaussians. arXiv preprint arXiv:2312.02134, 2023.
+[45] Zhe Li, Zerong Zheng, Lizhen Wang, and Yebin Liu. Animatable gaussians: Learning pose-dependent
+gaussian maps for high-fidelity human avatar modeling. arXiv preprint arXiv:2311.16096, 2023.
+[46] Mengtian Li, Shengxiang Yao, Zhifeng Xie, Keyu Chen, and Yu-Gang Jiang. Gaussianbody: Clothed
+human reconstruction via 3d gaussian splatting. arXiv preprint arXiv:2401.09720, 2024.
+[47] Muhammed Kocabas, Jen-Hao Rick Chang, James Gabriel, Oncel Tuzel, and Anurag Ranjan. Hugs:
+Human gaussian splats. arXiv preprint arXiv:2311.17910, 2023.
+[48] Jiaxiang Tang, Jiawei Ren, Hang Zhou, Ziwei Liu, and Gang Zeng. Dreamgaussian: Generative gaussian
+splatting for efficient 3d content creation. In ICLR, 2024.
+[49] Taoran Yi, Jiemin Fang, Guanjun Wu, Lingxi Xie, Xiaopeng Zhang, Wenyu Liu, Qi Tian, and Xinggang
+Wang. Gaussiandreamer: Fast generation from text to 3d gaussian splatting with point cloud priors. arXiv
+preprint arXiv:2310.08529, 2023.
+[50] Jaeyoung Chung, Suyoung Lee, Hyeongjin Nam, Jaerin Lee, and Kyoung Mu Lee. Luciddreamer:
+Domain-free generation of 3d gaussian splatting scenes. arXiv preprint arXiv:2311.13384, 2023.
+[51] Xian Liu, Xiaohang Zhan, Jiaxiang Tang, Ying Shan, Gang Zeng, Dahua Lin, Xihui Liu, and Ziwei Liu. Hu-
+mangaussian: Text-driven 3d human generation with gaussian splatting. arXiv preprint arXiv:2311.17061,
+2023.
+[52] Jian Gao, Chun Gu, Youtian Lin, Hao Zhu, Xun Cao, Li Zhang, and Yao Yao. Relightable 3d gaussian:
+Real-time point cloud relighting with brdf decomposition and ray tracing. arXiv preprint arXiv:2311.16043,
+2023.
+[53] Shunsuke Saito, Gabriel Schwartz, Tomas Simon, Junxuan Li, and Giljoo Nam. Relightable gaussian
+codec avatars. arXiv preprint arXiv:2312.03704, 2023.
+[54] Zhihao Liang, Qi Zhang, Ying Feng, Ying Shan, and Kui Jia. Gs-ir: 3d gaussian splatting for inverse
+rendering. arXiv preprint arXiv:2311.16473, 2023.
+[55] Yahao Shi, Yanmin Wu, Chenming Wu, Xing Liu, Chen Zhao, Haocheng Feng, Jingtuo Liu, Liangjun
+Zhang, Jian Zhang, Bin Zhou, et al. Gir: 3d gaussian inverse rendering for relightable scene factorization.
+arXiv preprint arXiv:2312.05133, 2023.
+[56] Antoine Guédon and Vincent Lepetit. Sugar: Surface-aligned gaussian splatting for efficient 3d mesh
+reconstruction and high-quality mesh rendering. arXiv preprint arXiv:2311.12775, 2023.
+[57] Hanlin Chen, Chen Li, and Gim Hee Lee. Neusg: Neural implicit surface reconstruction with 3d gaussian
+splatting guidance. arXiv preprint arXiv:2312.00846, 2023.
+[58] Shijie Zhou, Haoran Chang, Sicheng Jiang, Zhiwen Fan, Zehao Zhu, Dejia Xu, Pradyumna Chari, Suya
+You, Zhangyang Wang, and Achuta Kadambi. Feature 3dgs: Supercharging 3d gaussian splatting to enable
+distilled feature fields. arXiv preprint arXiv:2312.03203, 2023.
+[59] Jiazhong Cen, Jiemin Fang, Chen Yang, Lingxi Xie, Xiaopeng Zhang, Wei Shen, and Qi Tian. Segment
+any 3d gaussians. arXiv preprint arXiv:2312.00860, 2023.
+[60] Bin Dou, Tianyu Zhang, Yongjia Ma, Zhaohui Wang, and Zejian Yuan. Cosseggaussians: Compact and
+swift scene segmenting 3d gaussians. arXiv preprint arXiv:2401.05925, 2024.
+[61] Vladimir Yugay, Yue Li, Theo Gevers, and Martin R Oswald. Gaussian-slam: Photo-realistic dense slam
+with gaussian splatting. arXiv preprint arXiv:2312.10070, 2023.
+[62] Hidenobu Matsuki, Riku Murai, Paul HJ Kelly, and Andrew J Davison. Gaussian splatting slam. arXiv
+preprint arXiv:2312.06741, 2023.
+[63] Mingrui Li, Shuhong Liu, and Heng Zhou. Sgs-slam: Semantic gaussian splatting for neural dense slam.
+arXiv preprint arXiv:2402.03246, 2024.
+[64] Yongcheng Jing, Yezhou Yang, Zunlei Feng, Jingwen Ye, Yizhou Yu, and Mingli Song. Neural style
+transfer: A review. IEEE transactions on visualization and computer graphics, 26(11):3365–3385, 2019.
+12
+
+
+[65] Leon A Gatys, Alexander S Ecker, and Matthias Bethge. Image style transfer using convolutional neural
+networks. In CVPR, pages 2414–2423, 2016.
+[66] Xueting Li, Sifei Liu, Jan Kautz, and Ming-Hsuan Yang. Learning linear transformations for fast image
+and video style transfer. In CVPR, pages 3809–3817, 2019.
+[67] Xun Huang and Serge Belongie. Arbitrary style transfer in real-time with adaptive instance normalization.
+In ICCV, pages 1501–1510, 2017.
+[68] Songhua Liu, Tianwei Lin, Dongliang He, Fu Li, Meiling Wang, Xin Li, Zhengxing Sun, Qian Li, and Errui
+Ding. Adaattn: Revisit attention mechanism in arbitrary neural style transfer. In ICCV, pages 6649–6658,
+2021.
+[69] Dae Young Park and Kwang Hee Lee. Arbitrary style transfer with style-attentional networks. In CVPR,
+pages 5880–5888, 2019.
+[70] Yongcheng Jing, Xiao Liu, Yukang Ding, Xinchao Wang, Errui Ding, Mingli Song, and Shilei Wen.
+Dynamic instance normalization for arbitrary style transfer. In Proceedings of the AAAI conference on
+artificial intelligence, volume 34, pages 4369–4376, 2020.
+[71] Dongdong Chen, Jing Liao, Lu Yuan, Nenghai Yu, and Gang Hua. Coherent online video style transfer. In
+ICCV, pages 1105–1114, 2017.
+[72] Haozhi Huang, Hao Wang, Wenhan Luo, Lin Ma, Wenhao Jiang, Xiaolong Zhu, Zhifeng Li, and Wei Liu.
+Real-time neural style transfer for videos. In CVPR, pages 783–791, 2017.
+[73] Manuel Ruder, Alexey Dosovitskiy, and Thomas Brox. Artistic style transfer for videos and spherical
+images. International Journal of Computer Vision, 126(11):1199–1219, 2018.
+[74] Wenjing Wang, Jizheng Xu, Li Zhang, Yue Wang, and Jiaying Liu. Consistent video style transfer via
+compound regularization. In Proceedings of the AAAI conference on artificial intelligence, volume 34,
+pages 12233–12240, 2020.
+[75] Xinxiao Wu and Jialu Chen. Preserving global and local temporal consistency for arbitrary video style
+transfer. In Proceedings of the 28th ACM International Conference on Multimedia, pages 1791–1799,
+2020.
+[76] Yingying Deng, Fan Tang, Weiming Dong, Haibin Huang, Chongyang Ma, and Changsheng Xu. Arbitrary
+video style transfer via multi-channel correlation. In Proceedings of the AAAI Conference on Artificial
+Intelligence, volume 35, pages 1210–1217, 2021.
+[77] Nicholas Kolkin, Michal Kucera, Sylvain Paris, Daniel Sykora, Eli Shechtman, and Greg Shakhnarovich.
+Neural neighbor style transfer. arXiv e-prints, pages arXiv–2203, 2022.
+[78] Chuan Li and Michael Wand. Combining markov random fields and convolutional neural networks for
+image synthesis. In CVPR, pages 2479–2486, 2016.
+[79] Eric Risser, Pierre Wilmot, and Connelly Barnes. Stable and controllable neural texture synthesis and style
+transfer using histogram losses. arXiv preprint arXiv:1701.08893, 2017.
+[80] Shuyang Gu, Congliang Chen, Jing Liao, and Lu Yuan. Arbitrary style transfer with deep feature reshuffle.
+In CVPR, pages 8222–8231, 2018.
+[81] Nicholas Kolkin, Jason Salavon, and Gregory Shakhnarovich. Style transfer by relaxed optimal transport
+and self-similarity. In CVPR, pages 10051–10060, 2019.
+[82] Jing Liao, Yuan Yao, Lu Yuan, Gang Hua, and Sing Bing Kang. Visual atribute transfer through deep
+image analogy. ACM Transactions on Graphics, 36(4):120, 2017.
+[83] Ondˇ
+rej Jamriška, Šárka Sochorová, Ondˇ
+rej Texler, Michal Lukáˇ
+c, Jakub Fišer, Jingwan Lu, Eli Shechtman,
+and Daniel S`
+ykora. Stylizing video by example. ACM Transactions on Graphics (TOG), 38(4):1–11, 2019.
+[84] Ahmed Selim, Mohamed Elgharib, and Linda Doyle. Painting style transfer for head portraits using
+convolutional neural networks. ACM Transactions on Graphics (ToG), 35(4):1–18, 2016.
+[85] YiChang Shih, Sylvain Paris, Connelly Barnes, William T Freeman, and Frédo Durand. Style transfer for
+headshot portraits. ACM Transactions on Graphics, 33(4):1–14, 2014.
+13
+
+
+[86] Ondˇ
+rej Texler, David Futschik, Michal Kuˇ
+cera, Ondˇ
+rej Jamriška, Šárka Sochorová, Menclei Chai, Sergey
+Tulyakov, and Daniel S`
+ykora. Interactive video stylization using few-shot patch-based training. ACM
+Transactions on Graphics (TOG), 39(4):73–1, 2020.
+[87] Yingshu Chen, Guocheng Shao, Ka Chun Shum, Binh-Son Hua, and Sai-Kit Yeung. Advances in 3d neural
+stylization: A survey. arXiv preprint arXiv:2311.18328, 2023.
+[88] Zicheng Zhang, Yinglu Liu, Congying Han, Yingwei Pan, Tiande Guo, and Ting Yao. Transforming
+radiance field with lipschitz network for photorealistic 3d scene stylization. In CVPR, pages 20712–20721,
+2023.
+[89] Denis Zorin, Peter Schröder, and Wim Sweldens. Interpolating subdivision for meshes with arbitrary
+topology. In Proceedings of the 23rd annual conference on Computer graphics and interactive techniques,
+pages 189–192, 1996.
+[90] William R Mark, Leonard McMillan, and Gary Bishop. Post-rendering 3d warping. In Proceedings of the
+1997 symposium on Interactive 3D graphics, pages 7–ff, 1997.
+[91] Leonard McMillan and Gary Bishop. Plenoptic modeling: An image-based rendering system. In Seminal
+Graphics Papers: Pushing the Boundaries, Volume 2, pages 433–440. 2023.
+[92] Karen Simonyan and Andrew Zisserman. Very deep convolutional networks for large-scale image recogni-
+tion. arXiv preprint arXiv:1409.1556, 2014.
+[93] Ben Mildenhall, Pratul P Srinivasan, Rodrigo Ortiz-Cayon, Nima Khademi Kalantari, Ravi Ramamoorthi,
+Ren Ng, and Abhishek Kar. Local light field fusion: Practical view synthesis with prescriptive sampling
+guidelines. ACM Transactions on Graphics (TOG), 38(4):1–14, 2019.
+[94] Arno Knapitsch, Jaesik Park, Qian-Yi Zhou, and Vladlen Koltun. Tanks and temples: Benchmarking
+large-scale scene reconstruction. ACM Transactions on Graphics, 36(4), 2017.
+[95] Richard Zhang, Phillip Isola, Alexei A Efros, Eli Shechtman, and Oliver Wang. The unreasonable
+effectiveness of deep features as a perceptual metric. In Proceedings of the IEEE conference on computer
+vision and pattern recognition, pages 586–595, 2018.
+14

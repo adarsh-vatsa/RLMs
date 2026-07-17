@@ -1,0 +1,3469 @@
+FP16 Acceleration in Structured Multigrid Preconditioner for
+ABSTRACT
+Half-precision hardware support is now almost ubiquitous. In con-
+trast to its active use in AI, half-precision is less commonly em-
+ployed in scientific and engineering computing. The valuable propo-
+sition of accelerating scientific computing applications using half-
+precision prompted this study. Focusing on solving sparse linear
+systems in scientific computing, we explore the technique of uti-
+lizing FP16 in multigrid preconditioners. Based on observations of
+sparse matrix formats, numerical features of scientific applications,
+and the performance characteristics of multigrid, this study formu-
+lates four guidelines for FP16 utilization in multigrid. The proposed
+algorithm demonstrates how to avoid FP16 overflow through scal-
+ing. A setup-then-scale strategy prevents FP16’s limited accuracy
+and narrow range from interfering with the multigrid’s numerical
+properties. Another strategy, recover-and-rescale on the fly, re-
+duces the memory footprint of hotspot kernels. The extra precision-
+conversion overhead in mix-precision kernels is addressed by the
+transformation of storage formats and SIMD implementation. Two
+ablation experiments validate the effectiveness of our algorithm
+and parallel kernel implementation on ARM and X86 architectures.
+We further evaluate three idealized and five real-world problems to
+demonstrate the advantage of utilizing FP16 in a multigrid precon-
+ditioner. The average speedups are approximately 2.75x and 1.95x
+in preconditioner and end-to-end workflow, respectively.
+CCS CONCEPTS
+• Computing methodologies →Parallel algorithms; • Mathe-
+matics of computing →Solvers.
+This work is licensed under a Creative Commons Attribution International
+4.0 License.
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+© 2024 Copyright held by the owner/author(s).
+ACM ISBN 979-8-4007-1793-2/24/08
+https://doi.org/10.1145/3673038.3673040
+KEYWORDS
+multigrid, sparse matrix, structured grid, preconditioner
+ACM Reference Format:
+Yi Zong, Peinan Yu, Haopeng Huang, and Wei Xue. 2024. FP16 Acceleration
+in Structured Multigrid Preconditioner for Real-World Applications. In
+The 53rd International Conference on Parallel Processing (ICPP ’24), August
+12–15, 2024, Gotland, Sweden. ACM, New York, NY, USA, 11 pages. https:
+//doi.org/10.1145/3673038.3673040
+1
+INTRODUCTION
+In recent years, there has been a significant increase in hardware
+support for half-precision floating-point arithmetic [11]. This has
+been primarily driven by the growing demand for more efficient
+and high-performance computing. Having witnessed the pivotal
+shift towards lower precision in the fields of artificial intelligence
+(AI) and machine learning (ML) [20], it is of particular interest
+to leverage the benefits of half-precision to achieve significant
+performance gains in scientific and industrial applications.
+These applications, such as numerical weather prediction [21],
+ocean and groundwater modeling [12], radiation hydrodynamics
+simulation [34], and solid mechanics [14], primarily rely on numeri-
+cal simulations, especially numerical solutions to partial differential
+equation (PDE) problems. The essential part of simulations is solv-
+ing a linear system 𝐴𝑥= 𝑏, which usually imposes stricter accuracy
+requirement than AI, and are more sensitive to precision. Most
+scientific applications currently use FP64 in the solver, in which
+a lower-precision preconditioner is a common accelerating tech-
+nique [1, 10]. Multigrid (MG) is a method of optimal computational
+complexity 𝑂(𝑁) in solving large-scale sparse linear systems [32],
+and thus widely used as the preconditioner [28].
+The opportunity to accelerate multigrid by half-precision lies in
+its multi-level framework. Its hierarchical grids could be regarded as
+a series of iterative refinement processes [19], while half-precision
+iterative refinement itself has been validated in highly ideal exper-
+imental conditions, such as HPL-MxP [3]. Unlike other one-level
+preconditioners, such as incomplete lower-upper (ILU) factorization
+and symmetric Gauss-Seidel (SymGS), multigrid preconditioners
+consume more time in solving linear systems. Its dominant role
+provides a higher upper bound of end-to-end (E2E, i.e., the entire
+52
+
+
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+Yi Zong, Peinan Yu, Haopeng Huang, and Wei Xue
+process of solving the linear system) speedups by half-precision
+according to Amdahl’s Law, as will be seen in our experiments.
+However, real-world applications are complicated. The numer-
+ical distributions of nonzero entries in six matrices discretized
+from real-world problems are shown in Figure 1. There are large
+spans of nonzero magnitudes, and wide gaps among them. The
+ranges are already beyond the compass of FP16 (IEEE 754 Stan-
+dard). An even worse problem is that accuracy may be lost near the
+upper bound of FP16, introducing further convergence issues. Brain-
+Float16 (BF16) [13] is another half-precision format with the same
+range as FP32. However, with fewer bits to represent significands,
+its worse accuracy is worrying to use in scientific computations.
+More complicated challenges arise also from the multi-level
+framework. Matrices and vectors on different levels could be as-
+signed as different precisions. There are 9𝑛(three kinds of precision
+for matrices multiplied by three kinds for vectors give 9 combina-
+tions on a specific level) possible combinations of mix-precision in a
+𝑛-level multigrid, which makes searching for the best combination
+difficult. Knowing how to find a good-performance combination in
+theory is of high significance. Meanwhile, the numerical hazards
+(i.e., overflow and underflow) and accuracy loss of half-precision
+should be treated more carefully since the connection between
+two consecutive levels in algebraic multigrids is determined by
+a triple-matrix product. Predicting the error propagation along a
+chain of triple-matrix products is difficult. In addition to the above
+algorithmic issues, implementation matters as the extra precision-
+conversion overhead may slow down half-precision speed. The
+mix-precision kernels require instruction-level optimization even if
+the numerical stability is guaranteed. These issues will be addressed
+in the following from a top-down perspective.
+1e-18
+1e-15
+1e-12
+1e-09
+1e-06
+0.001
+1    
+1000 
+1e+06
+1e+09
+10-1
+100
+101
+102
+percent / %
+rhd
+oil
+weather
+IEEE 754 fp16 range
+rhd-3T
+oil-4C
+solid-3D
+Figure 1: Numerical distributions of nonzero entries in six
+real-world matrices. Detailed descriptions refer to section 6.1.
+In this article, we have only investigated the performance of
+FP16 defined in the IEEE 754 standard. We have opted for FP16
+because it provides higher accuracy and is better suited for scientific
+computing applications, and has more extensive instruction set
+support than BF16 on X86 and ARM processors. Specifically, this
+paper makes the following contributions.
+• We analyze the potential gains and risks of applying FP16
+in multigrids, and summarize four guidelines. The good-
+performance combinations of precisions are presented.
+• We propose an algorithm to adapt multigrid to the use of
+FP16. The two strategies, setup-then-scale and recover-and-
+rescale on the fly, avoid the negative influence of FP16’s
+limited range and accuracy loss.
+• We present a high-performance parallel implementation of
+mix-precision kernels to hide the precision-conversion in-
+struction overhead and achieve E2E speedup for ARM and
+X86 architectures.
+• We evaluate three ideal problems and five real-world prob-
+lems from four application fields. The average speedups of
+MG preconditioner reach 2.7x and 2.8x on ARM and X86,
+respectively, while the average speedups of the entire work-
+flow are 1.9x and 2.0x.
+2
+RELATED WORK
+The background of multigrid is first revisited. An overview of multi-
+grid is shown in Figure 2. Based on hierarchical grids, multigrid
+eliminates high-frequency errors on the finer grid by smoothers, cal-
+culates and restricts residuals to the next coarser grid, and computes
+coarse-grid corrections recursively. Depending on how coarser
+grids are generated, there are two types of multigrid methods. Geo-
+metric multigrid (GMG) rediscretizes the PDE of interest in coarser
+resolutions [32]. Because rediscretization requires users’ explicit
+involvement with application-specific knowledge, GMG is unavail-
+able in mainstream libraries. A more black-box and user-friendly
+solution is algebraic multigrid (AMG), which only utilizes infor-
+mation from the assembled finest-level matrix 𝐴ℎto generate all
+coarser grids automatically.
+Smoother 𝑨𝟐𝒉𝒖𝟐𝒉= 𝒇𝟐𝒉
+Residual 𝒓𝟐𝒉= 𝒇𝟐𝒉−𝑨𝟐𝒉𝒖𝟐𝒉
+Smoother 𝑨𝟐𝒉𝒖𝟐𝒉= 𝒇𝟐𝒉
+Error correction 𝒖𝟐𝒉+= 𝒆𝟐𝒉 
+Smoother 𝑨𝟒𝒉𝒖𝟒𝒉= 𝒇𝟒𝒉
+Residual 𝒓𝟒𝒉= 𝒇𝟒𝒉−𝑨𝟒𝒉𝒖𝟒𝒉
+Smoother 𝑨𝒉𝒖𝒉= 𝒇𝒉
+Residual 𝒓𝒉= 𝒇𝒉−𝑨𝒉𝒖𝒉
+Smoother 𝑨𝟒𝒉𝒖𝟒𝒉= 𝒇𝟒𝒉
+Error correction 𝒖𝟒𝒉+= 𝒆𝟒𝒉 
+Smoother 𝑨𝒉𝒖𝒉= 𝒇𝒉
+Error correction 𝒖𝒉+= 𝒆𝒉 
+Restrict 𝒇𝟖𝒉= 𝑹𝟒𝒉𝒓𝟒𝒉
+Restrict 𝒇𝟒𝒉= 𝑹𝟐𝒉𝒓𝟐𝒉
+Restrict 𝒇𝟐𝒉= 𝑹𝒉𝒓𝒉
+Interp 𝒆𝟒𝒉= 𝑷𝟖𝒉𝒖𝟖𝒉
+Interp 𝒆𝟐𝒉= 𝑷𝟒𝒉𝒖𝟒𝒉
+Interp 𝒆𝒉= 𝑷𝟐𝒉𝒖𝟐𝒉
+𝜴𝒉: given 𝑨𝒉
+𝜴𝟐𝒉: 𝑨𝟐𝒉= 𝑹𝒉𝑨𝒉𝑷𝟐𝒉
+Component
+Coarsening
+Smoother
+Restrict & Interpolate
+Residual
+Error Correction
+Kernel Type
+SpGEMM
+SpMV/SpTRSV
+Stencil/SpMV
+SpMV
+AXPY
+𝜴𝟒𝒉: 𝑨𝟒𝒉= 𝑹𝟐𝒉𝑨𝟐𝒉𝑷𝟒𝒉
+Figure 2: Multigrid overview. V-Cycle is in the solve phase.
+Multigrid is set up once and solved iteratively. Thus, the total
+time 𝑇tot of employing a multigrid in iterative solvers is
+𝑇tot = 𝑇setup + #iter · 𝑇single
+(1)
+where 𝑇setup is setup time, 𝑇single is single-iteration solve time, and
+#iter is number of iterations.
+The setup phase is denoted by green arrows in Figure 2. Multi-
+grid constructs a series of coarser grids Ω2ℎ, Ω4ℎ, ..., based on the
+finest-level grid Ωℎ, where the superscripts denote grid spacings of
+levels. The essential process of setup is the triple-matrix-product in
+computing the coarser operator (i.e., matrix) 𝐴2𝑘ℎbased on 𝐴2𝑘−1ℎ
+of the finer level.
+In the solve phase, denoted by blue arrows, multigrid executes
+a V-Cycle [32], which starts from the finest level, traverses to the
+53
+
+
+FP16 Acceleration in Structured Multigrid Preconditioner for Real-World Applications
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+coarsest, and then reverses. On each level, multigrid invokes a
+smoother to solve 𝐴∗ℎ𝑢∗ℎ= 𝑓∗ℎapproximately, computes residual
+𝑟∗ℎin the downward pass, and computes error correction to update
+solution 𝑢∗ℎ, and then invokes the smoother again in the upward
+pass. Restrictions of residuals 𝑟∗ℎand interpolations of errors 𝑒∗ℎ
+occur in downward and upward pass, respectively.
+Hypre [15], MueLu [26], and AmgX [22] are popular AMG li-
+braries, but still lack mix-precision support. The practice of mix-
+precision multigrid is ahead of the theory. Precisions lower than
+FP64 reduce the memory volumes to accelerate sparse linear solvers
+that are typically memory-bounded. As listed in Table 1, most of the
+previous works mainly focused on using FP32, simply by changing
+the precision of the multigrid preconditioner from FP64 to FP32 in
+their workflows. GMG is likely to obtain more promising end-to-
+end speedups because its matrix-free format could be compressed
+into 50% of its original memory volume of FP64 by FP32, and 25% by
+FP16. Meanwhile, AMG for unstructured grid problems needs extra
+integer indices to store the matrix, and the indices usually cannot
+be compressed. Only the part of floating point data of unstructured
+AMG could leverage the benefits of lower-precision. Their practical
+experience showed that using FP32 is safe and efficient for most
+scenarios since the number of iterations (#iter) of mix-FP32/FP64
+in their problems kept close to the original full-FP64 results.
+Table 1: Summary of mix-precision multigrid preconditioner.
+’Scale?" means whether its method includes scaling to avoid
+overflow, and ’N/N’ for not needed. ’P.C.’ stands for precondi-
+tioner.
+Ref.
+Type
+Scale?
+P.C. precision
+P.C. Speedup
+E2E Speedup
+[9]
+GMG
+N/N
+FP32
+~2.0x
+~1.7x
+[5]
+AMG
+N/N
+FP32
+1.1x~1.5x
+unclear
+[27]
+AMG
+N/N
+FP32
+unclear
+1.19x
+[8]
+GMG
+N/N
+FP32
+1.9x
+1.6x
+[35]
+GMG
+N/N
+FP32
+2.0x
+1.18x
+[33]
+AMG
+Yes
+FP16/FP32
+unclear
+1.05x~1.35x
+Ours
+AMG
+Yes
+FP16/FP32
+2.75x
+1.95x
+The explorations of utilizing half-precision in multigrids are less
+active than FP32, probably due to its unsafe behaviors of underflow,
+overflow, or accuracy loss. A model problem, isotropic Poisson with
+homogeneous Dirichlet boundary condition, was tested with FP16
+in [24], where both storage and computation were in FP16. How-
+ever, its methods did not include out-of-range treatment necessary
+for real-world matrices. A more recent work developed a three-
+precision algebraic multigrids [33] as part of the Ginkgo library,
+which enabled arbitrary combinations of precisions (FP64, FP32,
+and FP16) on different levels. Eight problems from SuiteSparse ma-
+trix collection [4] were tested, and E2E speedups of V-cycle mainly
+were less than 1.2x.
+StructMG [40] is an algebraic multigrid preconditioner for struc-
+tured grid problems and has faster speed and better scalability than
+the SOTA library hypre. The experiments in this article will be
+based on StructMG, because other mainstream multigrid libraries
+are incapable of mix-precision configuration. Our guidelines and
+algorithms do NOT make assumptions about the background
+problems and can be applied to other libraries. Furthermore,
+our implementation is applicable to hypre’s SMG, PFMG,
+and SysPFMG that are designed for structure-grid problems.
+It is worth mentioning that our guidelines and algorithms
+are also applicable to unstructured multigrid. But our subse-
+quent analysis will reveal that unstructured multigrid is not
+suitable for harnessing the mix-precision advantages.
+3
+FP16 UTILIZATION GUIDELINES
+Lower-precision accelerates each single iteration of multigrid at the
+cost of poorer convergence (i.e., faster 𝑇single but with more #iter
+in Equation 1). The previous works have shown that the full-FP32
+multigrid as a preconditioner in FP64 iterative methods is safe and
+efficient since the #iter is kept close to its full-FP64 counterpart.
+Situations become more complicated with the more range-limited
+FP16. The basic rule of optimization is to make a balance between
+the decreasing 𝑇single and the probably increasing #iter.
+3.1
+Eagerly convert matrices to FP16.
+For performance concern, in solving the linear system 𝐴𝑥= 𝑏,
+matrix 𝐴is the hotspot of FP16-compressed storage, because its
+memory access volume is often as several times large as the vectors
+𝑏and 𝑥. Given a 𝑚× 𝑚matrix 𝐴, the two vectors 𝑏and 𝑥require
+2𝑚elements, and the percentage of the matrix is
+percent𝐴=
+𝑛𝑛𝑧(𝐴)
+𝑛𝑛𝑧(𝐴) + 2𝑚× 100%
+(2)
+We make a statistic covering the matrices whose 𝑚> 104 in
+SuiteSparse, and find that 85% of the matrices have percent𝐴> 0.7,
+and 60% of the matrices have percent𝐴> 0.8. If the integer ar-
+ray indices of CSR (compressed sparse rows) format are consid-
+ered, percent𝐴would be more dominant. For structured matrices,
+percent𝐴are 0.78, 0.88, and 0.90 when their nonzero patterns are
+3d7, 3d19, and 3d27, respectively.
+The above observations still hold in the context of multigrid,
+and furthermore, the coarser-level matrices 𝐴2𝑘ℎ(𝑘≥1) would
+have more significant percents than that of the finest-level matrix
+𝐴ℎ. This is because the Galerkin coarsening makes the nonzero
+patterns of coarser-level matrices expand [6]. Thus, the top priority
+and most beneficial task is reducing the lower bounds of memory
+access volumes of matrices by FP16.
+3.2
+Prefer structured matrix formats that do not
+use per-element index arrays.
+Sparse linear solvers are typically memory-bounded programs. The
+upper bound of lower-precision speedup could be estimated based
+on the reduction of memory access volume. Since only the floating-
+point data of an algebraic multigrid could be compressed, struc-
+tured grid problems are more favored by FP16. In structured-grid-
+specific multigrids, such as StructMG [40] and hypre’s SMG, PFMG,
+SysPFMG [16], the matrices are stored in structured-grid-diagonal
+(SG-DIA) format [18] to avoid extra integer indices arrays that
+are necessary for compressed sparse formats like CSR, CSC (com-
+pressed sparse columns), and COO (coordinate format) to represent
+unstructured grids. We refer to a matrix as a structured matrix if
+its nonzero pattern fits the SG-DIA format, which happens when
+the PDE is discretized on a structured grid.
+54
+
+
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+Yi Zong, Peinan Yu, Haopeng Huang, and Wei Xue
+The upper bounds of lower-precision speedup in the precondi-
+tioner of SG-DIA and CSR are listed in Table 2. For unstructured
+grid problems with CSR format, each nonzero entry requires a
+floating-point number and an integer index in storage. Additionally,
+the row pointer (also referred to as row map), an integer array in the
+length of the number of rows plus 1, is amortized to each nonzero
+entry by 𝛿= (𝑚+ 1)/𝑛𝑛𝑧(𝐴) in Table 2. Their upper bounds are re-
+markably lower than structured grid problems with SG-DIA format,
+especially when the problem size is too large that int64 is necessary
+for indices. The E2E speedup would further decrease, which accords
+with the previous experiments reported in Table 1. Without loss of
+generality, unstructured grid problems with CSC or COO format
+can get results similar to CSR ones.
+Table 2: Estimated upper bound of speedup based on mini-
+mal memory access volume of matrix. ’P.C.’ stands for pre-
+conditioner. 𝛿= 15% in average for 2216 square matrices in
+SuiteSparse.
+Bytes per Nonzero
+Upper Bound of P.C. Speedup
+FP64
+FP32
+FP16
+FP64/FP32
+FP32/FP16
+FP64/FP16
+SG-
+8
+4
+2
+2
+2
+4
+DIA
+CSR
+12+4𝛿
+8+4𝛿
+6+4𝛿
+12+4𝛿
+8+4𝛿<1.5
+8+4𝛿
+6+4𝛿<1.3
+12+4𝛿
+6+4𝛿<2
+int32
+CSR
+16+8𝛿
+12+8𝛿
+10+8𝛿
+16+8𝛿
+12+8𝛿<1.3
+12+8𝛿
+10+8𝛿<1.2
+16+8𝛿
+10+8𝛿<1.6
+int64
+3.3
+Use FP16 at the finest possible level.
+Matrices and vectors on different levels may have different pre-
+cisions. The number of possible combinations of precision grows
+exponentially with the number of levels. However, we will demon-
+strate that only very limited choices are worthwhile based on the
+distinct feature of multigrid.
+Grid complexity 𝐶G and operator complexity 𝐶O [30] are two
+metrics to evaluate the computational overhead of a multigrid
+𝐶G =
+Í
+𝑙𝑛𝑙
+𝑛0
+and
+𝐶O =
+Í
+𝑙𝑍𝑙
+𝑍0
+(3)
+where 𝑛𝑙and 𝑍𝑙denote the number of unknowns and nonzero
+entries, respectively, on level 𝑙. 𝑙= 0 corresponds to the finest level.
+We have evaluated 10 example problems from MFEM [31] that
+are suitable for multigrid on 11 kinds of input meshes 1 and collected
+the 𝐶G and 𝐶O in these 60 cases (one problem on one mesh is one
+case). These representative cases cover most of the applications
+using MG as a preconditioner. The statistics are shown in Figure 3.
+An obvious situation is that most cases have low complexities. The
+cumulative frequency curves verify that 𝐶G and 𝐶O are lower than
+1.2 and 1.5, respectively, in 80% of the cases, and lower than 1.15
+and 1.22, respectively, in 60% of the cases.
+1Specifically, ex1p(Laplace), ex4p(Grad-div), ex5p(Darcy), ex6p(Laplace with AMR),
+ex8p(DPG for Laplace), ex14p(DG Diffusion), ex26p(Multigrid Preconditioner) are
+tested with meshes including star.mesh, beam-tri.mesh, escher-p2.mesh, mobius-
+strip.mesh, square-disc-p3.mesh, and rt-2d-q3.mesh. Ex2p(Linear Elasticity), ex17p(DG
+Linear Elasticity) and ex21p(AMR for linear elasticity) are tested with meshes including
+beam-tri.mesh, beam-quad.mesh, beam-tet.mesh, beam-hex.mesh, beam-wedge.mesh,
+and beam-quad-nurbs.mesh. Refer to https://mfem.org/examples for more detailed
+description.
+Their low complexities result from aggressive coarsening [36]
+in AMG, and high-dimensional coarsening in StructMG. Lower
+𝐶G and 𝐶O benefit the overall performance of multigrid, and thus,
+aggressive coarsening has been recommended in the best practice
+guide [6] by the hypre team. The outlier (𝐶G > 1.5 and 𝐶O > 2)
+in Figure 3 are the cases whose default settings do not include
+aggressive coarsening.
+𝐶G
+𝐶O
+Figure 3: Complexity statistics for 60 MFEM cases.
+This indicates that the aggregated overhead of all coarser grids
+is not as significant as half the importance of the finest grid. The
+dominant role of the finest grid could also be observed in previous
+works on performance modeling [7]. Therefore, the finer level is
+accelerated by FP16, the more performance gains will be obtained.
+FP16 should be utilized to reduce the memory access volumes on
+levels as fine as possible, which is in contrast to [33] that proposed
+’DP-SP-HP’(i.e., the first level’s matrix uses double precision, the
+second level’s matrix uses single precision, and the other levels’
+matrices use half precision). Despite the massive number of possible
+combinations of precisions in multigrid, only those who apply FP16
+on the finer levels are worthwhile from a performance perspective.
+Based on this observation, multigrid should allow switching the
+precision from FP16 to higher precisions since a specific level.
+3.4
+Avoid vectors in FP16.
+For scientific safety concerns, vectors are not suitable to be stored
+or computed in FP16 because overflow could happen out of control.
+In solving a linear system 𝐴𝑥= 𝑏, the given matrix 𝐴is static while
+the unknown vector 𝑥changes dynamically. It is difficult to predict
+which element of 𝑥may overflow sometime. However, the cost of
+overflow is intolerable. Even if a single element overflows to ’inf’,
+it immediately propagates to ’NaN’, crashing the entire program.
+The above four guidelines instruct the following algorithmic
+designs. Vectors should be kept in FP32, while FP16 compresses the
+memory volumes of matrices as fine-level as possible. Aiming for
+better leverage of FP16, structured grids should be considered to
+discretize the PDE of interest.
+4
+ALGORITHMS
+This section involves three kinds of precision. Variables of different
+precision in Algorithm 1, 2, 3 are marked in different colors. The
+:::::::::::::::
+iterative precision marked in red with waved underline is the
+computation and storage precision of iterative solvers, usually as
+FP64 or FP32, which is determined by users’ applications. The
+computation precision of preconditioners is marked in blue
+55
+
+
+FP16 Acceleration in Structured Multigrid Preconditioner for Real-World Applications
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+with straight underline, usually as FP32. The ............................
+storage precision of
+......................
+preconditioners is marked in green with dotted underline, usually
+as FP16.
+4.1
+Setup-then-scale
+The strategy in the setup phase is setup-then-scale. As shown in
+Line 1-3 in Algorithms 1, a normal setup process is completed first
+in high precision, which includes Galerkin coarsening on all levels.
+Algorithm 1: MG_setup_for_FP16
+Input: matrix :
+𝐴
+Output: matrices ....
+𝐴0, ....
+𝐴1, ..., ....
+𝐴𝐿on hierarchical grids and
+smoothers ...
+𝑆0, ...
+𝑆1, ..., ....
+𝑆𝐿, and 𝑄0, 𝑄1, ..., 𝑄𝐿if needed
+1 for 𝑖= 0, 1, . . . , 𝐿−1 do
+2
+𝐴𝑖+1
+:: ←𝑅𝑖
+:𝐴𝑖
+: 𝑃𝑖+1
+:: // Galerkin coarsening
+3 end
+4 for 𝑖= 0, 1, . . . , 𝐿do
+5
+if need to scale then // truncation after scaling
+6
+::
+𝑄𝑖←
+1
+𝐺𝑖extract_diagonals( :
+𝐴𝑖);
+7
+𝐴𝑖
+: ←𝑄𝑖
+:
+−1/2𝐴𝑖
+: 𝑄𝑖
+:
+−1/2;
+8
+𝐴𝑖
+... ←𝐴𝑖
+: ;
+9
+𝑄𝑖←𝑄𝑖
+: ;
+10
+else // direct truncation
+11
+𝐴𝑖
+... ←𝐴𝑖
+:
+12
+end
+13
+𝑆𝑖
+.. ←smoother_setup(𝐴𝑖
+: ) ;
+// setup smoothers
+14 end
+The special treatment to adapt to FP16 is the need to scale branch
+from Line 5 to 9. The purpose of scaling is to transform nonzero
+values of the matrix ::
+𝐴𝑖into FP16 range, where 𝐺𝑖is a constant
+parameter. We have the following theorem to ensure the safety of
+FP16.
+Theorem 4.1. Truncation to FP16 would not cause unsafe ’inf’ if
+𝐺𝑖is appropriately chosen.
+Proof. Since scaling operations are independent across different
+levels, level indices are ommited in the proof. Given the matrix on a
+specific level 𝐴(𝑎𝑖𝑗) ∈R𝑁×𝑁, the diagonal matrix 𝑄in Algorithm 1
+is
+𝑄= 1
+𝐺diag(𝑎11,𝑎22, ...,𝑎𝑁𝑁)
+The element at 𝑖-row and 𝑗-column after multiplication of
+𝑄−1/2𝐴𝑄−1/2 will be
+𝐺
+𝑎𝑖𝑗
+𝑎1/2
+𝑖𝑖𝑎1/2
+𝑗𝑗
+Let 𝑆:= FP16_MAX denote the upper bound of FP16. The abso-
+lute sign of |∗| is omitted because representation range of floating-
+point numbers consists of a positive half and a negative half that
+are completely symmetric around zero. The following condition
+needs to be satisfied for all 𝑖, 𝑗to avoid overflow:
+𝐺
+𝑎𝑖𝑗
+𝑎1/2
+𝑖𝑖𝑎1/2
+𝑗𝑗
+< 𝑆
+When 𝑎𝑖𝑗is large, it requires 𝐺to be small. Therefore, the maximal
+𝐺that avoids overflow is
+𝐺max = 𝑆max
+𝑖,𝑗
+
+
+
+
+
+
+
+𝑎1/2
+𝑖𝑖𝑎1/2
+𝑗𝑗
+𝑎𝑖𝑗
+
+
+
+
+
+
+
+As long as a 𝐺< 𝐺max is chosen, overflow of FP16 is avoided in
+the truncation after scaling. Since that 𝑄is stored in preconditioner
+computation precision (usually FP32, but not FP16 in any cases),
+and will not overflow due to a small 𝐺. Notice that the square-root
+operation requires all diagonal entries of the original matrix 𝐴
+are positive, which is naturally included by M-matrix property. It
+does not make new assumptions because the convergent theory of
+multigrid itself requires 𝐴to be an M-matrix [32].
+□
+Matrices ::
+𝐴𝑖are truncated to storage precision in Line 8 and
+diagonal matrices ::
+𝑄𝑖are truncated to computation precision in
+Line 9. If scaling is unnecessary, direct truncation in Line 11 follows
+the standard setup process. Based on previous observations, to
+avoid overflow, whether there is a need to scale or not depends on
+if there exists::
+𝐴𝑖’s values greater than FP16_MAX.
+Finally, high-precision matrices are used to setup correspond-
+ing smoothers. Data in smoothers, such as the factorized lower
+and upper triangular matrices ˜
+𝐿, ˜
+𝑈in ILU, are calculated in itera-
+tive precision followed by truncation to storage precision. Notice
+that high-precision :
+𝐴𝑖and ::
+𝑄𝑖will no longer be used in multigrid
+preconditioner after the setup phase.
+4.2
+Recover-and-rescale on the fly during solve
+All the optimizations in this article focus on preconditioners, so
+nothing special is applied to iterative solvers. Due to space lim-
+itations, we use a stationary iteration to illustrate how an FP16-
+accelerated preconditioner is employed. Other iterative algorithms,
+such as Conjugated Gradient (CG) and Generalized Minimal Resid-
+ual (GMRES), have the same way of invoking the preconditioner.
+As shown in Line 3 in Algorithm 2, residual is calculated by
+high-precision matrices and vectors in iterative solvers. The pre-
+conditioner accepts a lower-precision residual vector as input and
+returns an error vector of the same precision. Explicit precision
+transitions are in Line 4 and 6.
+Algorithm 2: Stationary iterative method.
+Input: matrix :
+𝐴, right-hand-side :
+𝑏, initial solution :
+𝑥
+Output: approximated solution :
+𝑥
+1 Initialize preconditioner: MG_setup_for_FP16(
+:
+𝐴);
+2 while not converged do
+3
+:
+𝑟←:
+𝑏- ::
+𝐴𝑥;
+4
+𝑟←:
+𝑟;
+// truncate residual
+5
+𝑒←MG_solve_with_FP16(𝑟) ;
+// apply multigrid
+6
+:
+𝑒←𝑒;
+// recover error
+7
+:
+𝑥←:
+𝑥+ :
+𝑒;
+8 end
+There is nothing in iterative precision throughout the V-Cycle
+of multigrid, as shown in Algorithm 3. The basic idea is that matri-
+ces’ nonzero entries are stored in FP16 and thus need recovering,
+56
+
+
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+Yi Zong, Peinan Yu, Haopeng Huang, and Wei Xue
+while vectors’ values throughout the solve phase remain unchanged
+as FP32. Therefore, matrices must recover and rescale whenever
+sparse matrix-vector product (SpMV) and sparse triangular solve
+(SpTRSV) are performed. The way of rescaling is shown in Line 7
+of Algorithm 3. Since computation performs in FP32, the diagonal
+matrices 𝑄𝑖are used to rescale values of ...
+𝐴𝑖.
+Note that the recover-and-rescale is on the fly. Matrices data of
+FP16 is retrieved, transformed into FP32, and used to calculate only
+when needed. Data of FP32 is not explicitly maintained; otherwise,
+the advantage of accessing fewer volumes of memory no longer
+exists. Rescaling in smoother_solve at Line 4 and 17 is similar if
+..
+𝑆𝑖was setup using a scaled ::
+𝐴𝑖previously. SymGS and ILU could
+be configured as the smoothers of different levels by users, and a
+direct solver for the coarsest level.
+Algorithm 3: MG_solve_with_FP16
+Input: right-hand-size 𝑏
+Output: approximated solution 𝑥
+1 Initialize: 𝑓0 ←𝑏;
+2 for 𝑖= 0, 1, ..., 𝐿−1 do // forward part of V-Cycle
+3
+for 𝑗= 0, 1, ..., 𝜈1 −1 do // pre-smoothing 𝜈1 times
+4
+𝑢𝑖←smoother_solve( ..
+𝑆𝑖, 𝑓𝑖, 𝑢𝑖);
+5
+end
+6
+if scaled in setup then // compute residual
+7
+𝑟𝑖←𝑓𝑖−𝑄𝑖1/2 ...
+𝐴𝑖𝑄𝑖1/2 𝑢𝑖;
+8
+else
+9
+𝑟𝑖←𝑓𝑖- ...
+𝐴𝑖𝑢𝑖;
+10
+end
+11
+if 𝑖< 𝐿−1 then // restrict residual to next level
+12
+𝑓𝑖+1 ←Restrict(𝑟𝑖);
+13
+end
+14 end
+15 for 𝑖= 𝐿−1, ..., 1, 0 do // backward parf of V-Cycle
+16
+for 𝑗= 0, 1, ..., 𝜈2 −1 do // post-smoothing 𝜈2 times
+17
+𝑢𝑖←smoother_solve( ....
+𝑆𝑖𝑇, 𝑓𝑖, 𝑢𝑖) ;
+18
+end
+19
+if 𝑖> 0 then // interpolate error to next finer grid
+20
+𝑢𝑖−1 ←𝑢𝑖−1 + Interpolate(𝑢𝑖);
+21
+end
+22 end
+23 𝑥←𝑢0 ;
+4.3
+Practical Remarks
+Further improvement of replacing vector with FP16 is limited for
+performance concerns. In contrast, overflow risks in vectors’ val-
+ues are potential for scientific accuracy concern, as discussed in
+Section 3.1 and 3.4.
+Our method introduces the additional overhead of accessing 𝑄𝑖
+in the solve phase. A natural counterpart would be "scale-then-
+setup", which first scales the problem matrix :
+𝐴, then passes it to
+multigrid to setup matrices ::
+𝐴𝑖on all levels, and finally truncates
+them to ...
+𝐴𝑖. Though the scale-then-setup strategy is free of 𝑄𝑖inside
+V-Cycle, our setup-then-scale in Section 4.1 has two-fold advan-
+tages. First, our setup-then-scale does not require users’ explicit
+involvement to scale the original problem matrix and keeps multi-
+grid as a "black-box" tool. Most importantly, it does not interfere
+with the original setup phase, especially the chain of triple-matrix
+products. Otherwise, scale-then-setup negatively influences the
+chain because only floating-point numbers in the FP16 range could
+be used even if triple-matrix products are calculated with FP64,
+and even worse, may still incur overflow or underflow. In practice
+of our various problems, the overhead of diagonal matrices 𝑄𝑖is
+cost-efficient compared to the increase of #iter, because 𝑄𝑖only
+occupies the same amount of memory as a vector. The advantage
+of setup-then-scale over scale-then-setup will be verified in the
+ablation experiments in Section 7.1.
+Unlike overflow, which inevitably crashes the program by pro-
+ducing NaN values, underflow is not as catastrophic. However,
+it can sometimes slow down convergence speed and, in extreme
+cases, lead to non-convergence. Underflow occurs due to the
+triple-matrix products during the setup phase, where multipli-
+cation causes the absolute values of matrices at coarser levels
+to become increasingly smaller. A simple but effective method
+to avoid the adverse effects of underflow is to switch back to
+higher precision such as FP32. Specifically, the latest version of
+StructMG [40] introduces a tunable parameter called shift_levid.
+From the shift_levid level to the coarsest level, matrices are stored
+in the computation precision of preconditioners rather than in the
+......................
+storage precision. Switching to higher precision at coarser levels
+does not introduce significant overhead, because the finer levels
+are the primary hotspots in multigrid methods, as analysed in Sec-
+tion 3.3.
+5
+INSTRUCTION-LEVEL OPTIMIZATION
+Based on the FP16 utilization guidelines and the algorithms, the data
+of matrices and vectors in multigrid are stored in FP16 and FP32,
+respectively. SpMV and SpTRSV kernels become mix-precision,
+which introduces the additional overhead of precision conversion.
+A representative profiling [37] indicated that SymGS smoother (a
+specialized form of SpTRSV) accounts for 78% of the entire execu-
+tion time of the HPCG benchmark, while SPMV has the second-
+largest contribution of 20%. Therefore, the overhead could not be
+neglected, as will be shown by the results of Section 7.2, and requires
+instruction-level optimization.
+5.1
+Vectorization: From AOS to SOA
+The implementation is based on structured-grid-specific multigrids,
+such as StructMG, and hypre’s SMG, PFMG, and SysPFMG. The
+matrices are stored in array-of-structure (AOS) format in these
+multigrids, as shown in Figure 4. The nonzero entries with the
+same subscripts (e.g., (𝑖, 𝑗)) are stored contiguously in the mem-
+ory. The superscripts, 0~3, of the matrix entries indicate which
+neighboring position corresponds to this matrix entry. For this
+example, 0 corresponds to (𝑖−1, 𝑗−1), and 1, 2, 3 correspond
+to (𝑖−1, 𝑗), (𝑖−1, 𝑗+ 1), (𝑖, 𝑗−1), respectively. Alternatively, the
+structure-of-array (SOA) format shuffles the entries and stores those
+with the same superscripts contiguously.
+In full-FP32 situations, AOS format is usually good enough to
+fully utilize the memory bandwidth, which requires only one load
+(ldr) instruction for each 4-byte entry to prepare for multiplica-
+tion. However, when the matrix is stored in FP16, AOS requires
+57
+
+
+FP16 Acceleration in Structured Multigrid Preconditioner for Real-World Applications
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+AOS (in FP16)
+SOA (in FP16)
+Scalar instruction for AOS
+𝑨𝑖,𝑗
+0 ←fcvt ldr 𝑨𝑖,𝑗
+0
+𝑨𝑖,𝑗
+1 ←fcvt ldr 𝑨𝑖,𝑗
+1
+𝑨𝑖,𝑗
+2 ←fcvt ldr 𝑨𝑖,𝑗
+2
+𝑨𝑖,𝑗
+3 ←fcvt ldr 𝑨𝑖,𝑗
+3
+𝒚𝑖𝑗←𝑨𝑖,𝑗
+0 ∗𝒙𝑖−1 𝑗−1
++𝑨𝑖,𝑗
+1 ∗𝒙𝑖−1 𝑗
++𝑨𝑖,𝑗
+2 ∗𝒙𝑖−1 𝑗+ 1
++𝑨𝑖,𝑗
+3 ∗𝒙𝑖
+𝑗−1
+SIMD for SOA
+𝑨𝑖,𝑗:(𝑗+3)
+0
+←fcvt ldr 𝑨𝑖,𝑗:(𝑗+3)
+0
+𝑨𝑖,𝑗:(𝑗+3)
+1
+←fcvt ldr 𝑨𝑖,𝑗:(𝑗+3)
+1
+𝑨𝑖,𝑗:(𝑗+3)
+2
+←fcvt ldr 𝑨𝑖,𝑗:(𝑗+3)
+2
+𝑨𝑖,𝑗:(𝑗+3)
+3
+←fcvt ldr 𝑨𝑖,𝑗:(𝑗+3)
+3
+𝒚𝑖𝑗: (𝑗+ 3) ←𝑨𝑖,𝑗:(𝑗+3)
+0
+∗𝒙𝑖−1
+𝑗−1 : (𝑗+ 2)
++𝑨𝑖,𝑗:(𝑗+3)
+1
+∗𝒙𝑖−1
+𝑗
+∶(𝑗+ 3)
++𝑨𝑖,𝑗:(𝑗+3)
+2
+∗𝒙𝑖−1
+𝑗+ 1 : (𝑗+ 4)
++𝑨𝑖,𝑗:(𝑗+3)
+3
+∗𝒙𝑖
+𝑗−1 : (𝑗+ 2)
+𝑨𝑖,𝑗
+0
+𝑨𝑖,𝑗
+1
+𝑨𝑖,𝑗
+2
+𝑨𝑖,𝑗
+3
+𝑨𝑖,𝑗+1
+0
+𝑨𝑖,𝑗+1
+1
+𝑨𝑖,𝑗+1
+2
+𝑨𝑖,𝑗+1
+3
+𝑨𝑖,𝑗+2
+0
+𝑨𝑖,𝑗+2
+1
+𝑨𝑖,𝑗+2
+2
+𝑨𝑖,𝑗+2
+3
+𝑨𝑖,𝑗+3
+0
+𝑨𝑖,𝑗+3
+1
+𝑨𝑖,𝑗+3
+2
+𝑨𝑖,𝑗+3
+3
+𝑨𝑖,𝑗
+0
+𝑨𝑖,𝑗+1
+0
+𝑨𝑖,𝑗+2
+0
+𝑨𝑖,𝑗+3
+0
+𝑨𝑖,𝑗
+1
+𝑨𝑖,𝑗+1
+1
+𝑨𝑖,𝑗+2
+1
+𝑨𝑖,𝑗+3
+1
+𝑨𝑖,𝑗
+2
+𝑨𝑖,𝑗+1
+2
+𝑨𝑖,𝑗+2
+2
+𝑨𝑖,𝑗+2
+3
+𝑨𝑖,𝑗
+3
+𝑨𝑖,𝑗+1
+3
+𝑨𝑖,𝑗+2
+3
+𝑨𝑖,𝑗+3
+3
+Figure 4: Illustration of SpMV in AOS and SOA format.
+Green and blue data are in FP16 and FP32, respectively. The
+dashed box emphasizes the precision-conversion instruc-
+tions needed to prepare for FP32 multiplication. SOA is SIMD-
+friendly. Computations of 4 elements (𝑗: (𝑗+ 3) written in
+Matlab style) are vectorized.
+one load, and additionally one floating-point convert (fcvt) instruc-
+tion for each 2-byte entry. The arithmetic intensity during data
+preparation is now as 4 times high as the full-FP32 situation. A
+decrease of bandwidth efficiency2 will be observed for AOS in the
+mix-FP16/FP32 situation. Therefore, SOA format is necessary to
+amortize the precision-conversion overhead via vectorization. As
+shown in the dashed box in Figure 4, it requires only one ldr, and
+one fcvt instruction for every four 2-byte entries if the SIMD length
+is 128-bit. The vectorization of SpMV is straightforward because
+computations of different elements are independent. SpTRSV re-
+quires more sophisticated parallel strategy [39, 40].
+6
+EXPERIMENTAL SETUP
+This section describes the problems, solvers settings and machines
+configurations.
+6.1
+Problems
+Our selection of test problems aims to cover different domains and
+characteristics as extensively as possible. Laplace27 is an idealized
+benchmark problem in performance evaluation and modeling, such
+in hypre’s reports [17] and HPCG [39]. Laplace27∗108 is an ideal-
+ized problem that we construct by multiplying the coefficients of
+laplace27 by 108 to observe the influence of out-of-range of FP16.
+Rhd and rhd-3T are from radiation hydrodynamics [34]. "3T" means
+three temperatures (radiation, electron, and ion). Oil and oil-4C are
+from petroleum reservoir simulation. Settings of SPE1 and SPE10
+benchmarks [23] are combined to generate larger cases via Open-
+CAEPoro [38]. "4C" means four components (oil, water, gas, and
+dissolved gas in live oil). Weather is from atmospheric dynamics,
+provided by the dynamic core of GRAPES-MESO [25], the national
+NWP system of the Chinese Meteorological Administration [2].
+The largest case of 637M #dof is a 2km resolution of Chinese re-
+gional forecasting in Dec 2018. Solid-3D cases discretized from the
+2The bandwidth efficiency is the measured bandwidth of the kernel over the bandwidth
+of the stream benchmark, which can be regarded as the evaluation of architecture
+efficiency of the kernel. The measured bandwidth refers to the minimal theoretical
+memory volume to access divided by the measured kernel time.
+weak form of linear elasticity problem in solid mechanics [29], are
+generated by ourselves. "3D" means three displacements associated
+with each element. Data of all problems are available online3.
+These problems’ characteristics are listed in Table 3. The basic
+information includes PDE types4, nonzero patterns (’Pattern’ field)5,
+total degrees of freedom (’#dof’ field), total numbers of nonzero
+entries (’#nnz’ field).
+Their numerical features are also considered, including whether
+the problem is discretized from a real-world application, whether
+its range is out-of-range of FP16, and the distance from FP16 (’Dist.’
+field) if it is out. The ranges of different problems and FP16 are
+displayed in Figure 1. Anisotropy (also referred to as multi-scale
+property [34]) is an important metric indicating that the charac-
+teristics of the linear system vary based on the direction in which
+they are measured. The more anisotropic a linear system is, the
+more difficult it is for the solver to converge on it, and the more
+challenging it is for FP16 to accelerate. The qualitative statements
+are in the ’Aniso.’ field of Table 3, and more detailed visualiza-
+tion can be found in Figure 5. Laplace27 and laplace27∗108 are
+fully isotropic and have constant coefficients. Rhd-3T is highly
+anisotropic due to non-smooth coefficients and multi-physics cou-
+pling in three-temperature equations. Rhd is relatively isotropic
+after decoupling from the rhd-3T system. Oil-4C and oil are both
+highly anisotropic due to inhomogeneous permeability. The strong
+anisotropy of the weather problem comes from irregular earth to-
+pography and nonuniform latitudinal spacing. Solid-3D is relatively
+isotropic and has homogeneous coefficients. The condition numbers
+are also included in Table 3. The condition number of weather is
+evaluated based on a much smaller-size matrix of 9.95M discretized
+from the same problem, because the original size of 637M is too
+large to compute the condition number in a reasonable time.
+(i) Ranges statistics
+(ii) Multi-scale measurements statisti
+Anisotropic
+Isotropic
+Figure 5: Statistics of multi-scale metric [34] in six problems.
+6.2
+Solvers
+Iterative Krylov [28] solvers, and the precision corresponding to
+Section 4 in different problems are in Table 3. Users’ applications
+determine the iterative precisions (in red). The detailed configu-
+ration of StructMG as a preconditioner can be found online3. All
+problems have low 𝐶G and 𝐶O, which matches our observation and
+guideline in Section 3.3.
+3https://zenodo.org/records/10023590. Data of laplace27 and laplace27∗108 are not
+included because they can be easily constructed by readers.
+4Scalar PDE means only one unknown is associated with each grid element, while
+vector PDE has multiple knowns.
+53d15 and 3d19 expand to 3d27 on coarser grids in StructMG and hypre’s SMG, PFMG,
+and SysPFMG.
+58
+
+
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+Yi Zong, Peinan Yu, Haopeng Huang, and Wei Xue
+Table 3: Test problems characteristics. ’M’ for million and ’B’ for billion in ’#dof’ and ’#nnz’ fields. More detailed statistics of
+’Dist.’ and ’Aniso.’ fields refer to Figure 1 and 5.
+Problem
+Basic Information
+Numerical Features
+Solver Information
+PDE
+Pattern
+#dof
+#nnz
+Real-world?
+Out-of-FP16?
+Dist.
+Aniso.
+Cond.
+Precision
+Solver
+𝐶G
+𝐶O
+laplace27
+scalar
+3d27
+16.8 M
+453 M
+No
+No
+None
+3e+03
+:::
+FP64/ FP32/ ......
+FP16
+CG
+1.14
+1.14
+laplace27∗108
+scalar
+3d27
+16.8 M
+453 M
+No
+Yes
+Far
+None
+3e+03
+:::
+FP64/ FP32/ ......
+FP16
+CG
+1.14
+1.14
+rhd
+scalar
+3d7
+2.10 M
+14.7 M
+Yes
+Yes
+Far
+Low
+1e+08
+:::
+FP64/ FP32/ ......
+FP16
+CG
+1.14
+1.14
+oil
+scalar
+3d7
+31.5 M
+220.2 M
+Yes
+No
+High
+1e+04
+:::
+FP64/ FP32/ ......
+FP16
+GMRES
+1.14
+1.14
+weather
+scalar
+3d19
+637 M
+12.1 B
+Yes
+Yes
+Near
+High
+1e+05
+:::
+FP64/ FP32/ ......
+FP16
+GMRES
+1.31
+1.44
+rhd-3T
+vector
+3d7
+6.30 M
+52.4 M
+Yes
+Yes
+Far
+High
+1e+15
+:::
+FP64/ FP32/ ......
+FP16
+CG
+1.14
+1.14
+oil-4C
+vector
+3d7
+31.5 M
+880 M
+Yes
+Yes
+Near
+High
+1e+05
+:::
+FP64/ FP32/ ......
+FP16
+GMRES
+1.14
+1.14
+solid-3D
+vector
+3d15
+11.8 M
+531 M
+No
+Yes
+Far
+Low
+1e+07
+:::
+FP64/ FP32/ ......
+FP16
+CG
+1.14
+1.26
+6.3
+Machines
+Experiments are evaluated on ARM and X86 platforms, as shown
+in Table 4. Similar to [40], the best result at a specific degree of
+parallelism is reported from tests of various MPI/OpenMP ratios
+with load-balance process partitions. 1:1 (MPI-only), 1:2, 1:4, 1:8,
+1:16, and 1:32 are tested when each NUMA has 32 available cores.
+1:1, 1:2, 1:3, 1:5, 1:6, 1:10, 1:15, and 1:30 are tested when only 30
+cores are available because ARM’s McKernel mechanism reserves
+two cores for OS to reduce system noise for large-scale tests.
+Table 4: Machines Configurations.
+System
+ARM
+X86
+Processor
+Kunpeng 920-6426
+AMD EPYC-7H12
+Frequency
+2.60 GHz
+2.60~3.30 GHz
+Cores per node
+128 (64 per socket)
+128 (64 per socket)
+L1/L2/L3 per core
+64 KB/512 KB/1 MB
+32 KB/512 KB/4 MB
+Stream Triad BW
+138 GB/s
+100 GB/s
+Memory per Node
+512 GB DDR4-2933
+256 GB DDR4-3200
+Max Nodes
+64
+64
+Network
+100Gbps InfiniBand
+100Gbps InfiniBand
+MPI/Compiler
+OpenMPI-4.1.4/gcc-9.3.0
+Intel-OneAPI-2021.6
+7
+RESULTS AND ANALYSIS
+This section will present the results in a local-to-global perspective.
+A controlled variables experiment first verifies the algorithmic
+effect. Kernel performance is then measured to demonstrate the
+necessity of hiding precision-conversion overhead. The above two
+effects will be combined to see the overall speedups in a single
+processor. Finally, strong scalability tests are presented.
+7.1
+Algorithmic Effect
+Descending curves of residual norm display how fast a precon-
+ditioned solver could converge to the desired solution, as shown
+in Figure 6. Laplace27, laplace27∗108, weather, rhd, and rhd-3T
+are analyzed in this ablation experiment, because they have dis-
+tinct numerical features in different dimensions (i.e., out-of-FP16,
+distance, and anisotropy) that are labeled in the upper-right cor-
+ner of sub-figures. A controlled variable comparison could obtain
+representative conclusions.
+Five combinations of precisions and strategies are evaluated.
+Full64 is the baseline whose curves descend at the highest rate in
+all problems. K64P32D32 is the FP64 iterative solver preconditioned
+Number of Iteration
+Relative Residual Norm: ||r||2/||b||2
+2
+4
+6
+8
+10
+12
+10-9
+10-6
+10-3
+100
+(a) laplace27
+2
+4
+6
+8
+10
+12
+10-9
+10-6
+10-3
+100
+(b) laplace27*108
+5
+10
+15
+10-9
+10-6
+10-3
+100
+(c) weather
+10
+20
+30
+40
+50
+60
+10-9
+10-6
+10-3
+100
+103
+(d) rhd
+20
+40
+60
+80
+100
+10-9
+10-6
+10-3
+100
+(e) rhd-3T
+Full64
+K64P32D32
+K64P32D16-none
+K64P32D16-scale-setup
+K64P32D16-setup-scale
+in FP16
+isotropic
+far from FP16
+isotropic
+far from FP16
+weakly-anisotropic
+near FP16
+highly-anisotropic
+far from FP16
+highly-anisotropic
+Figure 6: Descending curves of relative residual norm in five
+representative problems. ’K’, ’P’, and ’D’ in the legends stand
+for iterative precision, computation precision of precondi-
+tioners, and storage precision of preconditioners in Section 4,
+respectively. The yellow curve of ’K64P32D16-none’ only oc-
+curs in (a) because it fails to solve the other problems. The
+other 4 curves coincide in (b), and all 5 curves coincide in (a).
+The oscillations in (c) are due to false convergence of GMRES.
+by an FP32 multigrid, commonly used in previous works. There
+are three strategies based on K64P32D16 where FP16 is used in
+storage in the multigrid preconditioner. ’None’ means no scaling
+is applied, and thus would lead to NaN in all problems except
+laplace27. ’Scale-setup’ and ’setup-scale’ correspond to the scale-
+then-setup and setup-then-scale in Section 4.1, respectively. All five
+combinations perform nearly identically in the idealized benchmark
+of laplace27, showing completely overlapping residual reduction
+curves in Figure 6(a). All four combinations, except for ’K64P32D16-
+none’, perform almost identically in the idealized benchmark of
+59
+
+
+FP16 Acceleration in Structured Multigrid Preconditioner for Real-World Applications
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+laplace27*∗108, as shown in Figure 6(b). The advantages of setup-
+then-scale over scale-then-setup are demonstrated in three real-
+world problems. Even in the weather6 problem whose values are
+near the range of FP16, setup-then-scale shows faster-descending
+curves and results in 11 iterations to converge to ||𝑟||2/||𝑏||2 <1e-
+10. In comparison, scale-then-setup needs 15 iterations to reach the
+same convergent threshold. Their differences are further magnified
+and showcased in rhd and rhd-3T problems, where the values are
+far from the range of FP16. Scale-then-setup could not converge in
+these two problems.
+7.2
+Kernel Optimization Effect
+Section 5.1 has discussed the extra overhead of precision-conversion
+instruction, for which the SIMD-friendly SOA format should be
+used to obtain the expected speedups. The two most essential ker-
+nels involving matrices of FP16 in V-cycle are SpMV and SpTRSV,
+occupying over 80% of multigrid time [37]. We evaluated these
+two kernels in StructMG on matrices of different patterns. The
+baselines are full-FP32 kernels of AOS format without precision-
+conversion overhead (denoted by ’MG-fp32/fp32’ in Figure 7). Our
+baseline SpTRSV and SpMV implementations are ~3.5x and ~1.8x
+faster than ARM Performance Library (ARMPL, latest version 23.10)
+on ARM architecture, and ~2.2x and ~1.2x faster than MKL (version
+2022.1.0) on X86, respectively. The time of symbolic analysis has
+been excluded for ARMPL and MKL. More importantly, our mix-
+precision SpMV and SpTRSV of SOA format with SIMD (denoted
+by ’MG-fp16/fp32(opt)’) could further reduce the kernel times. The
+time reduction is proportional to the reduction of memory volumes
+needed to access in the kernel. The higher the ratio of volumes the
+matrix occupies, the higher the speedup would be. The theoretical
+maximum reachable speedups (denoted by ’Max-fp16/fp32’) are
+based on the reductions of memory volumes needed to access (i.e.,
+the memory volume of full-FP32 divided by that of mix-precision),
+which represents the upper-bounds of the mix-precision perfor-
+mance. As shown in Figure 7, our optimized implementations could
+reach similar speedups with the maximum ones. On the other hand,
+as we have expected, performance degradation is observed for mix-
+precision kernels of AOS format (denoted by ’MG-fp16/fp32(naive)’),
+which are straightforward extensions of the baseline counterparts.
+The degradation is more pronounced for SpTRSV, which requires
+sophisticated parallelization. The experiments in Figure 7 utilized
+all cores within a single NUMA (32 cores on ARM and 64 cores on
+X86) with multi-threading and speedups are geometrically averaged
+over problem sizes of 2563, 2883, 3203, 3523 and 3843.
+7.3
+End-to-end Improvement
+Our algorithm aims to minimize the increase of #iter when FP16
+is utilized, and the efficient implementation aims to reduce 𝑇single
+in Equation (1). Combining the two sides leads to an overall high-
+performance solver preconditioned by FP16-accelerated multigrid.
+Figure 8 shows the improvement on a single ARM processor
+after accelerating the MG preconditioner by FP16 in the entire
+full-FP64 workflow. All times have been normalized according to
+the total time of the Full64 solver. The additional overhead of the
+6The iterative precision of weather is increased to FP64 in this subsection 7.1 to collect
+a longer history of descending residual for analysis.
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+1.8
+2
+3d4 3d10 3d14
+3d7 3d19 3d27
+3d4 3d10 3d14
+3d7 3d19 3d27
+Speedup
+Max-fp16/fp32
+MG-fp16/fp32(opt)
+MG-fp16/fp32(naïve)
+MG-fp32/fp32
+ARMPL@ARM or MKL@X86
+SpMV
+SpTRSV
+SpMV
+SpTRSV
+ARM
+X86
+Figure 7: Ablation experiment of kernel optimization effect.
+Speedups are over MG-fp32/fp32 (i.e., the best implementa-
+tion of full-FP32 precision).
+laplace27
+laplace27*108
+rhd
+oil
+weather
+rhd-3T
+oil-4C
+solid-3D
+0
+0.2
+0.4
+0.6
+0.8
+1
+Normalized Time
+11
+11
+55
+20
+8
+59
+15
+15
+11
+11
+65
+20
+12
+81
+15
+16
+3.7x
+3.2x
+1.9x
+2.7x
+1.8x
+1.8x
+3.8x
+3.4x
+setup overhead
+MG preconditioner
+other
+Figure 8: Performance of solving the linear systems on a
+single ARM processor. Left column: Full64. Right column:
+K64P32D16 with the setup-then-scale strategy. The #iters to
+converge are displayed on the top of columns. Preconditioner
+speedups are indicated within the orange column.
+laplace27
+laplace27*108
+rhd
+oil
+weather
+rhd-3T
+oil-4C
+solid-3D
+0
+0.2
+0.4
+0.6
+0.8
+1
+Normalized Time
+11
+11
+51
+20
+8
+59
+15
+16
+11
+11
+61
+20
+12
+77
+15
+16
+3.4x
+3.2x
+2.0x
+3.0x
+1.8x
+2.3x
+3.5x
+3.7x
+setup overhead
+MG preconditioner
+other
+Figure 9: Performance on a single X86 processor. The legends
+and meanings are the same as Figure 8.
+mix-precision setup is shown in blue columns, which shows that
+the setup-then-scale strategy introduces only limited overhead
+during setup. MG preconditioner speedups are indicated in orange
+columns, and are case-dependent. For the most idealized benchmark
+problem, laplace27, the speedup 3.70x approaches the upper-bound
+of 4.0x shown in Table 2, because the nonzero pattern of 3d27
+requires 27 times more memory than a vector. Laplace27∗108 needs
+60
+
+
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+Yi Zong, Peinan Yu, Haopeng Huang, and Wei Xue
+an additional diagonal matrix to scale and rescale, thus gaining a
+slightly lower speedup. Oil’s matrix of the 3d7 pattern occupies
+a smaller proportion of memory than 3d27 and obtains a smaller
+speedup. Meanwhile, vector PDE problems (especially oil-4C and
+solid-3D) are more favored by FP16 because each nonzero entry
+in matrices is a small dense matrix of 𝑟× 𝑟where 𝑟is the number
+of variables located at each element. It is worth noting that the
+increases of #iter in rhd, rhd-3T, and weather slow down their
+speeds.
+The E2E (i.e., the sum of setup overhead, MG preconditioner and
+other) speedup of the entire workflow could reach 2.39x, 2.21x,
+1.73x, 1.74x, 1.92x, 1.78x, 2.32x, 2.45x for these eight problems
+on a single ARM processor, respectively. The results are similar on
+a single X86 processor, as shown in Figure 9.
+7.4
+Scalability Test
+Strong scalability is evaluated for the above problems, as shown in
+Figure 10. The parallel efficiencies on ARM of the mix-precision
+solver could reach 96%, 89%, 63%, 99%, 98%, 71%, 93%, 62% of its
+full-iterative-precision counterpart in terms of total time in these
+problems, respectively. The scaling behaviors on X86 are similar.
+Mix-precision solvers could maintain nearly perfect scalability in
+medium and large-size problems. Their strong scalability will not
+surpass that of the full-iterative-precision ones because using FP16
+in storage accelerates the computation part. In contrast, after op-
+timization, the communication part becomes more dominant in
+E2E time. Another reason for degraded scalability in small size
+problems is the underutilization of SIMD when there are too few
+#dof per core. The extra precision-conversion overhead inhibits the
+performance in particularly small problems (such as the problems
+of rhd, rhd-3T and solid-3D). The expected speedups estimated by
+the reduction of memory volumes could be observed when #dof per
+core is large enough. In most cases, leveraging FP16 acceleration at
+the cost of scalability is worthwhile.
+8
+DISCUSSION
+In our experiments, both pre-smoothing and post-smoothing are
+applied once in the V-cycle. Increasing the number of smoothings
+makes the multigrid method more time-consuming, which results in
+a more significant E2E speedup when accelerated by half-precision.
+While some previous studies listed in Table 1 applied smoothings
+more than once, this article maintains the numbers of smoothing
+as 1 throughout the experiments. This decision is based on the
+observation that additional smoothings are generally less efficient
+in reducing time-to-solution for most problems.
+Another half-precision format, BF16, is not discussed in this
+article. This format will be worth exploring when instruction set
+support for BF16 becomes more extensive on CPUs. BF16 does not
+require scaling to avoid overflow because its range is the same as
+FP32. However, its accuracy is even worse than FP16. In our pre-
+liminary evaluation on GPUs, the #iter of using FP16 as the storage
+precision of preconditioners is always fewer than or equal to that
+of BF16. An noticeable gap is observed that FP16 and BF16 increase
+the #iter by 19% and 59%, respectively, compared to the full-FP64
+baseline in the rhd problem. Therefore, FP16 appears to be more
+suitable than BF16 for scientific computations that require strict
+# of cores
+64
+128
+256
+512
+1024
+10-1
+100
+(a) laplace27 total time
+64
+128
+256
+512
+1024
+100
+(b) laplace27*108 total time
+64
+128
+256
+512
+1024
+2048
+10-1
+100
+(c) rhd total time
+120
+240
+480
+960
+1920
+3840
+10-1
+100
+(d) oil total time
+240
+480
+960
+1920
+3840
+7680
+10-1
+100
+(e) weather total time
+64
+128
+256
+512
+1024
+2048
+10-1
+100
+(f) rhd-3T total time
+120
+240
+480
+960
+1920
+3840
+10-1
+100
+(g) oil-4C total time
+120
+240
+480
+960
+1920
+3840
+10-1
+100
+(h) solid-3D total time
+Full*-ARM
+Mix16-ARM
+Full*-X86
+Mix16-X86
+perfect scaling
+Figure 10: Results of strong scalability tests. The units of
+total times are all in seconds. ’Full*’ precision stands for the
+original workflow of the iterative precision, while ’Mix16’
+means the multigrid preconditioner is configured as the mix-
+precision in Table 3.
+numerical accuracy. BF16 may need more sophisticated accuracy
+compensation techniques to leverage its advantage in reducing
+memory access volume.
+The transformation from AOS to SOA format discussed in Sec-
+tion 5.1 extends seamlessly to GPU implementations. Optimizing
+memory bandwidth efficiency on GPUs necessitates coalesced mem-
+ory access among threads within a warp. Thus, SOA proves more
+advantageous even in scenarios utilizing full-FP32 precision.The
+further precision reduction of FP32 to FP16 for matrices is straight-
+forward based on SOA. Despite new computing hardware innova-
+tions on GPUs, represented by tensor cores, they are difficult to
+leverage significantly for sparse linear algebra kernels that are typi-
+cally memory-bounded. Similar to CPUs, our GPU implementation
+has achieved near 100% memory bandwidth efficiency, approaching
+the theoretical performance limit.
+9
+CONCLUSION
+Multigrid and half-precision match with each other. Multigrid pro-
+vides the numerical tolerance to lower precision due to its multi-
+level framework [19]. In the meantime, half-precision acceleration
+obtains much more significant end-to-end speedup because of multi-
+grid’s dominance in runtime.
+In this article, we investigated the use of FP16 in multigrid precon-
+ditioners. Potential gains and risks are analyzed based on the matrix
+61
+
+
+FP16 Acceleration in Structured Multigrid Preconditioner for Real-World Applications
+ICPP ’24, August 12–15, 2024, Gotland, Sweden
+format and characteristics of multigrid. A complete algorithm is
+proposed with proof to avoid FP16 overflow. Our setup-then-scale
+strategy is lightweight in setup and successfully prevents FP16 from
+interfering with the triple-matrix products. Eight problems (3 ideal-
+ized, 5 from real-world applications) are evaluated to demonstrate
+the effectiveness of our algorithms and implementations. Geometric
+average speedups of 2.7x and 2.8x could be obtained in MG precon-
+ditioner on ARM and X86, respectively, which contributes average
+speedups of 1.9x and 2.0x in the entire workflow. The maximal
+speedup 3.8x in preconditioner has approached the upper-bound of
+4.0x and results in a maximal E2E speedup of 2.5x. Our algorithm
+makes no assumptions about the background problems and can
+be applied to other multigrids. The kernel optimization technique
+can be directly ported to hypre’s structured-grid-specific multigrids
+such as SMG, PFMG, and SysPFMG.
+It is worth mentioning that our guidelines and algorithms
+are also applicable to unstructured multigrid where matri-
+ces are usually stored in CSR format. But it is difficult for
+unstructured problems to obtain comparable speedups. The
+reasons for their inadequate performance stem from two aspects.
+On one hand, the memory volumes of the extra integer arrays in
+CSR format could not be reduced by mix-precision storage, as in-
+dicated in Table 2. On the other hand, the indirect memory access
+and inability to leverage vectorization in CSR format further de-
+crease the bandwidth efficiency, as discussed in Section 5.1. These
+deficiencies significantly offset the programming efforts in utilizing
+FP16 in unstructured multigrid.
+ACKNOWLEDGMENTS
+We would like to thank Xinliang Wang, Qin Wang, Zhaohui Ding,
+and others for their valuable suggestions. This work is supported by
+the National Natural Science Foundation of China (NO.U2242210).
+Wei Xue (Email: xuewei@tsinghua.edu.cn) is the corresponding
+author of this paper.
+REFERENCES
+[1] Ahmad Abdelfattah and et al. 2021. A survey of numerical linear algebra meth-
+ods utilizing mixed-precision arithmetic. The International Journal of High
+Performance Computing Applications 35 (Mar 2021).
+[2] China Meteorological Administration. 2016. GRAPES Numerical Weather Predic-
+tion System. Retrieved July 7, 2023 from https://www.cma.gov.cn/2011xwzx/
+2011xqxxw/2011xqxyw/202110/t20211030_4079298.html
+[3] Innovative Computing Laboratory at University of Tennessee. 2023. HPL-MXP
+mixed-precision benchmark. Retrieved March 3, 2023 from https://hpl-mxp.org/
+[4] Timothy A. Davis and Yifan Hu. 2011. The University of Florida Sparse Matrix
+Collection. ACM Trans. Math. Softw. 38, 1, Article 1 (Dec 2011), 25 pages.
+[5] Maximilian Emans and Albert van der Meer. 2010. Mixed-precision AMG as
+linear equation solver for definite systems. Procedia Computer Science 1, 1 (2010),
+175–183. https://doi.org/10.1016/j.procs.2010.04.020 ICCS 2010.
+[6] Robert D. Falgout and Jacob B. Schroder. 2014. Non-Galerkin Coarse Grids for
+Algebraic Multigrid. SIAM J. Sci. Comput. 36, 3 (Jan 2014), C309–C334.
+[7] Hormozd Gahvari and et al. 2012.
+Modeling the Performance of an Alge-
+braic Multigrid Cycle Using Hybrid MPI/OpenMP. In 2012 41st International
+Conference on Parallel Processing. 128–137.
+[8] S. L. Glimberg and et al. 2013. A Fast GPU-Accelerated Mixed-Precision Strategy
+for Fully Nonlinear Water Wave Computations. In Numerical Mathematics and
+Advanced Applications 2011. Berlin, Heidelberg, 645–652.
+[9] Dominik Goddeke and Robert Strzodka. 2011. Cyclic Reduction Tridiagonal
+Solvers on GPUs Applied to Mixed-Precision Multigrid. IEEE Trans. Parallel
+Distrib. Syst. 22, 1 (jan 2011), 22–32. https://doi.org/10.1109/TPDS.2010.61
+[10] Nicholas J. Higham and Theo Mary. 2022. Mixed precision algorithms in numeri-
+cal linear algebra. Acta Numerica 31 (2022), 347–414.
+[11] Nhut-Minh Ho and et al. 2017. Exploiting half precision arithmetic in Nvidia
+GPUs. In 2017 IEEE High Performance Extreme Computing Conference (HPEC).
+[12] X. Huang and et al. 2016. P-CSI v1.0, an accelerated barotropic solver for the
+high-resolution ocean model component in the Community Earth System Model
+v2.0. Geoscientific Model Development 9, 11 (2016), 4209–4225.
+[13] Intel. 2018. BFLOAT16 - hardware numerics definition. Retrieved Nov 30, 2023
+from https://www.intel.com/content/dam/develop/external/us/en/documents/
+bf16-hardware-numerics-definition-white-paper.pdf
+[14] Carlo Janna, Andrea Comerlati, and Giuseppe Gambolati. 2009. A Comparison
+of Projective and Direct Solvers for Finite Elements in Elastostatics. Adv. Eng.
+Softw. 40, 8 (aug 2009), 675–685. https://doi.org/10.1016/j.advengsoft.2008.11.010
+[15] Lawrence Livermore National Lab. 2023. Documentation for hypre. Retrieved
+March 3, 2023 from https://hypre.readthedocs.io/en/latest
+[16] Lawrence Livermore National Lab. 2023. Structured multigrid in HYPRE. Re-
+trieved March 3, 2023 from https://hypre.readthedocs.io/en/latest/solvers-smg-
+pfmg.html
+[17] Ruipeng Li and Ulrike Meier Yang. 2021. Performance Evaluation of hypre Solvers.
+(Feb 2021). https://doi.org/10.2172/1764323
+[18] Daniel Lowell and et al. 2013. Stencil-Aware GPU Optimization of Iterative
+Solvers. SIAM Journal on Scientific Computing 35, 5 (2013), S209–S228.
+[19] Stephen F. McCormick, Joseph Benzaken, and Rasmus Tamstorf. 2020. Algebraic
+error analysis for mixed-precision multigrid solvers. SIAM J. Sci. Comput. 43
+(2020), S392–S419.
+[20] Paulius Micikevicius, Sharan Narang, Jonah Alben, Gregory Diamos, Erich
+Elsen, David Garcia, Boris Ginsburg, Michael Houston, Oleksii Kuchaiev, Ganesh
+Venkatesh, and Hao Wu. 2018. Mixed Precision Training. arXiv:1710.03740 [cs.AI]
+[21] Eike H. Müller and et al. 2014. Massively parallel solvers for elliptic partial
+differential equations in numerical weather and climate prediction. Quarterly
+Journal of the Royal Meteorological Society 140, 685 (2014), 2608–2624.
+[22] M. Naumov and et al. 2015. AmgX: A Library for GPU Accelerated Algebraic
+Multigrid and Preconditioned Iterative Methods. SIAM Journal on Scientific
+Computing 37, 5 (2015), S602–S626.
+[23] Society of Petroleum Engineers. 2023. SPE Comparative Solution Project. Re-
+trieved March 3, 2023 from https://www.spe.org/web/csp/datasets/set02.htm
+[24] Kyaw Linn Oo and Andreas Vogel. 2020. Accelerating Geometric Multigrid Pre-
+conditioning with Half-Precision Arithmetic on GPUs. arXiv:2007.07539 [cs.MS]
+[25] China Meteorological News Press. 2014. An Introduction of GRAPES. Retrieved
+July 7, 2023 from https://www.cma.gov.cn/en/NewsReleases/MetInstruments/
+201403/t20140327_241784.html
+[26] Trilinos project. 2023. MueLu.
+Retrieved Nov 26, 2023 from https://trilinos.
+github.io/muelu.html
+[27] Christian Richter and et al. 2014.
+GPU-accelerated mixed precision alge-
+braic multigrid preconditioners for discrete elliptic field problems. In 9th IET
+International Conference on Computation in Electromagnetics. 1–2.
+[28] Yousef Saad. 2003. Iterative Methods for Sparse Linear Systems (second ed.).
+Society for Industrial and Applied Mathematics.
+[29] Martin H. Sadd. 2005. Elasticity: Theory, Applications, and Numerics. Academic
+Press. https://doi.org/10.1016/B978-0-12-605811-6.X5000-3
+[30] K. Stuben. 2000. Algebraic Multigrid (AMG) : An Introduction With Applications.
+[31] MFEM team. 2023. MFEM examples.
+Retrieved Nov 26, 2023 from https:
+//mfem.org/examples
+[32] Ulrich Trottenberg and et al. 2001.
+Multigrid. Academic Press, San Diego,
+California, USA.
+[33] Yu-Hsiang Mike Tsai and et al. 2023. Three-precision algebraic multigrid on
+GPUs. Future Generations Computer Systems 149 (12 2023).
+[34] Xiaowen Xu and et al. 2017. Algebraic interface-based coarsening AMG precon-
+ditioner for multi-scale sparse matrices with applications to radiation hydrody-
+namics computation. Numerical Linear Algebra with Applications 24, 2 (2017),
+e2078. https://doi.org/10.1002/nla.2078
+[35] Takateru Yamagishi and et al. 2016. GPU Acceleration of a Non-Hydrostatic
+Ocean Model with a Multigrid Poisson/Helmholtz Solver. Procedia Comput. Sci.
+80, C (jun 2016), 1658–1669. https://doi.org/10.1016/j.procs.2016.05.502
+[36] Ulrike Meier Yang. 2010. On long-range interpolation operators for aggressive
+coarsening. Numerical Linear Algebra with Applications 17, 2-3 (2010), 453–472.
+[37] Xiaojian Yang and et al. 2023. Optimizing Multi-Grid Computation and Paral-
+lelization on Multi-Cores. In Proceedings of the 37th International Conference
+on Supercomputing (ICS ’23). 227–239. https://doi.org/10.1145/3577193.3593726
+[38] Chensong Zhang and et al. 2023. OpenCAEPoro. Retrieved March 3, 2023 from
+https://github.com/OpenCAEPlus/OpenCAEPoro/tree/main/examples/spe10
+[39] Qianchao Zhu and et al. 2021.
+Enabling and Scaling the HPCG Bench-
+mark on the Newest Generation Sunway Supercomputer with 42 Million Het-
+erogeneous Cores. In Proceedings of the International Conference for High
+Performance Computing, Networking, Storage and Analysis (SC ’21). ACM, Ar-
+ticle 57, 13 pages. https://doi.org/10.1145/3458817.3476158
+[40] Yi Zong and et al. 2024. POSTER: StructMG: A Fast and Scalable Structured
+Multigrid. In Proceedings of the 29th ACM SIGPLAN Annual Symposium on
+Principles and Practice of Parallel Programming, PPoPP 2024. ACM, 478–480.
+https://doi.org/10.1145/3627535.3638482
+62
+
+
+Future Generation Computer Systems 149 (2023) 280–293
+Contents lists available at ScienceDirect
+Future Generation Computer Systems
+journal homepage: www.elsevier.com/locate/fgcs
+Three-precision algebraic multigrid on GPUs
+Yu-Hsiang Mike Tsai a,∗, Natalie Beams b, Hartwig Anzt b,a
+a Karlsruhe Institute of Technology, Kaiserstraße 12, 76131, Karlsruhe, Germany
+b Innovative Computing Laboratory, University of Tennessee, 1122 Volunteer Blvd, 37996 TN, Knoxville, USA
+a r t i c l e
+i n f o
+Article history:
+Received 16 February 2023
+Received in revised form 15 July 2023
+Accepted 19 July 2023
+Available online 23 July 2023
+Keywords:
+Algebraic multigrid
+Mixed precision
+Portability
+GPUs
+a b s t r a c t
+Recent research has demonstrated that using low precision inside some levels of an algebraic multigrid
+(AMG) solver can improve performance without negatively impacting the AMG quality. In this paper,
+we build upon previous research and implement an AMG that can use double, single, and half precision
+for the distinct multigrid levels. The implementation is platform-portable across GPU architectures
+from AMD, Intel, and NVIDIA. In an experimental analysis, we demonstrate that the use of half precision
+can be a viable option in multigrid. We evaluate the performance of different AMG configurations and
+demonstrate that mixed precision AMG can provide runtime savings compared to a double precision
+AMG.
+© 2023 Elsevier B.V. All rights reserved.
+1. Introduction
+Finite element simulations drive a large portion of computer-
+assisted research and development. The principle behind finite
+element simulations is the discretization of the weak form of the
+governing partial differential equation(s) on a mesh and the com-
+putation of solution approximations through local basis functions
+on each mesh element. Computing these approximations requires
+the solution of a linear system that reflects the contributions
+of the local basis functions to the global solution. Given the
+properties of the finite element discretization, the local solutions
+are only directly coupled to their neighboring mesh elements,
+resulting in linear systems that are typically large and sparse.
+For one-dimensional finite element simulations, direct sparse
+linear solvers based on Gaussian elimination are generally a good
+choice, but for two- and three-dimensional simulations, the large
+fill-in occurring during the factorization makes direct solvers
+unattractive. Instead, iterative solvers generating a sequence of
+successively-better solution approximations are often preferred.
+A successful iterative solver must find a balance between how
+quickly each iteration can be performed and how many iterations
+are required to reach the desired accuracy tolerance. A simple
+iterative process may be very cheap to apply on a per-iteration
+basis but do a poor job in terms of reducing some (or all) frequen-
+cies of the error with each iteration. This motivates the concept
+of multigrid methods [1–4], which use a hierarchy of successively
+smaller problems (coarse grids), related through operators that
+restrict from fine to coarse and prolongate back. These different
+levels of refinement allow the same iterative solvers to target
+∗Corresponding author.
+E-mail address:
+yu-hsiang.tsai@kit.edu (Y.-H.M. Tsai).
+different frequencies of the total error at the same time, based
+on how the error is represented on each grid. Traditionally, one
+distinguishes two classes of multigrid methods: those that use the
+geometric mesh information to derive the hierarchy of grids are
+called ‘‘Geometric Multigrid Methods’’ (GMG); those that derive
+the hierarchy of grids exclusively from the large sparse matrix
+are called ‘‘Algebraic Multigrid Methods’’ (AMG). AMG methods
+are particularly effective for discretizations of elliptic PDEs on un-
+structured grids and problems that lack an underlying geometric
+mesh.
+Mixed precision methods for numerical computing have a
+long history and are still an active area of research [5]. With
+the widespread use of GPU accelerators in scientific computing,
+mixed precision methods exploiting their lower (single, half, or
+other formats like bfloat16) precision capabilities while retaining
+suitable accuracy are of particular interest recently [6]. When
+using mixed precision in the context of solving linear systems,
+perhaps the most common choice is a form of iterative refine-
+ment (IR). Originally proposed as a way to reduce accumulated
+round-off errors [7,8], it is a framework in which the solution is
+successively refined through corrections found by solving a linear
+system with the residual of the previous iteration as the right-
+hand side. These ‘‘inner’’ solves – taking place inside the outer
+iterative process – can often be done at a lower precision than
+the calculation of the residual vectors and updates to the solution.
+This offers the opportunity to accelerate the time to solution, as
+has been demonstrated on both CPUs [9,10] and GPUs [11,12].
+Previous mixed precision multigrid work on GPUs has gen-
+erally focused on using a reduced or mixed precision MG cycle
+in the inner solve of a higher-precision IR process [13–15]. This
+strategy is given careful theoretical consideration by Tamstorf
+et al. in [16,17]. In most cases, the multigrid itself is not mixed
+https://doi.org/10.1016/j.future.2023.07.024
+0167-739X/© 2023 Elsevier B.V. All rights reserved.
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+precision, meaning that the entire MG solver uses the lower
+precision, rather than combining different precisions on the dif-
+ferent levels. Oo and Vogel [15] consider several configurations of
+mixed precision GMG for the inner solve of IR, with up to three
+different precisions on different levels, including half precision.
+They try both ‘‘directions’’ for the lower precision use: on the
+coarsest grids, with higher precisions on the finer grids, and
+vice versa. The former is similar in spirit to our three-precision
+configurations. While not a GPU implementation, a notable work
+of mixed precision MG apart from an IR framework is Buttari
+et al. [18], where the authors deploy single precision and block
+low rank factorization to decrease the coarse grid solution time
+of a very large, distributed GMG solver. In our current work,
+we also do not use lower or mixed precision multigrid inside
+iterative refinement, opting instead to test its use as a ‘‘drop
+in’’ replacement for any other double precision preconditioner
+in a conjugate gradient (CG) solver. We also briefly consider the
+performance of mixed precision AMG as a stand-alone solver in
+Section 4.4.
+Compared to existing literature, this paper presents the fol-
+lowing novel contributions:
+1. We evaluate the use half precision within AMG with re-
+spect to preconditioner accuracy and CG convergence;
+2. We demonstrate that using half precision for some AMG
+components can be a viable option even if aiming for
+high-accuracy solutions;
+3. We compare the performance of mixed precision AMG on
+AMD MI250X, Intel PVC, and NVIDIA H100 GPUs.
+The rest of the paper is structured as follows: Following some
+brief background in Section 2, details of the design of Ginkgo’s
+AMG, showcasing its flexibility in terms of mixed precision con-
+figuration, are given in Section 3. Section 4 evaluates the effec-
+tiveness and performance of the mixed precision AMG when used
+as a preconditioner inside a CG iterative solver on NVIDIA, AMD,
+and Intel GPUs. We then briefly discuss using mixed precision
+AMG as a standalone solver and the potential of mixed precision
+in other types of multigrid cycles. The findings are summarized
+in Section 5.
+2. Background on AMG
+Algebraic multigrid (AMG) [2,4] is a popular choice for solving
+or preconditioning linear problems originating from finite ele-
+ment discretizations. Unlike geometric multigrid (GMG), which
+relies on using information about the underlying geometric mesh,
+an AMG solver is constructed directly from the sparse system ma-
+trix. Similarly to GMG, AMG builds a hierarchy of consecutively-
+coarser grids and computes error correction terms on the coarser
+grids to improve the solution on finer grids. After creating the
+hierarchy, we can use it for a multigrid method like the V-
+Cycle in Algorithm 1. It restricts the residual on a fine grid to
+a coarser grid, then uses the coarser grid to obtain an error
+correction that is prolongated back to the finer grid to update the
+solution approximation. These correction computations generally
+entail a few iterations of an iterative method, called a ‘‘smoother’’
+because it acts to smooth the high-frequency errors on the scale
+of that grid, while the coarsest grid may opt for a direct solve of
+the restricted problem, which is much smaller than the original
+matrix.
+Our previous work [19] developed an AMG implementation
+as part of the Ginkgo library that allows the user to employ
+single precision for coarse (i.e., not the finest) multigrid levels.
+We now present an extension of this work, enabling half precision
+computations. This results in the first AMG implementation that
+can employ double, single, and half precision computations for
+Algorithm 1 V-cycle multigrid method. We use blue, red, and
+brown colors, respectively, to indicate the precision for: ma-
+trices (A), working vectors on the fine level (r), and working
+vectors on the next coarsest level (g, e). The presmoothers and
+postsmoothers also use the working precision for computation
+and matrix precision for the system matrix.
+1: procedure Vcycle(A, x, b)
+2:
+x = PreSmooth(x, b)
+3:
+r = b - Ax
+4:
+g = Restrict(r)
+5:
+e = zero
+6:
+Vcycle(Coarse, e, g)
+7:
+x += Prolong(e)
+8:
+x = PostSmooth(x, b)
+9: end procedure
+Fig. 1. The MultigridLevel class with its components.
+the distinct multigrid levels on AMD, Intel, and NVIDIA GPUs.
+We demonstrated in our first paper that Ginkgo AMG can be
+competitive with existing open source AMG implementations –
+namely, NVIDIA’s AmgX [20] and Lawrence Livermore National
+Laboratory’s HYPRE [21] – on an NVIDIA GPU. In this work,
+we focus on the evaluation of different precision configurations,
+including the use of half precision, within Ginkgo AMG.
+3. Design of the flexible and platform-portable AMG
+The design of the Ginkgo AMG is driven by three main goals:
+flexibility, performance, and platform portability.
+In Ginkgo, we define a MultigridLevel class, visualized in
+Fig. 1, that contains a fine grid matrix from which it constructs
+the coarse grid matrix (C) via the coarsening algorithm, as well as
+the restriction (R) and prolongation (P) operators. The fine matrix
+(F) is the given matrix or the coarse matrix from the finer level,
+but with the storage precision or format potentially altered by
+the MultigridLevel according to the algorithm requirement or
+settings. The prolongation operator (P) is an n × m matrix built
+from F, and the restriction operator (R) is an m×n matrix defined
+as PT . The coarse matrix (C) is an m×m matrix formed as C = RFP,
+i.e., standard Galerkin coarsening. The MultigridLevel class is
+visualized with its key components in Fig. 1.
+Ginkgo’s AMG implementation allows the use of different
+precision formats on different levels of the multigrid hierarchy,
+resulting in a mixed precision AMG. The precision conversion
+happens on-the-fly in the restriction and prolongation operations.
+The gray and red portions of Listing 1 show a standard AMG
+V-cycle with a max level depth of 10, a smoother sm that is
+used for all smoothing operations, a MultigridLevel mg_lvl,
+and a coarse level solver, coarsest_solver. The number of
+smoothing sweeps is a parameter of the smoother object sm.
+In the configuration shown in the gray and green parts of
+Listing 1, we enable mixed precision by adding two Multigrid-
+Levels and two smoothers in the configuration list, with _f
+281
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+1 multigrid::build()
+2
+.with_max_levels(10u)
+/ /
+e q u a l
+t o
+NVIDIA / AMGX
+11
+max
+l e v e l s
+3
+.with_min_coarse_row(64u)
+4 DP
+.with_pre_smoother(sm)
+5 |
+.with_mg_level(mg_lvl)
+6 DP
+.with_coarest_solver(coarest_solver)
+7 MP
+.with_pre_smoother(sm, sm_f)
+8 ||
+.with_mg_level(mg_lvl , mg_lvl_f)
+9 ||
+.with_coarest_solver(coarest_solver_f)
+10 ||
+.with_level_selector(
+11 ||
+[](const size_type level, const LinOp*)
+12 ||
+-> size_type {
+13 ||
+return level >= 1 ? 1 : 0;
+14 MP
+})
+Listing 1:
+Configuration of a Ginkgo Multigrid object.
+Lines with a red background are used when configuring for
+double precision (DP), while the green background indicates
+configuration for mixed precision (MP).
+indicating ‘‘float’’ or single precision. We also need to config-
+ure the level_selector to describe the desired scheme. Here,
+when the level is larger than or equal to 1 (that is, all levels except
+the finest grid), we use the second pair (mg_lvl_f, sm_f).
+When the level is less than 1, we use the first pair (mg_lvl, sm).
+Taken together, this configuration generates a mixed precision
+Multigrid where only the finest level is using double precision,
+and all other levels use single precision. This particular mixed
+precision Multigrid configuration allows for smooth integration
+as a preconditioner into an iterative solver using double precision,
+as the input and output vectors, as well as the original matrix,
+remain in double precision.
+As smoother applications in the form of vector operations
+are relatively cheap, the runtime of an AMG cycle is gener-
+ally dominated by the residual computations that involve sparse
+matrix–vector multiplications (SpMVs). We implement several
+common optimization techniques to reduce the overhead of these
+operations. Since memory allocation on the GPU is known to be
+expensive [22,23], we use a workspace for allocating the opera-
+tor components and intermediate operations. The workspace is
+available over the complete lifetime of the operator.
+We also reduce the overall number of residual evaluations
+when possible: we skip residual computation if an initial guess
+is zero, because we know the residual will be equal to the right-
+hand side vector. When using AMG as a preconditioner, we only
+compute the explicit residual if the user requests it, e.g. for mon-
+itoring convergence. A few optimizations regarding the handling
+of residual vectors are specific to the machinery of the Ginkgo
+library itself. For example, if we need the residual in the AMG
+solver, and an internal component already computed it, this resid-
+ual is ensured to be accessible from outside the component. We
+also ‘‘split’’ the iteration termination check within Ginkgo, such
+that reaching an iteration limit terminates the algorithm before
+the residual is computed for convergence checking purposes.
+To enable both platform and performance portability, we im-
+plement the Ginkgo AMG using a backend model as described
+in [24,25], where we complement an algorithm skeleton invoking
+a sequence of subroutines with backends containing the corre-
+sponding subroutines as heavily optimized GPU kernels in the
+vendor-native programming languages. Specifically, we imple-
+ment CUDA kernels for NVIDIA GPUs, DPC++ kernels for Intel
+GPUs, and HIP kernels for AMD GPUs. Instead of having three
+complete stand-alone AMG implementations for the distinct GPU
+architectures with the corresponding kernel sets, we use C++
+runtime polymorphism for automatically selecting and invoking
+the suitable kernels when executing the AMG algorithm. This
+Fig. 2. Meshes used for MFEM diffusion experiments. Left: L-shape mesh with 7
+levels of uniform refinement (49,152 elements); Right: Beam mesh with 3 levels
+of uniform refinement (4,096 elements).
+allows the deployment of the AMG solver without having to
+maintain different variants for different hardware architectures.
+By doing so, we keep the cutting-edge features from vendors’
+official compilers without waiting for another compiler to adopt
+the new features.
+4. Experimental evaluation
+We consider a set of benchmark problems from the SuiteS-
+parse Matrix Collection [26], as well as two diffusion problems
+exported from the MFEM finite element library. MFEM [27,28] is a
+popular open-source finite element library with support for high-
+order meshes and basis functions, among many other features.
+Our exported problems come from MFEM’s ‘‘example 1’’, solving
+a standard diffusion problem −∇· (c∇u) = 1, where c is a given
+coefficient. We use homogeneous Dirichlet boundary conditions.
+Two of MFEM’s provided meshes are tested; they are shown in
+Fig. 2. For the ‘‘L-shape’’ mesh, a constant coefficient of c =
+1 is used, while the ‘‘beam’’ mesh uses a piecewise constant
+coefficient with a jump from 1 to 0.1 at the midpoint of the
+length of the beam. All tests use standard third order tensor-
+product basis functions on the Legendre–Gauss–Lobatto nodes
+and MFEM’s default choices for quadrature points based on the
+order of basis functions. A summary of all matrices is provided
+in
+Table 1, including their sizes and the range of the absolute
+values of all their nonzeros.
+We evaluate Ginkgo’s AMG implementation on GPU architec-
+tures from AMD, Intel, and NVIDIA. The GPUs and corresponding
+compilers are listed along with some key characteristics in Ta-
+ble 2. Note that the AMD MI250X has two graphics compute dies
+(GCDs), but the GCDs are seen individually by the system. In the
+following, we always consider just one GCD. Similarly, one Intel
+PVC GPU contains two tiles, but we run exclusively on one tile.
+For Intel GPUs, to our best knowledge, Ginkgo is currently the
+only library providing an AMG implementation with all portions
+of the calculation taking place on the GPU.
+The experimental results are arranged as follows: first, we
+discuss a simple model for the potential performance gains of
+mixed precision AMG based on the performance of sparse matrix–
+vector multiplication (SpMV) operations and data storage. Next,
+mixed precision AMG (V-cycle) is used as a preconditioner inside
+a CG solver for our selected benchmark problems, and we analyze
+the effects on convergence rate and time per iteration. We discuss
+the challenges of using half precision in AMG and strategies
+for mitigation. Finally, we briefly consider AMG as a standalone
+solver and the potential for mixed precision in other multigrid
+cycles, like the W-cycle.
+4.1. SpMV performance as proxy for AMG
+For an idea of the potential performance benefits of mixed
+precision AMG on our target architectures, we analyze the per-
+formance of the sparse matrix–vector operation (SpMV), which is
+282
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+Table 1
+Matrix characteristics for the selected problems.
+Problem
+Size
+Elements
+abs. value range
+MFEM
+beam (-o3 -l3)
+120,625
+14,070,001
+8.9×10−7–1.0
+L-shape (-o3 -l7)
+443,905
+11,066,881
+4.0×10−3–6.0
+2cubes_sphere
+101,492
+1,647,264
+6.7×10−15–2.5×1010
+thermal2
+1,228,045
+8,580,313
+1.7×10−7–4.9
+SuiteSparse
+cage14
+1,505,785
+27,130,349
+0.011–0.94
+cage13
+445,315
+7,479,343
+0.012–0.93
+offshore
+259,789
+4,242,673
+7.2×10−21–7.5×1014
+tmt_sym
+726,713
+5,080,961
+8.5×10−14–19
+Table 2
+GPU characteristics.
+GPU
+Peak Perf. (DP)
+Peak Perf. (SP)
+Mem. size
+Bandwidth
+Compiler
+AMD MI250Xa (1 GCD)
+24 TFLOP/s
+24 TFLOP/s
+64 GB
+1.6 TB/s
+HIP 5.3
+NVIDIA H100b (PCIE)
+26 TFLOP/s
+51 TFLOP/s
+80 GB
+2.0 TB/s
+CUDA 12.0
+Intel PVCc (1 Tile)
+22.8 TFLOP/s
+22.8 TFLOP/s
+64 GB
+1.6 TB/s
+DPC++ 2023.1
+Note: PVC is not released as of this writing, so the official characteristics may be changed when released.
+aFrom Frontier, Oak Ridge National Laboratory, USA.
+bFrom BwUniCluster 2.0, bwHPC, Germany.
+cFrom Sunspot, Argonne National Laboratory, USA.
+used in residual computations. We expect the residual computa-
+tions on each level to be the major limiting factor of performance;
+in comparison, the solution phase of our smoothers, as well as the
+restriction and prolongation operations, are simpler. We extract
+the original matrices and the coarse matrices from levels 1–
+10 in an 11-level multigrid. After 2 warmup applications, we
+average the results from 10 SpMV evaluations. The SpMV is a
+memory-bound operation, with performance tied to the amount
+of memory traffic required rather than the number of floating
+point operations performed. The memory involved in a SpMV
+operation of an n × n CSR matrix with nnz non-zero elements
+can be written as:
+(nnz + n + 1) × I + (nnz + 2n) × V.
+I and V are the size, in bytes, of the IndexType and ValueType
+used for the CSR matrix storage. When nnz ≫n, the storage is
+approximated as nnz ×(I +V). Thus, in terms of reduced memory
+traffic, the speedup of a lower precision ValueType V2 over higher
+precision V1 can be estimated as
+nnz(I + V1)
+nnz(I + V2) = I + V1
+I + V2
+.
+For example, the speedup of single precision SpMV over double
+precision SpMV would be 1.5x, and the speedup of half precision
+SpMV over double precision SpMV would be 2x.
+Ginkgo has recently introduced native half precision support.
+The classical CSR SpMV kernel in Ginkgo is shown in Listing 2.
+In Fig. 4 we visualize the speedup of single and half precision
+SpMVs over double precision on the H100 GPU for the matrices
+of the distinct multigrid levels for each of the test matrices.
+The matrix size decreases for coarser multigrid levels, numbered
+with higher level numbers, as shown in Fig. 3. For the classical
+CSR implementation, the performance difference between the
+single and half precision SpMVs is negligible on H100. A possible
+explanation is that NVIDIA GPUs are optimized for each thread
+accessing at least 4 bytes of memory, which forms a 128 byte
+cache line. To adjust for this, we consider a ‘‘packed’’ version of
+CSR SpMV. The implementation, shown in Listing 3, processes
+two half precision values in one memory access. With the packed
+variant, the performance of the half precision SpMV generally
+outperforms that of single precision on H100 in Fig. 5, especially
+for larger cases, which is in the left side in the plots. We note
+that speedup values can exceed expectations due to cache effects.
+Figs. 6 and 7 combine the performance data and arrange the
+1
+template < i n t
+subwarp_size >
+2 classical_csr_spmv(row_ptrs , col_idxs , val, b, c)
+{
+3
+/ /
+c r e a t e
+a
+subwarp
+w i t h
+t h e
+subwarp
+s i z e
+4
+auto subwarp_tile = ...;
+5
+/ /
+g e t
+t h e
+i n d e x
+o f
+t h r e a d
+i n
+a
+subwarp
+6
+const
+auto subid = ...;
+7
+/ /
+g e t
+t h e
+p r o c e s s i n g
+row
+i n d e x
+8
+auto row = ...;
+9
+const
+auto ind_end = row_ptrs[row + 1];
+10
+ValueType temp_val = zero<ValueType >();
+11
+/ /
+each
+t h r e a d
+a c c u m u l a t e s
+t h e
+r e s u l t ;
+s w i t c h
+n e x t
+window
+by
+s u b w a r p _ s i z e
+12
+f o r ( auto ind = row_ptrs[row] + subid; ind <
+ind_end; ind += subwarp_size) {
+13
+temp_val += val[ind] * b[col_idxs[ind]];
+14
+}
+15
+/ /
+use
+s h u f f l e
+t o
+g e t
+t h e
+summation
+o f
+a l l
+t h r e a d s
+i n
+a
+subwarp
+16
+auto subwarp_result = ...;
+17
+i f
+(subid == 0) {
+18
+/ /
+w r i t e
+t h e
+r e s u l t
+t o
+memory
+19
+c[row] = subwarp_result;
+20
+}
+21 }
+Listing 2: Classical CSR SpMV as implemented in Ginkgo
+Fig. 3. The ratio of the number of stored elements in each level of a multigrid
+hierarchy to that of the finest level (level 0), using Parallel Graph Match [20]
+with size 2 for aggregation.
+283
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+1
+template < i n t
+subwarp_size >
+2 classical_csr_spmv_pack(row_ptrs , col_idxs , val,
+b, c) {
+3
+/ /
+c r e a t e
+a
+subwarp
+w i t h
+t h e
+subwarp
+s i z e
+4
+auto subwarp_tile = ...;
+5
+/ /
+g e t
+t h e
+i n d e x
+o f
+t h r e a d
+i n
+a
+subwarp
+6
+const
+auto subid = ...;
+7
+/ /
+g e t
+t h e
+p r o c e s s i n g
+row
+i n d e x
+8
+auto row = ...;
+9
+const
+auto ind_end = row_ptrs[row + 1];
+10
+ValueType temp_val = zero<ValueType >();
+11
+/ /
+each
+t h r e a d
+a c c u m u l a t e s
+t h e
+r e s u l t ;
+s w i t c h
+n e x t
+window
+by
+s u b w a r p _ s i z e ∗2
+12
+/ /
+each
+t h r e a d
+h a n d l e s
+two
+e l e m e n t s
+f o r
+h a l f
+13
+f o r ( auto ind = row_ptrs[row] + subid * 2;
+ind < ind_end; ind += subwarp_size * 2)
+{
+14
+temp_val += val[ind] * b[col_idxs[ind]];
+15
+i f
+(ind + 1 < ind_end) {
+16
+/ /
+Add
+t h e
+n e x t
+e l e m e n t
+i f
+a v a i l a b l e
+17
+temp_val += val[ind+1] * b[col_idxs[
+ind+1]];
+18
+}
+19
+}
+20
+/ /
+use
+s h u f f l e
+t o
+g e t
+t h e
+summation
+o f
+a l l
+t h r e a d s
+i n
+a
+subwarp
+21
+auto subwarp_result = ...;
+22
+i f
+(subid == 0) {
+23
+/ /
+w r i t e
+t h e
+r e s u l t
+t o
+memory
+24
+c[row] = subwarp_result;
+25
+}
+26 }
+Listing 3:
+Classical CSR SpMV: packed variant with altered
+memory access
+Fig. 4. H100 speedup of single and half precision SpMVs compared to double
+precision for the matrices produced on each level of AMG.
+matrices according to increasing nonzero count. Fig. 7 shows clear
+improvement for the packed half variant compared to Fig. 6. For
+both versions, we see noticeable speedup for matrices containing
+more than 2e5 elements. The additional condition in line 15
+of Listing 3 is only known at runtime, and is not based solely
+on the index of the thread, which poses a challenge for the
+compiler. This additional complexity compared to the classical
+SpMV kernel could be a factor in the cases where the packed
+variant performs worse than single precision, particularly since
+this happens for the smaller matrices. With less total memory
+movement involved, there is less potential speedup to cover for
+the effects of the extra conditional statement.
+We repeat the same experiments on one GCD of an AMD
+MI250X GPU. Here, the original CSR implementation achieves
+higher performance in half precision than in single precision,
+Fig. 5. H100 speedup of single and half precision SpMVs compared to double
+precision for the matrices produced on each level of AMG. The half precision
+SpMV uses the ‘‘packed half’’ variant.
+Fig. 6. H100 speedup of single (◦) and half precision (×) SpMVs for all matrices
+in the AMG hierarchies, arranged by total number of nonzeros.
+Fig. 7. H100 speedup of single (◦) and half precision (×) SpMVs for all matrices
+in the AMG hierarchies, arranged by total number of nonzeros. The half precision
+SpMV uses the ‘‘packed half’’ variant.
+shown in Fig. 8, and the packed variant does not improve per-
+formance compared to the original version. Similar to the NVIDIA
+284
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+Fig. 8. MI250X speedup of single and half precision SpMVs compared to double
+precision for the matrices produced on each level of AMG.
+Fig. 9. MI250X speedup of single (◦) and half precision (×) SpMVs for all
+matrices in the AMG hierarchies, arranged by total number of nonzeros.
+H100 experiments, we observe significant performance benefits
+only for matrices containing more than 2e5 elements in Fig. 9.
+Like the H100, using the packed variant for half precision
+gives better performance than the original version for CSR SpMV
+on one tile of PVC in Figs. 10 and 11. The finest matrix of
+cage14 can reach around 6x speedup for half precision compared
+to double precision. This may be related to Ginkgo’s choice of
+subwarp_size for half precision compared to double precision.
+In Ginkgo, the subwarp size (1, 16, or 32) is chosen according
+to the average number of non-zeros per rows in the matrix for
+PVC. Intel PVC only supports 16 and 32 for subgroup (analogous
+to a warp in NVIDIA terminology) size, and Intel does not support
+the same sub-subgroup features as subwarp in CUDA currently.
+For the SpMV kernel on PVC, Ginkgo uses the subgroup as a
+subwarp safely because there is no communication out of the
+subgroup/subwarp. Size 1 is still available for PVC because it
+corresponds to one thread per row. Because threads handle two
+matrix elements each in half precision, the kernel can assign a
+smaller subwarp size in half precision when the average num-
+ber of non-zeros per row is less than 32, and this smaller size
+may perform particularly well for some matrices. However, half
+precision is slower than single precision for several matrices.
+Moreover, the single precision speedup is quite close to 1. In this
+case, the kernel may use too large of a subwarp size for the short
+rows such that we do not fully utilize the GPU. The CUDA and
+Fig. 10. PVC speedup of single and half precision SpMVs compared to double
+precision for the matrices produced on each level of AMG. The half precision
+SpMV uses the ‘‘packed half’’ variant.
+Fig. 11. PVC speedup of single (◦) and half precision (×) SpMVs for all matrices
+in the AMG hierarchies, arranged by total number of nonzeros. The half precision
+SpMV uses the ‘‘packed half’’ variant.
+HIP backends may select subwarp sizes of 2, 4, or 8, while PVC is
+limited to choosing between 1 and 16 for short rows, due to the
+limitations mentioned above.
+4.1.1. Extension to mixed precision AMG
+We can compute storage approximations for an entire AMG
+cycle based on the number of SpMVs on each level. In our im-
+plementation, coarsening usually aggregates two nodes together,
+while the exact compression ratio depends on the sparsity pat-
+tern. Fig. 3 reports the relative nonzero count of the matrices in
+the distinct AMG levels in comparison to a compression ratio of
+2. Accumulating over an AMG hierarchy of N + 1 levels, we have
+N
+∑
+i=0
+Ci
+1
+2i {(nnz + n + 1) × I + (nnz + 2n) × Vi}
+≈
+N
+∑
+i=0
+Ci
+nnz × (I + Vi)
+2i
+,
+where Vi is the size of the precision on level i and Ci is a constant
+determined by the total number of SpMVs performed on that
+level. For example, in the Jacobi smoother V-cycle configuration
+285
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+below, we have Ci = 2 for all but the coarsest level, coming from
+one pre- and one post-smoother application on those levels. From
+here, we can compute an estimate for the potential speedup of
+the mixed precision configuration as
+∑N
+i=0 Ci
+(I+V)
+2i
+∑N
+i=0 Ci
+(I+Vi)
+2i
+.
+Extending the work of [19] to also include the use of half
+precision, we begin with four mixed precision settings:
+1. (DP): all levels use double precision.
+2. (DP-SP): The first level uses double precision, and all
+coarser levels use single precision.
+3. (DP-SP-HP): The first level uses double precision, the sec-
+ond level uses single precision, and all coarser levels use
+half precision.
+4. (DP-HP): The first level uses double precision, and all
+coarser levels use half precision.
+We call these settings ‘‘uniform level’’, meaning that the ma-
+trix and vector working precision (marked in blue and red in
+Algorithm 1) are always the same on a particular level. For the
+(DP-SP) and (DP-HP) configurations described here, the SpMV-
+based speedup estimate would predict a speedup of 1.2x and 1.3x
+over double precision AMG, respectively.
+4.2. Challenges of half precision in AMG
+We first consider a straightforward continuation of the AMG
+experiments in [19]. For defining the restriction operators, the
+AMG implementation in Ginkgo uses parallel graph match (PGM),
+which was introduced by Naumov et al. [20] as a GPU-based
+algorithm for deriving a coarse approximation through explo-
+ration of the graph representation of a matrix. It is a type of
+aggregation method, in which nodes in the fine grid are combined
+to form a single coarse grid node, and can efficiently operate on
+sparse matrices stored in the CSR format. In Ginkgo, we deploy
+PGM with deterministic aggregation of size 2, meaning PGM will
+always try to aggregate two adjacent nodes.
+The maximum number of multigrid levels is 11, with a min-
+imum of 64 rows in the coarsest matrix. We set the stopping
+criterion as implicit relative residual norm reduction of 10−12 or
+maximum of 700 iterations. The pre-/post-smoothing is weighted
+scalar Jacobi with a weight of 0.9, i.e., xi+1 = xi + 0.9D−1(b −Axi)
+where xi is the solution at iteration i, D is the diagonal matrix of
+A, and b is the right-hand side of the linear system being solved.
+The same relaxation is used on the coarse grid problem, but with
+four relaxation sweeps instead of one.
+We refer to Algorithm 1 to describe the different precision
+usage in the implementation. The right-hand side b and solution
+x are from other solvers or user inputs, so their precision is
+determined outside of the multigrid cycle in Algorithm 1. Residual
+r (red) is based on the current level’s working precision. After
+restricting r, we store the result g and zero initial guess e (brown)
+in the working precision of the next coarsest level. Precision
+conversion is part of the restriction and prolongation operations.
+As mentioned previously, the matrix precision (blue) uses the
+same as the current level’s working precision in ‘‘uniform levels’’.
+We collect all data by performing 2 warmup applications,
+followed by 5 evaluation applications, of the AMG-preconditioned
+CG solver; the times of the 5 evaluation runs are averaged. The
+results are summarized in Table 3. In (DP-SP), we see similar
+trends as reported in [19], where the solver retains the same con-
+vergence behavior but has some improvement in performance. In
+(DP-SP-HP) and (DP-HP), some experiments fail to converge and
+some matrices see delayed convergence. (DP-SP-HP) for cage13
+Fig. 12. H100 AMG-preconditioned CG with Jacobi smoothers: beam problem
+iteration counts as a function of the first level to switch to single or half
+precision.
+and cage14 have the same number of iterations as (DP) and
+(DP-SP), so we can expect some performance benefit. In the
+beam problem, the solver using half precision exhibits a conver-
+gence delay that cannot be compensated by faster computations.
+Table 1 shows that the cage13 and cage14 matrices are the
+only ones whose non-zero values fall entirely in the range that
+can be represented by half precision (which is approximately
+6×10−5–6.55×104).
+4.2.1. Effects of delayed precision changes in the AMG hierarchy
+From Table 3, the effect that the use of half precision can have
+on convergence is clear. Using the beam problem as an example,
+we plot heatmaps for the number of iterations and the total time
+with different precision settings, delaying (in terms of distance
+from the finest level) the switch to single precision, half precision,
+or both. Each table has two axes:
+• x-axis (column): The level when we change to half precision,
+and
+• y-axis (row): The level when we change to single precision.
+Each entry (x, y) means the setting is the following:
+1. use double precision from the finest level (0) to the (x−1)
+level;
+2. use single precision from the x level to (y−1) level;
+3. use half precision from the y level to the coarsest level.
+The last column (‘‘no’’) only changes to single precision, and the
+last row (‘‘no’’) only changes to half precision (skipping single
+precision). Also, the interaction of these two (no, no) is the purely
+double precision setting (DP). The coarsest solver always uses
+the same precision as the last level. In terms of the previously-
+used configurations, (no, no) = (DP), (1, no) = (DP-SP), (no, 1) =
+(DP-HP), and (1, 2) = (DP-SP-HP). We currently do not consider
+configurations where we switch to higher precision for coarser
+levels, though Ginkgo’s configuration flexibility, demonstrated
+by these tests, would make this simple to consider for future
+numerical behavior analysis. As the iteration counts in Fig. 12
+match for all configurations in the two right-most columns, the
+fastest configurations are those in the upper right corner, which
+switch to single precision sooner than those on the bottom right;
+see
+Fig. 13. Notably, these are the configurations that avoid or
+barely use half precision: any speedup from using half precision
+earlier in the multigrid cycle is not enough to make up for the
+extra iterations required for convergence.
+4.2.2. Obstacles to convergence
+Based on these initial experiments, we identified three issues
+affecting the AMG-preconditioned CG convergence for the matri-
+ces in Table 1 when using half precision in a ‘‘uniform precision
+levels’’ configuration:
+286
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+Table 3
+Performance of CG preconditioned with an AMG V-cycle, scalar Jacobi with uniform level precision configurations, on H100. The ‘‘packed half’’ SpMV implementation
+was used.
+Problem
+Ginkgo’s AMG (DP)
+Ginkgo’s AMG (DP SP)
+Ginkgo’s AMG (DP SP HP)
+Ginkgo’s AMG (DP HP)
+res. norm
+#iter
+Time [ms]
+res. norm
+#iter
+Time [ms]
+res. norm
+#iter
+Time [ms]
+res. norm
+#iter
+Time [ms]
+2cubes_sphere
+6.56151e−09
+20
+14.0444
+6.56151e−09
+20
+13.676
+NaN
+700
+430.653
+NaN
+700
+443.579
+cage13
+3.68272e−10
+11
+15.206
+3.68271e−10
+11
+13.750
+4.23527e−10
+11
+13.892
+6.146e−10
+15
+17.779
+cage14
+3.41273e−10
+10
+33.494
+3.41273e−10
+10
+30.196
+3.72638e−10
+10
+29.433
+7.02332e−10
+13
+35.629
+offshore
+1594.67
+700
+679.344
+1325.81
+700
+608.188
+NaN
+700
+629.504
+NaN
+700
+586.523
+thermal2
+2.18369e−06
+349
+477.996
+2.37802e−06
+425
+536.342
+NaN
+700
+853.791
+NaN
+700
+803.019
+tmt_sym
+6.94616e−05
+359
+360.928
+7.41395e−05
+401
+372.497
+NaN
+700
+645.689
+NaN
+700
+599.100
+beam-pw-sv0.1-o-3-l-3
+3.05273e−15
+44
+45.011
+3.05462e−15
+44
+42.417
+5.52572e−15
+86
+79.725
+7.26702e−15
+127
+119.101
+l-shape-const-o-3-l-7
+4.63552e−14
+160
+199.818
+4.78055e−14
+171
+191.208
+5.39855e−10
+700
+783.019
+3.59387e−07
+700
+758.162
+Fig. 13. H100 AMG-preconditioned CG with Jacobi smoothers: beam problem
+total solve time as a function of the first level to switch to single or half
+precision.
+• The matrix values are out of the range of half precision:
+2cubes_sphere and offshore.
+When applying the matrix with a zero vector, Inf ∗0 = NaN.
+• The application of the Jacobi smoother is out of the range of
+half-precision: thermal2 and tmt_sym.
+For some diagonal values that are within the range of half
+precision, the inverted values are not.
+• The residual is too small in coarse levels: L-shape.
+This occurs for each level of multigrid where the residual
+passed to the coarser level after the restriction is zero in
+half precision due to underflow. This means the right-hand
+side of the coarser level becomes zero, giving the trivial so-
+lution on that level, and thus no contribution to the overall
+correction. L-shape does not encounter the NaN issue, but
+the convergence is slower than the other settings. This issue
+may materialize after a few iterations, rather than from the
+beginning.
+We utilize two mitigation strategies. First, row/column scaling
+as given in Algorithm 2.5 of [29], detailed in Algorithm 2, is
+applied to the 2cubes_sphere and offshore matrices to ensure
+all values are in the half precision range. To directly compare
+the convergence of higher precisions and mixed precision, we
+perform the scaling on these matrices for all precision configu-
+rations, not just those involving half. We also add a scaling of
+1/2 to the restriction matrix in the aggregation method to protect
+against values exceeding the allowable range after the merging
+step. With scaling in Algorithm 2, the (DP-SP-HP) configuration
+on 2cubes_sphere can solve the problem without incurring NaNs.
+Second, we employ the common mixed precision technique
+of decoupling the working vector precision from the matrix stor-
+age precision, analogous to computing IR residuals in a higher
+precision to combat roundoff errors. Using a higher precision
+for the vectors helps avoid zero residuals and Jacobi smoother
+application overflow, but we retain most of the benefit from half
+precision in SpMV as the matrix accounts for the bulk of the
+memory movement. This also allows us to use a lower precision
+to store the finest level matrix. This will incur some extra setup
+cost and memory usage, as it requires copying and converting
+Algorithm 2 Symmetry-preserving row and column equilibration
+(one iteration of Algorithm 2.5 in [29]).
+1: procedure Scale(A)
+2:
+for all i in 0...n −1 do
+3:
+Let ri = max(abs(A(i, :)))1/2
+4:
+Let ci = max(abs(A(:, i)))1/2
+5:
+end for
+6:
+for all row, col in A do
+7:
+A(row, col) = A(row,col)
+rrowccol
+8:
+end for
+9: end procedure
+the original double precision matrix to store in half precision, but
+increases the potential speedup for each application of the AMG
+cycle.
+Returning to Algorithm 1, we now also have ‘‘non-uniform
+levels’’, where the matrix precision can be chosen separately from
+the vector/working precision. The arithmetic operations in the
+residual computation will always use the highest precision format
+among input, output, and matrix precisions and store the result
+in the output precision. In our configurations, the working vector
+precision always uses more bits than the matrix precision when
+they differ, so the precision used in the arithmetic operations is
+always the working vector precision.
+We consider the following non-uniform configurations:
+• The vector precision (also the arithmetic precision in our
+cases):
+1. (DP-SP): the first level’s vector uses double precision,
+but the other levels’ vectors use single precision.
+2. (DP): all vectors use double precision.
+• The matrix precision:
+1. (SP): all matrices in multigrid use single precision.
+2. (HP): all matrices in multigrid use half precision.
+3. (DP-SP-HP): the first level’s matrix uses double pre-
+cision, the second level’s matrix uses single precision,
+and the other levels’ matrices use half precision.
+Thus, we have 6 possible combinations from these options. In
+the following discussion and figures, we use the notation (Work-
+ing Precision, Matrix Precision) to represent a specific precision
+configuration. The uniform levels from previous experiments will
+now be represented with the same precision shorthand repeated,
+e.g. (DP-HP, DP-HP).
+4.2.3. Additional configuration options to improve convergence
+Even in double precision, some of our test problems are dif-
+ficult for the simple AMG configuration used in the previous
+experiments; the offshore problem did not converge within the
+iteration limit. To address this issue, as well as to compare mixed
+287
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+precision performance in AMG cycles using more complicated
+smoothers, we add two additional smoother configuration op-
+tions. The first is block Jacobi, with all non-block-size settings
+identical to the scalar Jacobi smoother. We use 32 as the max-
+imum block size for block Jacobi smoothers (see [30] for details
+of Ginkgo’s block Jacobi implementation). Block Jacobi also did
+not succeed in achieving convergence for the offshore problem,
+so we will omit the configurations based on scalar and block
+Jacobi for this problem. We also test a configuration using an ℓ1-
+Jacobi Chebyshev smoother, combining ℓ1-Jacobi from [31] with
+the Chebyshev iteration, as in [32]. For this smoother, we set 2
+iterations each for pre-/post-smoothing, as well as 2 iterations
+for the coarse solver. As described in [32], when using ℓ1-Jacobi
+as the inner solver of Chebyshev on SPD (symmetric positive
+definite) matrices, all eigenvalues are in (0, 1]. For the two non-
+SPD matrices – cage13 and cage14 – we omit this smoother
+configuration in the following tests. This smoother is able to
+improve the (DP) convergence of the offshore problem such that
+it converges before reaching the iteration limit of 700 iterations.
+4.3. Comparison of uniform and non-uniform precision configura-
+tions
+On the H100, the convergence benefit of the non-uniform con-
+figuration is clear. (DP-SP, HP) usually achieves the best speedup
+in total solve time in Figs. 14 to 16. For thermal2 and tmt_sym,
+we need more iterations with single precision working vectors
+(Figs. 17 to 19), which affects performance. With double precision
+working vectors on every level, we can keep the same iteration
+as the all-double multigrid setup, so (DP, HP) is the best for
+the thermal2 and tmt_sym cases. (DP-SP, HP) in tmt_sym still
+shows some speedup compared to the full double settings be-
+cause the speedup per iteration can compensate for the increase
+in iterations. In Fig. 19, (DP-SP-HP, DP-SP-HP) and (DP-HP, DP-
+HP) configurations do not converge because ℓ1-Jacobi’s addition
+of the absolute values of all off-diagonal entries to the diagonal
+value causes overflow in half precision. We can get up to 1.35x
+speedup in the preconditioned CG with Jacobi smoothers, up
+to 1.27x speedup with block Jacobi smoothers, and up to 1.24x
+speedup with ℓ1-Jacobi Chebyshev smoothers. Note that if no
+speedup was achieved by a particular configuration, it does not
+have a bar for that problem. We embed additional information
+into speedup figures: ‘‘NaN (×)’’ indicates the result residual
+norm is NaN, ‘‘More iter (◦)’’ indicates the configuration requires
+more iterations than the full double precision configuration, ‘‘No
+speedup per iter (△)’’ indicates the time per iteration is not faster
+than the full double precision configuration, and ‘‘Not converged
+(▽)’’ indicates the configuration does not converge.
+The performance trends are very similar when executing on
+the MI250X in Figs. 20 to 22. (DP-SP, HP) is usually the fastest
+option with Jacobi and blockJacobi smoothers. For cage14, (DP-
+SP, HP) performs the best, and can get up to 1.13x speedup
+with Jacobi smoothers and up to 1.16x speedup with blockJacobi
+smoothers. In Fig. 22, we get 1.25x speedup from (DP-SP, SP)
+for the beam problem, but around 1.05x–1.10x speedup from
+(DP-SP, HP) or (DP, HP) in other cases. We expect less speedup
+from mixed precision than for H100 because of the smaller
+performance
+differences
+in
+the
+SpMV
+analysis
+from
+Figs. 7 and 9.
+In Figs. 23 to 25, we present the results obtained from running
+on Intel’s PVC GPU (one tile). The performance trends are different
+from those we observed for the MI250X and the H100. We get
+around 1.15x speedup for the tmt_sym problem with (DP, DP-SP-
+HP) and for cage13 with (DP-SP, HP), while seeing almost 1.25x
+speedup for the cage14 (DP-SP, HP) case with Jacobi and Block-
+Jacobi smoothers. In ℓ1-Jacobi-Chebyshev, only (DP-SP, DP-SP) in
+Fig. 14. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+scalar Jacobi configuration. Results are for H100 with the packed half SpMV
+variant. * denotes the matrix was scaled prior to solving.
+Fig. 15. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+block Jacobi configuration. Results are for H100 with the packed half SpMV
+variant. * denotes the matrix was scaled prior to solving.
+Fig. 16. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+ℓ1-Jacobi-Chebyshev configuration. Results are for H100 with the packed half
+SpMV variant. * denotes the matrix was scaled prior to solving.
+288
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+Fig. 17. Total iterations for CG with AMG V-cycle preconditioning, scalar Jacobi
+configuration. Results are shown for H100 with the packed half SpMV variant.
+* denotes the matrix was scaled prior to solving.
+Fig. 18. Total iterations for CG with AMG V-cycle preconditioning, block Jacobi
+configuration. Results are shown for H100 with the packed half SpMV variant.
+* denotes the matrix was scaled prior to solving.
+Fig. 19. Total iterations for CG with AMG V-cycle preconditioning, ℓ1-Jacobi-
+Chebyshev configuration. Results are shown for H100 with the packed half SpMV
+variant. * denotes the matrix was scaled prior to solving.
+beam and (DP-SP, HP) for L-shape get close to 1.2x speedup. The
+other configurations does not show much speedup with mixed
+precision on PVC, which is expected from the SpMV performance
+in Figs. 10 and 11.
+Finally, in Table 4, we collect the fastest (in total solve time)
+configuration for each matrix. The benefit of the non-uniform
+Fig. 20. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+scalar Jacobi configuration. Results are for one GCD of MI250X. * denotes the
+matrix was scaled prior to solving.
+Fig. 21. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+block Jacobi configuration. Results are for one GCD of MI250X. * denotes the
+matrix was scaled prior to solving.
+Fig. 22. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+ℓ1-Jacobi-Chebyshev configuration. Results are for one GCD of MI250X. * denotes
+the matrix was scaled prior to solving.
+289
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+Fig. 23. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+scalar Jacobi configuration. Results are for one tile of PVC with the packed half
+variant SpMV. * denotes the matrix was scaled prior to solving.
+Fig. 24. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+block Jacobi configuration. Results are for one tile of PVC with the packed half
+variant SpMV. * denotes the matrix was scaled prior to solving.
+Fig. 25. Speedup in total solve time for CG with AMG V-cycle preconditioning,
+ℓ1-Jacobi-Chebyshev configuration. Results are for one tile of PVC with the
+packed half variant SpMV. * denotes the matrix was scaled prior to solving.
+Fig. 26. Speedup in total solve time for a standalone V-cycle AMG solver (scalar
+Jacobi configuration) on H100, using packed half SpMV. * denotes the matrix was
+scaled prior to solving.
+mixed precision configurations is clear across all three architec-
+tures. Notably, for each matrix, the same smoother was the best
+choice for all three architectures, and it was the scalar Jacobi
+smoother for all but the offshore matrix. In terms of specific
+precision configurations, MI250X and H100 always align, yet PVC
+is only the same for the cage14 and L-shape problems. The
+‘‘winning’’ configuration for every problem uses half precision
+matrices on at least some levels, demonstrating that while the
+use of half precision presents more challenges than single preci-
+sion, both in terms of convergence and efficient implementation,
+solutions like matrix scaling, the use of higher working precision,
+and the packed SpMV variant can help address the issues that
+may arise.
+4.4. Standalone multigrid solver
+We also demonstrate Ginkgo’s AMG as a standalone solver on
+H100 in Figs. 26 and 27. From the success of the non-uniform
+settings with half precision in the preconditioner experiments,
+we use the Jacobi smoother with the same parameters as before,
+except with the absolute residual norm stopping criterion set
+to 1e−9. There are four cases that converge in double preci-
+sion settings (DP, DP): 2cubes_sphere, cage13, cage14, and beam.
+The (DP-HP, DP-HP) configuration is generally poor for conver-
+gence. This is expected from the previously-described challenges
+of using half precision: the 2cubes_sphere and beam problems
+do not converge, and cage13 and cage14 require more itera-
+tions than the other configurations. However, the non-uniform
+settings with higher working precision preserve convergence. A
+non-uniform configuration with half precision matrices performs
+the best for all but the 2cubes_sphere problem. Overall, the stan-
+dalone multigrid shows higher speedup than the preconditioned
+CG because there is no additional double precision work outside
+of the multigrid. The cage14 problem attains up to 1.45x speedup
+with (DP-SP, HP) configuration. For these parameters, using the
+smoother in double precision only at the finest level is sufficient
+to preserve convergence and final accuracy without an outer CG
+solver or iterative refinement.
+4.5. Other multigrid cycles
+The standalone multigrid solver’s greater potential for speedup
+with mixed precision is due to, in essence, reducing the ratio of
+290
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+Table 4
+The fastest configuration for AMG-preconditioned CG, in terms of total solve time, across all smoothers and all
+mixed precision settings.
+Smoother
+H100
+MI250X(1GCD)
+PVC(1tile)
+2cubes_sphere*
+Jacobi
+(DP-SP, HP)
+(DP-SP, HP)
+(DP-SP, DP-SP)
+cage13
+Jacobi
+(DP-SP, HP)
+(DP-SP, HP)
+(DP, HP)
+cage14
+Jacobi
+(DP-SP, HP)
+(DP-SP, HP)
+(DP-SP, HP)
+offshore*
+ℓ1-Jacobi-Chebyshev
+(DP-SP, HP)
+(DP-SP, HP)
+(DP, HP)
+thermal2
+Jacobi
+(DP, HP)
+(DP, HP)
+(DP, DP-SP-HP)
+tmt_sym
+Jacobi
+(DP, HP)
+(DP, HP)
+(DP, DP-SP-HP)
+beam-pw-sv0.1-o-3-l-3
+Jacobi
+(DP-SP, HP)
+(DP-SP, HP)
+(DP-SP, DP-SP)
+l-shape-const-o-3-l-7
+Jacobi
+(DP, HP)
+(DP, HP)
+(DP, HP)
+The matrices marked with * were scaled to avoid exceeding the representation range of half precision.
+Fig. 27. Total iterations for a standalone V-cycle AMG solve (scalar Jacobi
+configuration) on H100, using packed half SpMV. * denotes the matrix was scaled
+prior to solving.
+double precision use to lower precision use. To raise the ‘‘maxi-
+mum speedup ceiling’’ while still using AMG as a preconditioner
+inside a higher-precision linear solver like CG, the use of cycles
+other than the V-cycle is an option. As we move through the grid
+hierarchy from finest to coarsest, each level contributes less to
+the total overall runtime and memory movement requirements
+of the AMG as the matrix sizes decrease. Thus, coarse levels
+which could achieve speedup ‘‘individually’’, i.e., relative to their
+corresponding levels in a fully double precision multigrid, will
+have a limited impact on the speedup of the full cycle. If we visit
+the coarse levels more often during one full cycle of multigrid,
+resulting in more operations on the coarse matrices, we decrease
+the ratio of double precision to lower precision for one full
+iteration and thereby increase the potential benefit of the mixed
+precision AMG. F- and W-cycles, for example, spend more time
+on the coarse levels during each multigrid cycle. We try the same
+CG experiments on a small W-cycle with 4 levels. In Figs. 28 to 30,
+we can get up to 1.6x speedup with Jacobi smoothers, 1.45x
+speedup with block Jacobi smoothers, and 1.4x speedup with ℓ1-
+Jacobi Chebyshev smoothers on H100. As with the V-cycle, when
+separating the precision of working vectors and matrices on a
+level, we can use lower precision for the matrix on the finest level
+to enable even higher speedups.
+5. Conclusion
+In this paper, we implement and evaluate a mixed precision
+algebraic multigrid (AMG) method that allows the use of double
+precision, single precision, and half precision. We demonstrate
+that when using AMG as a preconditioner inside an iterative
+solver, some linear systems allow for using single precision or
+even half precision on the coarser multigrid levels without im-
+pacting the solution quality. We use techniques such as scaling
+Fig. 28. Speedup in total solve time for CG with AMG W-cycle preconditioning,
+scalar Jacobi configuration with 4 levels. Results are for H100 with the packed
+half SpMV variant. * denotes the matrix was scaled prior to solving.
+Fig. 29. Speedup in total solve time for CG with AMG W-cycle preconditioning,
+block Jacobi configuration with 4 levels. Results are for H100 with the packed
+half SpMV variant. * denotes the matrix was scaled prior to solving.
+and decoupling the precision formats for the working vectors and
+matrices on the same level to address convergence issues caused
+by the use of half precision. When using higher precision in work-
+ing vectors, we found more mixed precision cases that maintain
+the same number of iterations as the full double precision settings
+291
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+Fig. 30. Speedup in total solve time for CG with AMG W-cycle preconditioning,
+ℓ1-Jacobi-Chebyshev configuration with 4 levels. Results are for H100 with the
+packed half SpMV variant. * denotes the matrix was scaled prior to solving.
+while taking less time. Performance evaluations were completed
+on AMD, Intel, and NVIDIA GPUs.
+CRediT authorship contribution statement
+Yu-Hsiang Mike Tsai: Conceptualization, Methodology, Writ-
+ing – original draft, Investigation, Formal analysis, Visualization.
+Natalie Beams: Formal analysis, Resources, Writing – review &
+editing. Hartwig Anzt: Conceptualization, Supervision, Writing –
+review & editing.
+Declaration of competing interest
+The authors declare that they have no known competing finan-
+cial interests or personal relationships that could have appeared
+to influence the work reported in this paper.
+Data availability
+Data will be made available on request.
+Acknowledgments
+The authors acknowledge support by the state of Baden-
+Württemberg through bwHPC. This work was supported by the
+‘‘Impuls und Vernetzungsfond’’ of the Helmholtz Association un-
+der grant VH-NG-1241, and the US Exascale Computing Project
+(17-SC-20-SC), a collaborative effort of the U.S. Department of
+Energy Office of Science and the National Nuclear Security Ad-
+ministration. This research used resources of the Oak Ridge Lead-
+ership Computing Facility at the Oak Ridge National Laboratory,
+which is supported by the Office of Science of the U.S. Depart-
+ment of Energy under Contract No. DE-AC05-00OR22725, and
+resources of the Argonne Leadership Computing Facility, which
+is a DOE Office of Science User Facility supported under Contract
+DE-AC02-06CH11357.
+References
+[1] A. Brandt, Multi-level adaptive solutions to boundary-value problems,
+Math. Comp. 31 (138) (1977) 333–390, http://dx.doi.org/10.1090/S0025-
+5718-1977-0431719-X.
+[2] J.W. Ruge, K. Stüben, 4. Algebraic Multigrid, in: Multigrid Methods, in:
+Frontiers in Applied Mathematics, Society for Industrial and Applied Math-
+ematics, 1987, pp. 73–130, http://dx.doi.org/10.1137/1.9781611971057.
+ch4.
+[3] P. Wesseling, C.W. Oosterlee, Geometric multigrid with applications to
+computational fluid dynamics, Numerical Analysis 2000. Vol. VII: Partial
+Differential Equations, J. Comput. Appl. Math. 128 (1) (2001) 311–334,
+http://dx.doi.org/10.1016/S0377-0427(00)00517-3.
+[4] R. Falgout, An introduction to algebraic multigrid, Comput. Sci. Eng. 8 (6)
+(2006) 24–33, http://dx.doi.org/10.1109/MCSE.2006.105.
+[5] N.J. Higham, T. Mary, Mixed precision algorithms in numerical lin-
+ear algebra, Acta Numer. 31 (2022) 347–414, http://dx.doi.org/10.1017/
+S0962492922000022.
+[6] A. Abdelfattah, H. Anzt, E.G. Boman, E. Carson, T. Cojean, J. Dongarra, A.
+Fox, M. Gates, N.J. Higham, X.S. Li, et al., A survey of numerical linear
+algebra methods utilizing mixed-precision arithmetic, Int. J. High Perform.
+Comput. Appl. 35 (4) (2021) 344–369.
+[7] J.H. Wilkinson, Rounding Errors in Algebraic Processes, in: Prentice-Hall
+series in automatic computation, Prentice-Hall, Englewood Cliffs, N.J, 1964.
+[8] C.B. Moler, Iterative Refinement in Floating Point, J. ACM 14 (2) (1967)
+316–321, http://dx.doi.org/10.1145/321386.321394.
+[9] J. Langou, J. Langou, P. Luszczek, J. Kurzak, A. Buttari, J. Dongarra, Exploiting
+the Performance of 32 bit Floating Point Arithmetic in Obtaining 64 bit
+Accuracy (Revisiting Iterative Refinement for Linear Systems), in: SC ’06:
+Proceedings of the 2006 ACM/IEEE Conference on Supercomputing, 2006,
+p. 50, http://dx.doi.org/10.1109/SC.2006.30.
+[10] E. Carson, N.J. Higham, Accelerating the Solution of Linear Systems by
+Iterative Refinement in Three Precisions, SIAM J. Sci. Comput. 40 (2) (2018)
+A817–A847, http://dx.doi.org/10.1137/17M1140819.
+[11] A. Haidar, S. Tomov, J. Dongarra, N.J. Higham, Harnessing GPU Tensor
+Cores for Fast FP16 Arithmetic to Speed up Mixed-Precision Iterative
+Refinement Solvers, in: SC18: International Conference for High Perfor-
+mance Computing, Networking, Storage and Analysis, 2018, pp. 603–613,
+http://dx.doi.org/10.1109/SC.2018.00050.
+[12] J.A.
+Loe,
+C.A.
+Glusa,
+I.
+Yamazaki,
+E.G.
+Boman,
+S.
+Rajamanickam,
+Experimental Evaluation of Multiprecision Strategies for GMRES on GPUs.
+[13] D. Göddeke, R. Strzodka, Cyclic reduction tridiagonal solvers on GPUs
+applied to mixed-precision multigrid, IEEE Trans. Parallel Distrib. Syst. 22
+(1) (2010) 22–32.
+[14] Y. Sumiyoshi, A. Fujii, A. Nukada, T. Tanaka, Mixed-precision AMG method
+for many core accelerators, in: Proceedings of the 21st European MPI Users’
+Group Meeting, 2014, pp. 127–132.
+[15] K.L. Oo, A. Vogel, Accelerating Geometric Multigrid Preconditioning with
+Half-Precision Arithmetic on GPUs, 2020, arXiv:2007.07539 [cs].
+[16] S.F. McCormick, J. Benzaken, R. Tamstorf, Algebraic error analysis for
+mixed-precision multigrid solvers, SIAM J. Sci. Comput. 43 (5) (2021)
+S392–S419.
+[17] R. Tamstorf, J. Benzaken, S.F. McCormick, Discretization-Error-Accurate
+Mixed-Precision Multigrid Solvers, SIAM J. Sci. Comput. 43 (5) (2021)
+S420–S447, http://dx.doi.org/10.1137/20M1349230.
+[18] A. Buttari, M. Huber, P. Leleux, T. Mary, U. Rüde, B. Wohlmuth, Block
+low-rank single precision coarse grid solvers for extreme scale multigrid
+methods, Numer. Linear Algebra Appl. 29 (1) (2022) e2407, http://dx.doi.
+org/10.1002/nla.2407.
+[19] Y.-H.M. Tsai, N. Beams, H. Anzt, Mixed Precision Algebraic Multigrid
+on GPUs, in: R. Wyrzykowski, J. Dongarra, E. Deelman, K. Karczewski
+(Eds.), Parallel Processing and Applied Mathematics, in: Lecture Notes
+in Computer Science, Springer International Publishing, Cham, 2023,
+pp. 113–125, http://dx.doi.org/10.1007/978-3-031-30442-2_9.
+[20] M. Naumov, M. Arsaev, P. Castonguay, J. Cohen, J. Demouth, J. Eaton, S.
+Layton, N. Markovskiy, I. Reguly, N. Sakharnykh, et al., AmgX: A library for
+GPU accelerated algebraic multigrid and preconditioned iterative methods,
+SIAM J. Sci. Comput. 37 (5) (2015) S602–S626.
+[21] U.M. Yang, et al., BoomerAMG: a parallel algebraic multigrid solver and
+preconditioner, Appl. Numer. Math. 41 (1) (2002) 155–177.
+[22] NVIDIA, CUDA Best Practices, 2023, https://docs.nvidia.com/cuda/cuda-c-
+best-practices-guide/index.html. (Accessed 14 July 2023).
+[23] AMD, rocBLAS Contributor’s Guide, 2023, https://rocblas.readthedocs.io/en/
+rocm-5.3.0/Contributors_Guide.html, 2023-07-14.
+292
+
+
+Y.-H.M. Tsai, N. Beams and H. Anzt
+Future Generation Computer Systems 149 (2023) 280–293
+[24] T. Cojean, Y.-H.M. Tsai, H. Anzt, Ginkgo—A math library designed for
+platform portability, Parallel Comput. 111 (2022) 102902, http://dx.doi.org/
+10.1016/j.parco.2022.102902, URL https://www.sciencedirect.com/science/
+article/pii/S0167819122000096.
+[25] H. Anzt, T. Cojean, G. Flegar, F. Göbel, T. Grützmacher, P. Nayak, T. Ribizel,
+Y.M. Tsai, E.S. Quintana-Ortí, Ginkgo: A Modern Linear Operator Algebra
+Framework for High Performance Computing, ACM Trans. Math. Software
+48 (1) (2022) 2:1–2:33, http://dx.doi.org/10.1145/3480935.
+[26] T.A. Davis, Y. Hu, The University of Florida sparse matrix collection, ACM
+Trans. Math. Softw. 38 (1) (2011) 1–25.
+[27] R. Anderson, J. Andrej, A. Barker, J. Bramwell, J.-S. Camier, J.C.V. Dobrev, Y.
+Dudouit, A. Fisher, T. Kolev, W. Pazner, M. Stowell, V. Tomov, I. Akkerman,
+J. Dahm, D. Medina, S. Zampini, MFEM: A modular finite element methods
+library, Comput. Math. Appl. 81 (2021) 42–74, http://dx.doi.org/10.1016/j.
+camwa.2020.06.009.
+[28] MFEM: Modular finite element methods [Software], 2017, http://dx.doi.
+org/10.11578/dc.20171025.1248, mfem.org.
+[29] N.J. Higham, S. Pranesh, M. Zounon, Squeezing a Matrix into Half Precision,
+with an Application to Solving Linear Systems, SIAM J. Sci. Comput. 41 (4)
+(2019) A2536–A2551, http://dx.doi.org/10.1137/18M1229511.
+[30] G. Flegar, H. Anzt, T. Cojean, E.S. Quintana-Ortí, Adaptive Precision Block-
+Jacobi for High Performance Preconditioning in the Ginkgo Linear Algebra
+Software, ACM Trans. Math. Softw. 47 (2) (2021) http://dx.doi.org/10.1145/
+3441850.
+[31] A.H. Baker, R.D. Falgout, T.V. Kolev, U.M. Yang, Multigrid Smoothers for
+Ultraparallel Computing, SIAM J. Sci. Comput. 33 (5) (2011) 2864–2887,
+http://dx.doi.org/10.1137/100798806, URL https://epubs.siam.org/doi/abs/
+10.1137/100798806.
+[32] A. El Haman Abdeselam, A. Napov, Y. Notay, Porting an aggregation-
+based algebraic multigrid method to GPUs, ETNA - Electron. Trans. Numer.
+Anal. 55 (2022) 687–705, http://dx.doi.org/10.1553/etna_vol55s687, URL
+https://hw.oeaw.ac.at?arp=0x003da4b8.
+Yu-Hsiang Mike Tsai is a Ph.D. student supervised by
+Hartwig Anzt in Karlsruhe Institute of Technology.
+Natalie Beams is a research scientist at the Innovative
+Computing Laboratory at the University of Tennessee.
+Hartwig Anzt is the Director of the Innovative Com-
+puting Lab and Professor in the Electrical Engineering
+and Computer Science Department of the University of
+Tennessee. He also holds a Senior Research Scientist
+Position at Steinbuch Centre for Computing at the
+Karlsruhe Institute of Technology.
+293

@@ -1,0 +1,2316 @@
+Beginning-of-life MEA performance — Efﬁciency loss
+contributions
+H. A. Gasteiger, W. Gu, R. Makharia, M. F. Mathias and B. Sompalli
+GM Global R&D, Global Alternative Propulsion Center, Honeoye Falls, NY, USA
+1
+INTRODUCTION
+As a result of extensive research efforts on the development
+of low temperature polymer electrolyte fuel cells (PEFCs)
+over the past decade, the voltage performance of mem-
+brane electrode assemblies (MEA) has been signiﬁcantly
+increased.[1] The major development steps enabling these
+improvements have been:
+(i)
+The introduction of thinner membranes (from the
+original 175/125 µm thick Naﬁon 117/115 mem-
+branes[2, 3] to 50 µm thick Naﬁon 112, (see Durabil-
+ity, Volume 3) all the way to ultra-thin polytetraﬂu-
+oroethylene (PTFE)/ionomer composite membranes
+from Asahi Glass (30 µm see Composite perﬂuo-
+rinate membranes, Volume 3) and Gore (25 µm see
+Catalyst coated composite membranes, Volume 3)),
+thereby allowing for high cell voltages at current den-
+sities ≥1 A cm−2.
+(ii)
+The substitution of Pt-black catalysts with carbon-
+supported Pt-catalysts which resulted in a reduction
+of the MEA Pt loading from 5–10 mgPt cm−2 to
+<1 mgPt cm−2.[3–5]
+(iii)
+The invention of thin-ﬁlm catalyst layers bonded by
+perﬂuorosulfonic ionomer which resulted in largely
+improved utilization of the Pt/metal catalysts in the
+electrodes.[1, 6]
+Due to these innovations in materials and processing tech-
+nology, state-of-the-art fuel cells yield cell voltages of
+0.68 V at 1.0 A cm−2 and 65 ◦C cell temperature with ambi-
+ent pressure H2/air at stoichiometric ﬂows of 1.25/2.0
+(fully humidiﬁed) and cathode loadings of 0.4 mgPt cm−2
+(see Principles of MEA preparation, Volume 3).[7] This
+may be contrasted to older MEA technology, where only
+0.60 V were achieved at 1.0 A cm−2 under much higher
+pressure (H2/air at 300 kPaabs), while all the other condi-
+tions were comparable (70–80 ◦C cell temperature, stoi-
+chiometric ﬂows of 1.5/2.0 (fully humidiﬁed), Pt loadings
+of <1 mgPt cm−2
+MEA
+[3]).
+Despite these development achievements, further improv-
+ements in MEA performance are required for the imple-
+mentation of fuel cells in stationary power plants and in
+vehicles, where high voltage efﬁciency (i.e., high cell volt-
+ages) and low noble metal loadings are prerequisites for
+large-scale applications. Of particular importance are MEA
+improvements which enable both a process-stream simpli-
+ﬁcation of the fuel cell system by reducing the currently
+required humidiﬁcation of the reactant gases and a reduc-
+tion of the platinum-metals loading of the MEA. While
+the former may be achieved by the use of ultra-thin mem-
+branes (as will be discussed later), the latter requires a
+clear understanding of the trade-off between cell voltage
+and Pt catalyst loading. Owing to the high catalytic activ-
+ity of Pt toward H2 electrooxidation (exchange current
+densities on the order of 10−3 A cm−2
+Pt
+[8]), the anode Pt load-
+ings in the case of pure H2, operation can be reduced to
+0.05–0.10 mgPt cm−2 without any cell voltage losses.[9–11]
+Under the likely assumption that the above quoted state-
+of-the-art fuel cell performance of 0.68 V at 1.0 A cm−2
+Handbook of Fuel Cells – Fundamentals, Technology and Applications.
+Edited by Wolf Vielstich, Hubert A. Gasteiger, Arnold Lamm and Harumi Yokokawa.
+© 2010 John Wiley & Sons, Ltd. ISBN: 978-0-470-97400-1.
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+can be achieved at a total Pt loading of 0.45 mgPt cm−2
+MEA
+(0.05/0.40 mgPt cm−2 anode/cathode loadings), the result-
+ing Pt-speciﬁc power density of ca. 0.66 gPt kW−1
+el
+is quite
+impressive, but further reductions in the cathode Pt load-
+ing are still required for large-scale fuel cell applications.
+Unfortunately, the oxygen reduction reaction (ORR) kinet-
+ics on Pt are approximately ﬁve orders of magnitude slower
+than the H2 oxidation kinetics (exchange current densi-
+ties on the order of 10−8 A cm−2
+Pt (see Principles of MEA
+preparation, Volume 3)), so that reduction in cathode Pt
+loadings to commercial targets without compromising per-
+formance is a signiﬁcant technical challenge.
+To increase MEA performance and to reduce its Pt-
+metals loading, it is therefore critical to understand the
+various voltage loss contributions in order to determine
+whether improvements can be achieved via optimization
+of the electrode structure and the diffusion medium prop-
+erties (improved catalyst utilization and reduced gas diffu-
+sion overpotentials) and further reduction of the membrane
+thickness (reduced ohmic losses in the membrane and
+improved water management), or whether the implemen-
+tation of alternative cathode catalysts (e.g., Pt alloys see Pt
+alloys as oxygen reduction catalysts, Volume 3) is essen-
+tial for further Pt loading reductions.
+In this chapter, we attempt to provide answers to these
+questions by analyzing the performance of state-of-the-art
+MEAs with various Pt cathode loadings using 50 cm2 fuel
+cell testing with H2/O2, H2/air, and H2/helox (21% O2 in
+He) feed gases. Based on this analysis it is then possible
+to isolate the various cell-voltage loss terms[2, 12, 13] into
+kinetic losses (due to the slow ORR kinetics), ohmic losses
+(contact and bulk electronic resistances as well as pro-
+ton conduction resistance in the membrane), and transport
+losses (H+ potential gradients in the electrode and gas dif-
+fusion overpotentials). The ﬁndings with 50 cm2 active area
+MEAs will subsequently be compared to data from a full-
+active-area short stack (500 cm2 active area, ca. 20 cells)
+to demonstrate their relevance to the prediction and under-
+standing of fuel cell stack performance. Finally, we will
+present data on the effect of membrane thickness and equiv-
+alent weight (gpolymer mol−1
+H+) on the feasibility of operating
+with dry air feed streams.
+2
+EXPERIMENTAL PROCEDURE
+2.1
+MEA preparation
+Catalyst-coated membranes (CCM) for both small-scale
+(50 cm2) and short-stack testing (500 cm2) were prepared
+by an identical procedure.[14] Carbon-supported Pt cata-
+lyst (47%wt Pt/Vulcan XC72; Tanaka, Japan) and ionomer
+solution (5%wt Naﬁonin organic solvents, 1100 equiv-
+alent weight (EW); DuPont, USA) were used to fabri-
+cate thin-layer electrodes which were transferred via a
+decal method onto extruded Naﬁon 112 membrane (50 µm
+thickness, 1100 EW; DuPont) or a thinner 1100 EW mem-
+brane to be referred to here as N111 (25 µm thick-
+ness, 1100 EW, extruded in sulfonyl ﬂuoride form from
+DuPont and hydrolyzed to proton form by Ion Power,
+USA. A Naﬁon/carbon ratio of approximately 0.8/1 (weight
+ratio) was maintained in the electrodes of all prepared
+CCMs and all anode catalyst loadings were 0.4 mgPt cm−2
+(note: cm2 always refers to the geometric electrode area
+unless otherwise speciﬁed). The cathode catalyst load-
+ings were varied from 0.4 to 0.15 mgPt cm−2 (the mea-
+sured Pt loading variations by cyclic voltammetry were
+consistent with the Pt loading predicted by the varia-
+tion of the coating process), resulting in thinner cath-
+ode layers for lower loadings, shown in Table 1. Elec-
+trode porosities were calculated from measured electrode
+thicknesses and remained constant as the catalyst load-
+ings were varied, indicating that the electrode structure
+was independent of the applied Pt loading. The observed
+average porosity of 64% (see Table 1), characteristic for
+our CCM preparation method, is quite large compared
+to other reports in the literature (e.g., 30% porosity in
+Ref. [15]); consequently, the electrodes’ Naﬁon volume
+fractions are only ca. 15%. For comparison purposes, com-
+mercial CCMs with active area of 500 cm2 were obtained
+from Gore (GorePrimea, 25 µm thick and 0.4 mgPt cm−2
+per electrode).
+Gas diffusion media (DM) were treated in-house and
+are based on carbon ﬁber paper substrates (Toray Inc.,
+Japan). Both anode and cathode DMs were teﬂonated and
+additionally processed using a proprietary surface treat-
+ment. Single cells (50 cm2 active area) and a 20 cell short
+stack (500 cm2 active area) were assembled by sandwich-
+ing CCMs between the appropriate DMs and applying an
+Table 1. Cathode layer thicknesses and estimated porosities for
+the three different cathode Pt loadings used in this study.
+Porosities are based on measured electrode thicknesses and the
+approximate bulk densities for the ionomer, the carbon-support
+(ca. 2 g cm−3 each) and platinum (21.5 g cm−3) using a 47%wt
+Pt/Vulcan catalyst (Tanaka TKK) and approximate Naﬁon/carbon
+loadings of 0.8/1 (weight ratio).
+Cathode
+loading
+(mgPt cm−2)
+Electrode
+thickness
+(µm)
+Porosity, ε
+(void
+volume) (%)
+εNaﬁon
+(%volume
+in electrode)
+0.40
+13 ± 1
+67
+15
+0.24
+7 ± 1
+64
+15
+0.15
+4 ± 1
+60
+17
+2
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+average compressive load of approximately 1500 kPaabs to
+the active area.
+2.2
+Catalyst characterization
+The Pt catalyst surface area (sometimes referred to as the
+electrochemical area (ECA)[5]) was determined using a thin-
+ﬁlm rotating disk electrode (TF-RDE) method described by
+Schmidt et al.[16] (also see Rotating thin-ﬁlm method for
+supported catalysts, Volume 2) A Pt foil counter-electrode
+and a saturated calomel reference electrode were used in
+a standard three-compartment electrochemical cell. (All
+potentials, however, are reported in terms of the reversible
+hydrogen electrode (RHE) scale.) A glassy carbon disk
+electrode (0.283 cm2 area), mounted in an interchange-
+able rotating disk electrode (RDE) holder (Pine Instru-
+ments, USA) served as substrate for depositing the Pt cat-
+alyst. A representative cyclic voltammogram of the 47%wt
+Pt/Vulcan XC72 catalyst (7 µ gPt cm−2) in 0.5 M H2SO4 at
+20 mV s−1 is shown in Figure 1. To normalize for the Pt
+mass, mass speciﬁc current densities (i.e., A mg−1
+Pt ) are plot-
+ted along the y-axis. Integration of the coulombic charge,
+Q in (C), under the hydrogen desorption region from ca.
+0.05–0.4 V (vs. RHE), corrected for the double-layer capac-
+itance of the carbon support and Pt (see light gray line in
+Figure 1), was used to calculate the speciﬁc Pt surface area,
+APt,cat, (m2
+Pt g−1
+Pt ) of the catalyst
+APt,cat =
+Q
+210µC cm−2
+Pt (LcaAg)
+105
+(1)
+where Lca = cathode loading of the MEA (mgPt cm−2) and
+Ag = geometric area of the electrode (cm2).
+The speciﬁc Pt surface area of the 47%wt Pt/Vulcan
+XC72 catalyst determined from Figure 1 is 55 m2
+Pt g−1
+Pt ,
+which is at the lower range evaluated from a large
+number of independent experiments yielding APt,cat =
+60 ± 5 m2
+Pt g−1
+Pt . This value is consistent with a range
+of 70–80 m2
+Pt g−1
+Pt
+reported for other state-of-the-art high-
+loaded Pt catalysts (30–50%wt. Pt on carbon) (see
+Principles of MEA preparation, Volume 3), while slightly
+higher surface areas ranging from 65 to 100 m2
+Pt g−1
+Pt
+are
+usually reported for lower-loaded catalysts (e.g., 20%wt
+Pt/Vulcan XC72[5, 17]
+see also Pt alloys as oxygen
+reduction catalysts, Volume 3).
+2.3
+MEA characterization
+When fabricating electrodes with solid polymer electro-
+lytes, it is not guaranteed that all of the Pt surface area of
+−0.03
+−0.02
+−0.01
+0.00
+0.01
+0.02
+0.03
+0
+0.2
+0.4
+0.6
+0.8
+1
+1.2
+1.4
+1.6
+MEA
+RDE
+E (V vs. RHE)
+im (A (mgPt)−1)
+Figure 1. Cyclic voltammograms on a mass-speciﬁc current den-
+sity scale (im) on 47% Pt/Vulcan both in a TF-RDE conﬁguration
+(7 µgPt cm−2
+g ) and in an MEA (0.4 mgPt cm−2
+g ; cathode side). RDE
+data (0 rpm) were acquired in 0.5 M H2SO4; MEA data were mea-
+sured in the driven-cell mode with humidiﬁed (50 ◦C dewpoints)
+N2 (fuel cell cathode) and H2 (fuel cell anode). Pt surface areas
+were extracted from the H-desorption area after double-layer sub-
+traction (indicated by dashed lines), yielding 55 m2
+Pt g−1
+Pt for the
+RDE data and 50 m2
+Pt g−1
+Pt for the MEA. Scan rate of 20 mV s−1;
+all data at 25 ◦C.
+the catalyst (i.e., APt,cat) is available for the electrochemical
+reaction due to either insufﬁcient contact with the solid
+electrolyte or due to electrical isolation of catalyst particles
+from each other by a ﬁlm of the electrically non-conducting
+solid electrolyte. Therefore, the Pt utilization of a solid
+polymer electrode is generally measured independently by
+recording a cyclic voltammogram of an MEA (i.e., a CCM
+sandwiched between DMs or a membrane sandwiched
+between catalyst-coated DMs) in a fuel cell, using the so-
+called driven-cell mode. For example, to determine the
+accessible Pt surface area of a cathode electrode (also
+referred to as the electrode Pt surface area (EPSA)[5]),
+the cathode compartment of a single polymer electrolyte
+membrane (PEM) cell is purged with humidiﬁed N2 and
+serves as working electrode, while the anode compartment
+is purged with humidiﬁed H2 serving as both counter and
+reference electrode (effectively a RHE). This is shown in
+Figure 1 for a 0.4/0.4 mgPt cm−2 (anode/cathode) Naﬁon
+112-based MEA. The accessible Pt surface area, APt,el,
+is evaluated from the H-desorption charge according to
+equation (1) (corrected for the double-layer contribution
+from both Pt and the carbon support (dashed line in
+Figure 1)) and is then used to determine the Pt utilization,
+uPt, in the cathode of the MEA
+uPt = APt,el
+APt,cat
+100%
+(2)
+The Pt utilization of the MEAs used in this study are shown
+in Table 2; they are approximately 86–87%,consistent with
+3
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+Table 2. Electrochemically active Pt surface areas of the cathodes
+of various 50 cm2 MEAs determined by integration of the
+hydrogen-desorption area from cyclic voltammetry. Experimental
+conditions: 0.5 slpm H2 purge on the anode (counter and reference
+electrode), 0.5 slpm N2 purge on the cathode (working electrode);
+25 ◦C cell temperature, gases humidiﬁed at 55 ◦C, total pressure of
+100 kPaabs, 20 mV s−1. Pt surface areas in m2
+Pt g−1
+Pt were calculated
+assuming 210 µC cm−2
+Pt ; Pt utilization in the MEA was calculated
+using the 47% Pt/Vulcan (TKK) surface area determined from
+thin-ﬁlm rotating disk measurements (APt,cat = 60 ± 5 m2
+Pt g−1
+Pt ) in
+0.5 M H2SO4 at 25 ◦C.
+Cathode
+loading
+(mgPt cm−2)
+Total
+coulombic
+charge (C)
+APt,el
+(m2
+Pt g−1
+Pt )
+rf
+(cm2
+Pt cm−2)
+uPt in
+cathode
+(%)
+0.40
+2.20
+52.4
+210
+87
+0.24
+1.30
+51.6
+124
+86
+0.15
+0.83
+52.7
+79
+87
+the values reported for state-of-the-art electrodes which
+typically range from 75 to 100% (see Principles of MEA
+preparation, Volume 3). Therefore, within the error of the
+measurement, state-of-the-art MEAs do approach 100% Pt
+utilization, in contrast to older MEA technology where Pt
+utilizations were limited to a range of 10–50%.[5] Note that
+uPt approaching 100% in the cyclic voltammogram (CV)
+experiment (≈0.01 A cm−2) does not necessarily indicate
+high utilization in fuel cell operation where mass transport
+limitations can result in poor under-load (≈1 A cm−2)
+utilization of portions of the catalyst layer.
+Due to the low but ﬁnite solubility and diffusivity of
+H2 in the ionomer,[1] H2 permeates from the anode com-
+partment of a PEMFC to the cathode, where it is oxi-
+dized electrochemically in the typical cathode potential
+(0.5–1.0 V vs. RHE, depending on the current density).
+The resulting parasitic H2 oxidation current density is gen-
+erally referred to as H2-crossover current density, ix, and
+can be determined experimentally using the driven-cell
+mode described above, by polarizing the N2-purged cath-
+ode compartment at >+0.4 V with respect to the H2-purged
+anode compartment. (At >+0.4 V, the resulting H2 oxida-
+tion current density is purely limited by the H2 permeation
+rate.) This method is described in detail in Principles of
+MEA preparation, Volume 3, where it is also shown that
+the observed H2-crossover current density increases with
+increasing H2 partial pressure and increasing cell temper-
+ature. For this study, we experimentally evaluated the H2-
+crossover current densities for Naﬁon 112-based electrodes
+under fully humidiﬁed conditions at both 270 kPaabs and
+80 ◦C (i.e., pH2 = 223 kPaabs) and 120 kPaabs and 60 ◦C (i.e.,
+pH2 = 100 kPaabs), yielding values of 3.3 and 0.9 mA cm−2,
+respectively. It may be noted that these values, used in the
+kinetic analysis of our experimental data, are ca. 35% lower
+than the values reported in Principles of MEA prepara-
+tion, Volume 3, reﬂecting the large experimental error in
+the evaluation of the H2 permeation rate.
+2.4
+Fuel cell testing
+Fuel cell stations from Fuel Cell Technology (Los Alamos,
+NM) were used to test 50 cm2 active-area MEAs. Pure
+oxygen, helox (21% O2 in Helium), and air were used as
+cathode reactants and pure H2 as anode reactant (all gases
+of 99.99% purity). Stoichiometric ﬂow rates of anode and
+cathode gases were used over the entire current density
+range of 0.022–1.8 A cm−2, using stoichiometries (s) of 2.0
+for H2, air, and helox while s = 9.5 was used for pure O2
+(thereby maintaining the same ﬂow rates and humidiﬁcation
+conditions as with air and helox). Reactant humidiﬁcation
+was achieved by water-bubblers, the temperature of which
+was calibrated to yield the quoted relative humidity (RH)
+values. Cell resistances as a function of current density
+(i.e., the sum of the proton-conduction resistance in the
+membrane and the various electronic resistances (bulk and
+contact resistances)) were determined using an alternating
+current (a.c.) perturbation at 1 kHz. For each data point,
+the cell voltage was stabilized over 15 min, and data were
+averaged over the last 5 min. Multiple-path serpentine ﬂow-
+ﬁelds (2 and 3 parallel channels for the anode and cathode,
+respectively) machined into sealed graphite blocks (Poco)
+were used for 50 cm2 testing. The ﬂow-ﬁeld channel width
+was approximately 0.80 mm with a channel/land width ratio
+of 1.3 l−1.
+For stack testing, 500 cm2 active-area MEAs with dif-
+ferent catalyst loadings and membranes were tested in the
+same stack. Performance data shown in this work represent
+the average of four nominally identical samples in the same
+short-stack (ca. 20 cells). Cell resistances in the short stack
+were measured the same way as in the above described
+50 cm2 testing. The ﬂow-ﬁeld conﬁguration of the short
+stack is proprietary; for short stack testing Hydrogenics test
+stands were used.
+3
+RESULTS
+3.1
+Analysis of the performance of 50 cm2
+active-area MEAs
+3.1.1
+Oxygen reduction kinetics in PEFCs
+To evaluate the impact of the ORR kinetics on PEFC per-
+formance, catalyst-coated Naﬁon 112 membranes (N112)
+with variable Pt cathode loadings (see Table 1) were tested
+with fully humidiﬁed H2/O2 reactants at 270 kPaabs and
+4
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+a cell temperature of 80 ◦C. Plotting the measured cell
+voltages, Ecell, as a function of geometric current density, i
+(Figure 2), it is apparent that the Pt cathode loading of the
+CCM strongly affects cell performance. Reducing the Pt
+cathode loading from 0.4 to 0.15 mgPt cm−2 produces cell
+voltage losses on the order of 35–45 mV over the entire
+current density range.
+A more quantitative assessment of the impact of the
+ORR kinetics on PEFC performance can be achieved by
+examining the resistance corrected cell voltages, EiR−free
+EiR−free = Ecell + iR
+(3)
+where the R term in equation (3) refers to the sum of
+ohmic resistance contributions produced by both electronic
+(DM/ﬂow-ﬁeld and DM/catalyst layer contact resistances
+as well as bulk resistances in the DM and the catalyst
+layer) and protonic (H+ conduction in the membrane)
+resistance losses. By correcting the raw voltage data with
+experimentally determined values of R (see Section 2), the
+effect of possibly varying ohmic resistances with varying
+Pt cathode loadings can be eliminated from the independent
+effect of Pt cathode loading on the PEFC performance.
+It should be noted that in most of the past literature
+studies concerned with evaluating the cathode performance
+of PEFCs, the overall resistance losses, (iRﬁt), were not
+measured experimentally, but were extracted from a simple
+0.60
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+0.95
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+1.6
+1.8
+i (A cm−2)
+Ecell (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+Figure 2. Effect of cathode Pt loading on cell voltage for H2/O2
+operation at stoichiometric H2/O2 ﬂows of 2.0/9.5 (in the entire
+range from 0.022 to 1.80 A cm−2). Naﬁon 112 CCM (50 cm2)
+with anode loadings of 0.40 mgPt cm−2; cell temperature of 80 ◦C,
+reactant dewpoints of 80 ◦C (100% RH), and reactant pressure
+of 270 kPaabs. Voltages were averaged between 10 and 15 min
+holding time at each current density.
+ﬁt of Ecell vs. i polarization curves[4, 12, 18–23] according to
+Ecell = [Erev(pH2,pO2,T ) + b log(i0)] −b log(i) −Rﬁti
+= E0 −b log(i) −Rﬁti
+(4)
+where b and i0 refer to the Tafel slope and exchange-
+current density of the ORR, respectively, and Erev(pH2,pO2,T )
+is the pH2 and pO2 (partial pressure) as well as temperature
+dependent equilibrium potential for the H2/O2 reaction[24]
+(see also Principles of MEA preparation, Volume 3)
+Erev(pH2,pO2,T ) = 1.23 −0.9 × 10−3(T −298) + 2.303RT
+4F
+× log
+
+
+
+pH2
+p∗
+H2
+2 
+pO2
+p∗
+O2
+
+
+(5)
+where p∗
+H2 = p∗
+O2 = 101.3 kPa reference pressure. While
+this indirect evaluation of Rﬁt is likely to be identical with
+R at low current densities where mass transport losses
+are negligible, it cannot accurately distinguish between true
+ohmic losses (R) which can be measured experimentally
+(via a.c. methods (used here) or the current-interrupt tech-
+nique) and mass-transport induced voltage losses produced
+by either ﬂooding of the DM/electrode and/or gas diffu-
+sion overpotentials at high current densities. Therefore, the
+most stringent approach to determine resistance free cell
+voltages is by direct experimental measurements.[1, 10, 15]
+Nevertheless, as mentioned above, this is not the case for
+most small-scale PEM fuel cell studies and, furthermore, the
+authors are not aware of any published data where direct
+R measurements were conducted in full-active area short
+stacks as done here.
+Figure 3 shows the resistance corrected cell voltages
+versus the H2-crossover-corrected current density (ieff =
+i + ix, ix = 3.3 mA cm−2) for 50 cm2 active-area CCMs
+with three different Pt cathode loadings. Use of ieff is
+important for proper analysis of the cathode kinetics at
+low current density where the crossover current density
+approaches the measured current density. The data for
+each Pt cathode loading fall onto a straight line in
+this semi-logarithmic plot, with apparent Tafel slopes
+of 0.063 V decade−1 (0.15 mgPt cm−2), 0.066 V decade−1
+(0.24 mgPt cm−2), and 0.067 V decade−1 (0.4 mgPt cm−2)
+over the entire current density range (0.02–1.8 A cm−2).
+The Tafel slopes extracted from Figure 3 are consistent
+with the Tafel slopes for the ORR in PEFCs reported in
+the literature (ranging from 0.053–0.064 V decade−1; see
+Table 3). It should be noted, however, that straight Tafel
+lines up to 1–2 A cm−2 as in Figure 3 and Ref. [2] (see
+also Principles of MEA preparation, Volume 3) are not
+always obtained in H2/O2 PEM fuel cells and that the
+5
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+0.78
+0.80
+0.82
+0.84
+0.86
+0.88
+0.90
+0.92
+0.94
+0.01
+0.1
+1
+10
+ieff (A cm−2)
+EiR-free (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+Figure 3. Dependence of the iR-corrected cell voltage (EiR−free)
+on the Pt cathode loading for H2/O2 operation (80 ◦C, 100%
+RH, 270 kPaabs). The iR −free data were extracted from Figure 2
+using on-line measured high-frequency resistances (at 1 kHz). The
+solid lines are linear-regression ﬁts to the data, yielding Tafel
+slopes of 0.067, 0.066, and 0.063 V decade−1 for cathode loadings
+of 0.40, 0.24, and 0.15 mgPt cm−2, respectively. Measured cur-
+rent densities from Figure 2 were corrected for H2 crossover of
+3.3 mA cm−2 (ieff = i + 3.3 mA cm−2) determined from voltam-
+metric experiments.
+increase in Tafel slopes frequently observed with increasing
+current density are likely due to either imperfect electrode
+structures and/or improper R corrections.[12, 15] The latter
+shortcoming may also be the reason for the increase in Tafel
+slope generally observed with increasing current density
+in RDE measurements with both planar and supported
+catalysts (see, e.g., Ref. [25]). The fact that constant Tafel
+slopes are observed up to the highest current density of
+1.8 A cm−2 on the other hand suggests that the performance
+data shown in Figures 2 and 3 are controlled only by ORR
+kinetic losses (ηORR) and ohmic resistance losses (R).
+The above data and reasoning imply that both hydro-
+gen oxidation kinetic losses (ηHOR) and mass-transport
+losses (ηtx) are negligible for these measurements with fully
+humidiﬁed H2/O2. The former assumption is quite reason-
+able owing to the fast hydrogen oxidation reduction (HOR)
+kinetics on Pt (see Section 1 and Refs. [9–11]), while the
+latter would imply that the potential gradients in the elec-
+trolyte phase of the cathodes are negligible under these
+conditions (gas diffusion overpotentials with pure O2 can
+safely be assumed to be negligible as long as no ﬂood-
+ing of the electrodes and the DMs occur). Under these
+simplifying assumptions, the general description for the
+resistance-corrected cell voltage given in equation (6)
+EiR−free = Ecell + iR = Erev(pH2,pO2,T )
+−ηORR −ηHOR −ηtx
+(6)
+can be reduced (assuming ηHOR = 0, ηž
+tx = 0) to:
+EiR−free = Erev(pH2,pO2,T ) −ηORR
+(7)
+Using a Tafel approximation, the last term in equation (7)
+can be described as:
+ηORR = b· log
+
+i + ix
+10·(Lca·APt,el)·i0(T,pO2)
+
+(8)
+where Lca (mgPt·cm−2) is the Pt cathode loading, APt,el
+(m2
+Pt·g−1
+Pt ) is the electrochemically available Pt surface area
+in the MEA (see Section 2.3 and Table 2) and i0(T,pO2) is
+the exchange-current density for the ORR which depend
+on temperature and oxygen partial pressure. Equations (7)
+and (8) may be combined and re-written as:
+EiR−free = Erev(pH2,pO2,T ) + b· log[10·APt,el·i0(T,pO2)]
+−b· log
+	i + ix
+Lca
+
+(9)
+where all parameters are in units as deﬁned in the list of
+symbols.
+Considering that the utilized Pt surface area in the different
+CCMs, APt,el, is essentially independent of the Pt loading
+(see Table 2), equation (9) shows that the performance of
+the CCMs with different Pt cathode loadings is expected to
+be identical if it is plotted as EiR−free vs. the logarithm of
+(i + ix)/Lca (i.e., the mass-speciﬁc current density, im) and
+if the performance is controlled only by the ORR kinetics
+and the ohmic losses. The predicted slope of the resulting
+line should then correspond to the Tafel slope
+∂EiR−free
+∂log
+	i + ix
+Lca
+
+
+
+
+
+
+
+
+
+pO2,pH2,T,APt,el
+= ∂EiR−free
+∂log[im]
+
+
+
+
+pO2,pH2,T,APt,el
+= −b
+(10)
+Replotting the data shown in Figure 3 in terms of EiR−f ree
+versus the logarithm of the mass-speciﬁc current density,
+im, indeed results in a single straight line with a Tafel
+slope of 0.065 mV decade−1 as shown in Figure 4. As
+we have argued above, this would imply that the poten-
+tial gradient in the electrolyte phase of the cathode is
+negligible even at high current densities. Model calcu-
+lations otherwise would predict a doubling of the Tafel
+slope from its value at low current densities as the cur-
+rent density increases, i.e., from ca. 0.065 V decade−1 to ca.
+0.130 V decade−1.[26, 27] Based on the Naﬁon volume frac-
+tion of the cathodes used in our study (ca. 15%, see Table 1)
+6
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+Table 3. Comparison of Tafel slopes (b), exchange current densities (i∗
+0(T )), and iR −free current densities at 0.90 V (i∗
+0.9V(T )) normalized to 101.3 kPa O2 reported in the
+literature with the values determined in this study. All data were acquired in PEM cells using fully humidiﬁed H2 and O2. Equation (5) was used to determine the equilibrium
+potential for each of the experimental conditions.
+Catalyst
+(%wt Pt/C)
+Lcathode
+(mgPt cm−2)
+Membrane
+Tcell
+( ◦C)
+Pcell
+(kPaabs)
+pa
+O2
+(kPaabs)
+rf
+(cm2
+Pt cm−2)
+b
+(V decade−1)
+i∗
+0(T )
+(A cm−2
+Pt )
+i∗
+0.9V(T )
+(mA cm−2
+Pt )
+Reference
+Pt-black
+5.0
+Dow (XUS
+13 204.10)
+95
+377
+292
+274
+0.053
+0.8 × 10−9
+0.17
+[4]
+20% Pt/Vulcan
+XC72
+0.40
+Aciplex S-1004
+95
+500
+415
+51
+0.064
+4.2 × 10−9
+0.14
+[23]
+47% Pt/Vulcan
+XC72
+0.40–0.15
+Naﬁon 112
+80
+270
+223
+79–210
+0.065
+6.7 × 10−9
+0.20
+From Figure 4
+20% Pt/Vulcan
+XC72
+0.30
+Dow (XUS
+13 204.10)
+80
+137
+90
+61
+0.064
+8.5 × 10−9
+0.32
+[18]
+20% Pt/Vulcan
+XC72
+0.45b
+Dow (XUS
+13 204.10)
+80
+100
+53
+88
+0.062
+6.3 × 10−9
+0.14
+[20]
+20% Pt/Vulcan
+XC72
+0.40
+Naﬁon 117
+80
+500
+453
+53
+0.059
+1.5 × 10−9
+0.21
+[22]
+10% Pt/Vulcan
+XC72
+0.40
+Naﬁon 117
+80
+500
+453
+20
+0.061
+2.8 × 10−9
+0.27
+[22]
+20% Pt/Vulcan
+XC72c
+<1.0
+Dow (XUS
+13 204.10)
+75
+377
+339
+60
+0.060
+–
+0.05
+[2]
+20%wt Pt on
+Vulcan XC72
+and BP 2000
+0.35
+Naﬁon 117
+70
+100
+69
+95
+0.060
+0.8 × 10−9
+0.05
+[21]
+20% Pt/Vulcan
+XC72
+0.40
+Naﬁon 115
+70
+100
+69
+62–115
+0.061
+17 × 10−9
+0.48
+[19]d
+Not given
+0.40
+Not given
+65
+100
+75
+240
+0.060
+8.7 × 10−9
+0.33
+Principles of MEA
+preparation,
+Volume 3
+47% Pt/Vulcan
+XC72
+0.40
+Naﬁon 112
+60
+120
+100
+210
+0.066
+4.5 × 10−9
+0.06
+From Figure 5
+aHydrogen and oxygen partial pressures were calculated assuming 100% RH (i.e., pO2 = Pca −pH2O,sat).
+bCathode composed of a Pt/Vulcan catalyst at a loading of 0.40 mgPt cm−2 with an additional sputtered Pt overlayer of 0.05 mgPt cm−2.
+cHeat-treated Pt-catalyst.
+dAverage of the values of b, i∗
+0(T ) and i∗
+0.9V(T ) for variable Naﬁon loadings in the electrode (0.6, 1.3, and 1.9 mgNaﬁon cm−2).
+7
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+and the maximum conductivity for the 1100 EW Naﬁon
+ionomer used in the electrodes (σH+ ≈0.18 −1 cm−1 at
+80 ◦C in contact with liquid water[28]), the effective conduc-
+tivity, σH+,eff, in the electrode may be calculated according
+to Ref. [26]
+σH+,eff = σH+εNaﬁon
+τ
+(11)
+where τ is the tortuosity of the electrode structure. Even
+though it is not quite understood, experiments with model
+electrodes by Boyer et al.[29] indicated that the effective
+tortuosity factor in the electrode of an MEA is essentially
+one. Using these values, one can calculate an effective pro-
+ton conductivity in our electrodes of 0.027 −1 cm−1 which
+translates into an effective proton resistance in a 13 µm
+thick electrode (0.4 mgPt cm−2, see Table 1) of 0.048  cm2.
+In the case of a homogeneous current distribution within the
+catalyst (implicitly assumed in the analysis of Figure 4),
+the effective contribution of proton conduction resistance
+in the catalyst layer would be 50% of the above calcu-
+lated σH+,eff based value, viz., 0.024  cm2. At this point,
+it is not clear why this still rather high resistance would
+not produce a noticeable deviation of the data in Figure 4
+from the 0.065 V decade−1 Tafel line at current densities of
+≥1 A cm−2 and model experiments are currently conducted
+to understand this phenomenon. For the CCMs with lower
+Pt cathode loadings (i.e., thinner electrodes, see Table 1),
+the calculated proton resistance in the electrode does, how-
+ever, become insigniﬁcant (0.013 and 0.007  cm2 for the
+7 and 4 µm electrodes, respectively).
+0.78
+0.80
+0.82
+0.84
+0.86
+0.88
+0.90
+0.92
+0.94
+0.01
+0.1
+1
+10
+100
+im (A mgPt−1)
+EiR-free (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+Figure 4. iR-corrected cell voltage, EiR−free, vs. mass-speciﬁc
+current density, im (A mg−1
+Pt ) for H2/O2 operation with three
+different Pt cathode loadings (0.40, 0.24, and 0.15 mgPt cm−2).
+The iR −free data were extracted from Figure 2 (80 ◦C, 100%
+RH, 270 kPaabs). The solid line is a linear-regression ﬁt of all the
+mass-speciﬁc current density normalized data, yielding an overall
+Tafel slope of 0.065 V decade−1. Measured current densities are
+corrected for H2 crossover of 3.3 mA cm−2.
+In order to compare the intrinsic catalytic activity of the
+Pt cathode catalyst in the CCMs prepared for this study, we
+extracted the exchange-current density, i0(T,pO2), from the
+data in Figure 4. This was done by extrapolating the least-
+squares regression line shown in Figure 4 to the reversible
+H2/O2 potential under the experimental conditions (i.e.,
+Erev(pH2,pO2,T ) described by equation (5)), at which point
+equation (9) can be re-written to allow for the calculation
+of i0(T,pO2)
+i0(T,pO2) =
+i + ix
+Lca
+
+
+
+
+EiR−free=Erev(pH2 ,pO2 ,T )
+10·APt,el
+(12)
+The resulting T - and pO2-dependent exchange-current den-
+sity evaluated from Figure 4 is 1.2·10−8 A/cm2
+Pt at 80 ◦C
+and pO2 = 223 kPa (note that the H2 and O2 partial pres-
+sures are calculated by subtracting the water vapor satu-
+ration pressure at 80 ◦C (i.e., 47 kPa) from the total cell
+pressure of 270 kPa, yielding a value of Erev(pH2,pO2,T ) =
+1.199 V based on equation 5).
+In order to compare this value of the exchange-current
+density with literature values recorded at different H2
+and O2 partial pressures, we used the partial pressure
+dependence of the exchange-current density as deﬁned by
+Newman[33] which than allows to determine the value of the
+exchange-current density, i∗
+0(T ), normalized to a standard O2
+partial pressure of p∗
+O2 = 101.3 kPa:
+i0(T,pO2) = i∗
+0(T )·
+
+pO2
+p∗
+O2
+γ
+(13)
+where γ is the kinetic oxygen reduction reaction order with
+respect to O2 partial pressure at constant overpotential. To
+determine the value of γ, it should be noted, however, that
+the oxygen reduction reaction order with respect to O2
+partial pressure reported in the literature, m, is generally
+evaluated at constant iR-free cell potential according to
+Vetter[34] rather than at constant overpotential:
+∂log(i + ix)
+∂log pO2
+
+
+
+
+
+EiR−free,T,pH2
+= m
+(14)
+The correlation between m and γ can be shown by
+combining equations (5), (7), (8) and (13):
+EiR−free = Erev(T ) + 2.303·R·T
+4·F
+· log
+
+
+
+pH2
+p∗
+H2
+2
+·
+
+pO2
+p∗
+O2
+
+
+
+8
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+−b· log
+
+
+
+
+
+
+i + ix
+10·Lca·APt,el·i∗
+0(T )·
+
+pO2
+p∗
+O2
+γ
+
+
+
+
+
+
+(15)
+where Erev(T ) = 1.23 −0.9·10−3·(T −298). Solving eq-
+uation (15) for log(i + ix) and taking the partial derivative
+with respect to the logarithm of the O2 partial pressure then
+yields:
+∂log(i + ix)
+∂log pO2
+
+
+
+
+
+EiR−free,T,pH2
+= γ + 2.303·R·T
+4·F·b
+≡m
+(16)
+The difference between γ and m is related to the fact
+that the reaction order γ considers only the purely kinetic
+change in current density with changing O2 partial pressure,
+whereby the reaction order m includes both the kinetically
+and the thermodynamically induced changes in current
+density with changing O2 partial pressure. Since the Tafel
+slope for the ORR of 0.065 V/decade in the present study
+(see Figure 4) is essentially identical to b = 2.303·R·T /F,
+equation 16 yields:
+γ ≈m −0.25
+(17)
+Oxygen
+reduction
+reaction
+orders
+with
+respect
+to
+pO2 at constant iR-free cell voltage range from m =
+1[12, 18, 21, 22, 25] to m = 0.85 (see Principles of MEA
+preparation, Volume 3), resulting in a value of γ ranging
+from 0.75 to 0.60 (see equation 17).
+Table 3 shows a comparison of the oxygen partial pres-
+sure independent exchange-current densities published in
+the literature, i∗
+0(T ), which were determined via equations 12
+and 13 and using γ = 0.75. With the exception of one
+outlier (data in row 10 of Table 3), all reported exchange-
+current densities are in the range of 0.8–8.7·10−9 A/cm2
+Pt
+in the temperature range from 65 to 95 ◦C. Considering the
+large experimental error associated with extrapolation of the
+Tafel line over many decades in current density to obtain the
+value of the exchange-current density, this large spread in
+values is still quite reasonable. Closer agreement between
+the values reported by different studies can be found for
+the O2 partial pressure corrected current density at 0.9 V,
+i∗
+0.9V(T ), as no extrapolation is required
+i∗
+0.9V(T ) = i0.9V(T )
+
+p∗
+O2
+pO2
+m
+(18)
+It should be noted that equation 18 is derived from equa-
+tion 16 and that m is assumed to be one for the following
+comparison. Comparing the i∗
+0.9V(T ) values for 80 ◦C in
+Table 3, the variation within the literature data including
+the value observed in our study is only on the order of a
+factor of two. In the two cases where signiﬁcantly lower
+values are reported at 70–75 ◦C, it is quite appropriate to
+assume that measurements were conducted on rather non-
+optimized electrode structures, thereby leading to this large
+deviation of i∗
+0.9V(T ).
+3.1.2
+Comparison of the ORR kinetics in liquid vs.
+solid electrolytes
+Most of the fundamental and exploratory research aimed at
+both the understanding of the ORR and the development of
+improved cathode catalysts is focused on the study of well
+characterized electrode surfaces, the electrocatalytic activity
+of which is usually tested using the RDE technique[17] (or
+the thin-ﬁlm rotating ring-disk electrode (RRDE) method
+for high surface area catalysts[25] (see also Poisons for the
+O2 reduction reaction, Volume 2) in liquid electrolytes.
+This approach not only offers a straightforward evaluation
+of the electrocatalytic ORR activity of catalysts, but also
+enables the determination of the reaction pathway, i.e.,
+the extent of H2O2 formation as side-product in the ORR
+(see Poisons for the O2 reduction reaction, Volume 2).
+The open question, of course, remains whether the ORR
+activity observed in liquid electrolytes is relevant for the
+activity of the same catalyst if it is in contact with a
+solid-polymer electrolyte. In a summary of their work,
+Zawodzinski and Gottesfeld[1] conclude that there indeed
+is an almost quantitative agreement between the ORR
+activity of polycrystalline Pt in contact with aqueous acidic
+electrolytes and with solid-polymer electrolytes.
+In an attempt to determine whether such quantitative
+agreement can also be observed for carbon-supported Pt
+catalysts, we compared the ORR activity of the 47%wt
+Pt/Vulcan XC72 catalyst in a catalyst coated membrane
+(0.4 mgPt cm−2, see Table 1) under similar conditions as
+were used in thin-ﬁlm RRDE experiments by B. Blizanac
+et al.[30] These data are shown in Figure 5 and clearly
+demonstrate the excellent agreement between the ORR
+mass-activity in 0.1 M HClO4 and in a CCM at an
+electrolyte temperature of 60 ◦C. The ORR activity of
+0.06 mA cm−2
+Pt
+at 0.9 V (see Table 3) is identical in both
+electrolytes and is also in excellent agreement with the
+value determined for a 20%wt Pt/Vulcan XC72 catalyst in
+0.5 M HClO4 (0.065 mA cm−2
+Pt ) under otherwise identical
+conditions.[25] Deviations between the ORR activity in
+liquid and solid electrolyte are only observed for higher
+current densities (see data point at 0.8 V in Figure 5),
+which is often claimed to be due to an ORR kinetics-
+induced change in Tafel slope with current density in liquid
+electrolytes,[25] but it may also be due to the effect of
+9
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+0.78
+0.80
+0.82
+0.84
+0.86
+0.88
+0.90
+0.01
+0.1
+1
+10
+im (A mgPt−1)
+EiR-free (V)
+RDE data
+MEA data
+Figure 5. Comparison of cathode catalyst mass activity (47%
+Pt/Vulcan) determined by RDE and MEA (50 cm2) measurements
+under nominally identical gas-phase oxygen partial pressures.
+RDE measurements: in O2-saturated 0.1 M HClO4 at 60 ◦C and
+1600 rpm using 14 µgPt cm−2 on a 0.283 cm2 disk electrode
+(currents are recorded 10 mins. after a negative-going potential
+step from 1.0 V RHE to the indicated potentials; the RDE data
+were obtained from Blizanac[30]). MEA measurements: fully
+humidiﬁed H2/O2 (stoichiometric ﬂows of 2.0/9.5) at 120 kPaabs
+and 60 ◦C using a Naﬁon 112 MEA with 0.4 mgPt cm−2/electrode
+(iR −free voltages were obtained after 10 mins. holding time
+at each current density; mass-speciﬁc current densities were
+corrected for H2-crossover of 0.9 mA cm−2).
+uncompensated solution resistance in RRDE experiments.
+Nevertheless, the (thin-ﬁlm) RRDE method appears to be an
+excellent and easily applied preliminary screening tool for
+the evaluation of the ORR activity of new and unprobed
+catalysts. This also suggests that the generally higher O2
+solubility in ionomers, does not signiﬁcantly affect the ORR
+kinetics, probably related to the fact that O2 solubility in
+recast ionomers is not that much different from its value in
+liquid acids.[1]
+3.1.3
+Determination of additional voltage losses for
+H2/air operation
+While resistance-corrected cell voltages with pure O2 were
+characterized by straight Tafel slopes up to 1.8 A cm−2,
+Tafel plots with air under otherwise identical condi-
+tions are characterized by an increase in the apparent
+Tafel slopes beyond the ORR kinetics-controlled value of
+0.065 V decade−1 (see Figures 3 and 4) at current densi-
+ties ≥0.2 A cm−2 (see Figure 6a). This generally observed
+phenomenon[2, 10, 13] (see also Principles of MEA prepa-
+ration, Volume 3) is related to the development of sig-
+niﬁcant mass-transport losses (i.e., diffusion overpoten-
+tials) in air due to the effect of N2 dilution. In the ORR
+kinetics-controlled region with air, i.e., below 0.2 A cm−2,
+a comparison of Figure 6(a) with the O2 data in Figure 3
+indicates resistance-corrected cell voltage losses of ca.
+35–40 mV due to lower O2 partial pressure, consistent with
+other data reported in the literature[10, 13] (see also Princi-
+ples of MEA preparation, Volume 3) and slightly lower
+than the 50 mV observed by Ralph and Hogarth.[2]
+It is common in the literature to compare the mass-
+speciﬁc activities (in A mg−1
+Pt ) of cathodes with different
+Pt loadings in order to benchmark different MEA technolo-
+gies and to determine the optimum achievable effectiveness
+0.60
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+0.01
+0.1
+1
+10
+(b)
+0.55
+im (A mgPt−1)
+EiR-free (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+(a)
+0.55
+0.60
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+0.01
+0.1
+1
+10
+ieff (A cm−2)
+EiR-free (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+Figure 6. Effect of cathode Pt loading on iR −free cell voltage
+for H2/air operation (solid symbols,100% RH) at stoichiomet-
+ric ﬂows of 2.0/2.0 (between 0.022 and 1.80 A cm−2), 80 ◦C cell
+temperature, and 270 kPaabs: (a), based on geometric current den-
+sities (A cm−2); and (b), based on mass-speciﬁc current densities
+(A mg−1
+Pt ) (including the H2/O2 data from Figure 4). The dashed
+lines indicate the Tafel slope behavior observed for pure O2
+(open symbols) Naﬁon 112 CCM (50 cm2) with anode loadings of
+0.40 mgPt cm−2. Voltages were averaged between 10 and 15 min
+holding time at each current density (measured current densities
+are corrected for H2 crossover of 3.3 mA cm−2).
+10
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+of Pt in an MEA in terms of current produced per mass
+of Pt. Traditionally, however, this has been done by eval-
+uating a plot of cell voltage (Ecell) versus mass-speciﬁc
+current density (im) (see Novel catalysts, catalysts support
+and catalysts coated membrane methods, Volume 3).[1]
+Unfortunately, such comparison is ﬂawed as it ignores the
+contribution of very different ohmic voltage loss contribu-
+tions (iR) if different Pt loadings are benchmarked. For
+example, consider two different cathode loadings of 0.02
+and 0.20 mgPt cm−2 with an effective Pt activity measured
+at the same mass-speciﬁc current density of 5 A mg−1
+Pt : the
+low-loaded cathode would then operate at a geometric cur-
+rent density of 0.1 A cm−2, while the high-loaded cathode
+would operate at 1.0 A cm−2, where the ohmic resistance
+contribution to the cell voltage is already on the order of the
+value of the Tafel slope. Clearly, even if the true mass activ-
+ities were to be identical, a plot of Ecell vs. im would yield
+a signiﬁcantly lower mass-speciﬁc activity for the high-
+loaded Pt cathode due to its much larger iR loss. These
+differences are even more pronounced with thicker mem-
+branes due to their larger ohmic resistance (compare, e.g.,
+Ref. [1] and Novel catalysts, catalysts support and cat-
+alysts coated membrane methods, Volume 3). Therefore,
+the scientiﬁcally stringent approach for the comparison of
+the effectiveness of Pt in different MEAs is an evaluation
+on the basis of resistance-corrected cell voltages as was
+done in Figure 6(b).
+Figure 6(b) shows that the mass-speciﬁc activity of
+MEAs with different Pt cathode loadings is indistinguish-
+able up to ca. 1 A mg−1
+Pt , showing a Tafel slope identical
+with the one obtained with pure O2 (solid vs. open symbols
+in Figure 6(b)). In this purely kinetically-controlled region
+(i.e., im ≤1 A mg−1
+Pt ), the voltage loss compared to pure
+O2 again is 40 mV as has already been discussed above.
+This voltage loss is due to both reduced ORR kinetics
+(equation (8)) and a reduction in the equilibrium poten-
+tial (equation (5)). Mathematically it can be described by
+taking the partial derivative of equation 15 with respect to
+the logarithm of oxygen partial pressure and combining it
+with equation 16:
+∂EiR−free
+∂log[pO2]
+
+
+
+
+
+pH2,T,im,APt,el
+= 2.303·R·T
+4·F
++ b·γ = b·m (19)
+Based on a value of m = 1 and a Tafel-slope of
+0.065 V/dec., equation 19 would predict a decrease in cell
+voltage of ca. 44 mV if O2 is replaced by air (100 →21%
+O2), in reasonably good agreement with the observed volt-
+age decrease of 40 mV shown in Figure 6(b).
+At mass-speciﬁc current densities above 1 A mg−1
+Pt ,
+higher activities are observed for lower Pt loadings
+(Figure 6b) which is related to the impact of signiﬁcant
+mass-transport resistances which in general scale with
+the geometric current density. At a given mass-speciﬁc
+current density, the geometric current density is lower for
+electrodes with low Pt loadings compared to high-loaded
+electrodes. Therefore, ohmic and transport-related voltage
+losses which increase with increasing geometric current
+density lead to an apparent voltage reduction for high-
+loaded electrodes if compared at constant mass-speciﬁc
+current density (here, e.g., at im ≥1 A mg−1
+Pt ). The relevant
+design parameter for the design of PEM fuel cell systems is,
+however, the geometric current density (and not the mass-
+speciﬁc current density) since the power density of a fuel
+cell stack is most signiﬁcantly affected by this parameter
+(in essence, small changes in the cell voltage affect the
+system efﬁciency, but have a lesser impact on the system
+power compared to the inﬂuence of changes in geometric
+current density). Therefore, an evaluation of different MEA
+technologies should be done on the basis of geometric
+current density and will be discussed in the next Section.
+3.1.4
+Determination of cell voltage loss
+contributions for H2/air operation
+From the above discussion of Figure 6, it is appar-
+ent that the resistance-corrected air performance curves
+are purely ORR kinetics-controlled at very low geomet-
+ric current densities, following the same Tafel slope of
+0.065 V decade−1 as was observed in pure O2 (Figure 6b).
+Therefore, the cell voltage loss contribution due to the
+ORR (ηORR) can be calculated by extrapolating the
+resistance-corrected cell voltage at the lowest measured
+current density (0.02 A cm−2) over the entire current den-
+sity range using a 0.065 V decade−1 Tafel slope, as is
+shown in Figure 7(a). The expected difference between
+the MEAs with the highest (0.40 mgPt cm−2) and the low-
+est (0.15 mgPt cm−2) Pt cathode loadings would be 28 mV
+(i.e., 0.065 V × log[0.40/0.15]), in good agreement with the
+30 mV difference shown in Figure 7(a). The observed dif-
+ference between the 0.40 mgPt cm−2 and the 0.24 mgPt cm−2
+loadings of 22 mV is, however, 8 mV larger than pre-
+dicted which is probably due to errors in the repeata-
+bility of voltage measurement (estimated to be within
+±5 mV).
+The measured ohmic resistance losses are shown in
+Figure 7(b) and are, as expected, directly proportional to the
+current density and essentially independent of Pt cathode
+loading, ranging from 65 to 75 m cm2 (the solid line
+in Figure 7(b) is a least-squares regression line of the
+ohmic resistances of all three MEAs with a value of
+70 m cm2). The linear dependence of E vs. i typically
+holds under fully humidiﬁed conditions for 50 µm thick
+N112 membranes[1] as shown in Figure 7(b); in the case
+of less than 100% humidiﬁcation, however, the measured
+11
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+0.26
+0.28
+0.30
+0.32
+0.34
+0.36
+0.38
+0.40
+0.42
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+i (A cm−2)
+ηORR (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+i (A cm−2)
+−0.02
+0.00
+0.02
+0.04
+0.06
+0.08
+0.10
+0.12
+0.14
+0.16
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+ηtx (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+i (A cm−2)
+0.00
+0.02
+0.04
+0.06
+0.08
+0.10
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+DEΩ (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+(a)
+(b)
+(c)
+DEΩ,total
+DEΩ,membrane (N112 only)
+Figure 7. Cell voltage loss contributions vs. geometric current
+density for H2/air operation (s = 2.0/2.0) at 80 ◦C cell tempera-
+ture, 100% RH, and 270 kPaabs (based on the data in Figure 6(a);
+catalyst-coated N112 with 0.40 mgPt cm−2 anode loading and
+variable cathode loadings): (a) calculated kinetic ORR losses
+(assumptions: Tafel slope of 0.065 V decade−1, 1.199 V equilib-
+rium potential (equation (5) with pO2 = pH2 = 223 kPaabs), H2
+crossover correction of 3.3 mA cm−2, and zero mass-transport
+losses at 0.02–0.03 A cm−2); (b) measured ohmic losses (1 kHz
+perturbation): the solid linear regression line represents the aver-
+age total ohmic loss for all three electrodes and the dash-dot line
+is the estimated membrane resistance for liquid-water saturated
+N112, assuming 0.18 ( cm)−1;[28] (c) estimated mass transport
+losses (see text) with data for H2/helox at a cathode loading of
+0.40 mgPt cm−2 (see Figure 8) as solid circles.
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+0.95
+0.01
+0.1
+1
+10
+ieff (A cm−2)
+EiR-free (V)
+Pure O2
+Helox
+Air
+Figure 8. Cell voltage (iR −free, EiR−free) vs. current density for
+pure O2, helox (21% O2 in He), and air at stoichiometric ﬂows of
+s = 2.0/9.5 (H2/O2) and s = 2.0/2.0 (H2/helox, air). Naﬁon 112
+CCM (50 cm2) with 0.40/0.40 mgPt cm−2 (anode/cathode); cell
+temperature of 80 ◦C, reactant dewpoints of 80 ◦C (100% RH),
+and reactant pressure of 270 kPaabs. The dashed line is a parallel-
+shifted guide-to-the-eye, following the same Tafel slope as for
+pure O2 (solid regression line). Voltages were averaged between
+10 and 15 min holding time at each current density (measured
+current densities are corrected for H2 crossover of 3.3 mA cm−2).
+ohmic resistance, R, increases with current density due
+to membrane drying produced by the electroosmotic drag
+of water from the anode to the cathode (see Section 3.3.2
+and Ref. [1]). The estimated N112 membrane resistance
+at 80 ◦C and full humidiﬁcation is 28 m cm2 (based on
+a conductivity of 0.18 ( cm)−1)[28] and is indicated in
+Figure 7(b); the membrane-related ohmic losses for state-
+of-the-art 25 µm membranes are even lower, and would
+result in a total ohmic resistance of only ≈55 m cm2. The
+difference of ca. 42 m cm2 between the measured total
+cell resistance and the estimated membrane resistance is
+due to the DM/bipolar-plate and the DM/electrode contact
+resistances, as well as the bulk electronic resistances in
+both the diffusion medium and the electrodes. Independent
+measurements for the 50 cm2 graphite cells have shown that
+ca. 60% of these 42 m cm2 are due to the DM/bipolar-
+plate contact resistance.[31]
+Having determined the voltage losses due to the ORR
+kinetics, ηORR, and the ohmic voltage loss, E, it is now
+straightforward to evaluate the transport resistance related
+voltage losses, ηtx, which may be due either to diffusion
+overpotentials (mainly within Naﬁon-catalyst agglomerates
+or produced by water ﬂooding of the DM and/or the
+electrode) and/or to potential gradients in the electrolyte
+phase of the electrode
+ηtx = Erev(pH2,pO2,T ) −Ecell −E −ηORR
+(20)
+12
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+where, again, it is assumed that the overpotential for the H2
+oxidation reaction is negligible. The calculated transport-
+related voltage losses are shown in Figure 7(c) (using an
+equilibrium voltage of 1.199 V based on equation (5)) and
+are insigniﬁcant at current densities below 0.5 A cm−2. At
+higher current densities, however, ηtx increases exponen-
+tially, amounting to ≥50 mV at 1 A cm−2 and increasing
+to >100 mV at 1.5 A cm−2. The origin of the much larger
+transport-related voltage losses for the electrode with the
+lowest Pt loading is quite puzzling, as one would expect
+lower diffusion overpotentials as the electrode thickness
+is being decreased (13 µm for the 0.4 mgPt cm−2 loading
+vs. 4 µm for the 0.15 mgPt cm−2 loading; Table 1). This is
+mainly caused by a non-optimized ionomer distribution in
+the electrode, leading to noticeable electrolyte potential gra-
+dients within the electrode in the case of air-feed operation
+(in the case of air-feed, the majority of the O2 reduction
+reaction will occur at the electrode/DM interface due to O2
+concentration gradients in the electrode, contrary to fuel
+cell operation with pure O2, thereby increasing the proton
+conductivity requirement in the electrode). We are currently
+investigating this hypothesis.
+In summary, the major voltage losses are related to
+the slow ORR kinetics of platinum which, of course, is
+a well-known and frequently discussed fact.[2, 17] Owing
+to the rather small Tafel slope of the ORR it would,
+however, be conceivable to operate fuel cells at signiﬁcantly
+higher maximum power current densities, if transport-
+related resistances could be avoided. By these means, the
+Pt requirement for the fuel cell stack could be reduced
+by a large factor as will be outlined in the following.
+For example, the purely kinetic penalty for doubling the
+current density at maximum power from the, nowadays
+typical, 0.8 A cm−2 to 1.6 A cm−2, would amount to only
+0.02 V (i.e., 0.065 V× log[1.6/0.8]). Assuming the use of
+state-of-the-art 25 µm membranes (see Catalyst coated
+composite membranes, Volume 3), the total ohmic losses
+at 1.6 A cm−2 would be ca. 0.09 V (see above estimated
+55 m cm2). Therefore, in the absence of transport-related
+losses and using the data shown in Figure 7(a) (ηORR ≈
+0.42 V at 0.8 A cm−2 for 0.15 mgPt cm−2 cathode loading), a
+cell voltage of 0.67 V (from: 0.67 V = 1.199 V −0.42 V −
+0.02 V −0.09 V) could be achieved with a cathode loading
+of only 0.15 mgPt cm−2. This would translate into a power
+density of 1.1 W cm−2 at an energy conversion efﬁciency
+of 56% and a Pt activity of ca. 0.18 gPt kW−1 (assuming
+an anode loading of 0.05 mgPt cm−2; see Section 1), which
+may be compared to the current value of ca. 0.7 gPt kW−1
+at the same voltage efﬁciency (see Section 1). Clearly, a
+reduction of transport-related voltage losses in an MEA
+as well as the search for more active cathode catalysts
+(see Pt alloys as oxygen reduction catalysts, Volume 3)
+should be a major effort in the development of fuel cells
+for commercial, particularly automotive applications.
+3.1.5
+Transport-related cell voltage losses in helox
+vs. air
+A diagnostic tool frequently used to examine the nature
+of transport-related voltage losses with air is a compar-
+ison of air versus helox (21% O2 in He) performance
+curves[2, 12, 13] (also see Principles of MEA prepara-
+tion, Volume 3). Owing to the signiﬁcantly higher dif-
+fusion coefﬁcient of O2 in a He background (DO2(He) =
+0.42 cm2 s−1 at 270 kPaabs and 80 ◦C[32]) versus a N2 back-
+ground (DO2(N2) = 0.11 cm2 s−1 at 270 kPaabs and 80 ◦C[32]),
+diffusion overpotential related transport losses would be
+expected to be lower for cathode operation with helox as
+compared to air. This, indeed, can be seen in Figure 8,
+where helox and air performance are identical at current
+densities ≤0.2 A cm−2, but start to differ by ca. 30 mV
+at 1 A cm−2, with the helox performance curve follow-
+ing more closely the indicated 0.065 V decade−1 Tafel line.
+Similar data have been recorded in the literature, where dif-
+fusion overpotentials in helox are generally negligible up to
+1 A cm−2[2, 12] (also see Principles of MEA preparation,
+Volume 3).
+The differences between helox and air performance
+become more apparent if one compares ηtx vs. i (calculated
+acc. to equation (20)) as is shown in Figure 7(c) for MEAs
+with a cathode loading of 0.40 mgPt cm−2 (solid (helox)
+vs. open (air) circles). These differences are generally
+understood to be due to poor water management in either
+the diffusion medium and/or the diffusion medium/catalyst
+interface, leading to a loss of the effective porosity of
+the diffusion medium and, consequently, to increased
+gas-phase diffusion overpotentials. Optimization of the
+diffusion medium and its surface treatment (micro-porous
+teﬂonated carbon layers in most cases) may help to reduce
+the observed gas transport-related voltage losses and is
+a key research topic aiming at the improvement of fuel
+cell stack power density and the associated reduction in Pt
+metal loadings.
+3.2
+Comparison of 50 cm2 single-cell and
+500 cm2 short stack performance
+Since all of the above analysis is based on 50 cm2
+single-cell experiments, it is of course important to deter-
+mine whether the same performance characteristics can
+be observed in full-active-area short stack measurements
+(500 cm2). Therefore, the resistance-corrected cell voltages
+vs. the mass-speciﬁc current density performance curves
+13
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+0.01
+0.1
+1
+10
+im (A mgPt−1)
+EiR-free (V)
+0.40 mgPt cm−2
+0.24 mgPt cm−2
+0.15 mgPt cm−2
+Figure 9. Comparison of the mass-speciﬁc current densities
+versus iR −free cell voltage achieved with 50 cm2 MEAs in
+a single cell (solid symbols) and with 500 cm2 MEAs (open
+symbols) in a short-stack (four MEAs of each type). The Pt
+cathode loadings are indicated in the ﬁgure (anode loadings of
+the Naﬁon 112 based MEAs are 0.4 mgPt cm−2). H2/air operation
+(100% RH) at stoichiometric ﬂows of 2.0/2.0 (between 0.022
+and 1.0–1.2 A cm−2), 80 ◦C cell temperature, and 270 kPaabs. The
+short-dash straight lines indicate the Tafel slope behavior observed
+for pure O2 (65 mV decade−1, see Figure 4) on 50 cm2 single cells.
+Voltages were averaged between 10 and 15 min holding time at
+each current density (measured current densities are corrected for
+H2 crossover of 3.3 mA cm−2).
+obtained in a 50 cm2 single-cell are compared in Figure 9 to
+those obtained in a 500 cm2 short stack for each MEA type
+(i.e., the three different cathode loadings). The difference in
+performance at low im values is essentially negligible (ca.
+10 mV higher for the 50 cm2 MEAs) and the same Tafel
+slope of 65 mV decade−1 is obtained for both hardware plat-
+forms in this region. At higher current densities, differences
+up to 25 mV can be observed and it is not yet clear whether
+this is related to MEA scale-up issues or to mass-transport
+related issues in the stack hardware, with the latter being
+more critical in larger active-area stacks where cell-to-cell
+gas distribution also plays an important role. In general,
+however, the agreement is quite good, substantiating the
+idea that the voltage-loss analysis based on 50 cm2 single-
+cell experiments is of relevance for the understanding of
+large active-area stack performance.
+3.3
+Membrane thickness effect under fully
+humidiﬁed and dry conditions
+3.3.1
+Performance trade-offs with fully humidiﬁed
+reactants (500cm2 short stack)
+The effect of membrane thickness under fully humid-
+iﬁed conditions was studied in a 500 cm2 active area
+short stack with MEAs based on both N111 (25 µm) and
+N112 (50 µm) at identical loadings of 0.40/0.40 mgPt cm−2
+(anode/cathode). Based on the discussion in Section 3.1.4,
+very little difference in performance would be expected
+in this case, as the membrane resistance for thicknesses
+of ≤50 µm should be independent of current density.[1]
+Therefore, the cell voltage difference should amount to
+the current density multiplied by the difference in ohmic
+resistance between N112 (estimated to be 28 m cm2,
+see Section 3.1.4) and N111 (ca. 14 m cm2), viz., i ×
+14 m cm2, corresponding to 14 mV at 1 A cm−2. The
+observed difference in cell voltage at 80 ◦C and 270 kPaabs
+with fully humidiﬁed reactants shown in Figure 10 amounts
+to ca. 35 mV at 1 A cm−2, somewhat larger than the differ-
+ence predicted above perhaps in part due to a larger catalyst
+layer to membrane contact resistance for the N112 MEAs.
+Considering, however, the large error bars (±25 mV for
+N112-based MEAs) in the cell voltage measurement, this
+difference may still be considered to be in quite reasonable
+agreement with the predicted cell voltage changes based on
+the ohmic resistance difference between fully humidiﬁed
+N111 and N112.
+After ohmic resistance correction of the cell voltages, the
+performance of MEAs based on both membranes becomes
+identical, indicating no difference in electrode performance
+for both types of MEAs. It may be noted that the standard
+deviations of the resistance-corrected cell voltages are very
+0.55
+0.60
+0.65
+0.70
+0.75
+0.80
+0.85
+0.01
+0.1
+1
+Ecell or EiR-free (V)
+Ecell
+EiR-free
+i (A cm−2)
+N111 (25 µm, 1100 EW)
+N112 (50 µm, 1100 EW)
+Figure 10. Effect of membrane thickness on fuel cell stack cell
+voltage, Ecell, and iR-corrected cell voltage, EiR−free, with fully
+humidiﬁed H2/air feed (s = 2.0/2.0 from 0.02–1.0 A cm−2) at
+80 ◦C and 270 kPaabs. Data are shown for N112 and N111 based
+500 cm2 MEAs with 0.40/0.40 mgPt cm−2 loadings (anode/cath-
+ode) in a short stack (error bars represent cell voltage standard
+deviations for four nominally identical MEAs of each kind in the
+stack). Voltages were averaged between 10 and 15 min holding
+time at each current density.
+14
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+small (on the order of ±5 mV), reﬂecting a large variation in
+the contact resistance of the bipolar-plates in the hardware
+used for this experiment. It is, at any rate, quite clear that
+the beneﬁt of thinner membranes under fully humidiﬁed
+conditions is essentially limited to the difference in ohmic
+resistance of water-saturated membranes and is, therefore,
+rather small.
+3.3.2
+Performance trade-offs with dry reactants
+(500cm2 short stack)
+For the design of fuel cell systems for commercial applica-
+tions, the balance-of-plant (BOP) components are crucial
+for the overall system efﬁciency as well as, of course,
+for the overall system weight and volume. For automotive
+applications with their stringent volume and mass require-
+ments particularly, minimization of system complexity is of
+considerable importance. For this reason, the Global Alter-
+native Propulsion Center of GM/Opel has been engaged in
+trying to signiﬁcantly reduce the number of BOP compo-
+nents, a large step of which was the omission of cathode
+gas humidiﬁcation (see System design for vehicle applica-
+tions: GM/Opel, Volume 4). Amongst other design mod-
+iﬁcations, this can be achieved by the implementation of
+thin, low equivalent weight (≤1000 g mol−1
+H+) membranes,
+the performance impact of which will be discussed in
+the following.
+Figure 11 compares the cell voltage performance at
+various humidiﬁcation conditions for MEAs based on
+three different membranes and ionomers (in the cat-
+alyst layers): N112 (50 µm, 1100 EW), N111 (25 µm,
+1100 EW), and GorePrimea(25 µm, <1000 EW, see
+Catalyst coated composite membranes, Volume 3). At
+0.1 A cm−2 (Figure 11a), the performance of each MEA is
+independent of reactant humidiﬁcation, yielding the same
+cell voltages within experimental error for both fully humid-
+iﬁed gases and the combination of either fully humidiﬁed
+anode-feed with dry cathode-feed (100% RH/dry) or dry
+anode-feed with under-humidiﬁed cathode-feed (dry/50%
+RH). The cell voltages for the low EW GorePrimeaare,
+however, ca. 15–25 mV higher compared to the high EW
+Naﬁon-based MEAs, indicating the advantage of using
+lower EW ionomers (as there is, e.g., the 910 EW Flemion
+ionomer developed by Asahi Glass, Japan (see Composite
+perﬂuorinate membranes, Volume 3)) in both the mem-
+brane and the electrodes.
+At the
+higher
+current density
+of
+0.8 A cm−2
+(see
+Figure 11b), the cell voltage of the 50 µm N112-based
+MEAs now strongly depends on reactant humidiﬁcation,
+dropping by ca. 50 mV if dry reactant feeds are used.
+Smaller humidiﬁcation-related losses are observed for the
+thinner (25 µm) N111-based MEAs, but still amount to ca.
+25 mV. For the low EW GorePrimea, no voltage losses
+0.81
+0.82
+0.83
+0.84
+0.85
+N 112
+N 111
+Gore MEA
+Ecell (V)
+100% RH/100% RH (anode/cathode)
+100% RH/dry (anode/cathode)
+Dry/50% RH (anode/cathode)
+(a)
+Ecell (V)
+0.56
+0.58
+0.60
+0.62
+0.64
+0.66
+0.68
+0.70
+N 112
+N 111
+Gore MEA
+100% RH/100% RH (anode/cathode)
+100% RH/dry (anode/cathode)
+Dry/50% RH (anode/cathode)
+(b)
+Figure 11. Cell voltage comparison of different MEAs at 80 ◦C as
+a function of humidiﬁcation of the H2/air reactants (s = 2.0/2.0)
+at 270 kPaabs pressure: (i) fully humidiﬁed (100% RH/100% RH);
+(ii) with fully humidiﬁed anode and dry cathode gases (100%
+RH/dry); and (iii) with dry anode and underhumidiﬁed cathode
+gases (dry/50% RH). (a) shows Ecell at 0.1 A cm−2; and (b) at
+0.8 A cm−2. MEAs are based on N112 (50 µm, 1100 EW), N111
+(25 µm, 1100 EW), and GorePrimea(25 µm, <1000 EW). All
+MEAs have an active area of 500 cm2 with 0.40/0.40 mgPt cm−2
+loadings (anode/cathode) operated in a short stack (error bars
+represent cell voltage standard deviations for four nominally
+identical MEAs of each kind in the stack). Voltages were averaged
+between 10 and 15 min holding time at each current density. GM
+produced the electrodes for the N111- and N112-based MEAs.
+upon reduction of reactant humidiﬁcation are observed,
+once more emphasizing the advantage of low EW ionomers.
+A summary of the observed cell voltage losses produced
+by using a dry cathode feed compared to fully humidiﬁed
+reactants is shown in Figure 12(a). The advantage of
+using thinner membranes and low-EW ionomers is quite
+apparent (related to the more facile back-diffusion of
+water), demonstrating that the above stated target of dry
+cathode operation can be achieved without cell voltage
+losses if 25 µm low EW membranes are used.
+15
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+−10
+0
+10
+20
+30
+40
+50
+60
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+i (A cm−2)
+Ecell (100%/100% − 100%/dry) (V)
+N 112 (50 µm)
+N 111 (25 µm)
+Gore MEA  (25 µm)
+(a)
+−10
+0
+10
+20
+30
+40
+50
+60
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+i (A cm−2)
+EiR-free (100%/100% − 100%/dry) (V)
+N 112 (50 µm)
+N 111 (25 µm)
+Gore MEA  (25 µm)
+(b)
+Figure 12. Current-density-dependent voltage losses between
+stack operation with fully humidiﬁed H2/air (s = 2.0/2.0) feed and
+dry-cathode feed operation (fully humidiﬁed H2 feed) at 80 ◦C
+and 270 kPaabs pressure: (a) cell voltage losses, Ecell; (b) iR-
+free cell voltage losses, EiR−free. MEAs are based on N112
+(50 µm, 1100 EW), N111 (25 µm, 1100 EW), and GorePrimea
+(25 µm, <1000 EW). All MEAs have an active area of 500 cm2
+with 0.40/0.40 mgPt cm−2 loadings (anode/cathode) operated in a
+short stack (error bars represent cell voltage standard deviations
+for three nominally identical MEAs of each kind in the stack).
+Voltages were averaged between 10 and 15 min holding time at
+each current density.
+Using only the data in Figure 12(a), it is not clear whether
+the reduced cell voltages for dry reactant-feed observed for
+Naﬁon-based MEAs are only due to membrane drying (i.e.,
+an increase in the ohmic resistance of the membrane) or
+whether the cathode performance is compromised in addi-
+tion. This can be determined by examining the resistance
+corrected cell voltages: if the cell voltage loss is only due
+to an increase in the ohmic resistance of the membrane,
+no losses in the resistance corrected cell voltages should
+be observed with dry cathode feed, while any decrease in
+cathode performance due to dry-out of the ionomer in the
+electrode would still produce a loss in EiR−free. The lat-
+ter indeed is the case for the 1100 EW Naﬁon-based MEAs
+(Figure 12b), indicating that the majority of the cell voltage
+losses even for the 25 µm N111-based MEAs is due to a
+loss in cathode activity, which can be explained by the for-
+mation of signiﬁcant potential gradients in the electrolyte
+phase of the electrode. This is in stark contrast to the zero
+loss in EiR−free for the GorePrimea.
+In summary, it is quite apparent that a reduction of the
+BOP complexity via the omission of cathode humidiﬁcation
+can only be achieved by means of thin membranes with low
+EW ionomers in both the membrane and the electrodes.
+4
+CONCLUSIONS
+Based on 50 cm2 fuel cell testing with O2, helox, and air we
+have deconvoluted the various voltage loss terms observed
+for state-of-the-art MEAs. As is well known, the major volt-
+age loss is due to the slow ORR-kinetics on Pt, while the
+ohmic losses due to electronic (contact and bulk resistances
+for the ﬂow ﬁelds, the DM, and the electrodes) and pro-
+tonic (membrane resistance) resistances are fairly small and
+increase linearly with current density for thin membranes
+(≤50 µm) under fully humidiﬁed conditions. Additional
+transport resistances are negligible for pure O2 operation,
+but become quite signiﬁcant at i ≥0.5 A cm−2 for fuel cell
+operation with air. The associated voltage losses are largely
+due to gas diffusion overpotentials, but small contributions
+may also derive from potential gradients in the electrolyte
+phase of the cathode electrode, enhanced by an inhomoge-
+neous current distribution due to O2 concentration gradients
+in case of operation with air. Based on the voltage-loss anal-
+ysis, a trade-off between cathode Pt loading and achievable
+cell voltage can be estimated.
+A comparison of 50 cm2 single cell performance with
+500 cm2 short-stack performance demonstrates that the con-
+clusions based on 50 cm2 data are relevant for understand-
+ing and predicting full active area stack performance.
+A comparison of fuel cell performance with membranes
+of different thickness using different EW-ionomers shows
+that the differences in the observed cell voltages are only
+due to the lower ohmic resistance of thinner and low-
+EW ionomer membranes in the case of fully humidiﬁed
+reactants. Therefore, with membranes of a thickness of
+16
+
+
+Beginning-of-life MEA performance – Efﬁciency loss contributions
+50 µm and thinner, the differences in fuel cell performance
+with fully humidiﬁed reactants is quite small. In the case
+of under-humidiﬁed or dry reactant-feed, however, the cell
+voltages observed for thicker and high EW membranes are
+signiﬁcantly lower than what one would predict on the basis
+of their higher ohmic membrane resistance. This is related
+to a drying of the cathode electrode and the associated
+loss in Pt utilization which occurs due to the inferior water
+management properties of thick and high EW membranes.
+Therefore, system-friendly dry-reactant-feed operation can
+only be achieved with thin and low EW membranes and
+ionomers.
+ACKNOWLEDGEMENTS
+We would like to acknowledge the contributions from Susan
+Yan who had initiated this experimental work some time
+ago. Furthermore, we would like to thank Mike Scozzafava
+for preparing many of the MEAs used in this study.
+LIST OF SYMBOLS
+Ag
+cm2
+geometric area of electrode
+APt,cat
+m2
+Pt/gPt
+ex-situ speciﬁc Pt surface
+area of a Pt-catalyst
+APt,el
+m2
+Pt/gPt
+in-situ speciﬁc Pt surface area
+in the electrode of an MEA
+b
+V/decade Apparent Tafel
+slope of the ORR
+Ecell
+V
+single-cell voltage
+EiR−free
+V
+iR-corrected cell volt-
+age (corrected for R)
+E0
+V
+ﬁtting parameter as
+deﬁned in Equation 4
+Erev(pH2,pO2,T ) V
+reversible cell potential (func-
+tion of pH2, pO2, and T )
+Erev(T )
+V
+H2 and O2 partial pressure-
+independent terms of the
+reversible cell potential
+ε
+none
+void volume fraction
+εNaﬁon
+none
+Naﬁon volume fraction in the
+electrodes of the CCMs
+F
+A·s/equiv Faraday constant
+γ
+none
+oxygen reduction reaction
+order with respect to
+O2 partial pressure at
+constant overpotential
+ηHOR
+V
+overpotential of the HOR
+(H2 oxidation reaction)
+ηORR
+V
+overpotential of the ORR
+(O2 reduction reaction)
+ηtx
+V
+mass-transport induced
+overpotential
+i
+A/cm2
+measured cell current
+density based on the
+geometric surface area
+ieff
+A/cm2
+Effective cell current density
+corrected for the H2-cross-
+over current density, ix
+im
+A/mgPt
+mass-speciﬁc current density,
+corrected for H2-cross-over
+ix
+A/cm2
+Current density associated
+with H2 cross-over (crossing
+through the membrane)
+i0
+A/cm2
+exchange-current density
+based on geometric area
+as deﬁned in equation 4
+i0(T,pO2)
+A/cm2
+Pt
+temperature and O2 partial
+pressure dependent
+exchange-current density
+based on Pt surface area
+i∗
+0(T )
+A/cm2
+Pt
+temperature dependent
+exchange-current density
+based on Pt surface
+area and referenced
+to p∗
+O2 = 101.3 kPa
+i∗
+0.9V(T )
+A/cm2
+Pt
+temperature dependent current
+density at 0.9 V cell voltage
+(iR-free) based on Pt
+surface area (referenced
+to p∗
+O2 = 101.3 kPa)
+Lca
+mgPt/cm2 cathode loading of the MEA
+m
+none
+oxygen reduction reaction
+order with respect to
+O2 partial pressure at
+constant iR-free cell voltage
+pH2
+kPa
+H2 partial pressure
+p∗
+H2
+kPa
+reference H2 partial
+pressure (101.3 kPa)
+pO2
+kPa
+O2 partial pressure
+p∗
+O2
+kPa
+reference O2 partial
+pressure (101.3 kPa)
+Q
+C
+Coulombic charge determined
+from cyclic voltammetry
+rf
+cm2
+Pt/cm2
+Roughness factor (Pt sur-
+face area over geo-
+metric electrode area)
+R
+J/(mol·K) Universal gas constant
+RH
+%
+relative humidity; RH =
+[pH2O/psat
+H2O(T )]·100%
+Rﬁt
+·cm2
+ﬁtted resistance contri-
+bution to polarization
+curve (equation 4)
+17
+
+
+Polymer electrolyte membrane fuel cells and systems (PEMFC)
+R
+·cm2
+ohmic resistance (sum
+of electronic contact
+and bulk resistances
+and the membrane H+-
+conduction resistance)
+s
+none
+reactant stoichio-
+metric ﬂow rates
+σH+
+(·cm)−1 bulk electrolyte conductivity
+σH+,eff
+(·cm)−1 Effective electrolyte conduc-
+tivity in the catalyst layer
+T
+K
+Temperature
+τ
+none
+Tortuosity of elec-
+trode structure
+uPt
+%
+MEA Pt utilization
+REFERENCES
+1. S. Gottesfeld and T. A. Zawodzinski, in ‘Advances in
+Electrochemical Science and Engineering’, R. C. Alkire,
+H. Gerischer, D. M. Kolb and C. W. Tobias (Eds), Vol. 5,
+John Wiley
+&
+Sons–VCH,
+Weinheim,
+pp. 195–301
+(1997).
+2. T. R. Ralph and M. P. Hogarth, Platinum Metals Rev., 46, 3
+(2002).
+3. D. P. Wilkinson and A. E. Steck, in ‘Proceedings of the
+Second International Symposium on New Materials for Fuel
+Cell and Modern Battery Systems’, O. Savadogo and P. R.
+Roberge (Eds), Ecole Polytechnique de Montreal, Montreal,
+pp. 27–35 (1997).
+4. O. J. Murphy, G. D. Hitchens and D. J. Manko, J. Power
+Sources, 47, 353 (1994).
+5. T. R. Ralph, G. A. Hards, J. E. Keating, S. A. Campbell,
+D. P. Wilkinson, M. Davis, J. St-Pierre and M. C. Johnson,
+J. Electrochem. Soc., 144, 3845 (1997).
+6. M. S. Wilson and S. Gottesfeld, J. Applied Electrochem., 22,
+1 (1992).
+7. D. J. Wheeler, J. S. Yi, R. Fredley, D. Yang, T. Patterson (Jr)
+and L. van Dine, J. New Mater. Electrochem. Syst., 4, 233
+(2001).
+8. N. M. Markovic B. N. Grgur and P. N. Ross, J. Phys. Chem.
+B, 101, 5405 (1997).
+9. S. Yan, unpublished results (GM Global R&D, Global
+Alternative
+Propulsion
+Center,
+Honeoye-Falls,
+NY,
+USA).
+10. M. S. Wilson, J. A. Valerio and S. Gottesfeld, Electrochim.
+Acta, 40, 355 (1995).
+11. M. S. Wilson, F. H. Garzon, K. E. Sickafus and S. Gottes-
+feld, J. Electrochem. Soc., 140, 2872 (1993).
+12. Y. W. Rho, O. A. Velev, S. Srinivasan and Y. T. Kho, J.
+Electrochem. Soc., 141, 2084 (1994).
+13. Y. W. Rho, S. Srinivasan and Y. T. Kho, J. Electrochem.
+Soc., 141, 2089 (1994).
+14. B. Sompalli, M. Scozzafava and H. A. Gasteiger, unpub-
+lished results (GM Global R&D, Global Alternative Propul-
+sion Center, Honeoye-Falls, NY, USA).
+15. J. Ihonen, F. Jaouen, G. Lindbergh, A. Lundblad and G. Sund-
+holm, J. Electrochem. Soc., 149, A448 (2002).
+16. T. J. Schmidt, H. A. Gasteiger, G. D. St¨
+ab, P. M. Urban,
+D. M. Kolb and R. J. Behm, J. Electrochem. Soc., 145, 2354
+(1998).
+17. N. M. Markovic, T. J. Schmidt, V. Stamenkovic and P. N.
+Ross (Jr), Fuel Cells, 1, 105 (2001).
+18. S. Mukerjee and S. Srinivasan, J. Electroanal. Chem., 357,
+201 (1993).
+19. S. J. Lee, S. Mukerjee, J. McBreen, Y. W. Rho, Y. T. Kho
+and T. H. Lee, Electrochim. Acta, 43, 3693 (1998).
+20. S. Mukerjee, S. Srinivasan and A. J. Appleby, Electrochim.
+Acta, 38, 1661 (1993).
+21. X. Wang, I. M. Hsing and P. L. Yue, J. Power Sources, 96,
+282 (2001).
+22. E. A. Ticianelli, C. R. Derouin and S. Srinivasan, J. Elec-
+troanal. Chem., 251, 275 (1988).
+23. S. Hirano, J. Kim and S. Srinivasan, Electrochim. Acta, 42,
+1587 (1997).
+24. D. M. Bernardi and M. W. Verbrugge, J. Electrochem. Soc.,
+139, 2477 (1992).
+25. U. A. Paulus, T. J. Schmidt, H. A. Gasteiger and R. J. Behm,
+J. Electroanal. Chem., 495, 134 (2001).
+26. M. L. Perry, J. Newman and E. J. Cairns, J. Electrochem.
+Soc., 145, 5 (1998).
+27. F. Jaouen, G. Lindbergh and G. Sundholm, J. Electrochem.
+Soc., 149, A437 (2002).
+28. T. A. Zawodzinski Jr, T. E. Springer, F. Uribe and S. Gott-
+esfeld, Solid State Ionics, 60, 199 (1993).
+29. C. Boyer, S. Gamburzev, O. Velev, S. Srinivasan and A. J.
+Appleby, Electrochim. Acta, 43, 3703 (1998).
+30. B. Blizanac, N. M. Markovic and P. N. Ross, Lawrence
+Berkeley National Laboratory, Berkeley, CA, USA, personal
+communication.
+31. W. Gu, unpublished results (GM Global R&D, Global Alter-
+native Propulsion Center, Honeoye-Falls, NY, USA).
+32. R. B. Bird, W. E. Stewart and E. N. Lightfoot, ‘Transport
+Phenomena’, John Wiley & Sons, New York (1960).
+33. J. S. Newman, ‘Electrochemical Systems’, Prentice Hall
+(1991).
+34. K. J. Vetter, ‘Electrochemical Kinetics’, Academic Press
+(1967).
+18

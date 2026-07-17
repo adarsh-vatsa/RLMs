@@ -1,0 +1,3808 @@
+BENCHMARKING MOBILE DEVICE CONTROL AGENTS ACROSS DIVERSE CONFIGURATIONS
+Juyong Lee1
+Taywon Min2
+Minyong An3
+Changyeon Kim1
+Kimin Lee1
+1KAIST
+2Seoul National University
+3Yonsei University
+ABSTRACT
+Developing autonomous agents for mobile devices can significantly enhance user
+interactions by offering increased efficiency and accessibility. However, despite
+the growing interest in mobile device control agents, the absence of a commonly
+adopted benchmark makes it challenging to quantify scientific progress in this area.
+In this work, we introduce B-MoCA: a novel benchmark designed specifically
+for evaluating mobile device control agents. To create a realistic benchmark, we
+develop B-MoCA based on the Android operating system and define 60 common
+daily tasks. Importantly, we incorporate a randomization feature that changes
+various aspects of mobile devices, including user interface layouts and language
+settings, to assess generalization performance. We benchmark diverse agents,
+including agents employing large language models (LLMs) or multi-modal LLMs
+as well as agents trained from scratch using human expert demonstrations. While
+these agents demonstrate proficiency in executing straightforward tasks, their
+poor performance on complex tasks highlights significant opportunities for future
+research to enhance their effectiveness. Our source code is publicly available at
+https://b-moca.github.io.
+1
+INTRODUCTION
+Autonomous agents controlling digital devices have great potential benefits. For example, these
+agents can improve the accessibility of user interactions, especially for users with physical disabilities
+or those facing challenges in operating devices, or boost productivity by automating tedious jobs.
+This leads to increased interest in developing agents for mobile device control, and diverse approaches
+have been introduced, including agents based on large language models (LLMs; Wen et al. 2023; Yan
+et al. 2023) and agents trained with human demonstrations (Sun et al., 2022; Li et al., 2023), toward
+assistive agents that can understand the screen layout of the devices and manipulate the user interface
+(UI) to follow human instructions.
+Despite recent progress in developing mobile device control agents based on real systems, such as
+Android emulators (Toyama et al., 2021; Shvo et al., 2021; Zhang et al., 2023), prior works often
+overlook several important properties. One is testing generalization ability across diverse device
+configurations, which is crucial in deploying agents in real devices. Moreover, practical tasks essential
+for life (such as creating an alarm or making emergency calls) are often neglected because of the
+challenges in defining a wide range of practical tasks with robust success criteria in various device
+settings. The lack of a unified benchmark encompassing these important properties has impeded
+scientific progress in this field.
+In this work, we introduce B-MoCA: a Benchmark designed for evaluating Mobile device Control
+Agents across diverse configurations, based on Android emulators (see Figure 1). A key feature of
+B-MoCA is supporting numerous customization to mirror diverse device configurations,including
+variations in icon placements, sizes, wallpapers, languages, and device types. Utilizing this feature,
+users can easily create diverse environments with various configurations to evaluate generalization
+ability. Additionally, we define 60 practical tasks grounded in realistic scenarios, such as opening
+specific applications, initializing searches over the web, and adjusting device settings. To ensure
+reliable evaluation, B-MoCA provides rule-based success detectors, which are based on pre-defined
+task completion criteria.
+1
+arXiv:2404.16660v1  [cs.HC]  25 Apr 2024
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Mobile Device 
+Environment
+Daily Tasks
+Diverse Device Setups
+Mobile Device 
+Control Agent
+LLM with
+Text Action
+MLLM with 
+Text Action
+or
+Algorithmic Designs
+Vision-Language
+Model with
+UI-based Action 
+or
+Figure 1: Illustration of B-MoCA. We present a realistic benchmark for assessing the performances
+of mobile device control agents in executing everyday tasks. To analyze generalization ability, we
+introduce a randomization feature that changes various device attributes. We benchmark agents
+leveraging LLMs or MLLMs as well as agents with vision-language models trained from scratch.
+We benchmark various methods for building mobile device control agents in B-MoCA. The baselines
+include agents employing text-only large language models (LLMs) or multi-modal LLMs (MLLMs),
+which benefit from extensive knowledge obtained through pre-training. We consider both closed-
+source models, such as GPT-4 (Achiam et al., 2023) and Gemini (Gemini et al., 2023), and open-
+source models, such as Llama 2 (Touvron et al., 2023) and Llama 3. Additionally, we train agents
+from scratch that directly interact with device UIs using behavior cloning (BC; Pomerleau 1988).
+In our experiments, we find that the agents exhibit fundamental skills in mobile device control, such
+as solving straightforward tasks or completing tasks in training environments. However, they struggle
+in more challenging scenarios, such as handling more difficult tasks or generalizing to unseen device
+configurations. Specifically, the agents employing LLMs or MLLMs show high robustness across
+diverse device configurations, while they fall short on multiple sequential decision-making. Agents
+trained with BC, on the other hand, successfully mimic expert behaviors but lack generalization
+ability in test environments with unseen device configurations. We study the effect of different design
+choices on leveraging foundation models, including few-shot learning and the visual prompting
+method. We also analyze the effect of using pre-trained representation models or utilizing different
+numbers of training device environments while training agents from scratch. Our extensive analyses
+reveal the limitations of existing methods in mobile device control, calling for future research.
+We open-source all the source codes and relevant materials for easy reproduction of our environments
+and experiments. We hope B-MoCA helps future researchers identify challenges in building assistive
+agents and easily compare the efficacy of their methods over the prior work.
+2
+B-MOCA
+In this section, we introduce B-MoCA: a benchmark designed to evaluate the performance of mobile
+device control agents on diverse device configurations in executing common daily tasks.
+2.1
+DESIGN FACTORS
+To create a realistic benchmark for mobile device control agents, we build our benchmark based on
+Android, a widely used open-source operating system. In this benchmark, we frame device control
+as a sequential decision-making problem, reflecting the multi-step nature of the real interactions
+(Section 2.2). Designing a meaningful benchmark for mobile device control poses a significant
+challenge, particularly in defining practical tasks like opening applications or adjusting device
+settings. To address this, we consider 60 basic tasks that involve commonly used applications like
+Chrome and Calendar, ensuring relevance to everyday life. Each task is equipped with a success
+detector to evaluate the agent’s performance in accurately completing the task (Section 2.3).
+2
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Figure 2: Examples of the home screen images from environments in B-MoCA. The randomized
+features span icon location, font size, wallpaper, language, and device type and challenge the
+generalization ability of agents.
+Given the diverse nature of user mobile device setups, such as variations in icon placements, wall-
+paper choices, languages, and device types, it is important to test the generalization abilities of
+device-control agents across diverse setups. To assess generalization performance, we incorporate
+a randomization feature in our benchmark. This feature is designed to simulate various real-world
+scenarios by changing various aspects of mobile devices, such as user interface layouts and wallpapers
+(Section 2.4).
+2.2
+PROBLEM FORMULATION
+In B-MoCA, we formulate the device management task as a sequential decision-making problem,
+where an agent interacts with an environment. Formally, given a task instruction c, an agent receives
+an observation ot and takes an action at based on its policy at ∼π(·|ot, c) at each timestep t. The
+environment (i.e., Android emulator) returns a success signal rt and the environment transitions to
+the next observation ot+1.
+Observations, which capture the UI elements, can be represented as either screen pixels, screen
+descriptions derived from the Android view hierarchy, or a combination of both. The action space
+comprises a dual-gesture, similar to Rawles et al. (2023), which consists of a pair of (x, y) screen
+locations for touch and lift. The dual-gesture action is identified as tapping the screen when
+the two locations are identical within a specified threshold or swiping the screen when the distance
+between the two locations exceeds this threshold. Additionally, the agent can press navigation buttons
+(i.e., back, home, and overview) by touching the corresponding button locations on the screen. We
+note that our benchmark supports text-based actions, enabling the utilization of the LLMs or MLLMs
+(see Section 3.1 for details).
+We refer the readers for further details on the environment implementation to Appendix A.1.
+2.3
+DAILY TASKS
+Our B-MoCA includes 60 tasks essential for managing digital devices, providing functionalities
+useful in daily routines. Each task is designed to be grounded in realistic situations, such as setting the
+alarm or enabling airplane mode. The tasks span various applications and require agents to interact
+with diverse UI elements, such as application icons, checkboxes, toggle switches, input fields, and
+sliders. For a comprehensive list of tasks, we refer readers to Appendix B.1.
+Task completion is determined by a rule-based success detector implemented using Android Debug
+Bridge (ADB). This success detector monitors logs from ADB and identifies the successful completion
+based on pre-defined criteria. These criteria are established by examining ADB logs from human
+demonstrations for each task and selecting the log produced when the target task is completed. With
+the pre-defined criteria, then, the success detector automatically finds the matching regular expression
+in the ADB logs to signal the task completion. The success signal is with the value of +1 when the
+task is completed, and 0 otherwise. An episode terminates as a success if the success detector signals
+completion, or as a failure if the agent exceeds a maximum step limit without meeting the criteria.
+3
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Task instruction
+Vision-Language-UI
+Agents
+Large Language Model 
+Agents
+Multimodal 
+Large Language Model
+Agents
+XML
+Parser
+Text observation
+Text action
+Action
+Converter
+XML
+Parser
+Text action
+Multimodal 
+observation
+Action
+Converter
+Image observation
+Dual-gesture action
+Figure 3: Illustration of baseline agents. LLM agents and MLLM agents interact with environments
+through additional XML parser and action converter, to obtain text descriptions and manipulate UIs
+with text actions. VLUI agents directly leverage the UIs with screen images and dual-gesture actions.
+2.4
+ENVIRONMENT RANDOMIZATION
+In mobile device control, developing agents that can generalize across various device setups is crucial.
+To evaluate their generalization ability, B-MoCA incorporates a randomization feature that changes
+icon placements and sizes, wallpapers, languages, and device types. Users can select the device type
+from a device list that includes popular models like Pixel 3, Pixel 4, Pixel 6, and WGXA Tablet. They
+can also specify the locales to set the language and region, choose wallpapers from a selection of
+custom images, and activate dark mode for further environmental variation. Moreover, the sizes of
+icons and text can vary between small, medium, and large. Lastly, applications can be randomly
+placed on the home screen to simulate real-world usage patterns.
+Using randomization features, we create 45 unique environments in B-MoCA, with examples shown
+in Figure 2. To assess the generalization ability, we divide the 45 distinct environments into two
+sets: 35 for training and 10 for testing. We employ domain randomization (Tobin et al., 2017) to
+train agents, enabling them to perform tasks robustly across diverse device configurations. We then
+evaluate the performance on test environments, which include unseen device setups. A detailed list of
+environment device configurations we prepare is available in Appendix A.2.
+3
+BASELINES
+In this work, we benchmark various approaches for building mobile device control agents: LLM
+agents, MLLM agents, and Vision-Language-UI (VLUI) agents (see Figure 3). LLM agents and
+MLLM agents are developed using foundation models like LLMs and MLLMs, respectively (Sec-
+tion 3.1). VLUI agents, which consist of vision-language encoders, are trained from scratch using
+human expert demonstrations (Section 3.2).
+3.1
+LLM AGENTS AND MLLM AGENTS
+Utilizing foundation models such as LLMs and MLLMs, which contain extensive knowledge and have
+emergent capabilities, becomes a major direction in developing mobile device control agents (Wen
+et al., 2023; Yan et al., 2023). In this work, we benchmark two types of agents that employ different
+foundation models: LLMs (e.g., GPT-4) and MLLMs (e.g., GPT-4V). LLM agents utilize only the
+text descriptions of the screen layout to generate text actions, while MLLM agents process both text
+and visual inputs.
+To facilitate the interactions of LLM and MLLM agents with an Android emulator, we define an XML
+parser (Zhang et al., 2023; Yang et al., 2023b). This XML parser converts the UI elements, from the
+Android view hierarchy of the screen presented in XML format, into a list of text descriptions. The
+description includes the location of the bounding box, if necessary. Additionally, we define a set of
+possible action options, as detailed in Table 1, that can be converted into a corresponding dual-gesture
+4
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Action option
+Description
+dual-gesture(*)
+Operate a dual-gesture action
+with arguments (*).
+tap(numeric tag)
+Tap UI element labeled
+with numeric tag.
+swipe(direction)
+Swipe to direction.
+press("HOME")
+Press home button.
+press("BACK")
+Press back button.
+press("OVERVIEW")
+Press overview button.
+Table 1: A set of action options for text-based
+agents. Additional options are converted into
+corresponding dual-gesture actions.
+Role: You are an agent that is trained to perform daily tasks
+on digital devices, such as smartphones [...]
+Action space: You need to select an action option [...]
+Goal: [...]
+(Optional) Few-shot examples: [...]
+Output format: Your output should follow the given format
+• Description: Describe what you observe in the input
+• Thought: To complete the given task, what is the next step
+• Action: The function call with the correct parameters
+Observation: [...]
+1
+Figure 4: An overview of prompt for the text-based
+agents, with abbreviated relevant information as
+[...]. The complete prompt is at Appendix C.1.
+action.1 These action options include tapping the UI element by choosing the numeric tags, swiping
+the screen in pre-defined directions (up, down, left, right), and pressing the button with the names.
+With these text-based observations and actions, we prompt the foundation models to explain the
+agents’ role, action space definition, goal, (optional) few-shot examples, and current observation. Our
+prompts, outlined in Figure 4, also incorporate the Chain-of-Thought technique (Wei et al., 2022) to
+enhance the reasoning ability of the agents by enforcing a certain output format.
+3.2
+VLUI AGENTS
+Despite the promising results of LLMs, leveraging these foundation models presents several chal-
+lenges such as the necessity of auxiliary interfaces or difficulties in fine-tuning. Thus, we also
+investigate another type of agent that can be trained from scratch: VLUI agents, named after the
+vision-language model with UI actions. Characterized by their direct interaction with device UIs in
+a human-like manner, these agents can significantly benefit from the easy incorporation of human
+demonstrations for training, potentially improving learning efficiency.
+To be detailed, VLUI agents take a task instruction and screen images as the input and produce a
+dual-gesture action as the output. Input embeddings are extracted using vision and language encoders
+and a transformer (Vaswani et al., 2017) module is utilized to process these embeddings and generate
+the dual-gesture actions. Specifically, we train a deterministic multi-task policy πθ(at|ot, c) using
+BC (Pomerleau 1988; Schaal 1996). The parameters θ of the policies are optimized to imitate the
+human expert demonstrations D = {(ot, a∗
+t , c)} by minimizing the following objective with mean
+squared error function L(·):
+X
+(ot,a∗
+t ,c)∼D
+L(πθ(at|ot, c), a∗
+t ).
+We refer readers to Appendix C.2 for more details on the architecture of VLUI agents.
+4
+EXPERIMENTS
+We design our experiments to investigate the following research questions:
+• Can baseline agents perform daily tasks on mobile devices? (Section 4.2)
+• What are the distinctive characteristics of each agent? (Section 4.2)
+• What are the effects of different design choices for LLM or MLLM agents? (Section 4.3)
+• How crucial is the pre-training or training data diversity for VLUI agents? (Section 4.4)
+1To convert text actions to dual-gesture actions, we define the action converter. We analyze the efficacy of
+the action options in Appendix E.1.
+5
+
+
+0
+30
+60
+90
+Success Rates (%)
+VLUI
+MLLM (GPT-4V)
+MLLM (Gemini-Pro-V)
+LLM (GPT-4)
+LLM (Gemini-Pro)
+Airplane
+0
+30
+60
+90
+Success Rates (%)
+Alarm1
+0
+30
+60
+90
+Success Rates (%)
+Alarm2
+0
+30
+60
+90
+Success Rates (%)
+VLUI
+MLLM (GPT-4V)
+MLLM (Gemini-Pro-V)
+LLM (GPT-4)
+LLM (Gemini-Pro)
+Brightness
+0
+30
+60
+90
+Success Rates (%)
+Call 911
+0
+30
+60
+90
+Success Rates (%)
+Language
+Figure 5: Average success rates of the baseline agents in the test environments. We report the mean
+and standard error across three runs. LLM agents are in three-shot learning, and MLLM agents are
+without SoM prompting and in one-shot learning for Gemini-Pro-V (due to maximum context
+length) or three-shot learning for GPT-4V. The text-based agents with GPT-4 or GPT-4V show the
+best performances on Airplane, Alarm1, and Birhgtness, while VLUI agents show better
+performances on Alarm2, Call 911, and Language.
+4.1
+EXPERIMENTAL SETUP
+In our experiments, we evaluate LLM agents, MLLM agents, and VLUI agents using six representa-
+tive tasks: named, Airplane, Alarm1, Alarm2, Brightness, Call 911, and Language.
+These tasks are selected to cover navigating multiple pages in target applications and manipulating
+diverse UI elements which vary in configuration across different device settings. For example, on
+Alarm2, the agents need to reach the alarm tab in the clock application and adapt to varying shapes
+of clock UI in a shape of either rectangle or circle with different size options. We display exemplary
+expert demonstrations on these tasks in Appendix B.2. For each task, the task instruction is as follows:
+• Airplane: “turn on airplane mode”
+• Alarm1: “turn on alarm at 9 am”
+• Alarm2: “create an alarm at 10:30 am”
+• Brightness: “decrease the screen brightness in setting”
+• Call 911: “call 911”
+• Language: “go to the ‘add a language’ page in setting”
+For LLM agents, we employ the closed-source models Gemini-Pro (Gemini et al., 2023) and GPT-4
+(GPT-4-0125-preview; Achiam et al. 2023).2 We study LLM agents with both zero-shot
+and few-shot learning cases. For few-shot learning, we sample examples from 210 human expert
+demonstrations (see Appendix D.1 for dataset collection). For MLLM agents, we leverage Gemini-
+Pro-V and GPT-4V (GPT-4-vision-preview). We report MLLM agents in only few-shot
+learning and investigate visually grounding the agents with Set-of-Mark (SoM) prompting (Yang
+et al., 2023a). We provide more details on the configurations for LLM and MLLM Agents in
+Appendix C.3. For VLUI agents, we train multi-task policies where each policy performs all six tasks.
+The policies are trained with BC using the 210 human expert demonstrations.3 We refer the readers
+to Appendix C.4 for more details on the training procedures of VLUI agents.
+For each evaluation, we measure the success rates of the agents in the 10 test environments and
+compute the average success rates. These success rates are automatically computed by the rule-based
+success detector. We report the mean and standard error across three different runs.
+4.2
+MAIN RESULTS
+Figure 5 shows the success rates of LLM agents, MLLM agents, and VLUI agents in test envi-
+ronments. LLM agents and MLLM agents utilize their pre-trained base knowledge and few-shot
+2We include experiments with open-source models of Llama 2 (Touvron et al., 2023), Llama 3, and
+AgentLM (Zeng et al., 2023) in Appendix E.2.
+3We also include experimental results of VLUI agents trained with offline reinforcement learning by employ-
+ing the success signals as rewards in Appendix E.3.
+6
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+(a)
+(b)
+(c)
+Executed 
+Action
+Desired
+Action
+Figure 6: The common failure modes of the agents.
+(a) LLM agents fail to complete sequential steps,
+(b) MLLM agents miss details in the images, and
+(c) VLUI agents tap the wrong icon locations.
+LLM
+(zero-shot)
+LLM
+(few-shot)
+MLLM
+(w/o SoM)
+MLLM
+(w/ SoM)
+Airplane
+53 ± 03
+73 ± 12
+80 ± 06
+83 ± 03
+Alarm1
+42 ± 13
+67 ± 03
+60 ± 15
+62 ± 09
+Alarm2
+00 ± 00
+00 ± 00
+23 ± 03
+17 ± 03
+Brightness
+73 ± 12
+73 ± 09
+87 ± 03
+83 ± 03
+Call 911
+00 ± 00
+03 ± 03
+53 ± 03
+33 ± 09
+Language
+27 ± 06
+43 ± 09
+43 ± 09
+47 ± 17
+Table 2: Success rates of text-based agents with
+different prompting methods. While few-shot
+examples help LLM agents with GPT-4, we ob-
+serve no significant gain from SoM prompting
+for MLLM agents with GPT-4V.
+examples to complete simple tasks with high performances (e.g., more than 70% on Airplane and
+Brightness with GPT-4 or GPT-4V), but their success rates significantly drop as the tasks become
+complex (e.g., less than 30% on Alarm2 even with GPT-4 or GPT-4V). VLUI agents, on the other
+hand, imitate the behaviors of experts and exhibit average success rates of higher than 50% on all
+tasks, except 47% on Alarm2. However, all methods still show low performances (less than 60%)
+on complex tasks (i.e., Alarm2 and Call 911), which calls for new algorithms.
+We provide more remarks on each agent type below.
+Robustness of LLM agents and MLLM agents
+Both types of agents employing foundation
+models have shown robust performances in diverse device configurations. It is straightforward that
+these agents are robust to the randomization over the visual appearances, such as icon locations or
+font size, as the locations of the UI elements are described in the Android view hierarchy. In addition,
+LLM agents with both Gemini-Pro and GPT-4 are robust to language changes, with descriptions
+of UI elements in different languages. Particularly, these agents generalize to languages in test
+environments, e.g., Korean and Egyptian Arabic, which are not included in the few-shot examples.
+Remaining challenges for LLM agents
+While exhibiting robust performances across diverse
+device settings, several limitations of LLM agents are observed. First, the agents face difficulties with
+long-horizon tasks, which require completing a precise sequence of multiple actions. For example,
+on Call 911, the agents often make mistakes while typing the sequence of 9-1-1, as shown in
+Figure 6(a). Second, the agents struggle to leverage few-shot examples adaptively. For instance,
+on Brightness, we observe LLM agents naively copying the few-shot examples from different
+device configurations without adjusting them to the current environment.
+Efficacy of multi-modal input for MLLM agents
+We confirm the effectiveness of image input
+with MLLM agents employing GPT-4V, as large increases in success rates are observed on Alarm2
+and Call 911 compared to LLM agents with GPT-4. However, MLLM agents share the challenges
+of LLM agents in accurately executing complex tasks. Moreover, they still fall short in understanding
+details of visual input, such as the small interface for setting AM/PM on Alarm2 as shown in
+Figure 6(b). MLLM agents with Gemini-Pro-V show significantly lower performances than LLM
+agents with Gemini-Pro, assumably due to the longer context length of multi-modal inputs. These
+results indicate the remaining headroom in leveraging multi-modal inputs more efficiently.
+Generalization ability of VLUI agents
+We observe training VLUI agents with BC can lead to
+high performances on many complex tasks where MLLM agents fail. These agents perform robustly
+to unseen wallpapers, as being trained with multiple different background images. Also, they can
+generalize their actions to unseen devices, e.g., Pixel 4, even though they are trained only on a single
+device type, i.e., Pixel 3. However, VLUI agents begin failing to complete the tasks with severe
+visual changes induced by unseen device configurations. While they exhibit higher than 90% success
+rates in training environments, the performance degrades to less than 70% in test environments
+(see Appendix D.2 for more details). Specifically, they suffer from handling unseen locations of UI
+elements, as shown in Figure 6(c). We believe these findings reveal the importance of diversity in
+training data from randomized environments (see Section 4.4 for more discussions).
+7
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Airplane
+Alarm1
+Alarm2
+Brightness
+Call911
+Language
+10
+40
+70
+Success Rates (%)
+ Randomly initialized
+ Pre-trained
+Figure 7: Success rates of VLUI agents with vi-
+sual encoders randomly initialized or pre-trained.
+Pre-training helps the performances of the agents.
+Airplane
+Alarm1
+Alarm2
+Brightness
+Call911
+Language
+10
+40
+70
+Success Rates (%)
+ 7 Envs
+ 21 Envs
+ 35 Envs
+Figure 8: Success rates of VLUI agents with vary-
+ing numbers of training environments. The suc-
+cess rates escalate with more environments.
+4.3
+INVESTIGATIONS ON DESIGN CHOICES FOR LLM AGENTS AND MLLM AGENTS
+The performance of LLM agents heavily relies on how the input prompts are tailored. Considering
+only the leaf UI elements of Android view hierarchy to describe the screen layout, similar to prior
+work (Li et al., 2020; Yang et al., 2023b) for example, might result in meaningless descriptions in
+certain applications (e.g., the setting application on Airplane and Language). In this work, we
+have leveraged the text attributes of all the available nodes to avoid such collapse, while we believe
+there can be more simple yet expressive representation methods.
+In addition, we observe that few-shot examples can significantly improve the performance of LLM
+agents with GPT-4 compared to zero-shot cases. As shown in Table 2, equipping prompt with
+few-shot examples improves the performance from 42% to 67% on Alarm1 and from 27% to 43%
+on Language. However, employing few-shot examples does not always help agents, as shown on
+Alarm2 or Brightness. We note that naive exploitation of expert demonstrations might lead to
+excessive increases in computational cost and highlight the necessity of efficient few-shot prompting.
+Moreover, we investigate the effect of common visual prompting methods for MLLM agents with
+GPT-4V. To enhance the visual grounding ability of MLLMs, prior studies (Yan et al., 2023; Yang
+et al., 2023b) have actively adopted SoM prompting, where each UI element in the input image is
+marked with numeric tags. However, we find that SoM prompting can often significantly degrade the
+performance of MLLM agents on Alarm2 and Call 911 as shown in Table 2. We hypothesize
+that the numeric tags may cause confusion when overlaid on UI elements with numbers, such as dial
+buttons or clock interfaces. For examples of the inputs used in SoM prompting, see Appendix D.3.
+4.4
+EFFECTS OF PRE-TRAINED ENCODERS AND DATA DIVERSITY FOR VLUI AGENTS
+The main challenge of VLUI agents is the lack of generalization ability as mentioned in Section 4.2.
+Hence, we examine the different algorithmic designs for the representation model of VLUI agents and
+the effects of training diversity on performance robustness. We also include an additional experiment
+with varying model sizes of visual encoders in Appendix E.4.
+First, we compare VLUI agents in two different designs: visual encoders with parameters randomly
+initialized and visual encoders pre-trained with ImageNet (Krizhevsky et al., 2017). As shown in
+Figure 7, we observe significant improvements in success rates with pre-training, e.g., from 37% to
+63% on Language. These results demonstrate the benefit of employing pre-trained representation
+models, and we expect further improvements can be induced by leveraging more Android-specific
+images for pre-training (Sun et al., 2022; Rawles et al., 2023).
+Furthermore, we train VLUI agents by progressively increasing the number of training environments
+(see Appendix D.1 for more details of the experiment setting). As shown in Figure 8, as the number
+of training environments increases, the performance of VLUI agents escalates. Specifically, the
+agents exhibit success rates of 20%, 40%, and 63% on Language with the number of training
+environments 7, 21, and 35, respectively. We believe this verifies the efficacy of the environment
+randomization feature incorporated in our benchmark toward more practical agents.
+8
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+5
+RELATED WORK
+Foundation models for decision-making system
+Inspired by the strong emergent properties of
+foundation models (Brown et al., 2020; Wei et al., 2022), many researches have adopted LLMs to
+develop decision-making system (Yao et al., 2023; Shinn et al., 2023). In robot learning, for example,
+LLMs have been widely equipped for reasoning, planning, manipulation, and navigation (Driess et al.,
+2023; Liang et al., 2023; Huang et al., 2023). Furthermore, agents with LLMs have shown capabilities
+of performing interesting tasks in numerous simulated worlds, including game environments (Wang
+et al., 2023; Tan et al., 2024) and virtual reality (Qian et al., 2023; Yang et al., 2024). In recent days,
+focusing on practicalness, solving computer tasks with foundation models has also been actively
+explored (Nakano et al., 2021; Furuta et al., 2023). We further study the abilities of foundation
+models to control mobile devices toward assistive agents in real life.
+Developing assistive agent for device control
+For agents that effectively understand and manipu-
+late the UI elements, a large body of work has leveraged the structural information, such as document
+object model in HTML or Android view hierarchy (Branavan et al., 2010; Gur et al., 2019). In
+addition, methods for equipping agents with the ability to understand information-rich screen images
+have been widely investigated, mainly with vision-based reinforcement learning (Liu et al., 2018;
+Humphreys et al., 2022; Shaw et al., 2023). Recently, diverse strategies to build device control
+agents with foundation models are introduced, including prompting methods (Wen et al., 2023; Kim
+et al., 2023), instruction-tuning (Furuta et al., 2023), fine-tuning with images (Zhan & Zhang, 2023;
+Hong et al., 2023), and visual prompting (Yan et al., 2023; Yang et al., 2023b). Here, we present an
+elaborate analysis of the main methods for building mobile device control agents.
+Benchmark for decision-making agents
+There have been continuous efforts to build reliable bench-
+marks for sequential decision-making in video games (Bellemare et al., 2013), locomotion (Brockman
+et al., 2016), and robotic manipulation (James et al., 2020). Lately, researchers have proposed bench-
+marks for solving device control tasks, viewing it as another decision-making problem. For example,
+Yao et al. (2022) and Zhou et al. (2024) have presented benchmark simulating web platforms, while
+Toyama et al. (2021), Shvo et al. (2021), and Zhang et al. (2023) have suggested RL environments
+adopting Android emulators. In this work, inspired by special-purpose benchmarks quantifying the
+robustness of the agents (Cobbe et al., 2020; Stone et al., 2021), we newly propose a benchmark with
+the randomization feature.
+6
+DISCUSSION & CONCLUSION
+We present B-MoCA, a new benchmark designed for evaluating mobile device control agents. Our
+benchmark provides diverse tasks applicable to everyday routines and environments that simulate
+numerous device configurations. We conduct extensive experiments and demonstrate that B-MoCA
+can serve as a standardized platform for developing different types of agents in a unified setting.
+Finally, we mention several limitations and promising future directions of this work:
+• Tasks with text typing While we define the action spaces with dual-gesture actions, text typing
+by touching the soft keyboard demands excessively long interactions. In the future, we plan
+to include tasks requiring text typing, such as web search or e-mail sending, with advanced
+interfaces.
+• Open-ended tasks and reward modeling Since the ADB-based success detector does not capture
+the semantics of agent behaviors, tasks with ambiguous success criteria are hard to evaluate.
+Alternatively, we believe employing the reward model learned from demonstrations (Fan et al.,
+2022) can be used for integrating open-ended tasks.
+• More on LLM agents Foundation models can be employed in different ways, such as using them
+as a high-level planner to operate a set of pre-defined APIs (Chen & Li, 2024) or neural network
+policies (Ahn et al., 2022) as low-level actors. Also, as training VLUI agents with demonstrations
+results in high performances, fine-tuning LLMs is highly promising.
+Toward practical mobile device control agents, we hope that B-MoCA stands as a valuable platform
+with helpful resources for future innovations.
+9
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+IMPACT STATEMENT
+This study proposes a benchmark designed to assess interactive mobile device management agents,
+with social opportunities to enhance user accessibility and aid those facing disabilities. We caution
+users about privacy concerns while we try to eliminate such potentials during task designs. Noting
+the importance of research for preventing malicious usages of device control agents, we emphasize
+B-MoCA as a useful test bed.
+ACKNOWLEDGMENTS
+We thank Dongjun Lee, Kyuyoung Kim, and Ahjeong Seo for providing sincere suggestions for
+improving our work. This work was supported by Institute for Information & communications
+Technology Promotion (IITP) grant funded by the Korea government (MSIT) (No.2019-0-00075
+Artificial Intelligence Graduate School Program (KAIST)).
+REFERENCES
+Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman,
+Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. Gpt-4 technical report.
+arXiv preprint arXiv:2303.08774, 2023.
+Michael Ahn, Anthony Brohan, Noah Brown, Yevgen Chebotar, Omar Cortes, Byron David, Chelsea
+Finn, Chuyuan Fu, Keerthana Gopalakrishnan, Karol Hausman, et al. Do as i can, not as i say:
+Grounding language in robotic affordances. In The Conference on Robot Learning, 2022.
+M. G. Bellemare, Y. Naddaf, J. Veness, and M. Bowling. The arcade learning environment: An
+evaluation platform for general agents. Journal of Artificial Intelligence Research, 47:253–279,
+2013.
+SRK Branavan, Luke Zettlemoyer, and Regina Barzilay. Reading between the lines: Learning to map
+high-level instructions to commands. In Association for Computational Linguistics, 2010.
+Greg Brockman, Vicki Cheung, Ludwig Pettersson, Jonas Schneider, John Schulman, Jie Tang, and
+Wojciech Zaremba. Openai gym. arXiv preprint arXiv:1606.01540, 2016.
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal,
+Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. Language models are
+few-shot learners. In Conference on Neural Information Processing Systems, 2020.
+Wei Chen and Zhiyuan Li. Octopus v2: On-device language model for super agent. arXiv preprint
+arXiv:2404.01744, 2024.
+Karl Cobbe, Chris Hesse, Jacob Hilton, and John Schulman. Leveraging procedural generation to
+benchmark reinforcement learning. In International conference on machine learning, 2020.
+Danny Driess, Fei Xia, Mehdi SM Sajjadi, Corey Lynch, Aakanksha Chowdhery, Brian Ichter, Ayzaan
+Wahid, Jonathan Tompson, Quan Vuong, Tianhe Yu, et al. Palm-e: An embodied multimodal
+language model. International Conference on Machine Learning, 2023.
+Linxi Fan, Guanzhi Wang, Yunfan Jiang, Ajay Mandlekar, Yuncong Yang, Haoyi Zhu, Andrew Tang,
+De-An Huang, Yuke Zhu, and Anima Anandkumar. Minedojo: Building open-ended embodied
+agents with internet-scale knowledge. In Conference on Neural Information Processing Systems,
+2022.
+Hiroki Furuta, Ofir Nachum, Kuang-Huei Lee, Yutaka Matsuo, Shixiang Shane Gu, and Izzeddin Gur.
+Instruction-finetuned foundation models for multimodal web navigation. In International Confer-
+ence on Learning Representations 2023 Workshop on Mathematical and Empirical Understanding
+of Foundation Models, 2023.
+Team Gemini, Rohan Anil, Sebastian Borgeaud, Yonghui Wu, Jean-Baptiste Alayrac, Jiahui Yu, Radu
+Soricut, Johan Schalkwyk, Andrew M Dai, Anja Hauth, et al. Gemini: a family of highly capable
+multimodal models. arXiv preprint arXiv:2312.11805, 2023.
+10
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Izzeddin Gur, Ulrich Rueckert, Aleksandra Faust, and Dilek Hakkani-Tur. Learning to navigate the
+web. In International Conference on Learning Representations, 2019.
+Wenyi Hong, Weihan Wang, Qingsong Lv, Jiazheng Xu, Wenmeng Yu, Junhui Ji, Yan Wang, Zihan
+Wang, Yuxiao Dong, Ming Ding, et al. Cogagent: A visual language model for gui agents. arXiv
+preprint arXiv:2312.08914, 2023.
+Chenguang Huang, Oier Mees, Andy Zeng, and Wolfram Burgard. Visual language maps for robot
+navigation. In International Conference on Robotics and Automation, 2023.
+Peter C Humphreys, David Raposo, Tobias Pohlen, Gregory Thornton, Rachita Chhaparia, Alistair
+Muldal, Josh Abramson, Petko Georgiev, Adam Santoro, and Timothy Lillicrap. A data-driven
+approach for learning to control computers. In International Conference on Machine Learning,
+2022.
+Stephen James, Zicong Ma, David Rovick Arrojo, and Andrew J. Davison. Rlbench: The robot
+learning benchmark & learning environment. IEEE Robotics and Automation Letters, 2020.
+Geunwoo Kim, Pierre Baldi, and Stephen McAleer. Language models can solve computer tasks.
+Conference on Neural Information Processing Systems, 2023.
+Diederik P. Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In International
+Conference for Learning Representations, 2017.
+Ilya Kostrikov, Ashvin Nair, and Sergey Levine. Offline reinforcement learning with implicit
+q-learning. In International Conference on Learning Representations, 2022.
+Alex Krizhevsky, Ilya Sutskever, and Geoffrey E Hinton. Imagenet classification with deep convolu-
+tional neural networks. Communications of the ACM, 60(6):84–90, 2017.
+Sascha Lange, Thomas Gabel, and Martin Riedmiller. Batch reinforcement learning. In Reinforcement
+learning: State-of-the-art, pp. 45–73. Springer, 2012.
+Sergey Levine, Aviral Kumar, George Tucker, and Justin Fu. Offline reinforcement learning: Tutorial,
+review, and perspectives on open problems. arXiv preprint arXiv:2005.01643, 2020.
+Wei Li, Fu-Lin Hsu, Will Bishop, Folawiyo Campbell-Ajala, Oriana Riva, and Max Lin. Uinav: A
+maker of ui automation agents. arXiv preprint arXiv:2312.10170, 2023.
+Yang Li, Gang Li, Luheng He, Jingjie Zheng, Hong Li, and Zhiwei Guan. Widget captioning:
+Generating natural language description for mobile user interface elements. In Conference on
+Empirical Methods in Natural Language Processing, 2020.
+Jacky Liang, Wenlong Huang, Fei Xia, Peng Xu, Karol Hausman, Brian Ichter, Pete Florence, and
+Andy Zeng. Code as policies: Language model programs for embodied control. In International
+Conference on Robotics and Automation, 2023.
+Evan Zheran Liu, Kelvin Guu, Panupong Pasupat, Tianlin Shi, and Percy Liang. Reinforcement
+learning on web interfaces using workflow-guided exploration. In International Conference on
+Learning Representations, 2018.
+Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee. Visual instruction tuning. In Conference
+on Neural Information Processing Systems, 2023.
+Ashvin Nair, Abhishek Gupta, Murtaza Dalal, and Sergey Levine. Awac: Accelerating online
+reinforcement learning with offline datasets. arXiv preprint arXiv:2006.09359, 2020.
+Reiichiro Nakano, Jacob Hilton, Suchir Balaji, Jeff Wu, Long Ouyang, Christina Kim, Christopher
+Hesse, Shantanu Jain, Vineet Kosaraju, William Saunders, et al. Webgpt: Browser-assisted
+question-answering with human feedback. arXiv preprint arXiv:2112.09332, 2021.
+Jan Peters and Stefan Schaal. Reinforcement learning by reward-weighted regression for operational
+space control. In International Conference on Machine learning, 2007.
+11
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Dean A Pomerleau. Alvinn: An autonomous land vehicle in a neural network. In Conference on
+Neural Information Processing Systems, 1988.
+Chen Qian, Xin Cong, Wei Liu, Cheng Yang, Weize Chen, Yusheng Su, Yufan Dang, Jiahao Li,
+Juyuan Xu, Dahai Li, Zhiyuan Liu, and Maosong Sun. Communicative agents for software
+development. arXiv preprint arXiv:2307.07924, 2023.
+Christopher Rawles, Alice Li, Daniel Rodriguez, Oriana Riva, and Timothy P Lillicrap.
+An-
+droidinthewild: A large-scale dataset for android device control.
+In Conference on Neural
+Information Processing Systems Datasets and Benchmarks Track, 2023.
+Stefan Schaal. Learning from demonstration. Conference on Neural Information Processing Systems,
+1996.
+Peter Shaw, Mandar Joshi, James Cohan, Jonathan Berant, Panupong Pasupat, Hexiang Hu, Urvashi
+Khandelwal, Kenton Lee, and Kristina Toutanova. From pixels to ui actions: Learning to follow
+instructions via graphical user interfaces. In Conference on Neural Information Processing Systems,
+2023.
+Noah Shinn, Beck Labash, and Ashwin Gopinath. Reflexion: an autonomous agent with dynamic
+memory and self-reflection. arXiv preprint arXiv:2303.11366, 2023.
+Maayan Shvo, Zhiming Hu, Rodrigo Toro Icarte, Iqbal Mohomed, Allan D. Jepson, and Sheila A.
+McIlraith. Appbuddy: Learning to accomplish tasks in mobile apps via reinforcement learning. In
+Canadian Conference on Artificial Intelligence, 2021.
+Austin Stone, Oscar Ramirez, Kurt Konolige, and Rico Jonschkowski. The distracting control suite–a
+challenging benchmark for reinforcement learning from pixels. arXiv preprint arXiv:2101.02722,
+2021.
+Liangtai Sun, Xingyu Chen, Lu Chen, Tianle Dai, Zichen Zhu, and Kai Yu. Meta-gui: Towards
+multi-modal conversational agents on mobile gui. Conference on Empirical Methods in Natural
+Language Processing, 2022.
+Mingxing Tan and Quoc V. Le. Efficientnet: Rethinking model scaling for convolutional neural
+networks. In International Conference on Machine Learning, 2019.
+Weihao Tan, Ziluo Ding, Wentao Zhang, Boyu Li, Bohan Zhou, Junpeng Yue, Haochong Xia, Jiechuan
+Jiang, Longtao Zheng, Xinrun Xu, et al. Towards general computer control: A multimodal agent
+for red dead redemption ii as a case study. arXiv preprint arXiv:2403.03186, 2024.
+Josh Tobin, Rachel Fong, Alex Ray, Jonas Schneider, Wojciech Zaremba, and Pieter Abbeel. Do-
+main randomization for transferring deep neural networks from simulation to the real world. In
+International Conference on Intelligent Robots and Systems, 2017.
+Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay
+Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. Llama 2: Open foundation
+and fine-tuned chat models. arXiv preprint arXiv:2307.09288, 2023.
+Daniel Toyama, Philippe Hamel, Anita Gergely, Gheorghe Comanici, Amelia Glaese, Zafarali Ahmed,
+Tyler Jackson, Shibl Mourad, and Doina Precup. Androidenv: A reinforcement learning platform
+for android. arXiv preprint arXiv:2105.13231, 2021.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz
+Kaiser, and Illia Polosukhin. Attention is all you need. In Conference on Neural Information
+Processing Systems, 2017.
+Guanzhi Wang, Yuqi Xie, Yunfan Jiang, Ajay Mandlekar, Chaowei Xiao, Yuke Zhu, Linxi Fan, and
+Anima Anandkumar. Voyager: An open-ended embodied agent with large language models. In
+Conference on Neural Information Processing Systems, 2023.
+Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, Denny
+Zhou, et al. Chain-of-thought prompting elicits reasoning in large language models. In Conference
+on Neural Information Processing Systems, 2022.
+12
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Hao Wen, Yuanchun Li, Guohong Liu, Shanhui Zhao, Tao Yu, Toby Jia-Jun Li, Shiqi Jiang, Yunhao
+Liu, Yaqin Zhang, and Yunxin Liu. Empowering llm to use smartphone for intelligent task
+automation. arXiv preprint arXiv:2308.15272, 2023.
+An Yan, Zhengyuan Yang, Wanrong Zhu, Kevin Lin, Linjie Li, Jianfeng Wang, Jianwei Yang, Yiwu
+Zhong, Julian McAuley, Jianfeng Gao, et al. Gpt-4v in wonderland: Large multimodal models for
+zero-shot smartphone gui navigation. arXiv preprint arXiv:2311.07562, 2023.
+Jianwei Yang, Hao Zhang, Feng Li, Xueyan Zou, Chunyuan Li, and Jianfeng Gao. Set-of-mark
+prompting unleashes extraordinary visual grounding in gpt-4v. arXiv preprint arXiv:2310.11441,
+2023a.
+Jihan Yang, Runyu Ding, Ellis Brown, Xiaojuan Qi, and Saining Xie. V-irl: Grounding virtual
+intelligence in real life. arXiv preprint arXiv:2402.03310, 2024.
+Zhao Yang, Jiaxuan Liu, Yucheng Han, Xin Chen, Zebiao Huang, Bin Fu, and Gang Yu. Appagent:
+Multimodal agents as smartphone users. arXiv preprint arXiv:2312.13771, 2023b.
+Shunyu Yao, Howard Chen, John Yang, and Karthik Narasimhan. Webshop: Towards scalable
+real-world web interaction with grounded language agents. Conference on Neural Information
+Processing Systems, 2022.
+Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao.
+React: Synergizing reasoning and acting in language models. In International Conference on
+Learning Representations, 2023.
+Aohan Zeng, Mingdao Liu, Rui Lu, Bowen Wang, Xiao Liu, Yuxiao Dong, and Jie Tang. Agenttuning:
+Enabling generalized agent abilities for llms. arXiv preprint arXiv:2310.12823, 2023.
+Zhuosheng Zhan and Aston Zhang. You only look at screens: Multimodal chain-of-action agents.
+arXiv preprint arXiv:2309.11436, 2023.
+Danyang Zhang, Lu Chen, and Kai Yu. Mobile-env: A universal platform for training and evaluation
+of mobile interaction. arXiv preprint arXiv:2305.08144, 2023.
+Shuyan Zhou, Frank F Xu, Hao Zhu, Xuhui Zhou, Robert Lo, Abishek Sridhar, Xianyi Cheng,
+Yonatan Bisk, Daniel Fried, Uri Alon, et al. Webarena: A realistic web environment for building
+autonomous agents. In International Conference on Learning Representations, 2024.
+13
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Appendix:
+Benchmarking Mobile Device Control Agent across Diverse Configurations
+A
+ENVIRONMENT DETAILS
+A.1
+ENVIRONMENT IMPLEMENTATION AND INTERFACE
+Environment
+B-MoCA is based on Android OS for real-system interactive evaluation. The
+environment is simulated with Android virtual devices, containing the device hardware profile,
+system image, storage area, and other relevant properties. The dynamics of the environments, such as
+the transition rules, are governed by Android OS and applications.
+Each environment is represented as an Android device, running on top of the Android emulator.
+To be more specific, we define each environment as a snapshot, a stored image of the Android
+virtual device. Each snapshot is built by saving an image of the target device after the configurations.
+These configurations include randomizing the features of environments by placing icons in random
+locations, setting dots per inch (DPI), modifying wallpapers, and changing the language. In addition,
+our configuration process includes adjusting several device settings for accurate evaluation, such as
+changing the database of applications.
+To facilitate interactions between the environment and agents, we develop a set of interfaces. These
+interfaces encompass various functionalities: to provide the task descriptions in text to the agents, to
+capture screenshots of the virtual device, to provide the Android view hierarchy in XML format and
+parse the text description of the screen, to extract dual-gesture actions from text-based actions, and to
+deliver the dual-gesture action to the Android emulator.
+Interaction Frequency
+The Android emulators run asynchronously independent of the agent
+that is interacting with the environments. However, this asynchronicity between the agent and the
+environment may cause several issues such as incomplete transition of the environments or delayed
+success signals. To alleviate the issue, we adjust the interaction frequency between agents and
+environments. Specifically, this adjustment is operated by forcing the agent to wait a pre-defined
+time before fetching the screen information from the environment. In our experiments, we fix the
+interaction frequency during evaluation to be 1/3Hz across all types of agents.
+Observation space
+The observation space is comprised of either a screen image, a text description
+of the screen in XML formats based on the Android view hierarchy, or both.
+The screen images are used for multi-modal large language model (MLLM) agents and vision-
+language-UI (VLUI) agents. Each image is resized into a resolution of 1024 × 2048 for MLLM
+agents and 128 × 256 for VLUI agents.
+The text descriptions are used for agents with LLMs and MLLMs. To build the text description, the
+Android debug bridge (ADB) UI Automator is employed for acquiring the Android view hierarchy
+in XML format. A pre-defined parser, then, converts the list of UI elements with attributes in an
+XML file into a set of text descriptions of UI elements. The description includes the numeric tag
+of UI elements, a short description of the elements including class name or content descriptions
+(e.g., “com.google.android.apps.nexuslauncher.id title weather text Sunny,1◦C” for a view in the
+home screen describing the weather). Also, we optionally provide the bounding box x-y coordinates
+specifying the location of the elements, such as the slider interface. Moreover, we define the parser to
+capture the descriptions of all the nodes in the Android view hierarchy. This is because we observe
+that many UI elements are omitted if we only parse leaf nodes, resulting in meaningless descriptions
+as discussed in Section 4.3.
+Action space
+The action space of the agents is defined as a set of dual-gesture actions {a| a =
+(ytouch, xtouch, ylift, xlift) ∈R4}, similar to Rawles et al. (2023). Each value of dual-gesture action a is
+normalized to be in between [−1, 1] with respect to the screen resolutions. The former two values
+specify the location of the screen to touch, while the latter two values determine the location of the
+screen to lift. This definition enables interpreting useful actions in digital device control, i.e., tapping
+14
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+or swiping the screens, in a precise and compressive manner. Also, our interface allows pressing the
+navigator buttons available by touching the screen to support the essential actions for manipulating
+Android devices.
+Specifically, we implement an interface that determines whether the action is a tap, swipe, or pressing
+of navigation buttons i.e., back, home, and overview. The action parsing interface converts the action
+into taps, swipes, or pressing buttons following the rule as follows:
+• The action is tapping, if d((xtouch, ytouch), (xlift, ylift)) < threshold
+– The tapping is to press BACK button, if (xtouch, ytouch) = (0.95, 0.22)
+– The tapping is to press HOME button, if (xtouch, ytouch) = (0.95, 0.50)
+– The tapping is to press OVERVIEW button, if (xtouch, ytouch) = (0.95, 0.78)
+• The action is swiping, if d((xtouch, ytouch), (xlift, ylift)) ≥threshold,
+where the threshold value is defined as 0.14. This value is adjustable by users, while we find that
+the value of 0.14 ensures proper interactions over UI elements, e.g., tapping the target application
+icon, in all of our experiments. These specific values are tested to be consistent across different device
+types, ensuring that the positions correspond to the correct buttons in all B-MoCA environments.
+For LLM agents and MLLM agents, we further define action options. Following the action space
+definition, the action options are designed to be compatible with a dual-gesture action. We prompt
+the LLM agents to output actions among six possible options: raw dual-gesture action, tap, swipe,
+press(“HOME”), press(“BACK”), and press(“OVERVIEW”). These action options are converted into
+a corresponding dual-gesture action by an additional action extractor we define as below:
+• For the dual-gesture action, we convert the text action into the four floating points by rounding
+each value into the second decimal point.
+• For tap actions, the LLM agent outputs an integer value specifying the numeric tag assigned to
+the UI element. Given the tapping action with a numeric tag, the parser converts the action into a
+tapping dual-gesture action with the bounding box information of the chosen UI element.
+• For swipe actions, a direction ‘up’, ‘down’, ‘left’ and ‘right’ is converted into (0.8, 0.5, 0.2, 0.5),
+(0.2, 0.5, 0.8, 0.5), (0.5, 0.2, 0.5, 0.8), and (0.5, 0.8, 0.5, 0.2), respectively.
+• For the action press(“HOME”), press(“BACK”), and press(“OVERVIEW”), we convert the
+outputs to dual-gesture actions in the same way as VLUI agents.
+During the evaluation, we ignore the action in the wrong format by skipping the transition of the
+environments but penalizing the agents by incrementing the steps taken, yet we observe both Gemini
+and GPT models (as well as vision version of them) rarely make mistakes on the format.
+A.2
+TRAINING AND TEST ENVIRONMENTS CONFIGURATIONS
+We construct 45 unique environments in B-MoCA, where 35 environments are for training and 10
+environments are for testing. Each environment is provided with a unique identification (ID) number,
+to distinguish the environments easily. Table 3 shows the list of the device configurations and the
+home screen images of exemplary environments.
+To construct environments, we use popular device types: Pixel 3, Pixel 4, Pixel 4 XL, Pixel 6, and
+WGXA Tablet. For training environments, only Pixel 3 is employed. For evaluation environments,
+we use all device types Pixel 3, Pixel 4, Pixel 4 XL, Pixel 6, and WGXA Tablet. In these models,
+we alter the icon and font sizes by changing the dots per inch (DPI) values of the devices. For each
+device type, we prepare three different sizes that users can select. We, then, change the wallpaper
+with 13 images collected from a free license image website. These wallpaper image files are shared
+in the open-source repository. We also customize the background images with the dark theme mode.
+If the dark theme mode is activated, the device provides screen images with light-dark color reversed.
+For instance, the wallpaper of the application list page is white in the default setting, while it becomes
+black with dark theme mode activated. Furthermore, we incorporate changes in locale, specifying
+the language and location of the devices. 12 different locales are used for 35 training environments,
+while we include three more locales for the test environments.
+15
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Table 3: The device configuration of each environment with the home screen image
+ID
+000
+001
+002
+003
+004
+Device type
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+DPI
+330
+330
+440
+440
+550
+Locale
+en-US
+en-US
+en-US
+en-US
+en-US
+Wallpaper
+000.jpg
+000.jpg
+000.jpg
+000.jpg
+000.jpg
+Dark theme
+-
+-
+-
+-
+-
+ID
+005
+006
+007
+008
+009
+Device type
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+DPI
+440
+440
+330
+440
+550
+Locale
+en-US
+en-US
+en-US
+en-US
+en-US
+Wallpaper
+000.jpg
+000.jpg
+001.jpg
+002.jpg
+001.jpg
+Dark theme
+-
+-
+✓
+✓
+-
+ID
+010
+011
+012
+013
+014
+Device type
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+DPI
+330
+440
+550
+440
+440
+Locale
+en-US
+en-US
+en-US
+en-US
+en-US
+Wallpaper
+002.jpg
+008.jpg
+003.jpg
+010.jpg
+013.jpg
+Dark theme
+-
+✓
+✓
+-
+✓
+Continued on next page
+16
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Table 3: The device configuration of each environment with the home screen image (Continued)
+ID
+015
+016
+017
+018
+019
+Device type
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+DPI
+330
+440
+440
+550
+330
+Locale
+en-US
+en-US
+en-US
+en-US
+en-US
+Wallpaper
+008.jpg
+007.jpg
+004.jpg
+010.jpg
+013.jpg
+Dark theme
+-
+-
+✓
+✓
+-
+ID
+020
+021
+022
+023
+024
+Device type
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+DPI
+440
+330
+440
+550
+330
+Locale
+en-US
+es-US
+es-US
+fr-CA
+fr-CA
+Wallpaper
+004.jpg
+001.jpg
+002.jpg
+001.jpg
+002.jpg
+Dark theme
+-
+✓
+✓
+-
+-
+ID
+025
+026
+027
+028
+029
+Device type
+Pixel 3
+Pixel 4
+Pixel 4
+Pixel 4
+Pixel 5
+DPI
+440
+550
+440
+440
+330
+Locale
+zh-hans-CN
+zh-hans-CN
+hi-IN
+ja-JP
+ru-MD
+Wallpaper
+008.jpg
+003.jpg
+010.jpg
+013.jpg
+008.jpg
+Dark theme
+✓
+✓
+-
+✓
+-
+Continued on next page
+17
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Table 3: The device configuration of each environment with the home screen image (Continued)
+ID
+030
+031
+032
+033
+034
+Device type
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+DPI
+440
+440
+550
+330
+440
+Locale
+ar-AE
+de-DE
+ak-GH
+pt-BR
+pt-PT
+Wallpaper
+007.jpg
+004.jpg
+010.jpg
+013.jpg
+004.jpg
+Dark theme
+-
+✓
+✓
+-
+-
+ID
+100
+101
+102
+103
+104
+Device type
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+Pixel 3
+DPI
+440
+330
+440
+550
+440
+Locale
+en-US
+en-US
+en-US
+en-US
+fr-CA
+Wallpaper
+000.jpg
+000.jpg
+009.jpg
+012.jpg
+009.jpg
+Dark theme
+-
+-
+✓
+-
+✓
+ID
+109
+105
+106
+107
+108
+Device type
+WXGA
+Tablet
+Pixel 3
+Pixel 4
+Pixel 5
+Pixel 6
+DPI
+160
+550
+440
+550
+700
+Locale
+ar-EG
+ko-KR
+en-US
+en-US
+ur-PK
+Wallpaper
+012.jpg
+009.jpg
+012.jpg
+005.jpg
+011.jpg
+Dark theme
+-
+✓
+-
+✓
+-
+18
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+B
+TASK DETAILS
+B.1
+LIST OF DAILY TASKS
+B-MoCA presents 60 daily tasks that are common in everyday life. The tasks are designed to operate
+in diverse environments seamlessly and cover commonly used applications. Daily tasks effectively
+simulate a wide range of essential skills for mobile device control problems, such as manipulating UI
+elements (including application icons, checkboxes, and sliders), and can be employed for evaluating
+mobile device control agents’ capabilities in performing tasks that mirror our daily activities.
+In Table 4, we include the detailed list of tasks with the maximum step limit and the success criteria.
+The success criteria are defined in the form of regular expression and are employed by the rule-based
+success detector. The success criteria (filter) specifies the target application or activity, and the success
+criteria (regex) refers to the regular expression we use. We also define the maximum step limits,
+which are set for the rigorous evaluation of the agents’ proficiency on each task.
+B.2
+EXAMPLE OF DEMONSTRATION ON REPRESENTATIVE TASKS
+In our experiments, we select six representative tasks. The tasks are selected to cover a wide range of
+functionalities, such as navigating pages (e.g., tab in the clock application or different setting pages
+in the setting application) and manipulating various UI elements (e.g., checkbox, slider, time pickers,
+etc.). On each task, we display the successful demonstration in Figure 9.
+Table 4: Comprehensive list of tasks.
+Step
+limit
+Task instruction
+Success criteria (filter)
+Success criteria (regex)
+4
+“open the calendar app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.android.calendar
+4
+“open the camera app”
+ActivityTaskManager
+ˆ(.*?)Start proc(.*?)com.android.camera
+4
+“open the chrome app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.google.android.apps.chrome
+4
+“open the clock app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.android.deskclock
+4
+“open the contact app”
+ActivityTaskManager
+ˆ(.*?)Start proc(.*?)com.android.contacts
+4
+“open the file manager app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)files.FilesActivity
+4
+“open the gmail app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.google.android.gm
+4
+“open the map app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.google.android.maps.MapsActivity
+4
+“open the message app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.google.android.apps.messaging
+4
+“open the phone app”
+Dialer
+ˆ(.*?)MainActivity.onCreate
+4
+“open the photos app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.google.android.apps.photos
+4
+“open the play music app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.android.music
+4
+“open the setting app”
+ActivityManager
+ˆ(*.?)Start proc(.*?)com.android.settings.Settings
+4
+“open the youtube app”
+ActivityTaskManager
+ˆ(.*?)START(.*?)com.google.android.youtube
+4
+“turn on alarm at 9 am”
+AlarmClock
+ˆ(.*?)Created new alarm instance
+5
+“delete alarm at 9 am”
+AlarmClock
+ˆ(.*?)Removed alarm
+5
+“go to the alarm page in clock”
+AlarmClock
+ˆ(.*?)Events: [Alarm] [Show Tab] [Tap]
+5
+“go to the stopwatch page in clock”
+AlarmClock
+ˆ(.*?)Events: [Stopwatch] [Show Tab] [Tap]
+5
+“go to the timer page in clock”
+AlarmClock
+ˆ(.*?)Events: [Timer] [Show Tab] [Tap]
+5
+“list audio files in file manager”
+DirectoryFragment
+ˆ(.*?)Showing directory(.*?)audio(.*?)root
+5
+“list image files in file manager”
+DirectoryFragment
+ˆ(.*?)Showing directory(.*?)images
+5
+“list video files in file manager”
+DirectoryFragment
+ˆ(.*?)Showing directory(.*?)videos
+Continued on next page
+19
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+Table 4: Comprehensive list of tasks. (Continued)
+5
+“list download files in file manager”
+DirectoryFragment
+ˆ(.*?)Showing directory(.*?)download
+5
+“activate the insert page in contact”
+ActivityTaskManager
+ˆ(.*?)START(.*?)INSERT(.*?)ContactEditorActivity
+5
+“activate the edit page in contact”
+ActivityTaskManager
+ˆ(.*?)START(.*?)EDIT(.*?)ContactEditorActivity
+5
+“activate the search bar in chrome”
+AndroidIME
+ˆ(.*?)LatinIme.onActivate(.*?)android.chrome
+5
+“activate the search bar in map”
+AndroidIME
+ˆ(.*?)LatinIme.onActivate(.*?)apps.map
+5
+“activate the search bar in youtube”
+AndroidIME
+ˆ(.*?)LatinIme.onActivate(.*?)android.youtube
+5
+“activate the search bar in google”
+AndroidIME
+ˆ(.*?)LatinIme.onActivate(.*?)android.googlequicksearchbox
+5
+“activate the search bar in message”
+AndroidIME
+ˆ(.*?)LatinIme.onActivate(.*?)apps.messaging
+5
+“start chatting in message”
+BugleUsageStatistics
+ˆ(.*?)BUGLE CREATE(.*?)DEFAULT
+5
+“press the call button in dial”
+Telecom
+ˆ(.*?)LogUtils(.*?)EventRecord added as Call
+5
+“turn on airplane mode”
+PhoneGlobals
+ˆ(.*?)Turning radio off(.*?)airplane
+5
+“turn off airplane mode”
+PhoneGlobals
+ˆ(.*?)Turning radio on(.*?)airplane
+5
+“turn on wifi”
+WifiService
+ˆ(.*?)setWifiEnabled(.*?)com.android.settings(.*?)enable=true
+5
+“turn off wifi”
+WifiService
+ˆ(.*?)setWifiEnabled(.*?)com.android.settings(.*?)enable=false
+5
+“start the stopwatch in clock”
+AlarmClock
+ˆ(.*?)Start
+5
+“pause the stopwatch in clock”
+AlarmClock
+ˆ(.*?)Pause
+5
+“reset the stopwatch in clock”
+AlarmClock
+ˆ(.*?)Reset
+5
+“go to search history in chrome”
+ActivityTaskManager
+ˆ(.*?)START(.*?)chrome.browser.history.HistoryActivity
+5
+“go to trash page in photo”
+ActivityTaskManager
+ˆ(.*?)START(.*?)apps.photos(.*?)TrashPhotosActivity
+5
+“go to smart pairing page in youtube”
+ActivityTaskManager
+ˆ(.*?)START(.*?)youtube.mdx.smartpairing.PairWithTvActivity
+6
+“increase media volume in setting”
+vol.Events
+ˆ(.*?)MEDIA
+6
+“increase call volume in setting”
+vol.Events
+ˆ(.*?)CALL
+6
+“increase ring volume in setting”
+vol.Events
+ˆ(.*?)MUSIC
+6
+“increase alarm volume in setting”
+vol.Events
+ˆ(.*?)ALARM
+6
+“decrease screen brightness in set-
+ting”
+DisplayPowerController
+ˆ(.*?)Brightness(.*?)changing(.*?)manual
+6
+“toggle dark theme in setting”
+SettingsProvider
+ˆ(.*?)content(.*?)settings(.*?)dark(.*?)mode
+6
+“toggle vibrate for calls in setting”
+SettingsProvider
+ˆ(.*?)vibrate(.*?)when(.*?)ringing
+6
+“go to app info list in setting”
+SettingsActivity
+ˆ(.*?)Switching(.*?)android.settings(.*?)ManageApplications
+6
+“go to bluetooth setting”
+PrefCtrlListHelper
+ˆ(.*?)android.settings.bluetooth.BluetoothDevice
+7
+“go to ‘add a language’ page in set-
+ting”
+ActivityTaskManager
+ˆ(.*?)LocalePicker
+9
+“call 911”
+Telecom
+ˆ(.*?)Emergency number detected
+10
+“turn off the call in process”
+Telecom
+ˆ(.*?)InCallController(.*?)onCallRemoved
+11
+“create alarm at 06:30 am”
+ConditionProviders.SCP
+ˆ(.*?)nextUserAlarmTime(.*?)06:30:00
+11
+“create alarm at 10:30 am”
+ConditionProviders.SCP
+ˆ(.*?)nextUserAlarmTime(.*?)10:30:00
+11
+“create alarm at 13:30 pm”
+ConditionProviders.SCP
+ˆ(.*?)nextUserAlarmTime(.*?)13:30:00
+11
+“create alarm at 17:30 pm”
+ConditionProviders.SCP
+ˆ(.*?)nextUserAlarmTime(.*?)17:30:00
+11
+“create alarm at 20:30 pm”
+ConditionProviders.SCP
+ˆ(.*?)nextUserAlarmTime(.*?)20:30:00
+11
+“create alarm at 23:30 pm”
+ConditionProviders.SCP
+ˆ(.*?)nextUserAlarmTime(.*?)23:30:00
+20
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+(a) Airplane
+(b) Alarm1
+(c) Alarm2
+(d) Brightness
+(e) Call 911
+(f) Language
+Figure 9: Examples of human expert demonstrations of six representative tasks. The blue and red
+cursors linked with a white arrow identify the swiping action, while the red cursor alone identifies
+the tapping action.
+C
+AGENT DETAILS
+C.1
+PROMPT DETAILS FOR LLM AGENTS AND MLLM AGENTS
+For the agents employing LLMs or MLLMs, we use a complete prompt format described in Table 5.
+The role description informs the agents with general instructions about the problem, i.e., device
+control problem. The possible actions are provided as callable functions, options of tapping an
+element in the list, swiping the screen, and pressing the three navigation buttons over the screen with
+action press(“BACK”), action press(“HOME”), and action press(“OVERVIEW”). The output format
+is designed to integrate the Chain-of-Thought (CoT) technique (Wei et al., 2022).
+21
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+You are an agent that is trained to perform daily tasks on digital devices, such as smartphones. You are given a
+goal of task instruction to accomplish and a description of screen from Android view hierarchy, which contains
+elements’ numeric tag and description.
+Based on the goal of task instruction and UI elements list, you need to select an action option by calling one of
+the following functions to control the digital device:
+1. dual-gesture(touch y: float, touch x: float, lift y: float, lift x: float): This function is used to operate
+a dual-gesture action. A dual-gesture comprises of four floating point numeric values, in between 0 and 1
+indicating a normalized location of the screen in each of x-y coordinates. A dual-gesture action is interpreted
+as touching the screen at the location of (touch y, touch x) and lifting at the location of (lift y, lift x). The
+dual-gesture action indicates a tapping action if the touch and lift locations are identical but a swiping action if
+they differ. A simple use case is dual-gesture(0.5, 0.5, 0.5, 0.5) to tap the center of the screen.
+2. tap(numeric tag: int): This function is used to tap an UI element shown on the digital device screen. ”numeric
+tag” is a tag assigned to an UI element shown on the digital device screen. A simple use case can be tap(5),
+which taps the UI element labeled with the number 5.
+3. swipe(direction: str): This function is used to swipe on the digital device screen, ”direction” is a string that
+represents one of the four directions: up, down, left, right. ”direction” must be wrapped with double quotation
+marks. A simple use case is swipe(”up”) which can be used to open the app list in the home screen.
+4. press(”HOME”): to press home button.
+5. press(”BACK”): to press back button.
+6. press(”OVERVIEW”): to press overview button.
+Goal: [task instruction].
+[few shot prompt]
+Now, given the parsed uiautomator xml, you need to think and call the function needed to proceed with the task.
+Your output should include three parts in the given format:
+- Description: <Describe what you observe in the input>
+- Thought: <To complete the given task, what is the next step I should do>
+- Action: <The function call with the correct parameters to proceed with the task. You cannot output anything
+else except a function call>
+You can only take one action at a time, so please directly call the function.
+Please never take action beside options provided.
+Table 5: Prompts used for the LLM Agents and MLLM agents. Parts for [...] are filled in according
+to different experiments, while the few-shot examples are optional.
+For few-shot learning of agents with foundation models, we include a pre-defined number of examples
+hinting correct actions to take. Specifically, to build a prompt with few-shot examples, the [few shot
+prompt] part in Table 5 is replaced with the text illustrating the human demonstration. Table 6 shows
+an exemplary few show prompts, with one transition of the human expert demonstration.
+Below illustrates exemplary human demonstration(s), with format:
+- Instruction: <The instruction of task>
+- Observation: <An observation from environment>
+- Action: <An action taken by the human expert>
+- Next Observation: <The next observation from environment after the action is taken>
+- Reward: <A reward after action is executed>.
+- Instruction: turn on alarm at 9 am
+- Observation: [’numeric tag’: 0, ’description’: ’android.view.View Appslist’, [...] ’numeric tag’: 27, ’descrip-
+tion’: ’android.widget.FrameLayout’]
+- Action: swipe(”up”)
+- Next observation: [’numeric tag’: 0, ’description’: ’android.view.View Appslist’, [...] ’numeric tag’: 30,
+’description’: ’android.widget.FrameLayout’]
+- Reward: 0.0
+Table 6: An exemplary few-shot prompt with one transition of human expert demonstration for
+text-based agents. The abbreviated [...] parts are filled with a list of descriptions for UI elements.
+22
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+C.2
+ARCHITECTURE DESIGN FOR VLUI AGENTS
+The network architecture for VLUI agents is composed of three components: encoder, attention
+module, and action head. Given the task instruction c and the visual screen ot ∈R3×256×128 at each
+timestep t, VLUI agents generate action at ∈R4 in the form of dual-gesture action.
+VLUI agents use visual and text encoders to represent screen images ot and task instruction c,
+respectively. The visual encoder embeds visual feature eot ∈Rd from the observation ot, and the
+text encoder extracts features ec ∈Rd from the task instruction c. For the visual encoder, we use
+EfficientNet-b0 (Tan & Le, 2019) pre-trained with ImageNet followed by an adaption layer using a
+fully connected layer to adapt the output channel to hidden dimension d (Liu et al., 2023). For the
+text encoder, we use a pre-trained text encoder of Text-to-Text Transfer Transformer (Zhan & Zhang,
+2023) which is trained with a dataset composed of demonstrations for solving Android device control
+problems (Rawles et al., 2023). The text encoder is kept frozen during the training process. The
+hidden dimension d is set to equal the value of 768 for both visual embedding and text embedding.
+The attention module, then, fuses the visual feature eot and text feature ec into a single vision-
+language embedding efused ∈Rd. Especially, we use Multi-head attention layer (Vaswani et al., 2017)
+for cross-attention, with ec given as query and eot given as key and value. Given the fused feature
+efused, the action heads predict the action at. The action head consists of fully connected (FC) layers
+with the last layer having an output dimension of 4, accounting for the dimension of a ∈R4. The
+sequence of three FC layers follows output dimensions of (1024, 1024, 4). We apply the tanh layer to
+the predicted action, observing improved performances with normalization of the action values.
+C.3
+CONFIGURATION DETAILS FOR LLM AGENTS AND MLLM AGENTS
+For the experiments in Section 4.2 and Section 4.3, we set the configurations for the foundation
+models. We use a temperature of 0.1, a top-p of 1, and a top-k of 1 for Gemini-Pro and Gemini-
+Pro-V. We set the temperature to be 0.0 and top-p with the default value of 1 (as altering only either
+temperature or top-p from the default setting is suggested) for GPT-4 and GPT-4V.
+C.4
+TRAINING DETAILS FOR VLUI AGENTS
+For the experiments in Section 4.2 and Section 4.4, we train VLUI agents with behavior cloning (BC)
+over 4K steps with a batch size of 512, sampled from a collection of 210 human demonstrations.
+We use the Adam optimizer (Kingma & Ba, 2017) with a learning rate of 3e-4 and adopt a cosine
+annealing learning rate scheduler. Each training is conducted on a single NVIDIA RTX A6000 GPU
+and takes approximately one hour.
+D
+EXPERIMENT DETAILS
+D.1
+DATASET COLLECTION
+For the few-show learning of LLM and MLLM agents and training of VLUI agents, we collect
+human expert demonstrations. The collectors (graduate students) are instructed to complete the six
+representative tasks in each training environment. The definitions of action space for the collected
+demonstration are in two modes: the action space defined with action options and the action space
+as a set of dual-gesture actions. The end of each episode is determined by the ADB-based success
+detector, and we exclude the demonstrations with failures.
+For the experiments in Section 4.2, we exploit training environments with identifying (ID) numbers
+from 000 to 034. Hence, a total number of 210 trajectories of demonstrations are prepared. For agents
+using foundation models, each transition (task instruction, observation, action, next observation,
+reward) in the trajectories is sampled as a few-shot example, similar to prior methods (Zhang et al.,
+2023; Rawles et al., 2023). For VLUI agents, each triplet (task instruction, observation, action)
+in the trajectories is used as a data point for composing the training batch. For the experiments
+in Section 4.4, we leverage varying numbers of training environments 7, 21, and 35 where the
+corresponding identifying (ID) numbers of the environments are from 000 to 006, from 000 to 021,
+and from 000 to 034, respectively. The total number of demonstrations for each setting is 42, 126,
+and 210, respectively.
+23
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+D.2
+PERFORMANCES OF VLUI AGENTS IN TRAINING ENVIRONMENTS
+Airplane
+Alarm1
+Alarm2
+Brightness
+Call 911
+Language
+30
+60
+90
+Success Rates (%)
+Train
+Test
+Figure 10: Success rates of VLUI agents trained with BC on training and test environments. The
+differences between the success rates demonstrate the headroom for the generalization ability.
+Figure 10 displays the differences in the success rates of VLUI agents in training and test environments.
+The challenges with diverse device configurations degenerate the performances of the VLUI agents,
+from higher than 90% in the training environments to less than 70% in the test environments.
+D.3
+EXAMPLES OF VISUAL INPUTS WITH SOM PROMPTING FOR MLLM AGENTS
+In Section 4.3, we investigate the effects of SoM prompting that several prior works (Yan et al., 2023;
+Yang et al., 2023b) adopted. Figure 11 presents several examples of visual inputs used for analysis.
+(a)
+(b)
+(c)
+(d)
+Figure 11: Examples of visual inputs for MLLM agents with SoM prompting. The overlaid numeric
+tags for selecting icons at (a) the home screen or (b) the menu screen of applications list can be
+beneficial for MLLM agents, while the tags on (c) dial buttons or (d) clock UI may confuse them.
+E
+ADDITIONAL EXPERIMENTS
+E.1
+MLLM AGENTS WITH DUAL-GESTURE ACTIONS
+We have implemented additional interfaces for agents employing foundation models and action
+options, as introduced in Section 3.1. However, it is still questionable whether defining action options
+is truly desirable for these agents. To answer this, we conduct a comparison between agents only
+generating actions in the dual-gesture action format and the agents using additional action options.
+In this experiment, we examine MLLM agents employing GPT-4V in a zero-shot manner on two
+selected tasks (Airplane and Alarm 1) with only one run for simplicity.
+As shown in Table 7, we observe that the agents benefit from employing additional action options. In
+the experiments, the agents without additional options exhibit several successful trials on Alarm 1,
+by including the bounding box location of all UI elements in the observation prompt for these agents.
+However, we observe that the agents lack generating diverse dual-gesture actions but only perform
+tapping actions. With these results, we examine the proficiency of LLM agents and MLLM agents
+with the action options in Section 4.2.
+24
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+MLLM agents
+(dual-gesture actions)
+MLLM agents
+(action options)
+Airplane
+00
+30
+Alarm 1
+30
+50
+Table 7: Success rates of MLLM agents with different action spaces. MLLM agents (dual-gesture
+actions) generate the actions in only dual-gesture action format, and MLLM agents (action options)
+leverage the additional action options we define.
+E.2
+LLM AGENTS WITH OPEN-SOURCE MODELS
+While employment of foundation models for mobile device control agents is gaining interests (Wen
+et al., 2023; Yang et al., 2023b), many approaches still rely on closed-source models. However,
+leveraging closed-source foundation models lies with severe limitations, such as difficulties in fine-
+tuning. Instead, one can employ open-source LLMs which can benefit from high flexibility in usage.
+In this experiment, we examine the proficiency of LLM agents with open-source models.
+We study open-source models: Llama2-chat (abbreviated as Llama2) (Touvron et al., 2023), Llama3,
+and AgentLM (Zeng et al., 2023). Llama2 and Llama3 are open-source models that have shown
+compatible performances with several closed-sourced models, and AgentLM is an instruction-tuned
+version of Llama2 in a collection of numerous agent tasks (including web tasks). For Llama2 and
+AgentLM, we use 7b and 13b size models. For Llama3, we use an 8b size model. We set the
+temperature value to be 0.1 and report across three different runs.
+Table 8 show the success rates of LLM with open-source models. We observe that these agents
+severely lack the proficiency in performing tasks that we select. While the agents can perform
+sub-tasks of opening the target application on the home screen or entering the menu screen in some
+trials, as observed in the rollouts, they fail to complete the instructed tasks in limited allowed steps.
+The open-source models also struggle with generating actions in the format we instruct, while closed-
+source models rarely generate actions in the wrong format. With these pilot test results, we primarily
+focus on examining the efficacy of training agents from scratch with VLUI agents.
+LLM agents
+(Llama2-7b)
+LLM agents
+(Llama2-13b)
+LLM agents
+(AgentLM-7b)
+LLM agents
+(AgentLM-13b)
+LLM agents
+(Llama3-8b)
+LLM agents
+(Gemini-Pro)
+LLM agents
+(GPT-4)
+Airplane
+00 ± 00
+00 ± 00
+00 ± 00
+00 ± 00
+63 ± 00
+87 ± 07
+53 ± 03
+Alarm 1
+00 ± 00
+00 ± 00
+00 ± 00
+00 ± 00
+00 ± 00
+27 ± 03
+42 ± 13
+Brightness
+00 ± 00
+00 ± 00
+00 ± 00
+00 ± 00
+17 ± 03
+05 ± 03
+73 ± 12
+Table 8: Success rates of LLM agents with open-source models Llama2 and AgentLM in zero-shot
+scenario. The agents do not complete any tasks that LLM agents with closed-source models of GPT-4
+or Gemini (in zero-shot) have achieved.
+E.3
+VLUI AGENTS WITH REINFORCEMENT LEARNING
+We study VLUI agents trained using reinforcement learning (RL) algorithms, by using the success
+signal rt as a sparse reward. Formally, the RL agent is trained to maximize the expected return,
+denoted as follows:
+Eπθ
+
+T
+X
+t=0
+γtrt
+
+,
+where γ ∈[0, 1] is the discount factor and T is the length of episode. In this experiment, we focus
+on offline RL setting (Lange et al., 2012; Levine et al., 2020), where the agent learns from a pre-
+collected dataset generated by some behavior policy. Specifically, We utilize the implicit Q-learning
+(IQL; Kostrikov et al. 2022) algorithm.
+IQL is one of the popular actor-critic algorithms. The actor network π parameterized with θ
+infers the action at at each time step t, given the observation ot and task instruction ct, The critic
+network Q parameterized with ϕ estimates the value of action predicted by the actor. IQL leverages
+expectile regression for robust value estimation and improves the policy using advantage-weighted
+25
+
+
+ICLR 2024 Workshop on Generative Models for Decision Making
+regression (Peters & Schaal, 2007; Nair et al., 2020). In particular, IQL introduces a separate value
+network V parameterized with ψ for robust learning. The loss function for the critic in IQL is
+formulated as:
+LV (ψ) = E(ot,a∗
+t )∼D
+h
+Lτ
+2
+Q ˆ
+ϕ(ot, at) −Vψ(ot)
+i
+,
+LQ(ϕ) = E(ot,a∗,rt,ot+1)∼D
+hrt + γ · Vψ(ot+1) −Qϕ(ot, a∗
+t )
+2i
+,
+with Lτ
+2(u) defined to be |τ −1(u < 0)| · u2, a value function V parameterized with ψ, Q-function
+Q parameterized with ϕ, and the dataset of human demonstrations D = {(ot, a∗
+t , rt, ot+1)}. Then,
+the actor is trained with advantage-weighted behavioral cloning objective defined as:
+Lπ(θ) = E(ot,a∗
+t )∼D
+h
+exp
+β · A(ot, at)
+
+·
+at −a∗
+t
+2i
+,
+with action prediction at predicted by the actor network π, the advantage A(ot, at) = Q ˆ
+ϕ(ot, at) −
+Vψ(ot), and an inverse temperature β ∈[0, ∞).
+The policy architecture for VLUI agents follows the same architecture of VLUI agents trained with
+BC, described in Appendix C.2. Similarly, the hyperparameters for optimizers and other training
+details remain the same, except that we iterate the training over 20K steps to ensure the convergence
+of training. For the training, we employ 35 training environments, namely 210 successful human
+expert demonstrations.
+Figure 12 shows the success rates of VLUI agents trained with IQL, compared with VLUI agents
+trained with BC. We observe that the agents trained with IQL do not exhibit compatible performances
+with the agents trained with BC across all tasks. We assume these results originated from training
+instability due to sparse rewards, as more training steps are required for the convergence of IQL
+training. However, as observed in Kostrikov et al. (2022), we expect that offline RL can provide
+potential benefits over vanilla BC training, such as utilizing failure demonstrations. We leave training
+VLUI agents with IQL more efficiently and with higher proficiencies as future work.
+E.4
+VLUI AGENT WITH REPRESENTATION MODEL OF VARYING CAPACITY
+We conduct the effect of representation models with varying capacities on the robustness of VLUI
+agents. Specifically, we compare the VLUI agents equipped with visual encoders using EfficientNet-
+b0, EfficientNet-b3, and EfficientNet-b7 (with increasing numbers of parameters with values of 5.3M,
+12M, and 66M, respectively), which are pre-trained with ImageNet.
+Figure 13 demonstrates the experimental results. To illustrate, our experiment indicates no significant
+improvements by employing representation models with increased model sizes. With these results,
+we expect that increasing the training data diversity is more desirable than increasing the model sizes
+in our current benchmark setting. Also, we add that the higher model capacity can be beneficial for
+developing multi-task policies with a greater number of tasks.
+Airplane
+Alarm1
+Alarm2
+Brightness
+Call911
+Language
+10
+50
+90
+Success Rates (%)
+ BC
+ IQL
+Figure 12: Success rates of VLUI agents trained
+with BC and IQL. Training with IQL does not
+result in as high performances as training with
+BC, presumably due to training instability.
+Airplane
+Alarm1
+Alarm2
+Brightness
+Call911
+Language
+10
+50
+90
+Success Rates (%)
+EfficientNet-b0
+EfficientNet-b3
+EfficientNet-b7
+Figure 13: Success rates ov VLUI agents with
+varying size of visual encoders. We do not ob-
+serve significant benefits by increasing the model
+capacities of representation models.
+26
+
+
+Understanding the Weakness of Large Language Model Agents
+within a Complex Android Environment
+Mingzhe Xing∗
+Peking University
+Rongkai Zhang
+Peking University
+Hui Xue
+Microsoft Research
+Qi Chen
+Microsoft Research
+Fan Yang
+Microsoft Research
+Zhen Xiao†
+Peking University
+ABSTRACT
+Large language models (LLMs) have empowered intelligent agents
+to execute intricate tasks within domain-specific software such as
+browsers and games. However, when applied to general-purpose
+software systems like operating systems, LLM agents face three pri-
+mary challenges. Firstly, the action space is vast and dynamic, posing
+difficulties for LLM agents to maintain an up-to-date understanding
+and deliver accurate responses. Secondly, real-world tasks often re-
+quire inter-application cooperation, demanding farsighted planning
+from LLM agents. Thirdly, agents need to identify optimal solutions
+aligning with user constraints, such as security concerns and prefer-
+ences. These challenges motivate AndroidArena, an environment
+and benchmark designed to evaluate LLM agents on a modern op-
+erating system. To address high-cost of manpower, we design a
+scalable and semi-automated method to construct the benchmark.
+In the task evaluation, AndroidArena incorporates accurate and
+adaptive metrics to address the issue of non-unique solutions. Our
+findings reveal that even state-of-the-art LLM agents struggle in
+cross-APP scenarios and adhering to specific constraints. Addition-
+ally, we identify a lack of four key capabilities, i.e., understanding,
+reasoning, exploration, and reflection, as primary reasons for the
+failure of LLM agents. Furthermore, we provide empirical analysis
+on the failure of reflection, and improve the success rate by 27% with
+our proposed exploration strategy. This work is the first to present
+valuable insights in understanding fine-grained weakness of LLM
+agents, and offers a path forward for future research in this area. En-
+vironment, benchmark, and evaluation code for AndroidArena are
+released at https://github.com/AndroidArenaAgent/AndroidArena.
+1
+INTRODUCTION
+Large language models (LLMs) have shown great potentials in
+understanding hidden intent from human and commonsense rea-
+soning [27]. This makes it possible to utilize LLM as agent [29, 32],
+an intelligent entity capable of making decisions and executing
+∗This work is done during the internship at Microsoft Research.
+†Corresponding author.
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for components of this work owned by others than the
+author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or
+republish, to post on servers or to redistribute to lists, requires prior specific permission
+and/or a fee. Request permissions from permissions@acm.org.
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+© 2018 Copyright held by the owner/author(s). Publication rights licensed to ACM.
+ACM ISBN 978-1-4503-XXXX-X/18/06
+https://doi.org/XXXXXXX.XXXXXXX
+actions based upon the perceived state of environment. An exam-
+ple is for LLMs to interact with domain-specific software, such as
+databases [13], games [28] and browsers [40], for task completion.
+More recently, new LLM-based agents have emerged to interact
+with general-purpose software systems, such as operating systems
+along with their installed APPs, to accomplish more complex open-
+domain tasks [35, 36]. These tasks range from simple actions like
+setting reminders to more intricate activities like financial manage-
+ment and staying connected with loved ones. Complex scenarios in
+operating systems typically manifest the following characteristics:
+1) a vast and ever-changing action space due to real-time inter-
+net data exchange, APP installations, and upgrades; 2) an increasing
+demand for cross-APP collaboration as user tasks become more
+interconnected and multifaceted; and 3) heightened consideration
+for personal interests and security concerns.
+These characteristics motivate us to establish a new environment
+and comprehensive benchmark to study the boundaries of LLM
+agent’s capability within a complex software system. In this paper,
+we introduce AndroidArena, an environment built on the Android
+operating system, accompanied by an evaluation benchmark con-
+taining annotated ground truth action sequences. AndroidArena
+supports real-time internet data exchange and dynamic APP man-
+agement, and enables seamless operations across various APPs.
+These features facilitate the evaluation of LLM agents in a vast
+and dynamic action space and cross-APP scenarios. Additionally, we
+propose a scalable method for semi-automatically constructing an
+instruction benchmark, ensuring comprehensive coverage of APP
+functionalities. Our open-source benchmark, informed by the afore-
+mentioned characteristics, evaluates tasks not only within a single
+APP but also complex tasks requiring collaboration across multiple
+APPs. It further considers tasks subject to constraints such as user
+preferences and security considerations.
+Evaluating tasks within a complex operating system is non-
+trivial [14], primarily due to the fact that the feasible action se-
+quence for a task is often non-unique. This presents a significant
+challenge to precisely evaluating agents in multi-step decision-
+making scenarios. To address this issue, we devise adaptive met-
+rics to evaluate task completion accurately. The evaluation
+results reveal that all state-of-the-art (SOTA) LLM agents fall short
+in cross-APP scenarios, with a success rate of less than 60%, and
+struggle to fully adhere to specific constraints. Notably, GPT-3.5 [18]
+achieves a 6x higher success rate than LLaMA2-70B [25]. Through
+meticulous case analysis to understand the causes of failure, we
+identify and abstract four key planning capabilities of LLM
+agents, inspired by reinforcement learning (RL) [24]: understand-
+ing, reasoning, exploration, and reflection. We design metrics
+arXiv:2402.06596v1  [cs.AI]  9 Feb 2024
+
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Mingzhe Xing, Rongkai Zhang, Hui Xue, Qi Chen, Fan Yang, and Zhen Xiao
+Table 1: The comparison between our AndroidArena benchmark and existing benchmarks.
+Benchmark
+Online
+Evaluation
+Realistic
+Environment
+Scalably
+Generated
+Collaborative Tasks
+between APPs
+Tasks with
+Constraints
+MineCraft [28]
+✓
+✗
+✗
+✗
+✗
+Mind2Web [7]
+✗
+✓
+✗
+✗
+✗
+AITW [20]
+✗
+✓
+✗
+✗
+✗
+AndroidEnv [26]
+✓
+✓
+✗
+✗
+✗
+WebArena [40]
+✓
+✓
+✗
+✗
+✗
+AndroidArena
+✓
+✓
+✓
+✓
+✓
+to measure these fine-grained capabilities, showing improve-
+ment directions for LLM agents. LLaMA2 exhibits weaknesses
+across all dimensions, and even advanced models like GPT-4 [18]
+are no exemptions, exhibiting weak reflection and exploration abil-
+ities. Empirical analysis predominantly attributes the weakness
+in reflection to low-quality trajectories and sparsity in environ-
+ment feedback. Moreover, we find that by integrating historical
+visited information into the prompt and balancing exploration and
+exploitation by the agent, the success rate of specific APPs can
+improve by 27%, and the exploration performance is enhanced.
+In summary, we make the following contributions.
+• We open-source AndroidArena, a benchmark based on the An-
+droid operating system, to evaluate daily tasks requiring cross-
+APP collaboration, as well as considerations for constraints such
+as security. Additionally, our scalable and semi-automated ap-
+proach reduces the cost of benchmark construction.
+• Our findings indicate that STOA models underperform in daily
+tasks and are not ready for direct product integration. We pro-
+pose fine-grained metrics that reveal failure causes and highlight
+four areas for future research: understanding, reasoning, reflec-
+tion, and exploration. Initial analysis show the failure reasons of
+reflection, and 27% of improvement when enhancing exploration.
+2
+BACKGROUND
+2.1
+Frameworks of LLM Agent
+With the emergence of LLMs, the study of LLM agents has begun
+to thrive. Early research work [1, 11, 19] prompt LLMs to directly
+generate actions based on environment observations. ReAct [38]
+is a pioneer work to integrate reasoning and acting in LLM for
+general task solving. It first generates reasoning traces based on
+history context, subsequently producing actions to interact with
+the environment. Building upon this task-solving paradigm, subse-
+quent agents have been proposed to enhance capabilities in various
+dimensions. Reflexion [22] summarizes textual feedback from the
+environment and then incorporates it as additional context for the
+LLM agent in the subsequent episode. The self-reflective context
+acts as a semantic gradient signal, offering the agent a concrete
+direction to improve upon, and facilitates the learning process from
+prior mistakes for enhancing task performance. This paper focuses
+on evaluating the abilities of LLM agents and understanding their
+weaknesses. We adopt ReAct as the basic agent strategy and Reflex-
+ion as an approach to assess the agent’s ability of self-reflection.
+2.2
+Existing Operating System Task Benchmark
+Operating Systems (OS) serve as crucial environments with which
+humans interact daily, and numerous benchmarks have emerged to
+evaluate the performances of agents within OS. AITW [20] stands
+out as a static image dataset that offers human demonstrations of
+device interactions. However, the static nature of AITW prevents
+agents from obtaining a reproducible environment. On the other
+hand, AndroidEnv [26] provides support for dynamic interactions
+with APP. Despite this, it only supports single APP’s interaction in
+each environment instance, which limits its capability to evaluate
+complex and realistic tasks. WebArena [40] creates tasks simulating
+human behavior on web browsers. However, it is also limited to
+automate tasks on a single website, which poses a constraint on its
+applicability. While these works have been a source of inspiration,
+they also highlight the significant challenges of evaluating tasks
+on OS. Tasks performed by real-world users are often more com-
+plex and demanding, requiring the collaboration of multiple APPs.
+Additionally, agents need to consider various constraints such as
+security and user preference. Therefore we propose AndroidArena,
+a reproducible mobile environment that allows for cross-APP ac-
+cess. Alongside this, we introduce a new dataset that encapsulates
+the richness, difficulty, and constraints of instructions. The detail
+comparison with other works is listed in Table 1.
+2.3
+Existing Metrics for Multi-step Decision
+To assess the performances of LLM agents, a range of metrics
+are proposed. SmartPlay [31] and LASER [16] employ success
+rate and reward to evaluate task completion. However, these met-
+rics cannot reflect the detailed completion within individual tasks.
+TPTU [21] and Mind2Web [7] incorporate a step-wise action align-
+ment method, offering a more nuanced analysis of task completion.
+Nevertheless, when applied to multi-step decision-making scenar-
+ios where the feasible action sequence for completing a task is not
+unique, this kind of step-wise matching method may introduce in-
+accuracies. In this paper, we propose an adaptive way to accurately
+assess the task completion, and a set of fine-grained ability evalu-
+ation metrics to understand the weaknesses of agents, providing
+valuable insights into improvement directions for LLM agents.
+3
+ANDROIDARENA ENVIRONMENT
+In this section, we introduce the AndroidArena environment, dis-
+tinguished by its vast and dynamic action space, along with its
+capability to facilitate cross-APP and constrained task execution.
+
+
+Understanding the Weakness of Large Language Model Agents within a Complex Android Environment
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Search contacts
+Zara
+John
+Bob
+Alice
+Contacts
+Fix & manage
+J
++
+Z
+J
+B
+A
+(a) APP screenshot.
+(b) Compressed observation.
+Figure 1: An example of the Contacts APP page and its corre-
+sponding compressed observation.
+We begin by offering a formal definition of the mobile task automa-
+tion process, followed by an overview of the system implementa-
+tion. Subsequently, we explore the intricacies of the action space,
+highlighting its dynamic and expansive nature.
+3.1
+LLM Agent for Mobile Task Automation
+Given a task presented with a user instruction in natural language,
+the agent is responsible for making action decisions to complete
+this instruction on the phone. This process can be formulated as a
+Contextual Markov Decision Process (CMDP) [9] ⟨C, S, A, T,𝑟⟩.
+Context 𝑐∈C is the mobile task explicitly expressed as a textual
+instruction. State 𝑠∈S is the current observed phone state, i.e., the
+displayed content on the screen. Action 𝑎∈A can be performed on
+the current phone screen, e.g., clicks or typing. Transition function
+T (𝑠′|𝑠,𝑎) represents the change in the phone on performing an
+action. Reward 𝑟is awarded for successful completion of the task.
+Implementation. Our implementation is based on UIAutoma-
+tor [8], a UI testing framework that enables direct operations on UI
+components. With UIAutomator, we offer flexible configurations
+to render APP page content (i.e., the observation space) in two
+modes: 1) the phone screenshot, a pixel-based representation as
+perceived by humans, and 2) the textual XML description of the
+phone screen (depicted in Fig. 8 in §A). It is important to note that,
+given the focus of this work on LLM agents, we exclusively utilize
+the text modality, while acknowledging that our implementation is
+capable of supporting multi-modal models. Each UI component in
+the screen corresponds to an XML entry, containing its role (e.g.,
+a button), text content, and properties (e.g., if clickable) informa-
+tion. A statistic conducted on eight popular APPs indicates an
+average token count for the XML exceeding 10,000. Consequently,
+directly feeding the XML into the LLM is impractical due to con-
+text length limitations. To address this challenge, we propose a
+two-stage heuristic compression method, involving the removal
+of decision-irrelevant XML tags and the merging of non-visible or
+non-functional nodes (the detailed algorithm is provided in §A)
+to compress the XML. As illustrated in Fig. 1(b), the compressed
+observation maintains the hierarchical structure of the original
+XML, enabling the LLM agent to comprehend the UI layout via
+text. Subsequent to compression, each entry is assigned a unique
+ID (e.g.,[nd725]), facilitating agents in locating the UI element. Our
+Atlanta International
+Airport
+Constraint: I prefer to use Email
+rather than instant messaging APPs
+Tell Bob the meeting is moved to tomorrow 
+Extract the email titled "flight confirmation",
+and find the direction to the airport.
+Cross-APP Task
+Constrained Task
+Figure 2: Examples of cross-APP and constrained tasks.
+proposed method achieves a compression ratio of 86.6% across sev-
+eral tested APPs (please see Table 6 in §A). Motivated by previous
+research [12] showing superior performance by regarding LLM as
+reward functions, we employ GPT-4 to quantify the reward 𝑟, and
+validate its effectiveness through experiments in §6.2.
+3.2
+Vast and Dynamic Action Space
+Unlike prior environments [26, 40] focusing on a single APP and
+only supporting specific actions, our action space is vast and dy-
+namic. It is attributed to the fact that a typical APP may feature
+hundreds of UI elements available for manipulation, and these UI
+components exhibit variability owing to real-time internet data ex-
+change. The vast and dynamic natures are further amplified when
+considering all the APPs within AndroidArena. Our designed ac-
+tions can be categorized into four groups: 1) APP-level actions
+are responsible for installing, launching, and stopping APPs; 2)
+Component-level actions directly operate the UI components such
+as clicking, typing, and swiping etc; 3) System-level actions include
+turning the screen on and off, adjusting the volume, and taking
+screenshots etc; and 4) Task-level action is issued when the agent
+deems the task should finish. The complete action space is in §B.
+4
+SCALABLE MOBILE TASK GENERATOR
+The tasks executed in AndroidArena environment are distinguished
+from other benchmarks by incorporating cross-APP collaboration
+and constrained tasks scenarios, commonly encountered in real-life
+but ignored in existing benchmarks. Even for single-APP tasks,
+existing benchmarks are either small-scale [36] or derived from
+the PixelHelp forum [20, 35], a platform dedicated to discussing
+phone-related issues, thus deviating from routine tasks. These short-
+comings underscore the necessity for a benchmark that exhibits
+higher scalability and aligns closely with human experiences,
+while accounting for cross-APP and constrained tasks.
+This section outlines our proposed Mobile Task Generator (MTG
+in short), a framework for scalable task construction. MTG not only
+aligns with typical human interaction patterns, but also encom-
+passes a diverse array of APP functions, enabling to evaluate the
+agents across a broader spectrum. The constructed benchmark com-
+prises three task categories: single-APP tasks, cross-APP tasks, and
+constrained tasks. The single-APP and cross-APP tasks are crafted
+to assess the agents’ proficiency in solving general tasks, and more
+complex tasks requiring cooperation between two APPs. In con-
+trast to the former two categories focusing on task completion, the
+
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Mingzhe Xing, Rongkai Zhang, Hui Xue, Qi Chen, Fan Yang, and Zhen Xiao
+Queries
+Gmail and Calendar 
+collaboration features
+How to use Gmail and 
+Calendar  together for tasks
+Search Engine
+Vector Database
+Reterival QA
+Functions of Gmail and Calendar?
+Functionalities
+Tasks
+Extract the date from the email
+ titled "meeting" and create a calendar event.
+......
+Create a new Gmail draft with 
+the details of a event titled "meeting". 
+Functionality
+to Instruction
+Evol-Instruct
+Benchmark
+Human Verification
+and Annotation
+Create email from event
+Send email after 
+creating an event
+Create event from 
+emali content
+APP Functionalities Extraction
+Instruction Generation and Evolution
+Human Verification
+and Annotation
+Figure 3: Illustrative example of the MTG workflow for cross-APP (i.e., Gmail and Contacts) tasks construction procedure. The
+single-APP tasks are generated with the same process but with different query templates and LLM prompts (please see §F.5).
+Table 2: The statistics of our benchmark.
+Task Type
+#Tasks
+Avg. Len. of Action Sequence
+single-APP tasks
+164
+6.13
+cross-APP tasks
+22
+11.14
+constrained tasks
+35
+6.03
+constrained tasks are designed to evaluate agents’ proficiency in
+comprehending predefined constraints. In our benchmark, each
+task consists of a natural language instruction and a sequence of
+labeled actions for task completion. Constrained tasks additionally
+include a field of constraints represented in natural language. Ex-
+amples of cross-APP and constrained tasks are shown in Fig. 2. The
+statistical information of our benchmark is presented in Table 2.
+4.1
+Single- and Cross-APP Tasks Construction
+APP Functionalities Extraction. We incorporate 13 testing APPs
+from pre-installed Google suite that are designed to work seam-
+lessly with the Android OS and provide essential services. The
+complete APP list can be found in §C. Our objective is to formulate
+the task instructions that cover rich and diverse functionalities of
+APPs while aligning with the authentic usage behavior of humans.
+To achieve this goal, we propose leveraging insights gleaned from
+human discussions and shared experiences regarding APPs avail-
+able on the internet. Concretely, we first formulate queries centered
+on the usage of specific APPs and employ search engines to retrieve
+related webpages. As depicted in Fig. 3, exemplified constructed
+queries are “Gmail and Calendar collaboration features” and “How
+to use Gmail and Calendar together for tasks”. We then build a vec-
+tor database to store these high volume of webpages containing
+rich functionalities that genuinely engage and concern users. By
+retrieving from the database with LLM and a specific prompt (§F.4),
+we can extract confined APP functionalities.
+Instruction Generation and Evolution Our next step involves
+utilizing a LLM with a functionality-to-instruction prompt (pro-
+vided in §F.5) to generate initial task instructions grounded in the
+identified APP functionalities. To automatically mass-produce more
+instructions, we employ the Evol-Instruct [33] strategy to expand
+the original instructions. In the application of this strategy, each
+evolutionary iteration involves using LLM along with two prompts,
+namely in-depth evolving and in-breadth evolving. The in-depth
+evolving prompt encourages LLM to rewrite instructions by mak-
+ing them more complex and challenging, while in-breadth evolving
+prompt aims to enhance the feature coverage and overall dataset
+diversity. Through the iterative execution of multiple evolutions,
+we sequentially derive evolution datasets, thereby expanding and
+refining the pool of task instructions.
+Human Verification and Annotation To construct the bench-
+mark, we engage annotators proficient in operating the testing
+APPs. They are first instructed to discern and filter tasks exhibit-
+ing repetitiveness, ambiguity, or impossibility to complete. Subse-
+quently, they document their interactions with the phone. Given
+that there might be multiple feasible action sequences for complet-
+ing a task, they are encouraged to opt for the most concise action
+plan with the shortest action sequence. After completing a task,
+annotators re-execute the annotated action sequence with a replay
+script, enabling them easily to verify the accuracy of annotated
+action sequence. Subsequently, the compiled task instructions and
+action demonstrations are collected into the benchmark dataset.
+4.2
+Constrained Tasks Construction
+In the context of real-world mobile tasks, often confined by spe-
+cific user preferences or security considerations, we introduce a
+constrained task set to assess the agents’ capability to comprehend
+user-defined constraints and make decisions adeptly to avoid viola-
+tions. Specifically, we consider three types of constraints: APP-level,
+page-level and component-level constraints. APP-level constraints
+involve the preferences of using specific APPs, exemplified by con-
+straints like “preferring not to use instant message for communica-
+tion”. Page-level constraints restrict access to a specific page, as seen
+in scenarios such as “refraining from entering the label list page in
+Gmail due to the presence of sensitive information”. Component-level
+constraints identify specific UI components as sensitive actions,
+e.g., “do not click the payment button”. It is noteworthy that the
+constrained tasks are meticulously selected from the single-APP
+task set and manually labeled with natural language constraints
+along with the corresponding correct action sequences.
+
+
+Understanding the Weakness of Large Language Model Agents within a Complex Android Environment
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+5
+EVALUATION METRICS
+Designing precise metrics is essential for accurately and comprehen-
+sively evaluating agent’s performance. However, existing metrics
+employed in multi-step decision-making scenarios [7, 21] exhibit
+imprecise and surface-level evaluation issues, which hinder them
+to fully understand the performance and weakness of LLM agent.
+To address these limitations, we propose a novel set of metrics
+to evaluate agent performance in a more adaptive and precise
+manner, and to assess fine-grained agent planning abilities.
+5.1
+Adaptive and Precise Task Completion
+Evaluation
+To begin with, we introduce the notations of action sequences.
+Given a task, its annotated action sequence can be represented
+as a of length 𝐿, and the actual executed actions is ˆ
+a of length ˆ
+𝐿.
+Exemplary instances of a and ˆ
+a are illustrated as follows:
+a =𝐴𝐵𝐶𝐷𝐸𝐹𝐺
+(1)
+ˆ
+a =𝐴𝑋𝑌𝐵𝑈𝑉𝑊𝐸𝐹𝐹𝐹𝐺𝑍,
+(2)
+where each uppercase character denotes a distinct type of action.
+Many existing metrics [7, 21] adopt the step-wise matching method,
+which is imprecise in this scenario. In Eq. 2, the agent identifies
+the correct action 𝐵after two steps of exploration (i.e., 𝑋and 𝑌).
+Despite this action sequence not aligning with the ground truth
+(i.e., Eq. 1) in the step-wise manner, it leads to the correct subse-
+quent step and constitutes a valid action sequence for completing
+the task. Therefore, previous metrics exhibit inaccuracies in the
+multi-step decision-making environments where multiple feasible
+action sequences exist. In contrast to previous greedy step-wise
+matching, we propose to align the two sequences in an adaptive
+way, i.e., calculating their longest common subsequence (LCS)
+a𝑙𝑐𝑠(marked in red in Eq. 1 and 2). The LCS accurately and adap-
+tively reflects task completion in the multi-step decision-making
+scenario. Based on the accurate LCS, we propose our metrics to
+evaluate the task completion as follows:
+• Task Reward (TR). 𝑇𝑅= Í𝐿
+𝑖=0 𝛾(𝐿−𝑖)1𝑖, where 𝛾∈[0, 1] is
+the reward discount factor, 𝛾(𝐿−𝑖) assigns higher rewards to the
+actions that are closer to the final action (e.g., 𝐺in Eq. 1), and 1𝑖
+equals 1 when the 𝑖-th action is in the LCS. This metric considers
+both the action matching and the distance towards task success.
+• Task Completion Ratio (TCR). 𝑇𝐶𝑅= 𝑘/𝐿, where 𝑘is the
+index of the last matched action in the LCS. This metrics measure
+the progress of task completion.
+• Reversed Redundancy Ratio (RRR). 𝑅𝑅𝑅= 𝐿/ˆ
+𝐿. It can be
+used to evaluate the efficiency of the agent completing a task.
+We inverse it for the convenience of comparison, i.e., the higher
+this metric, the greater the efficiency of the agent.
+• Success Rate (SR). Unlike the above three metrics relying on
+ground truth action sequence, the SR is judged by the GPT-4
+solely given the trajectory including historical actions and ob-
+servations. SR equals 1 when GPT-4 perceives that the task has
+been successfully completed, and 0 when the task is deemed un-
+successful. This metric is devised for the unsupervised scenario,
+enhancing the scalability of the evaluation. In §6.2, we provide
+statistical evidence to demonstrate the accuracy of SR.
+Algorithm 1 Deep Q-learning
+Initialize replay memory D and action-value function 𝑄
+for episode = 1, 𝑀do
+Initialise state 𝜙1 = 𝜙(𝑠1)
+for 𝑡= 1,𝑇do
+With probability 𝜖select a random action 𝑎𝑡
+⊲Explore
+the environment
+otherwise select 𝑎𝑡= max𝑎𝑄∗(𝜙(𝑠𝑡),𝑎;𝜃) ⊲Reason the
+next action
+Execute action 𝑎𝑡in emulator and observe reward 𝑟𝑡and
+state 𝑠𝑡+1
+Preprocess observation 𝜙𝑡+1 = 𝜙(𝑠𝑡+1) ⊲Understand the
+environment and observation
+Store transition (𝜙𝑡,𝑎𝑡,𝑟𝑡,𝜙𝑡+1) in D
+Optimize Q based on a minibatch sampled from D
+⊲
+Reflection from experience
+end for
+end for
+5.2
+Understand Root Cause with Fine-grained
+Abilities Evaluation
+In addition to providing adaptive and accurate metrics for evaluat-
+ing task completion in complex decision-making scenarios, another
+primary objective of our study is to investigate the underlying root
+cause contributing to the success or failure of agents planning. Rec-
+ognizing that RL serves as a classical and effective approach to ad-
+dress the CMDP problem [9], we abstract the fundamental elements
+and mechanisms in RL agents, and propose fine-grained capabilities
+tailored to assess LLM agents. Here we use the DQN [17] (Algo-
+rithm 1), one of the most classical RL algorithms, as an example.
+We decompose it into four key dimensions, i.e.,understanding,
+reasoning, exploration, and reflection.
+Understanding. The aspect of understanding encompasses the
+agent’s proficiency in comprehending observation and adhering
+to the action format and space specified in the prompt. Unlike RL
+agents confining their output actions strictly within a predefined
+action space, the output space of LLM spans the entire vocabulary.
+This imposes a great demand on LLM agents to fully understand
+and adhere to the specified action format and space. Additionally,
+constrained by phone screen size limit, vital information such as
+the succinct status description of a checkbox, poses challenges
+for LLM agents in understanding crucial but brief observed details.
+Consequently, to comprehensively gauge the agent’s understanding
+ability, we formulate three metrics:
+• Invalid Format. The ratio of outputting actions that deviate
+from the format predefined in prompt.
+• Invalid Action. The ratio of outputting actions outside the ac-
+tion space specified in prompt.
+• Nuggets Mining. The ratio of the target element length to the
+entire observation, assessing the agent’s capacity to understand
+the task context and identify pivotal pieces of information. For
+example, when the agent correctly selects the Bob as shown in
+Fig. 1, the Nuggets Mining can be computed as the division of the
+length of the [nd725] entry by the total length of the observation.
+
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Mingzhe Xing, Rongkai Zhang, Hui Xue, Qi Chen, Fan Yang, and Zhen Xiao
+Table 3: Performances evaluated on single-APP and cross-APP tasks.
+Cross-APP tasks pose a significant challenge for SOTA agents, and high-
+light a substantial disparity between GPT-4 and other agents.
+Single-APP Tasks
+Cross-APP Tasks
+Model
+TR
+TCR
+RRR
+SR
+TR
+TCR
+RRR
+SR
+LLaMA2-13B
+0.025
+0.038
+0.007
+0.023
+0.027
+0.084
+0.000
+0.000
+LLaMA2-70B
+0.237
+0.301
+0.047
+0.127
+0.062
+0.089
+0.000
+0.000
+GPT-3.5
+0.413
+0.555
+0.262
+0.449
+0.214
+0.390
+0.021
+0.048
+GPT-4
+0.502
+0.689
+0.755
+0.759
+0.421
+0.746
+0.685
+0.571
+Table 4: The Pearson Correlation Coefficient
+of SR with information richness (IR), and with
+operation complexity (OC), and with the multi-
+plication of IR and OC.
+Metrics
+GPT-3.5
+GPT-4
+IR
+0.37
+0.62
+OC
+0.61
+0.28
+IR × OC
+0.68
+0.57
+Reasoning. This dimension indicates the agent’s capacity to de-
+duce the most suitable action based on the current observation. To
+assess it, two metrics are employed:
+• Operation Logic. The inverse number of incorrect actions at-
+tempted before successfully finding the correct action. Consider
+Eq. 1 and 2 as an example. The agent correctly executes action
+B after two erroneous attempts, i.e., 𝑋and 𝑌. Therefore, the
+Operation Logic for this subsequence is calculated as 1/2.
+• Awareness of Completion. The ratio of cases that the agent
+correctly finds the task completed and issues a finish action.
+Exploration. LLM agents make decisions from pretraining-derived
+prior knowledge. Due to the static nature of their prior knowledge,
+certain LLM agents exhibit a proclivity to iteratively execute the
+same erroneous action [40]. It precludes them from exploring al-
+ternative action pathways to ascertain the correct execution path.
+This phenomenon reflects the agent’s exploration ability, which we
+quantify by counting the instances of action repetition.
+• Repeat Actions. The ratio of actions resulting in repetitive or
+cyclical patterns.
+Reflection. Similar to RL agents, the LLM agents are proven to
+have the capability to extract insights from previous trials and
+leverage the insights for subsequent executions [22]. We utilize the
+Reflexion mechanism to gauge the agent’s proficiency in extracting
+pertinent experiences and applying them judiciously.
+• Reflexion@K. 𝑅𝑒𝑓𝑙𝑒𝑥𝑖𝑜𝑛@𝐾= Í𝐾
+𝑖=1(𝑆𝑅𝑖−𝑆𝑅𝑖−1), where 𝐾is
+the number of Reflexion iterations. It measures the differences
+between the original trail and the trail after Reflexion.
+Remark: The four dimensions are not mutually independent. For
+instance, a prerequisite for reasoning the optimal action is a thor-
+ough understanding of the environment and observation. Our objec-
+tive is to assess agent abilities from diverse perspectives rather than
+segregating them into independent components. It is worth noting
+that our proposed dimensions and metrics can be generalized to
+other LLM agents, enabling the evaluation of their capabilities in
+different environments. The dimension scores are computed as the
+average of their corresponding metrics (details provided in §D).
+6
+EXPERIMENTS AND FINDINGS
+In this section, we setup the experiments, and present the experi-
+mental results. We summarize noteworthy findings as follows. First,
+existing SOTA agents still exhibit substantial room for improve-
+ment (§6.2). Second, in contrast to the results observed in prior
+benchmarks [6, 15], LLaMA2-70B exhibits inferior planning
+abilities across various dimensions. GPT-4, while advanced,
+requires further improvement in the exploration and reflec-
+tion dimensions. (§6.3).
+6.1
+Evaluation Setting
+We conduct experiments on SOTA open-source and closed-source
+LLMs. The detailed experiment settings are introduced as follows.
+Agent Models. The selected LLMs encompass GPT-{3.5-turbo,
+4} [18], LLaMA2-{13B-chat, 70B-chat} [25], representing two power-
+ful closed-source and open-source LLM model families, respectively.
+Regarding the prompt settings for LLM agents, please refer to §F.
+Max Step. We set maximum step limits for agents to evaluate
+their capabilities of completing tasks within reasonable timeframe.
+According to the length of action sequences as shown in Table 2,
+we empirically set the maximum step limit as 15 for single-APP and
+constrained tasks, while for cross-APP tasks, it is set as 30.
+6.2
+Poor Performance in Mobile Tasks
+In this section, we integrate the metrics introduced in §5.1 to assess
+the task completion of LLM agents across various task types. We re-
+port the results across single-APP, cross-APP, and constrained tasks
+in Table 3 and Table 5. Recall that the Success Rate (SR) is assessed
+by GPT-4. To validate its reliability, we perform cross-validation
+between it with TR and TCR, where TR and TCR represent alter-
+native perspectives on task completion. Specifically, we compute
+the Pearson Correlation Coefficient (PCC) [5] between SR and TR,
+resulting in a correlation of 0.87, and between SR and TCR, yielding
+a correlation of 0.91. These high coefficients indicate a substan-
+tial correlation between SR and both TR and TCR, validating the
+rationale of adopting the GPT-4 judgment mechanism.
+Table 3 reveals a significant deficiency of SOTA agents in
+the real-world mobile tasks. While GPT-4 achieves a 75.9% SR
+on single-APP tasks, all agents exhibit an inability to make effective
+decisions across other task settings. Noteworthy the performance
+gap between GPT-4 and GPT-3.5 is much larger for cross-APP tasks
+than single-APP tasks. It indicates that the cross-APP tasks are
+more complex and difficult, and can well reveal the significant
+disparity in planning abilities between the two agents. In
+contrast to prior benchmark studies, LLaMA2-70B demonstrates
+inferior performance relative to GPT-3.5 and GPT-4.
+We conduct a detailed examination of the APPs where the SOTA
+agents, including GPT-3.5 and GPT-4, do not perform well. Our
+investigation reveals a vulnerability in handling APPs charac-
+terized by deficient textual information and intricate opera-
+tional logics. To further substantiate this observation, we calculate
+
+
+Understanding the Weakness of Large Language Model Agents within a Complex Android Environment
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Table 5: Constraints violation ratios for Constrained Tasks.
+Model
+APP-level
+Page-level
+Component-level
+GPT-3.5
+0.207
+0.072
+0.33
+GPT-4
+0.000
+0.050
+0.00
+Understanding
+Reasoning
+Exploration
+Reflection
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+Figure 4: Agent abilities evaluation on cross-APP tasks.
+the PCC between SR and the information richness (IR) and opera-
+tion complexity (OC) of APPs. Specifically, we utilize the average
+length of APP observation and the inverse length of ground truth
+actions to quantify IR and OC, respectively. The results in Table 4
+demonstrate that OC poses a more substantial challenge for GPT-3.5
+in achieving a higher SR, while GPT-4 exhibits a greater sensitivity
+to IR. The high values of IR × OC further prove our findings.
+Beyond basic task completion, we assess the agents’ capacity to
+comprehend constraints and adeptly make decisions to avoid vio-
+lations. Table 5 presents the constraint violation ratios of GPT-3.5
+and GPT-4. LLaMA2 models are excluded as they face challenges
+in completing basic tasks, rendering this assessment impractical.
+Table 5 reveals that even for straightforward constraints, GPT-3.5
+still may violate them. By reading its intermediate reasoning pro-
+cesses, we discern that GPT-3.5 lacks awareness and understanding
+of constraints. For instance, in the case of “Find the current weather
+forecast” with the constraint “do not use the Weather APP”, GPT-3.5
+directly opens the Weather APP, while GPT-4 comprehends the con-
+straint and devises an alternative way using a web browser to search
+for weather forecast. It highlights the considerable distance yet
+to be covered before GPT-3.5 can be applied effectively in
+permission-sensitive environments.
+6.3
+Four Weakness Leading to Failure
+In this section, we employ the metrics introduced in §5.2 to quan-
+tify the fine-grained planning abilities of these agents, so as to
+understand their weaknesses that lead to failure. As shown in Fig. 4,
+GPT-4 shows superior performances across various dimensions,
+further substantiating its excellence in task completion, as indi-
+cated in Table 3. In contrast, LLaMA2 models exhibit significant
+weaknesses across all four dimensions. In Fig. 5, we present the
+composed metrics of these dimensions. Due to space limit, we only
+present part of the testing APPs, and the complete APP metrics can
+be found in §E. Fig. 5(a) and 5(b) present the ratios of outputting
+invalid format and out-of-space actions. The notably higher ratios
+of LLaMA2 show its challenges in understanding and adhering to
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+Calendar
+Camera
+Firefox
+Gmail
+Google Maps
+Messages
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(a) Invalid Action Ratio.
+0.000
+0.005
+0.010
+0.015
+0.020
+0.025
+Calendar
+Camera
+Firefox
+Gmail
+Google Maps
+Messages
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(b) Invalid Format Ratio.
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Calendar
+Camera
+Firefox
+Gmail
+Google Maps
+Messages
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(c) Nuggets Mining Score.
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Calendar
+Camera
+Firefox
+Gmail
+Google Maps
+Messages
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(d) Operation Logic Score.
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Calendar
+Camera
+Firefox
+Gmail
+Google Maps
+Messages
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(e) Aware of Completion Ratio.
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+Calendar
+Camera
+Firefox
+Gmail
+Google Maps
+Messages
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(f) Repeat Action Ratio.
+Figure 5: Metrics for understanding, reasoning and explo-
+ration dimensions.
+prescribed action rules. Fig. 5(c) demonstrates the superior capacity
+of GPT-3.5 and GPT-4 to apprehend more nuanced information com-
+pared to LLaMA2. In Fig. 5(d), LLaMA2 agents exhibit challenges
+in identifying the correct subsequent actions even after multiple
+attempts. Moreover, LLaMA2-13B lacks the awareness that the task
+has been successfully completed, as depicted in Fig. 5(e). Fig. 5(f)
+indicates a high repeat action ratio of LLaMA2, underscoring its
+limited ability to explore the environment. GPT-4 also demon-
+strates a notable proclivity for repeating erroneous actions
+for several APPs. To improve the exploration ability of GPT-4,
+we introduce an exploration strategy and examine its impact on
+performance in §7.2. While GPT-4 shows certain improvement
+through Reflexion, our analysis suggests that it stems from in-
+herent opportunities for additional attempts to complete
+the task rather than an enhancement in the agent’s policy.
+Detailed experiments and analysis can be found in §7.1.
+7
+FUTURE DIRECTIONS FOR ENHANCING
+LLM AGENT
+Through experiments in §6.3, we observe that LLaMA2 models
+display weaknesses across all four dimensions. Even for the lead-
+ing model, GPT-4, still exhibits shortcomings in exploration and
+reflection. In this section, we first analyze the ineffectiveness of
+Reflexion and provide an empirical analysis of the factors contribut-
+ing to this phenomenon. Second, we propose a novel prompt-based
+exploration method, revealing that explicitly encouraging the agent
+to explore unknown actions can enhance performance.
+
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Mingzhe Xing, Rongkai Zhang, Hui Xue, Qi Chen, Fan Yang, and Zhen Xiao
+0
+1
+2
+3
+4
+5
+Trial Number
+0.05
+0.10
+0.15
+0.20
+0.25
+Reflection
+Re-execute
+(a) SR of GPT-3.5 agent.
+0
+1
+2
+3
+4
+5
+Trial Number
+0.60
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+Reflection
+Re-execute
+(b) SR of GPT-4 agent.
+Figure 6: Performances evaluated on cross-APP tasks by in-
+creasing the reflection times.
+7.1
+Analysis of Reflection’s Failure
+Recall that Reflexion summarizes experience and then re-executes
+failed tasks, it inherently offers opportunities for additional at-
+tempts and possesses potential for performance improvement. Ac-
+cordingly, we conduct a comparative evaluation with re-executing
+failed tasks without the Reflexion process, namely Re-execute. In
+Fig. 6, we present the SR of Reflexion@5 and Re-execute@5. Con-
+trary to expectations, we observe that Reflexion does not yield
+positive outcomes compared to Re-execute. This unexpected
+phenomenon motivates an investigation of the underlying mecha-
+nisms of Reflexion and the challenges of applying it in our scenario.
+To initiate our investigation, we provide a formal definition of the
+Reflexion process, specified as follows:
+𝑃(new trajectory | reflection)
+|                                 {z                                 }
+③
+· 𝑃(reflection |
+①
+z           }|           {
+old trajectory)
+|                                {z                                }
+②
+,
+where 𝑃denotes the LLM agents. This equation describes the Reflex-
+ion process, i.e., extracting valuable insights from past trajectories
+and benefiting subsequent trials. Three key steps in this equation
+may contribute to the degradation of Reflexion performance in our
+scenario. The first and the most important reason is that the
+old trajectory (marked in ①) is less informative compared with
+previous scenarios. Unlike benchmarks [3, 37] characterized by one-
+step decision, and virtual ALFWorld environment [23] with small
+and static action space, our environment necessitates multi-step
+planning within a vast and dynamic action space. This challenge
+not only makes it hard to explore the entire action space, thus can-
+not provide sufficient guidance for next trial, but also sparsifies
+the reward feedback. Therefore, a potential improvement can be
+achieved by improving trace quality. In specific, employing explo-
+ration strategies to broaden the explored action space for informa-
+tive experience [16] and devising intrinsic rewards to mitigate the
+sparse reward issue [39]. Secondly, a constrained ability to distill
+reflection (i.e., part ②) diminishes the reflection efficacy. Lastly, re-
+garding part ③, the reflection may not be fully leveraged by agent
+or, conversely, introduces bias [10] and degrades the performance
+compared to the Re-execute that is without reflection.
+7.2
+Enhancing Exploration Boosts Performance
+Upon reading the trajectories, we observe that even for GPT-4, it
+still presents a pronounced tendency to repeat erroneous actions,
+5
+15
+25
+35
+45
+Max Step
+0.20
+0.25
+0.30
+0.35
+0.40
+0.45
+0.50
+0.55
+0.60
+Success Rate
+GPT-4
+GPT-4+Exploration
+(a) Success rate.
+5
+15
+25
+35
+45
+Max Step
+0.2
+0.3
+0.4
+0.5
+0.6
+Repeat Action
+GPT-4
+GPT-4+Exploration
+(b) Repeat action ratio.
+Figure 7: GPT-4 and GPT-4+Exploration comparisons by vary-
+ing the maximum step limit on the Camera APP.
+as illustrated in Fig. 5(f), indicating its limited exploration capabili-
+ties. Furthermore, the repetition of actions degrades the quality of
+preceding trajectories, rendering them insufficient for providing
+informative guidance for reflection, as discussed in §7.1.
+In this section, we introduce a novel prompt-based exploration
+strategy for LLM agents. Diverging from prior approaches [4] that
+treat the LLM as a RL policy network and employ exploration strate-
+gies originating from RL, our strategy guides the exploration of
+LLM agent by incorporating a prompt indicating the count
+of previously visited observations 𝑀(s) and issued actions
+𝑁(s, a). Specifically, we embed a hint prompt such as “You have
+already been in the current state M times, and taken action A for N
+times” at each decision step. This concept is inspired by the Upper
+Confidence Bound (UCB) [2, 30]. Unlike UCB, we do not design
+explicit exploration strategies. Instead, we integrate historical infor-
+mation into the prompt, leveraging the powerful decision-making
+capabilities of the LLM to balance exploration and exploitation.
+We conduct an experiment on the Camera APP, where GPT-4 ex-
+hibits the highest repeat action ratio, to evaluate the effectiveness
+of the exploration strategy. We vary the maximum step limit in
+{5, 15, 25, 35, 45}, and present SR and repeat action ratio in Fig. 7.
+The results show that, with a simple counting-based prompt, SR
+can achieve 27% of improvement. Furthermore, as the maximum
+step limit increases, the exploration ability of GPT-4 degrades. In
+contrast, for GPT-4+Exploration, effective exploration of the envi-
+ronment persists, leading to continued performance improvement.
+8
+CONCLUSION
+This study introduces AndroidArena environment and a scalable
+benchmark. It supports the evaluation of cross-APP and constrained
+task scenarios. We propose adaptive and precise metrics to assess
+task completion, and fine-grained abilities of agents to understand
+their weaknesses. The results underscore significant room for im-
+provement among SOTA agents. We highlight four research direc-
+tions for enhancing LLM agents. Additionally, we offer empirical
+insights into the failure of reflection and present a novel method
+to enhance the exploration capabilities of agents. In the future, we
+plan to investigate the weaknesses of multi-modal model agents.
+Given that vision models excel at spatial understanding and reason-
+ing, areas where LLMs struggle [34], we intend to scrutinize their
+fine-grained abilities and identify promising research directions in
+this domain. Our AndroidArena supports multi-modal evaluation,
+and the benchmark can be easily extended to this setting.
+
+
+Understanding the Weakness of Large Language Model Agents within a Complex Android Environment
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+REFERENCES
+[1] Michael Ahn, Anthony Brohan, Noah Brown, Yevgen Chebotar, Omar Cortes,
+Byron David, Chelsea Finn, Chuyuan Fu, Keerthana Gopalakrishnan, Karol Haus-
+man, et al. 2022.
+Do as i can, not as i say: Grounding language in robotic
+affordances. arXiv preprint arXiv:2204.01691 (2022).
+[2] Peter Auer, Nicolo Cesa-Bianchi, and Paul Fischer. 2002. Finite-time analysis of
+the multiarmed bandit problem. Machine learning 47 (2002), 235–256.
+[3] Jacob Austin, Augustus Odena, Maxwell Nye, Maarten Bosma, Henryk
+Michalewski, David Dohan, Ellen Jiang, Carrie Cai, Michael Terry, Quoc Le,
+et al. 2021. Program synthesis with large language models. arXiv preprint
+arXiv:2108.07732 (2021).
+[4] Thomas Carta, Clément Romac, Thomas Wolf, Sylvain Lamprier, Olivier Sigaud,
+and Pierre-Yves Oudeyer. 2023. Grounding large language models in interactive
+environments with online reinforcement learning. arXiv preprint arXiv:2302.02662
+(2023).
+[5] Israel Cohen, Yiteng Huang, Jingdong Chen, Jacob Benesty, Jacob Benesty, Jing-
+dong Chen, Yiteng Huang, and Israel Cohen. 2009. Pearson correlation coefficient.
+Noise reduction in speech processing (2009), 1–4.
+[6] Nicholas Crispino, Kyle Montgomery, Fankun Zeng, Dawn Song, and Chenguang
+Wang. 2023. Agent Instructs Large Language Models to be General Zero-Shot
+Reasoners. arXiv preprint arXiv:2310.03710 (2023).
+[7] Xiang Deng, Yu Gu, Boyuan Zheng, Shijie Chen, Samuel Stevens, Boshi Wang,
+Huan Sun, and Yu Su. 2023. Mind2Web: Towards a Generalist Agent for the Web.
+arXiv preprint arXiv:2306.06070 (2023).
+[8] S Gunasekaran and V Bargavi. 2015. Survey on automation testing tools for
+mobile applications. International Journal of Advanced Engineering Research and
+Science 2, 11 (2015), 2349–6495.
+[9] Assaf Hallak, Dotan Di Castro, and Shie Mannor. 2015. Contextual markov
+decision processes. arXiv preprint arXiv:1502.02259 (2015).
+[10] Jie Huang, Xinyun Chen, Swaroop Mishra, Huaixiu Steven Zheng, Adams Wei Yu,
+Xinying Song, and Denny Zhou. 2023. Large language models cannot self-correct
+reasoning yet. arXiv preprint arXiv:2310.01798 (2023).
+[11] Wenlong Huang, Pieter Abbeel, Deepak Pathak, and Igor Mordatch. 2022. Lan-
+guage models as zero-shot planners: Extracting actionable knowledge for embod-
+ied agents. In International Conference on Machine Learning. PMLR, 9118–9147.
+[12] Minae Kwon, Sang Michael Xie, Kalesha Bullard, and Dorsa Sadigh. 2023. Reward
+design with language models. arXiv preprint arXiv:2303.00001 (2023).
+[13] Jinyang Li, Binyuan Hui, Ge Qu, Binhua Li, Jiaxi Yang, Bowen Li, Bailin Wang,
+Bowen Qin, Rongyu Cao, Ruiying Geng, et al. 2023. Can llm already serve as a
+database interface? a big bench for large-scale database grounded text-to-sqls.
+arXiv preprint arXiv:2305.03111 (2023).
+[14] Yuanchun Li, Hao Wen, Weijun Wang, Xiangyu Li, Yizhen Yuan, Guohong Liu,
+Jiacheng Liu, Wenxing Xu, Xiang Wang, Yi Sun, et al. 2024. Personal LLM Agents:
+Insights and Survey about the Capability, Efficiency and Security. arXiv preprint
+arXiv:2401.05459 (2024).
+[15] Xiao Liu, Hao Yu, Hanchen Zhang, Yifan Xu, Xuanyu Lei, Hanyu Lai, Yu Gu,
+Hangliang Ding, Kaiwen Men, Kejuan Yang, et al. 2023. Agentbench: Evaluating
+llms as agents. arXiv preprint arXiv:2308.03688 (2023).
+[16] Kaixin Ma, Hongming Zhang, Hongwei Wang, Xiaoman Pan, and Dong Yu. 2023.
+LASER: LLM Agent with State-Space Exploration for Web Navigation. arXiv
+preprint arXiv:2309.08172 (2023).
+[17] Volodymyr Mnih, Koray Kavukcuoglu, David Silver, Alex Graves, Ioannis
+Antonoglou, Daan Wierstra, and Martin Riedmiller. 2013. Playing atari with deep
+reinforcement learning. arXiv preprint arXiv:1312.5602 (2013).
+[18] R OpenAI. 2023. GPT-4 technical report. arXiv (2023), 2303–08774.
+[19] Chen Qian, Xin Cong, Cheng Yang, Weize Chen, Yusheng Su, Juyuan Xu, Zhiyuan
+Liu, and Maosong Sun. 2023. Communicative agents for software development.
+arXiv preprint arXiv:2307.07924 (2023).
+[20] Christopher Rawles, Alice Li, Daniel Rodriguez, Oriana Riva, and Timothy Lilli-
+crap. 2023. Android in the wild: A large-scale dataset for android device control.
+arXiv preprint arXiv:2307.10088 (2023).
+[21] Jingqing Ruan, Yihong Chen, Bin Zhang, Zhiwei Xu, Tianpeng Bao, Guoqing
+Du, Shiwei Shi, Hangyu Mao, Xingyu Zeng, and Rui Zhao. 2023. Tptu: Task
+planning and tool usage of large language model-based ai agents. arXiv preprint
+arXiv:2308.03427 (2023).
+[22] Noah Shinn, Federico Cassano, Ashwin Gopinath, Karthik R Narasimhan, and
+Shunyu Yao. 2023. Reflexion: Language agents with verbal reinforcement learning.
+In Thirty-seventh Conference on Neural Information Processing Systems.
+[23] Mohit Shridhar, Xingdi Yuan, Marc-Alexandre Côté, Yonatan Bisk, Adam
+Trischler, and Matthew Hausknecht. 2020. Alfworld: Aligning text and em-
+bodied environments for interactive learning. arXiv preprint arXiv:2010.03768
+(2020).
+[24] Richard S Sutton, Andrew G Barto, et al. 1999. Reinforcement learning. Journal
+of Cognitive Neuroscience 11, 1 (1999), 126–134.
+[25] Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yas-
+mine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhos-
+ale, et al. 2023. Llama 2: Open foundation and fine-tuned chat models. arXiv
+preprint arXiv:2307.09288 (2023).
+[26] Daniel Toyama, Philippe Hamel, Anita Gergely, Gheorghe Comanici, Amelia
+Glaese, Zafarali Ahmed, Tyler Jackson, Shibl Mourad, and Doina Precup. 2021.
+AndroidEnv: A Reinforcement Learning Platform for Android. abs/2105.13231
+(2021). arXiv:2105.13231 [cs.LG] http://arxiv.org/abs/2105.13231
+[27] Boshi Wang, Xiang Yue, and Huan Sun. 2023. Can ChatGPT Defend its Belief in
+Truth? Evaluating LLM Reasoning via Debate. In Findings of the Association for
+Computational Linguistics: EMNLP 2023. 11865–11881.
+[28] Guanzhi Wang, Yuqi Xie, Yunfan Jiang, Ajay Mandlekar, Chaowei Xiao, Yuke Zhu,
+Linxi Fan, and Anima Anandkumar. 2023. Voyager: An open-ended embodied
+agent with large language models. arXiv preprint arXiv:2305.16291 (2023).
+[29] Lei Wang, Chen Ma, Xueyang Feng, Zeyu Zhang, Hao Yang, Jingsen Zhang,
+Zhiyuan Chen, Jiakai Tang, Xu Chen, Yankai Lin, et al. 2023. A survey on large
+language model based autonomous agents. arXiv preprint arXiv:2308.11432 (2023).
+[30] Yingpeng Wen, Qinliang Su, Minghua Shen, and Nong Xiao. 2022. Improving
+the exploration efficiency of DQNs via the confidence bound methods. Applied
+Intelligence (2022), 1–15.
+[31] Yue Wu, Xuan Tang, Tom M Mitchell, and Yuanzhi Li. 2023. SmartPlay: A
+Benchmark for LLMs as Intelligent Agents. arXiv preprint arXiv:2310.01557
+(2023).
+[32] Zhiheng Xi, Wenxiang Chen, Xin Guo, Wei He, Yiwen Ding, Boyang Hong, Ming
+Zhang, Junzhe Wang, Senjie Jin, Enyu Zhou, et al. 2023. The rise and potential
+of large language model based agents: A survey. arXiv preprint arXiv:2309.07864
+(2023).
+[33] Can Xu, Qingfeng Sun, Kai Zheng, Xiubo Geng, Pu Zhao, Jiazhan Feng,
+Chongyang Tao, and Daxin Jiang. 2023. Wizardlm: Empowering large language
+models to follow complex instructions. arXiv preprint arXiv:2304.12244 (2023).
+[34] Yutaro Yamada, Yihan Bao, Andrew K Lampinen, Jungo Kasai, and Ilker Yildirim.
+2023. Evaluating Spatial Understanding of Large Language Models. arXiv preprint
+arXiv:2310.14540 (2023).
+[35] An Yan, Zhengyuan Yang, Wanrong Zhu, Kevin Lin, Linjie Li, Jianfeng Wang,
+Jianwei Yang, Yiwu Zhong, Julian McAuley, Jianfeng Gao, et al. 2023. Gpt-4v in
+wonderland: Large multimodal models for zero-shot smartphone gui navigation.
+arXiv preprint arXiv:2311.07562 (2023).
+[36] Zhao Yang, Jiaxuan Liu, Yucheng Han, Xin Chen, Zebiao Huang, Bin Fu, and
+Gang Yu. 2023. Appagent: Multimodal agents as smartphone users. arXiv preprint
+arXiv:2312.13771 (2023).
+[37] Zhilin Yang, Peng Qi, Saizheng Zhang, Yoshua Bengio, William W Cohen, Ruslan
+Salakhutdinov, and Christopher D Manning. 2018. HotpotQA: A dataset for di-
+verse, explainable multi-hop question answering. arXiv preprint arXiv:1809.09600
+(2018).
+[38] Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan,
+and Yuan Cao. 2022. React: Synergizing reasoning and acting in language models.
+arXiv preprint arXiv:2210.03629 (2022).
+[39] Haoqi Yuan, Chi Zhang, Hongcheng Wang, Feiyang Xie, Penglin Cai, Hao Dong,
+and Zongqing Lu. 2023. Plan4mc: Skill reinforcement learning and planning for
+open-world minecraft tasks. arXiv preprint arXiv:2303.16563 (2023).
+[40] Shuyan Zhou, Frank F Xu, Hao Zhu, Xuhui Zhou, Robert Lo, Abishek Sridhar,
+Xianyi Cheng, Yonatan Bisk, Daniel Fried, Uri Alon, et al. 2023. Webarena:
+A realistic web environment for building autonomous agents. arXiv preprint
+arXiv:2307.13854 (2023).
+
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Mingzhe Xing, Rongkai Zhang, Hui Xue, Qi Chen, Fan Yang, and Zhen Xiao
+APPENDIX
+A
+DETAILED OBSERVATION COMPRESSION
+METHOD
+The textual observation is derived from the XML representation
+encapsulating comprehensive screen information as shown in Fig. 8.
+However, directly inputting the entire XML into the LLM, proves
+to be excessively lengthy as illustrated in Table 6. To mitigate this,
+we employ a two-phase heuristic approach for compressing the
+XML to a manageable length for LLM processing. The XML en-
+tries are categorized into two groups: one for layout, which does
+not support actionable operations, and the other for UI compo-
+nents. We eliminate the XML entries related to layout, retaining
+only those associated with UI components. In the second phase,
+we merge non-functional and non-visible nodes upwards, incor-
+porating their descriptive information into the parent nodes. This
+strategy enhances the LLM’s ability to understand the semantic of
+the hierarchical XML tree, and result in a more efficient compres-
+sion. For components with nuanced state descriptions, we amplify
+their textual information. For instance, when the switch compo-
+nent is in the off position, we append a description stating “it is
+currently unchecked, and you can switch it on.". To enable the agent
+to accurately select the UI component for operation, a unique ID is
+assigned to each component in the compressed observation. In the
+compressed observation, components are structurally organized,
+maintaining their ancestral-descendant relationships in the original
+XML tree, aiding the LLM agent in comprehending the interface’s
+layout through text and thereby enhancing its command efficacy.
+Table 6: We randomly select several APPs and compare the to-
+ken numbers before and after compression. Our compression
+ratio reach a high of 86.6%, while preserving the semantic
+information. This approach enhances the utilization of the
+LLM agent context, allowing for the accommodation of more
+historical observations in each decision-making process.
+App Name
+#Token (Original)
+#Token (Compressed)
+Gmail (email list)
+11,707
+1,155
+Gmail (compose email)
+7,273
+413
+Calendar
+8,604
+584
+Google map
+15,725
+637
+YouTube
+12,005
+939
+Play Store
+10,450
+620
+Google drive
+11,060
+651
+Clock Alarm
+9,633
+505
+Clock
+7,980
+285
+B
+DETAILED ACTION SPACE
+We support four-level’s action space, i.e., APP level, component
+level, system level and task level. App level actions are responsible
+for installing, launching and stopping APPs. Most actions are com-
+ponent level which are responsible for operating UI components,
+such as clicking, typing, and swiping. We also support system level
+actions including turning the screen on and off, adjusting the vol-
+ume, setting orientation, and taking screenshots. Task-level action
+is designed for the agent to decide if a task should finish.
+Table 7: The complete action space, including action type and
+the corresponding parameters.
+Action level
+Action Type
+Action Parameters
+APP level
+Install APP
+Download link
+Launch APP
+Package name
+Stop APP
+Package name
+Stop all APP
+Component level
+Click
+XPath
+Double click
+XPath
+Long click
+XPath
+Set text
+XPath, Text
+Swipe up/down/left/right
+Number
+Press back
+Press home
+System level
+Screen on/off
+Volume up/down/mute
+Set orientation
+Horizontal/vertical
+Screenshot
+Task Level
+Finish task
+In previous work like AndroidEnv, the action is done by suc-
+cessive touches and lifts, each consists a position (𝑥,𝑦) and an
+𝐴𝑐𝑡𝑖𝑜𝑛𝑇𝑦𝑝𝑒∈{𝑇𝑂𝑈𝐶𝐻, 𝐿𝐼𝐹𝑇, 𝑅𝐸𝑃𝐸𝐴𝑇}. AndroidEnv divides the
+screen into a grid and restricts the ActionType to TOUCH, or groups
+action sequences like [TOUCH, LIFT, TOUCH, LIFT] into a single
+gesture, such as swiping, scrolling, or drag-and-drop. However, con-
+tinuous touches and lifts bring additional inference overhead for
+agents, and cannot accurately simulate the continuity and smooth-
+ness of swiping. Instead of interacting with the phone by successive
+touches and lifts, we directly operate the UI components of APPs
+through UIAutomator. It is a testing framework for Android, send-
+ing a series of events including pressing, dragging, and scrolling.
+These events are consistent with real finger slides. Operating com-
+ponents by sending action events is not only more accurate and
+natural in simulating real user operations, but also superior in terms
+of APP compatibility. We can get the executable actions that each
+component can perform from the corresponding XML and main-
+tain them in the compressed observation, such as clickable, double
+clickable, long clickable, etc. At the same time, we also record the
+type of each component in the compressed observation, such as
+button, text-editor, which can assist the agent to give appropriate
+action instructions. As we have set a unique ID for each component
+in the compressed observation, the agent can operate a compo-
+nent by specifying its ID and the corresponding action type. Since
+UIAutomator locates and operates on components based on their
+XPath, our implementation employs a mapping table to convert
+component IDs into component XPaths, after which we perform
+the operations.
+C
+BENCHMARK STATISTICS
+Our benchmark comprises three types of tasks: single-APP, cross-
+APP, and constrained tasks. The single-APP tasks are derived from
+13 APPs including Calendar, Camera, Clock, Contacts, YouTube,
+Weather, Settings, Photos, Messages, Google Maps, Google Drive,
+Gmail and Firefox. Statistical information regarding the benchmark
+is illustrated in Fig. 9.
+
+
+Understanding the Weakness of Large Language Model Agents within a Complex Android Environment
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Search contacts
+Zara
+John
+Bob
+Alice
+Contacts
+Fix & manage
+J
++
+Z
+J
+B
+A
+(a) Screenshot.
+(b) XML derived by UIAutomator.
+[n0236] EditText open_search_bar ;click ;Search contacts : 
+    [n54c6] ImageButton ;click ;Open navigation drawer : 
+    [nb90c] ImageView ;click ;More options : 
+    [nc3e7] selected_account_disc ;click ;Signed : 
+[n1c26] ListView list ;long-click ; 4 contacts : 
+    [nea52] ViewGroup ;click ;Alice : 
+    [nd725] ViewGroup ;click ;Bob : 
+    [nca5w] ViewGroup ;click ;John : 
+    [ndsf3] ViewGroup ;click ;Zara : 
+[n22ea] ImageButton floating_action_button ;click ;Create contact : 
+[nf05c] contacts ;focusable selected ;Contacts : 
+[n4eed] nav_manage ;click ;Fix & manage : 
+​
+(c) Compressed observation.
+Figure 8: An example of the screenshot, original XML and compressed observation of Contacts APP page.
+Calendar
+3.3%
+Camera
+6.5%
+Clock
+6.5%
+Contacts
+5.1%
+Firefox
+2.3%
+Gmail
+8.4%
+Google Drive
+5.6%
+Google Maps
+6.5%
+Messages
+6.5%
+Photos
+2.8%
+Settings
+8.8%
+Weather
+6.5%
+YouT
+ube
+4.7%
+cross-APP
+10.2%
+Constrained
+16.3%
+Figure 9: Proportion of instructions for different Apps
+D
+PLANNING ABILITY SCORES
+In this section, we present a detailed explanation of the calculation
+method for the four fine-grained planning ability scores introduced
+in §5.2. The value ranges of these metrics are [0, 1], with the
+exception of Nuggets Mining, Operation Logic, and Reflexion@K.
+Following AgentBench [15], we normalize the latter three metrics to
+[0, 1] across all models. It is important to note that smaller metrics
+in understanding and exploration indicate better performance in
+these dimensions, while larger values for the metrics in reasoning
+and reflection denote superior performance in those aspects. The
+calculations for the four dimensions are specified as follow:
+𝑈𝑛𝑑𝑒𝑟𝑠𝑡𝑎𝑛𝑑𝑖𝑛𝑔= (1 −𝐼𝑛𝑣𝑎𝑙𝑖𝑑𝐹𝑜𝑟𝑚𝑎𝑡𝑅𝑎𝑡𝑖𝑜)+
+(1 −𝐼𝑛𝑣𝑎𝑙𝑖𝑑𝐴𝑐𝑡𝑖𝑜𝑛𝑅𝑎𝑡𝑖𝑜) + (1 −𝑁𝑢𝑔𝑔𝑒𝑡𝑠𝑀𝑖𝑛𝑖𝑛𝑔)
+𝑅𝑒𝑎𝑠𝑜𝑛𝑖𝑛𝑔= 𝑂𝑝𝑒𝑟𝑎𝑡𝑖𝑜𝑛𝐿𝑜𝑔𝑖𝑐+ 𝐴𝑤𝑎𝑟𝑒𝑛𝑒𝑠𝑠𝑜𝑓𝐶𝑜𝑚𝑝𝑙𝑒𝑡𝑖𝑜𝑛
+𝐸𝑥𝑝𝑙𝑜𝑟𝑎𝑡𝑖𝑜𝑛= 1 −𝑅𝑒𝑝𝑒𝑎𝑡𝐴𝑐𝑡𝑖𝑜𝑛𝑅𝑎𝑡𝑖𝑜
+𝑅𝑒𝑓𝑙𝑒𝑐𝑡𝑖𝑜𝑛= 𝑅𝑒𝑓𝑙𝑒𝑥𝑖𝑜𝑛@𝐾
+Subsequently, we standardize the four dimension scores and present
+them in Fig. 4.
+E
+COMPLETE RESULTS FOR TESTING APPS
+Due to space limit, we present part of the testing APPs in §6.2. In
+Fig. 10, we show the metrics for all testing APPs.
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+Calendar
+Camera
+Clock
+Contacts
+Firefox
+Gmail
+Google Drive
+Google Maps
+Messages
+Photos
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(a) Invalid Action Ratio.
+0.000
+0.005
+0.010
+0.015
+0.020
+0.025
+Calendar
+Camera
+Clock
+Contacts
+Firefox
+Gmail
+Google Drive
+Google Maps
+Messages
+Photos
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(b) Invalid Format Ratio.
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Calendar
+Camera
+Clock
+Contacts
+Firefox
+Gmail
+Google Drive
+Google Maps
+Messages
+Photos
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(c) Nuggets Mining Score.
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Calendar
+Camera
+Clock
+Contacts
+Firefox
+Gmail
+Google Drive
+Google Maps
+Messages
+Photos
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(d) Operation Logic Score.
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Calendar
+Camera
+Clock
+Contacts
+Firefox
+Gmail
+Google Drive
+Google Maps
+Messages
+Photos
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(e) Aware of Completion Ratio.
+0.0
+0.1
+0.2
+0.3
+0.4
+0.5
+0.6
+0.7
+Calendar
+Camera
+Clock
+Contacts
+Firefox
+Gmail
+Google Drive
+Google Maps
+Messages
+Photos
+Settings
+Weather
+YouT
+ube
+LLaMA2-13B
+LLaMA2-70B
+GPT-3.5
+GPT-4
+(f) Repeat Action Ratio.
+Figure 10: Metrics for understanding, reasoning and explo-
+ration dimensions on all testing APPs.
+F
+PROMPT DESIGN
+Following WebArena, our prompt for each decision-making step
+incorporates environment descriptions, two-shot examples, task
+instructions, and historical observations and actions, as illustrated
+
+
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+Mingzhe Xing, Rongkai Zhang, Hui Xue, Qi Chen, Fan Yang, and Zhen Xiao
+You are an autonomous intelligent agent tasked with operating a
+mobile phone. 
+You are able to assist with a wide range of tasks, ...... 
+Here's the information you'll have:
+......
+To be successful, it is very important to follow the following rules:
+......
+input:
+User's objective: open the email from Kaggle in Gmail.
+Previous observations and actions ......
+output: ......
+input:
+User's objective: open the email from Kaggle in Gmail.
+Previous observations and actions ......,
+output: ......
+REMEMBER to think step by step, and generate the next action in the
+correct format. 
+......
+Now, begin!
+User's objective: ......
+Previous observations and actions ......
+Environment
+Description
+Two-shot
+Example
+Action
+Prompt
+Thinking: 
+The user wants to find the best walking route to "Microsoft SVC
+Building". The current view is the Google Maps home page. The
+search box is available with the id [na928]. I should input the
+destination "Microsoft SVC Building" into the search box. So, the next
+action is #set_text [na928] [Microsoft SVC Building]#.
+Agent
+Output
+Agent
+Input
+Figure 11: Prompt structure.
+in Fig. 11. We adopt the Reflexion prompt from its official imple-
+mentation with modifications tailored to our specific scenario. The
+prompt context limit is 4K for LLaMA2-13B, LLaMA2-70B, and
+GPT-3.5, and at 8K for GPT-4. Given that historical observations
+and actions may exceed the context limit, and to ensure a fair com-
+parison, we apply the truncation strategy employed in WebArena
+across all agents to maintain a prompt within the 4K context limit.
+F.1
+Environment Description Prompt
+Environment Description Prompt
+You are an autonomous intelligent agent tasked with op-
+erating a mobile phone. You are able to assist with a wide
+range of tasks, from answering simple questions to plan-
+ning and executing a complicated instruction with specific
+actions you can issue.
+Here’s the information you’ll have:
+The user’s objective: This is the task you’re trying to com-
+plete.
+The installed APPs: These are the APPs you can operate
+on.
+The current phone’s observation: This is a simplified and
+structured representation of the phone view, providing key
+information.
+The previous action and observation : There are the action
+you just performed and the resulted phone observation. It
+may be helpful to track your progress.
+Solve the user’s task with interleaving Observation,
+Thought, Action steps.
+Thought can reason about the current situation.
+At the end of thinking process, you MUST response the
+next Action in the following formats:
+1. APP level Actions:
+#start [app-name]#: This action start an APP specified by
+app name. You can ONLY issue the start operation on the
+following APPs:
+{app-string}
+2. Component level Actions:
+#click [id]#: This action clicks on an element with a specific
+id on the APP page.
+#long-click [id]#: This action long clicks on an element
+with a specific id on the APP page.
+#set-text [id] [text]# This action set text in a text view
+element with a specific id on the APP page.
+Note that the UI elements with ’clickable’ or ’long-clickable’
+properties can be issued with #click#, while the elements
+with ’EditText’ can be issued with #set-text# action.
+3. System level Actions:
+#swipe-up#: Scroll up the screen.
+#swipe-down#: Scroll down the screen.
+#swipe-left#: Swipe left the screen.
+#swipe-right#: Swipe right the screen.
+#press-back#: Navigate to the previously viewed page.
+#press-enter#: Press enter.
+4. Completion Action:
+#finish [answer]#: Issue this action when you believe the
+task is complete. If the objective is to find a text-based
+answer, provide the answer in the bracket. If you believe
+the task is impossible to complete, provide the answer as
+"N/A" in the bracket.
+——
+Observation is the simplified and structured text represen-
+tation of APP view.
+To be successful, it is very important to follow the follow-
+ing rules:
+1. You MUST only issue ONE next action in each thinking
+process.
+2. Generate the action in the correct format. Always put
+the action inside a pair of #. For example, #click [node3]#.
+3. Issue finish action when you think you have achieved
+the objective.
+4. Today is {date}, which might be useful for you to com-
+plete the task.
+
+
+Understanding the Weakness of Large Language Model Agents within a Complex Android Environment
+Conference acronym ’XX, June 03–05, 2018, Woodstock, NY
+F.2
+Reflection Prompt
+Reflection Prompt
+You are an advanced reasoning agent that can improve
+based on self reflection. You will be given a previous rea-
+soning trial in which you were given access to operate an
+Android phone environment with human-like actions in-
+cluding click and type text on the phone screen, and a task
+instruction to complete. You were unsuccessful in complet-
+ing the task either because you made the wrong action
+decisions, or you used up your set number of reasoning
+steps. In a few sentences, Diagnose a possible reason for
+failure and devise a new, concise, high level plan that aims
+to mitigate the same failure. Use complete sentences.
+F.3
+Reward Prompt
+Reward Prompt
+You can access to the actions and phone states at some steps
+during executing a specific task on a phone. Check if the
+given phone states and actions indicate the achievement of
+a goal. The phone state is represented as structured texts,
+with each entry denoting a UI component along with its
+content and function description.
+The goal is {goal},
+the actions and states at some steps are: {traj}
+Please check if the above trajectory indicate the achieve-
+ment of the goal: goal. Only output ’Yes’ or ’No’, no other
+words.
+F.4
+Query Template
+Queries for single-APP functionalities extraction
+Queries for single-APP
+how to use {app_name}
+{app_name} usage instructions
+{app_name} quick start guides
+{app_name} cheat sheets
+{app_name} productivity guides
+use {app_name} step-by-step
+tips and tricks for {app_name}
+{app_name} for beginners
+{app_name} tutorial
+getting started with {app_name}
+introduction to {app_name}
+Queries for cross-APP functionalities extraction
+Queries for cross-APP
+{app_name1} and {app_name2} collaboration features
+How to use {app_name1} and {app_name2} together for
+tasks
+Integration between {app_name1} and {app_name2} for
+productivity
+Collaborative task management with {app_name1} and
+{app_name2}
+{app_name1} and {app_name2} integration for work and
+productivity
+Productivity tips with {app_name1} and {app_name2}
+F.5
+Functionality-to-Instruction Prompt
+Functionality-to-Instruction Prompt
+You are a smart task creator for a smartphone intelligent
+assistant. Given the features description of the {app} APP,
+your goal is to generate clear and practical tasks that the
+assistant can assist people with while they use {app} on
+their phone in their daily lives. These tasks should encom-
+pass a wide range of possible instructions and questions
+that may arise when using {app} APP.
+For example, for the Gmail APP, potential task instructions
+could include:
+Compose an email with the subject <email subject> and
+the message content <email content> to be sent to <email
+address> using Gmail.,
+Send the first draft email.,
+Open the latest email from <email address> in Gmail.,
+Open Gmail settings.,
+Turn off notifications for Gmail.,
+Star the latest email from <email address> in Gmail.,
+Delete the latest email from <email address> in Gmail.,
+etc., where the placeholders surrounded with angle brack-
+ets ’<’ and ’>’ should be automated generated and not be
+filled with specific content.
+The {app} APP’s feature description is: {feature}
+Your task is to generate as many of these tasks as possible
+for the {app} app. Ensure that these instructions are clear
+and will not lead to any misunderstanding so that the assi-
+tant can successfully execute them. Your response should
+be a list of comma separated task instructions, where each
+instruction should be presented in one sentence.

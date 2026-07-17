@@ -1,0 +1,1976 @@
+DAIR-V2X: A Large-Scale Dataset for Vehicle-Infrastructure Cooperative
+3D Object Detection
+Haibao Yu1, Yizhen Luo1,3, Mao Shu2, Yiyi Huo1,4, Zebang Yang1,3, Yifeng Shi2, Zhenglong Guo2,
+Hanyu Li2, Xing Hu2, Jirui Yuan1, Zaiqing Nie1*
+1Institute for AI Industry Research(AIR), Tsinghua University
+2 Baidu Inc. 3 Department of Computer Science and Technology, Tsinghua University
+4 University of Chinese Academy of Science
+{yuhaibao@air.,luoyz18@mails.,yzb19@mails.,yuanjirui@air.,zaiqing@air.}tsinghua.edu.cn,
+{shumao,shiyifeng,guozhenglong,lihanyu02,huxing}@baidu.com, huoyiyi18@mails.ucas.ac.cn
+Abstract
+Autonomous driving faces great safety challenges for a
+lack of global perspective and the limitation of long-range
+perception capabilities.
+It has been widely agreed that
+vehicle-infrastructure cooperation is required to achieve
+Level 5 autonomy. However, there is still NO dataset from
+real scenarios available for computer vision researchers
+to work on vehicle-infrastructure cooperation-related prob-
+lems.
+To accelerate computer vision research and inno-
+vation for Vehicle-Infrastructure Cooperative Autonomous
+Driving (VICAD), we release DAIR-V2X Dataset, which is
+the first large-scale, multi-modality, multi-view dataset from
+real scenarios for VICAD. DAIR-V2X comprises 71254 Li-
+DAR frames and 71254 Camera frames, and all frames
+are captured from real scenes with 3D annotations. The
+Vehicle-Infrastructure Cooperative 3D Object Detection
+problem (VIC3D) is introduced, formulating the problem of
+collaboratively locating and identifying 3D objects using
+sensory inputs from both vehicle and infrastructure. In ad-
+dition to solving traditional 3D object detection problems,
+the solution of VIC3D needs to consider the temporal asyn-
+chrony problem between vehicle and infrastructure sensors
+and the data transmission cost between them.
+Further-
+more, we propose Time Compensation Late Fusion (TCLF),
+a late fusion framework for the VIC3D task as a bench-
+mark based on DAIR-V2X. Find data, code, and more up-
+to-date information at https://thudair.baai.ac.cn/index and
+https://github.com/AIR-THU/DAIR-V2X.
+1. Introduction
+Autonomous driving (AD) is arguably one of the hottest
+topics currently occupying public attention and imagina-
+*Corresponding author. 3,4 Work done while at AIR.
+tion.
+The success of deep neural networks brings the
+promise of solving AD’s core requirement to perceive the
+surrounding environment from point cloud [15,20,28], im-
+ages [7, 18] or multi-modality data [21, 24].
+Despite its
+Figure 1.
+Datasets available for 3D Object Detection in au-
+tonomous driving. DAIR-V2X is the first real-world V2X dataset
+for VICAD.
+great progress recently, autonomous driving still faces great
+safety challenges for a lack of global perspective and the
+limitation of long-range perception capability. It has been
+widely agreed that vehicle-infrastructure cooperation is re-
+quired to achieve Level 5 autonomy. Utilizing both vehi-
+cle and infrastructure sensors brings a number of signifi-
+cant advantages, including providing a global perspective
+far beyond the current horizon and covering blind spots.
+Advances in communications like V2X (vehicle to every-
+thing) have made it possible to utilize data from infrastruc-
+ture sensors [3,22]. However, there is still NO dataset from
+real scenarios available for researchers to work on vehicle-
+infrastructure cooperation-related problems.
+To accelerate computer vision research and innovation
+21361
+
+
+Table 1. A detailed comparison between autonomous driving-related datasets. - indicates that specific information is not provided. In
+particular, DAIR-V2X is composed of DAIR-V2X-C, DAIR-V2X-V and DAIR-V2X-I, where DAIR-V2X-C is captured by both vehicle
+and infrastructure sensors, DAIR-V2X-V is captured by vehicle sensors, and DAIR-V2X-I is captured by infrastructure sensors.
+Dataset
+Year
+Real/Simulated
+View
+Image
+Pointcloud
+3D boxes
+Classes
+KITTI [10]
+2012
+real
+single vehicle
+15k
+15k
+200k
+8
+nuScenes [2]
+2019
+real
+single vehicle
+1.4M
+400k
+1.4M
+23
+Waymo Open [23]
+2019
+real
+single vehicle
+1M
+200k
+12M
+4
+ApolloScape [12]
+2018
+real
+single vehicle
+144k
+0
+70k
+8-35
+BBD100K [30]
+2020
+real
+single vehicle
+100M
+0
+0
+10
+ONCE [17]
+2021
+real
+single vehicle
+7M
+1M
+417k
+5
+SYNTHIA [19]
+2016
+simulated
+single vehicle
+213k
+0
+-
+13
+V2X-Sim [16]
+2021
+simulated
+multi-vehicle
+0
+10k
+26.6k
+2
+highD [13]
+2018
+real
+infrastructure (UAV)
+1.53M
+0
+0
+1
+DAIR-V2X (Our)
+2021
+real
+vehicle-infrastructure cooperative
+71k
+71k
+1.2M
+10
+- DAIR-V2X-C
+2021
+real
+vehicle-infrastructure cooperative
+39k
+39k
+464k
+10
+- DAIR-V2X-V
+2021
+real
+single vehicle
+22k
+22k
+239k
+10
+- DAIR-V2X-I
+2021
+real
+infrastructure
+10k
+10k
+493k
+10
+for Vehicle-Infrastructure Cooperative Autonomous Driv-
+ing (VICAD), we release DAIR-V2X Dataset, which is the
+first large-scale, multi-modality, multi-view dataset for VI-
+CAD. It contains 71254 LiDAR frames and 71254 Cam-
+era frames captured in intersection scenes where a well-
+equipped vehicle passes through intersections with infras-
+tructure sensors deployed. 40% of the frames are captured
+from infrastructure sensors and 60% of the frames are cap-
+tured from vehicle sensors. All of them are precisely la-
+beled by expert annotators. The dataset covers 10 km of
+city roads, 10 km of highway, 28 intersections, and 38 km2
+of driving regions with diverse weather and lighting varia-
+tions. More details could be found in Tab. 1.
+In this paper, the Vehicle-Infrastructure Cooperative 3D
+Object Detection (VIC3D) task is introduced, formulating
+the problem of cooperatively locating and identifying 3D
+objects using sensory inputs from both vehicle and infras-
+tructure. In addition to solving traditional 3D object detec-
+tion problems, the solution of VIC3D needs to consider the
+temporal asynchrony problem and data transmission cost
+between vehicle and infrastructure sensors.
+To resolve the VIC3D object detection task and facilitate
+future research, we also introduce our VIC3D object detec-
+tion benchmark in this paper. For data with less temporal
+asynchrony problems, we implement both early fusion and
+late fusion approaches. Results show that the average preci-
+sion of fusion methods is 10 to 20 points higher than detec-
+tors that only use information from a single view. Results
+also show that early fusion can achieve better performance
+than late fusion but requires more data transmission. With
+the DAIR-V2X dataset, we expect more future research to
+achieve a performance-bandwidth trade-off. For data with
+severe temporal asynchrony, we propose a Time Compensa-
+tion Late Fusion framework, which can effectively alleviate
+the temporal asynchrony problem.
+The key contributions of our work are as follows:
+• We release the DAIR-V2X dataset, which is the first
+large-scale dataset for vehicle-infrastructure coopera-
+tive autonomous driving. All frames are captured from
+real scenarios with 3D annotations.
+• We formulate the problem of cooperatively locating
+and identifying 3D objects using sensory inputs from
+both vehicle and infrastructure as VIC3D.
+• We introduce benchmarks for VIC3D object detection
+and single-view 3D object detection tasks. The results
+show the effectiveness of vehicle-infrastructure coop-
+eration in VIC3D object detection. Especially, we pro-
+pose the Time Compensation Late Fusion framework
+to alleviate the temporal asynchrony problem.
+2. Relative Work
+2.1. Autonomous Driving Datasets
+In recent years, an increasing number of autonomous
+driving datasets have been released and greatly promoted
+the development of autonomous driving research. Datasets
+like SYNTHIA [19] and Cityscapes [5] mainly focus on
+2D annotations for images. KITTI [10] and nuScenes [2]
+are multi-modality datasets providing camera images as
+well as LiDAR point clouds. Nevertheless, all datasets men-
+tioned above only provide data from a single-vehicle view.
+V2X-SIM [16] is an attempt to generate a multi-vehicle
+view dataset, but the dataset was generated by a simula-
+tor rather than captured from real scenarios.
+Compared
+with those datasets, our DAIR-V2X dataset is the first large-
+scale, multi-modality, multi-view dataset captured from real
+scenarios for VICAD, and contains data captured from the
+Vehicle-Infrastructure Cooperative view. Tab. 1 shows the
+comparison of our dataset with the others. In our DAIR-
+21362
+
+
+Figure 2. a) Acquisition system with infrastructure sensors. b) Acquisition system with vehicle sensors. c) Infrastructure-view image and
+point cloud with 3d annotation. Paired vehicle-view and infrastructure-view information complement each other in the perspective of view.
+d) Vehicle-view image and point cloud with 3d annotation.
+V2X, we also provide a Repo3D [29] dataset composed of
+multi-source infrastructure images and 3D annotations, for
+those who are interested in Mono3D object detection and
+domain adaptation.
+2.2. 3D Detection
+3D object detection serves as the prerequisite for the suc-
+cess of autonomous driving. Many techniques have been
+introduced and can be roughly classified into three cate-
+gories.
+a) Image-based 3D Detection refers to methods
+that detect 3D objects directly from 2D images. ImVox-
+elNet [7] is a good example to make predictions from im-
+ages. b) Pointcloud-based 3D Detection stands for manners
+that make 3D object detection merely from point clouds.
+PointPillars [15], SECOND [27], and 3DSSD [28] are such
+approaches that achieve convincing detection results from
+point clouds. c) Multimodality-based 3D Detection uses
+both images and point clouds to make predictions. Point-
+painting [24] and MVXNet [21] are practices of fusing im-
+age and LiDAR features to predict 3D bounding boxes.
+While 3D object detection has made great progress recently,
+there are still some tough problems that remain to solve
+such as blind spots and weak long-distance perception. To
+explore how to utilize the infrastructure information to solve
+the problems mentioned above, we conduct VIC3D object
+detection based on our dataset proposed in this paper.
+2.3. Multi-Sensor Fusion
+Multi-sensor fusion [26] is the integration of heteroge-
+neous information collected by different sensors to alleviate
+the uncertainty and vulnerability of systems that rely on a
+single sensor. Based on the fusion stage, multi-sensor fu-
+sion can be categorized into early fusion, intermediate fu-
+sion, and late fusion. a) In early fusion, raw data from dif-
+ferent sensors are directly transferred and fused [9]. b) In in-
+termediate fusion, intermediate representations like features
+extracted from the models are fused [4,21]. c) In late fusion,
+the prediction outputs like 3D information of the objects are
+fused [11]. VIC3D can be considered as a variant of the
+multi-sensor problem, so previous fusion methods can be
+taken into consideration to integrate the infrastructure in-
+formation. However, in addition to the multi-sensor fusion
+challenges, VIC3D faces difficulties caused by the temporal
+asynchrony problem and the data transmission constraint.
+2.4. V2X Cooperative Perception
+V2X aims to build a communication system between ve-
+hicles and other devices in a complex traffic environment.
+Current V2X research mainly focuses on V2V (Vehicle-to-
+Vehicle) and V2I (Vehicle-to-Infrastructure) area. V2VNet
+[25] is a pioneering work in V2V that broadcasts com-
+pressed intermediate features and propagates message re-
+ceived from nearby vehicles to generate motion forecasts.
+Works of V2I [6,31] leverage infrastructure LiDAR data to
+generate and broadcast detection results. However, none of
+these approaches have been verified on a dataset captured
+from real scenarios. This may cause a huge gap between
+theory and practice. Therefore, we release the DAIR-V2X
+dataset to boost further study in this field.
+3. The DAIR-V2X Dataset
+In order to facilitate research on VICAD, we re-
+lease DAIR-V2X, a large-scale, multi-modality, multi-view
+dataset from real scenarios with 3D annotations for vehicle
+infrastructure cooperation. Here we describe how we set up
+infrastructure and vehicle sensors, select interesting scenes,
+annotate the dataset and protect the privacy of third parties.
+3.1. Setup
+Equipment. Equipment for data collection are composed
+of infrastructure sensors and vehicle sensors. a) Infrastruc-
+ture sensors. Each of the 28 intersections selected from
+Beijing High-level Autonomous Driving Demonstration
+21363
+
+
+Table 2. Key Sensor Specifications in DAIR-V2X. Veh. stands for
+vehicle view, and Inf. stands for infrastructure view.
+Sensor
+Details
+Inf. LiDAR
+300 beams, 10Hz capture frequency, 100o
+horizontal FOV, −30o to 10o vertical FOV,
+≤280m range, ±3cm accuracy
+Inf. Camera
+RGB, 25Hz capture frequency, 1920x1080
+resolution, JPEG compressed
+Veh. LiDAR
+40 beams, 10Hz capture frequency, 360o
+horizontal FOV, −30o to 10o vertical FOV,
+≤200m range, ±0.33o vertical resolution
+Veh. Camera
+RGB, 20Hz capture frequency, 1920x1080
+resolution, JPEG compressed
+Veh. GPS & IMU
+1000HZ update rate
+Area are deployed with four pairs of 300-beam LiDAR and
+high-resolution camera. The DAIR-V2X dataset picks only
+one pair of them. b) Vehicle sensors. One 40-beam LiDAR
+and one high-quality camera looking forward are mounted
+on top of the autonomous vehicles.
+Specific layout is
+posted in Figure 2, and precise details are displayed in
+Table 2.
+Coordinate. There are 5 types of coordinate systems on
+DAIR-V2X, i.e., the LiDAR coordinate, the camera coor-
+dinate, the image coordinate, the world coordinate, and the
+positioning coordinate. The origin of the LiDAR coordinate
+system is located at the center of the LiDAR sensor, the x-
+axis is positive forwards, the y-axis is positive to the left,
+and the z-axis is positive upwards. The infrastructure Li-
+DAR coordinate system is converted from its original sys-
+tem which has an inclination angle with the ground. The
+real-time relative pose of the equipped vehicle is obtained
+from GPS/IMU combined with SLAM and a local map.
+There is also manual secondary labeling confirmation to en-
+sure calibration accuracy. The Lidar-to-Camera transforma-
+tion is obtained by multiplying Lidar-to-World and World-
+to-Camera transformations.
+3.2. Data Acquisition
+Collection. We drive a well-equipped vehicle in the col-
+lection area and save the corresponding vehicle frames and
+infrastructure frames respectively. After the collection of
+raw data, we manually select 100 representative scenes of
+20s duration. Such scenes include vehicle data and infras-
+tructure data, where vehicles drive through intersections de-
+ployed with equipment. We sample key frames at 10Hz
+from both sides to form DAIR-V2X-C. In DAIR-V2X-C, it
+is important to note that the timestamp difference between
+a vehicle frame and its closest infrastructure frame could
+be slightly varied, due to the asynchronous triggering be-
+tween vehicle sensors and infrastructure sensors. We sam-
+ple 22K frames from additionally about 350 vehicle-only
+segments of 60s duration to form DAIR-V2X-V, and sam-
+ple 10K frames from additionally about 150 infrastructure-
+only segments duration to form DAIR-V2X-I, to enlarge the
+dataset. Compared to the single-view data in DAIR-V2X-
+C, DAIR-V2X-V and DAIR-V2X-I contains more diverse
+scenes and will be more challenging to only improve the
+single-view performance.
+Annotation.
+With multiple validation steps and refine-
+ment processes, expert annotators make high-quality an-
+notations for infrastructure frames and vehicle frames
+respectively.
+Specifically, annotators exhaustively label
+each of the 10 object classes in every image and point
+cloud frame with its category attribute, occlusion state,
+truncated state, and a 7-dimensional cuboid modeled as
+x, y, z, width, length, height, and yaw angle.
+10 cate-
+gories include different vehicles, pedestrian, different cy-
+clists. Moreover, experts also meticulously annotate objects
+in camera images with a rectangle bounding box modeled
+as x, y, width, and length.
+To be mentioned, we also conduct semi-automatic label-
+ing for the cooperative annotations with vehicle and infras-
+tructure frame pairs. We first select vehicle and infrastruc-
+ture frame pairs from DAIR-V2X-C. The timestamp differ-
+ences between the two frames of the selected pairs are less
+than 10ms (We call it the Synchronous Case which is de-
+fined in Section 4.1. To obtain more cooperative annota-
+tions, we extend the threshold from 10ms to 30ms). Next,
+we convert infrastructure 3D boxes into vehicle LiDAR co-
+ordinate system and fuse the vehicle annotations and infras-
+tructure annotations. For each 3D box in the infrastructure
+annotation, if we can not find any 3D box in the vehicle an-
+notation that has the same location and category, we add the
+infrastructure 3D box into the vehicle annotations; in this
+way, we get the vehicle-infrastructure cooperative annota-
+tions. We manually supervise and adjust the cooperative
+annotations to generate more accurate annotations. Here we
+take 9331 infrastructure frames and vehicle frames as well
+as the cooperative annotations to form the VIC-Sync dataset
+for our VIC3D object detection benchmark.
+Protection. The whole dataset is desensitized before public
+release. Complied with local laws and regulations, we erase
+all localization information, including road name, map data,
+and positioning information, to make sure our dataset meets
+requirements. In addition, we utilize professional labeling
+tools to blur all the information suspected of privacy viola-
+tion, including road signs, license plates and faces, to pro-
+tect privacy and avoid violating personal rights.
+4. Task & Metrics
+Autonomous driving faces great safety challenges for a
+lack of global perspective and the limitation of long-range
+perception capabilities. Since 3D object detection is one
+of the key perception tasks in autonomous driving, in this
+paper, we focus on the vehicle-infrastructure cooperative
+(VIC) 3D object detection task, the vehicle receives and
+21364
+
+
+integrates information from infrastructure to localize and
+recognize objects surrounding itself. Compared with tradi-
+tional multi-sensor 3D object detection tasks, VIC3D object
+detection has the following alternative characteristics:
+• Transmission Cost. Limited by physical communica-
+tion conditions, fewer data should be transmitted from
+infrastructure to reduce bandwidth consumption, alle-
+viate time delay, and satisfy real-time requirements.
+Thus, the solution to VIC3D object detection needs to
+balance the trade-off between the performance and the
+transmission cost.
+• Temporal Asynchrony. Timestamps of data from the
+vehicle sensors and the infrastructure sensors are dif-
+ferent due to the asynchronous triggering and time
+delay caused by transmission cost, to generate the
+temporal-spatial error. Therefore, temporal synchro-
+nization should be considered in solving VIC3D.
+To better formulate the VIC3D object detection task, we
+will give a detailed definition to the VIC3D object detection
+and then provide two metrics to measure detection perfor-
+mance and transmission cost in this section.
+4.1. VIC3D Object Detection
+VIC3D object detection can be formulated as the opti-
+mization problem of effectively integrating infrastructure
+and vehicle information to localize and recognize 3D
+objects considering transmission cost.
+Here we discuss
+what the input and output of VIC3D should be.
+Input. The input of VIC3D is composed of data from the
+vehicle and the infrastructure.
+• Vehicle Frame Iv(tv): captured at time tv as well as its
+relative pose Mv(tv), where Iv(·) denotes the captur-
+ing function of vehicle sensors.
+• Infrastructure Frame Ii(ti): captured at time ti as well
+as its relative pose Mv(ti), where Ii(·) denotes the
+capturing function of infrastructure sensors.
+Note that ti should be earlier than tv because there is a time
+delay caused by data transmission from the infrastructure
+to the vehicle. Considering that the objects would move
+so slightly in the tiny time interval that the spatial offset
+can be ignored, we take the case that |tv −ti| ≤10ms
+as Synchronous Case (i.e. tv ≈ti). Similarly, we take
+the case that |tv −ti| > 10ms as Asynchronous Case.
+In addition, we allow using more infrastructure frames
+previous to Ii(ti) in solving VIC3D to make full use of the
+infrastructure computing resources.
+Ground Truth. The outputs of VIC3D object detection
+contain 3D information like the location, category, and ori-
+entation of objects surrounding the vehicle.
+The corre-
+sponding ground truth of VIC3D is the fusion result of in-
+frastructure and vehicle ground truth, which could be for-
+mulated as:
+  G T =  GT_{v} \cup GT_{i}, 
+(1)
+where GTv is the ground truth for vehicle sensor percep-
+tion and GTi is the ground truth for infrastructure sensor
+perception.
+VIC3D is mainly used to improve the perception perfor-
+mance of the self-driving vehicle. We are more concerned
+about a certain range of egocentric surroundings and the 3D
+information of objects at time tv than at ti. Therefore, GTv
+and GTi should both be based on time tv. However, the
+timestamp of the input frames captured from the infrastruc-
+ture and captured from the vehicle could be different that
+tv ̸= ti. This not only brings challenges to fusing the in-
+frastructure information in model prediction but also creates
+huge problems to generate the ground truth. That’s because
+objects annotated with infrastructure frame at time ti may
+move to different locations at time tv, and we cannot di-
+rectly get the infrastructure frame at time tv to annotate.
+In response to these difficulties, we discuss how we gen-
+erate the ground truth for VIC3D based on DAIR-V2X.
+• Synchronous Case (i.e. tv ≈ti). Under this condition,
+an object that appears in vehicle frame Iv(tv) should
+have the same spatial location as it appears in infras-
+tructure frame Ii(ti). Therefore, we can directly take
+the vehicle-infrastructure cooperative 3D annotations
+obtained by semi-automatic labeling illustrated in Sec-
+tion 3.2 as ground truth.
+• Asynchronous Case (i.e. tv ̸= ti). If we can find such
+infrastructure frame Ii(t′
+i) satisfying |tv −t
+′
+i| ≤10ms,
+we can generate ground truth with Ii(t
+′
+i). If not, we
+have to estimate the 3D states of objects at tv to gener-
+ate ground truth. This work can be carried out based on
+the tracking ID and kinematic equation after we pro-
+vide the tracking ID in future work.
+4.2. Evaluation Metrics.
+VIC3D object detection has two major goals: better
+detection performance and less transmission cost.
+We
+describe the metrics for such two goals below.
+Average Precision. AP (Average precision) is a popular
+metric for measuring the object detectors performance [8].
+We also use AP to evaluate the 3d detection performance
+with cooperative annotations as ground truth. Since we are
+more concerned about egocentric surroundings, we remove
+objects outside the designed area. Here we set the designed
+area as a rectangular area as [0, -39.12, 100, 39.12].
+Transmission Cost. We use AB (Average Byte) to measure
+the transmission cost. Here Byte is a unit of digital informa-
+tion that consists of eight bits. To simplify the problem, we
+ignore the time consumption of data encoders and decoders
+during transmission. That means the less transmission cost,
+the less time delay. Data to be transmitted from the infras-
+tructure can be one or a combination of the following forms.
+21365
+
+
+Table 3. VIC3D object detection Benchmark on DAIR-V2X-C.
+Modality
+Fusion
+Model
+Dataset
+AP3D(IoU=0.5)
+APBEV (IoU=0.5)
+AB
+Overall
+0-30m
+30-50m
+50-100m
+Overall
+0-30m
+30-50m
+50-100m
+(Byte)
+Image
+Veh.-Only
+ImvoxelNet [7]
+VIC-Sync
+12.03
+16.25
+7.25
+2.28
+13.62
+17.66
+8.58
+2.82
+0
+Inf.-Only
+ImvoxelNet [7]
+VIC-Sync
+19.93
+27.34
+17.61
+14.43
+25.31
+32.02
+23.28
+20.38
+102.32
+Late Fusion
+ImvoxelNet [7]
+VIC-Sync
+26.56
+34.20
+17.20
+9.81
+31.40
+37.75
+21.21
+12.99
+102.32
+Pointcloud
+Veh.-Only
+PointPillars [15]
+VIC-Sync
+31.33
+27.48
+25.58
+12.63
+35.06
+30.55
+28.65
+14.16
+0
+Inf.-Only
+PointPillars [15]
+VIC-Sync
+17.62
+16.54
+10.98
+9.17
+24.40
+21.47
+16.00
+13.07
+336.16
+Late Fusion
+PointPillars [15]
+VIC-Sync
+41.90
+37.65
+32.72
+18.84
+47.96
+42.40
+37.65
+22.08
+336.16
+Early Fusion
+PointPillars [15]
+VIC-Sync
+50.03
+53.07
+60.38
+33.05
+53.73
+55.80
+64.08
+36.17
+1382275.75
+Pointcloud
+Late Fusion
+PointPillars [15]
+VIC-Async-1
+40.21
+34.17
+29.40
+15.50
+46.41
+38.05
+34.10
+19.20
+341.08
+Late Fusion
+PointPillars [15]
+VIC-Async-2
+35.29
+32.16
+28.07
+13.44
+40.65
+35.62
+32.35
+15.88
+306.79
+Early Fusion
+PointPillars [15]
+VIC-Async-1
+47.47
+48.88
+58.86
+30.89
+51.67
+52.70
+63.09
+34.72
+1362216.0
+Pointcloud
+TCLF
+PointPillars [15]
+VIC-Async-1
+40.79
+34.67
+29.69
+15.76
+46.80
+38.24
+34.27
+19.40
+539.60
+TCLF
+PointPillars [15]
+VIC-Async-2
+36.72
+33.91
+29.41
+14.52
+41.67
+36.78
+33.36
+17.18
+506.70
+• Raw data such as images or point clouds contains com-
+plete information but requires much transmission cost.
+• Intermediate representation requires less transmission
+cost while retaining valuable information, which may
+achieve a better performance-transmission trade-off.
+Surely, this requires a more sophisticated design to ex-
+tract suitable intermediate representation.
+• Object-level outputs directly provide 3D object infor-
+mation. Although it is transmission-efficient, it may
+lose valuable information.
+• Other auxiliary information like scene flows help to al-
+leviate temporal asynchrony problems.
+5. Benchmark
+In this section, we provide a VIC3D object detection
+benchmark and a Single-View (SV) 3D object detection
+benchmark on our DAIR-V2X dataset, analyze their char-
+acteristics and suggest avenues for future research.
+5.1. Benchmark for VIC3D object detection
+We provide a benchmark for VIC3D object detection on
+the VIC-Sync dataset extracted from DAIR-V2X-C, which
+is illustrated in Section 3.2. The dataset is composed of
+9311 pairs of infrastructure and vehicle frames as well as
+their cooperative annotations as ground truth. Besides, we
+take the temporal asynchrony between the infrastructure
+frame and the vehicle frame into consideration in the bench-
+mark, which is mainly caused by the difference in the sam-
+pling rate and transmission delay. To simulate the tempo-
+ral asynchrony phenomenon, we replace each infrastructure
+frame in the VIC-Sync dataset with the infrastructure frame
+which is k-th frame previous to the original infrastructure
+frame to construct the VIC-Async-k dataset for the bench-
+mark. In our experiments, we set k = 1, 2. We split VIC-
+Sync and VIC-Async-k datasets to train/valid/test part as
+5:2:3 respectively. We use cooperative annotations to eval-
+uate the detection results under the vehicle-egocentric view.
+The experiment results are presented in Table 3.
+5.1.1
+Baselines
+Here we present several baselines with different modalities
+and fusion methods for VIC3D object detection.
+LiDAR detection baseline with Late Fusion.
+To demon-
+strate the performance improvement by utilizing both in-
+frastructure and vehicle data, we implement a late fusion
+framework with an infrastructure detector and a vehicle de-
+tector. Firstly, we choose PointPillars [15] as the 3D detec-
+tor and train the two detectors with infrastructure-view and
+vehicle-view data in VIC-Sync separately. Then, we con-
+vert the infrastructure predictions into the vehicle LiDAR
+coordinate system and merge the prediction results with a
+matcher based on the Euclidian distance measurement and
+the Hungarian method [14] to generate fusion results.
+To illustrate the temporal asynchrony problem, we also
+implement the LiDAR detection late fusion baseline on the
+VIC-Async-k dataset. In addition, based on tracking and
+state estimation we propose the Time Compensation Late
+Fusion (TCLF) framework. The TCLF is mainly composed
+of the following three parts: 1) Estimating the velocity of
+the objects with two adjacent infrastructure frames. 2) Esti-
+mating the state of the infrastructure objects at tv. 3) Fusing
+the estimated infrastructure predictions and vehicle predic-
+tions following the way of LiDAR late fusion baseline. The
+details of the TCLF framework could be seen in Fig. 3.
+Note that we also report the evaluation results only with
+the infrastructure data and only with the vehicle data, which
+are named as Veh.-Only and Inf.-Only respectively. The
+evaluation results are presented in Tab. 3.
+Image detection baseline with Late Fusion.
+To exam-
+ine image-only VIC3D object detection, we also implement
+the late fusion framework only with infrastructure images
+and vehicle images. We choose ImvoxelNet [7] as the 3D
+detector and train infrastructure detector and vehicle detec-
+tor with the corresponding part of VIC-Sync training data
+separately. We implement the image detection late fusion
+following the LiDAR detection late fusion.
+21366
+
+
+Figure 3. Time Compensation Late Fusion (TCLF) Framework. ∆t denotes the sampling interval of infrastructure sensors. We predict and
+match the boxes between two infrastructure frames. For matched vehicles, we compute their velocities directly. For unmatched vehicles,
+we feed the position and motion information of the current scene into an MLP to predict their velocities. Finally, we can approximate the
+positions of vehicles at tv by linear interpolation, and fuse the results of the vehicle frame.
+LiDAR detection baseline with Early Fusion.
+To ex-
+plore the fusion effect at the raw data level, we implement
+the early fusion with PointPillars [15] as the 3D detector
+on the VIC-Sync dataset. We first convert the infrastructure
+point cloud in the VIC-Sync dataset into the vehicle LiDAR
+coordinate system, then fuse the infrastructure point cloud
+and vehicle point cloud. We directly train and evaluate the
+detector with the fused point cloud. Further to illustrate the
+temporal asynchrony problem, we also implement the early
+fusion with PointPillars [15] on the VIC-Async-k dataset.
+Figure 4.
+Prediction results of the vehicle frame (orange) and
+infrastructure frame (blue). We observe that infrastructure data
+(thick blue boxes) supplements the blind spot and extends the per-
+ception field for the vehicle.
+Figure 5. Prediction results with and without time compensation.
+The results of TCLF (blue) have a larger overlap with ground truth
+(black) than the results without time compensation (orange).
+5.1.2
+Analysis
+Here we analyze the properties of the methods for the
+VIC3D object detection benchmark in Section 5.1.1.
+Cooperative-view vs. Single-view.
+We compare the per-
+formance of the methods whether using both infrastructure
+data and vehicle data. In Tab. 3, the detection performance
+of late fusion is much better than the performance of Veh.-
+Only or Inf.-Only, whether it is Image-based or LiDAR-
+based or it is based on VIC-Sync dataset or VIC-Async-
+k dataset.
+For example, the LiDAR detection with Late
+Fusion achieves overall 41.90 AP points for 3D detection
+and overall 47.96 AP points for BEV detection on the VIC-
+Sync dataset. However, the LiDAR detection only with ve-
+hicle data just achieves overall 31.33% AP for 3D detec-
+tion and overall 35.06% AP for BEV detection, and the Li-
+DAR detection only with infrastructure data just achieves
+overall 17.62% AP for 3D detection and overall 24.40%
+AP for BEV detection. The experiment results demonstrate
+that fusing the infrastructure information can effectively im-
+prove the perception performance of the vehicle. This is
+mainly because infrastructure data provides supplementary
+information that makes up for the vehicle’s perception field.
+A visualization example is shown in Fig. 4.
+Temporal Asynchrony vs Time Compensation.
+Tempo-
+ral asynchrony brings challenges to fusing the infrastructure
+data. Compared with the results on the VIC-Sync dataset,
+the performance of LiDAR detection with fusion drops sig-
+nificantly on VIC-Async-k (2 points on VIC-Async-1 and
+6 points on VIC-Async-2). The decline is mainly due to
+the state changes of moving objects, resulting in matching
+difficulties and fusion errors. However, our TCLF can ef-
+fectively improve the performance of late fusion up to 0.5%
+AP and 1.5% AP on VIC-Async-1 and VIC-Async-2 re-
+spectively, which demonstrates that time compensation can
+effectively alleviate the temporal asynchrony problems es-
+21367
+
+
+Table 4. SV3D Detection Benchmark on DAIR-V2X-V
+Modality
+Model
+Vehicle3D(IoU=0.5)
+Pedestrian3D(IoU=0.25)
+Cyclist3D(IoU=0.25)
+Easy
+Middle
+Hard
+Easy
+Middle
+Hard
+Easy
+Middle
+Hard
+Image
+ImvoxelNet [7]
+38.37
+24.28
+21.54
+4.54
+4.54
+4.54
+10.38
+9.09
+9.09
+PointCloud
+PointPillars [15]
+61.76
+49.02
+43.45
+33.40
+24.68
+22.39
+38.24
+33.80
+32.35
+PointCloud
+SECOND [27]
+69.44
+59.63
+57.63
+43.45
+39.06
+38.78
+44.21
+39.49
+37.74
+Image+PointCloud
+MVXNet [21]
+69.86
+60.74
+59.31
+47.73
+43.37
+42.49
+45.68
+41.84
+40.55
+Table 5. SV3D Detection Benchmark on DAIR-V2X-I
+Modality
+Model
+Vehicle3D(IoU=0.5)
+Pedestrian3D(IoU=0.25)
+Cyclist3D(IoU=0.25)
+Easy
+Middle
+Hard
+Easy
+Middle
+Hard
+Easy
+Middle
+Hard
+Image
+ImvoxelNet [7]
+44.78
+37.58
+37.55
+6.81
+6.746
+6.73
+21.06
+13.57
+13.17
+PointCloud
+PointPillars [15]
+63.07
+54.00
+54.01
+38.53
+37.20
+37.28
+38.46
+22.60
+22.49
+PointCloud
+SECOND [27]
+71.47
+53.99
+54.00
+55.16
+52.49
+52.52
+54.68
+31.05
+31.19
+Image+PointCloud
+MVXNet [21]
+71.04
+53.71
+53.76
+55.83
+54.45
+54.40
+54.05
+30.79
+31.06
+pecially when the time delay is larger. A visualization ex-
+ample is provided in Fig. 5.
+Early Fusion vs. Late Fusion.
+Compared with late fu-
+sion, early fusion achieves up to 8% AP higher under both
+BEV and 3D benchmarks, whether it is based on the VIC-
+Sync dataset or the VIC-Async-1 dataset. However, early
+fusion should transmit the whole point cloud and suffers an
+extremely high transmission cost, which is about 4000 times
+more than late fusion. For more practical applications, we
+encourage future research on achieving better performance
+while consuming less transmission bandwidth. We will also
+release the feature fusion for the benchmark in the future.
+5.2. Benchmark for SV3D Detection
+We present an extensive 3D detection benchmark for
+those who are interested in Single-View (SV) 3D detection
+tasks based on DAIR-V2X-V and DAIR-V2X-I datasets.
+Compared with the single-side data in DAIR-V2X-C, the
+two datasets are more diverse and could be more challeng-
+ing to implement 3D object detection. Hence, we encourage
+researchers who just aim at improving the performance of
+vehicle 3D object detection or infrastructure 3D object on
+DAIR-V2X-V and DAIR-V2X-I.
+We split DAIR-V2X-V and DAIR-V2X-I datasets to
+train/valid/test part as 5:2:3 respectively. We present a num-
+ber of baselines with methods based on different modalities
+on the two datasets respectively: ImvoxelNet [7], PointPil-
+lars [15], SECOND [27] and MVXNet [21]. We evaluate
+3D object detection performance using the PASCAL criteria
+as KITTI [10], that distant objects are filtered out based on
+their bounding box height in the image plane. Three types
+of modes are used for evaluation, including Easy, Moder-
+ate, and Hard modes. We implement these baselines with
+MMDetection3D Framework [1].
+Evaluation results are
+shown in Tab. 4 and Tab. 5.
+6. Conclusion
+In this paper, we introduce DAIR-V2X, the first large-
+scale,
+multi-modality,
+multi-view dataset for vehicle-
+infrastructure cooperative autonomous driving, and all
+frames are captured from real scenes with 3D annotations.
+We also define VIC3D object detection to formulate the
+problem of collaboratively locating and identifying 3D ob-
+jects using sensory input from both vehicle and infras-
+tructure. In addition to solving traditional 3D object de-
+tection problems, the solution of VIC3D needs to con-
+sider the temporal asynchrony problem between vehicle and
+infrastructure sensors and the data transmission cost be-
+tween them.
+To facilitate future research, we provide a
+VIC3D benchmark for detection models with our proposed
+Time Compensation Late Fusion framework, as well as ex-
+tensive benchmarks for 3D detection on vehicle-view and
+infrastructure-view datasets. Results show that integrating
+data from infrastructure sensors achieves an average of 15%
+AP higher than single-vehicle 3D detection, and TCLF can
+alleviate temporal asynchrony problems.
+Acknowledgements
+We thank Fan Yang, Ruiwen Zhang, Wenyue Wu, and
+Xiao Wang from Baidu Inc. for the support in data process-
+ing. We thank Jilei Mao, Taohua Zhou, Yingjuan Tang, Zan
+Mao, and Zhiwen Yang for their support in the benchmark
+construction. Thanks to Beijing High-level Autonomous
+Driving Demonstration Area, Beijing Connected and Au-
+tonomous Vehicles Technology Co., Ltd, Baidu Apollo, and
+Beijing Academy of Artificial Intelligence for their support
+throughout the dataset construction and release process.
+21368
+
+
+References
+[1] MMDetection3D: OpenMMLab next-generation platform
+for general 3D object detection, 2020. 8
+[2] Holger Caesar, Varun Bankiti, Alex H. Lang, Sourabh Vora,
+Venice Erin Liong, Qiang Xu, Anush Krishnan, Yu Pan, Gi-
+ancarlo Baldan, and Oscar Beijbom.
+nuscenes: A multi-
+modal dataset for autonomous driving. In 2020 IEEE Confer-
+ence on Computer Vision and Pattern Recognition (CVPR),
+pages 11618–11628, 2020. 2
+[3] Shanzhi Chen, Jinling Hu, Yan Shi, Ying Peng, Jiayi Fang,
+Rui Zhao, and Li Zhao. Vehicle-to-everything (v2x) services
+supported by lte-based systems and 5g. IEEE Communica-
+tions Standards Magazine, 1(2):70–76, 2017. 1
+[4] Xiaozhi Chen, Huimin Ma, Ji Wan, Bo Li, and Tian Xia.
+Multi-view 3d object detection network for autonomous
+driving. In 2017 IEEE Conference on Computer Vision and
+Pattern Recognition (CVPR), pages 6526–6534, 2017. 3
+[5] Marius Cordts, Mohamed Omran, Sebastian Ramos, Timo
+Rehfeld,
+Markus Enzweiler,
+Rodrigo Benenson,
+Uwe
+Franke, Stefan Roth, and Bernt Schiele.
+The cityscapes
+dataset for semantic urban scene understanding. In Proceed-
+ings of the IEEE conference on computer vision and pattern
+recognition, pages 3213–3223, 2016. 2
+[6] Yuepeng Cui, Hao Xu, Jianqing Wu, Yuan Sun, and Junxuan
+Zhao. Automatic vehicle tracking with roadside lidar data
+for the connected-vehicles system. IEEE Intelligent Systems,
+34(3):44–51, 2019. 3
+[7] Anton Konushin Danila Rukhovich,
+Anna Vorontsova.
+Imvoxelnet: Image to voxels projection for monocular and
+multi-view general-purpose 3d object detection.
+arXiv
+preprint arXiv:2106.01178, 2021. 1, 3, 6, 8
+[8] Mark Everingham, Luc Van Gool, Christopher KI Williams,
+John Winn, and Andrew Zisserman. The pascal visual object
+classes (voc) challenge. International journal of computer
+vision, 88(2):303–338, 2010. 5
+[9] Hongbo Gao, Bo Cheng, Jianqiang Wang, Keqiang Li, Jian-
+hui Zhao, and Deyi Li.
+Object classification using cnn-
+based fusion of vision and lidar in autonomous vehicle en-
+vironment.
+IEEE Transactions on Industrial Informatics,
+14(9):4224–4231, 2018. 3
+[10] Andreas Geiger, Philip Lenz, and Raquel Urtasun. Are we
+ready for autonomous driving? the kitti vision benchmark
+suite. In 2012 IEEE Conference on Computer Vision and
+Pattern Recognition (CVPR), pages 3354–3361, 2012. 2, 8
+[11] Mohammad-Hashem Haghbayan,
+Fahimeh Farahnakian,
+Jonne Poikonen, Markus Laurinen, Paavo Nevalainen, Juha
+Plosila, and Jukka Heikkonen. An efficient multi-sensor fu-
+sion approach for object detection in maritime environments.
+In 2018 21st International Conference on Intelligent Trans-
+portation Systems (ITSC), pages 2163–2170, 2018. 3
+[12] Xinyu Huang, Peng Wang, Xinjing Cheng, Dingfu Zhou,
+Qichuan Geng, and Ruigang Yang. The apolloscape open
+dataset for autonomous driving and its application.
+IEEE
+transactions on pattern analysis and machine intelligence,
+42(10):2702–2719, 2019. 2
+[13] Robert Krajewski, Julian Bock, Laurent Kloeker, and Lutz
+Eckstein.
+The highd dataset: A drone dataset of natural-
+istic vehicle trajectories on german highways for validation
+of highly automated driving systems.
+In 2018 21st Inter-
+national Conference on Intelligent Transportation Systems
+(ITSC), pages 2118–2125. IEEE, 2018. 2
+[14] Harold W. Kuhn. The hungarian method for the assignment
+problem. In 50 Years of Integer Programming, 2010. 6
+[15] Alex H. Lang, Sourabh Vora, Holger Caesar, Lubing Zhou,
+Jiong Yang, and Oscar Beijbom. Pointpillars: Fast encoders
+for object detection from point clouds. Proceedings of the
+IEEE Conference on Computer Vision and Pattern Recogni-
+tion, 2019. 1, 3, 6, 7, 8
+[16] Yiming Li, Shunli Ren, Pengxiang Wu, Siheng Chen, Chen
+Feng, and Wenjun Zhang.
+Learning distilled collabo-
+ration graph for multi-agent perception.
+arXiv preprint
+arXiv:2111.00643, 2021. 2
+[17] Jiageng Mao, Minzhe Niu, Chenhan Jiang, Hanxue Liang,
+Jingheng Chen, Xiaodan Liang, Yamin Li, Chaoqiang Ye,
+Wei Zhang, Zhenguo Li, et al.
+One million scenes
+for autonomous driving:
+Once dataset.
+arXiv preprint
+arXiv:2106.11037, 2021. 2
+[18] Cody Reading, Ali Harakeh, Julia Chae, and Steven L
+Waslander.
+Categorical depth distribution network for
+monocular 3d object detection.
+In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pages 8555–8564, 2021. 1
+[19] German Ros, Laura Sellart, Joanna Materzynska, David
+Vazquez, and Antonio M Lopez. The synthia dataset: A large
+collection of synthetic images for semantic segmentation of
+urban scenes.
+In Proceedings of the IEEE conference on
+computer vision and pattern recognition, pages 3234–3243,
+2016. 2
+[20] Shaoshuai Shi, Xiaogang Wang, and Hongsheng Li. Pointr-
+cnn: 3d object proposal generation and detection from point
+cloud. In Proceedings of the IEEE/CVF conference on com-
+puter vision and pattern recognition, pages 770–779, 2019.
+1
+[21] Vishwanath A. Sindagi, Yin Zhou, and Oncel Tuzel. Mvx-
+net: Multimodal voxelnet for 3d object detection. In 2019 In-
+ternational Conference on Robotics and Automation (ICRA),
+pages 7276–7282, 2019. 1, 3, 8
+[22] Carlos Renato Storck and F´
+atima Duarte-Figueiredo.
+A
+5g v2x ecosystem providing internet of vehicles. Sensors,
+19(3):550, 2019. 1
+[23] Pei Sun, Henrik Kretzschmar, Xerxes Dotiwalla, Aurelien
+Chouard, Vijaysai Patnaik, Paul Tsui, James Guo, Yin Zhou,
+Yuning Chai, Benjamin Caine, et al. Scalability in perception
+for autonomous driving: Waymo open dataset. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, pages 2446–2454, 2020. 2
+[24] Sourabh Vora, Alex H. Lang, Bassam Helou, and Oscar Bei-
+jbom. Pointpainting: Sequential fusion for 3d object detec-
+tion. In 2020 IEEE Conference on Computer Vision and Pat-
+tern Recognition (CVPR), pages 4603–4611, 2020. 1, 3
+[25] Tsun-Hsuan Wang, Sivabalan Manivasagam, Ming Liang,
+Binh Yang, Wenyuan Zeng, James Tu, and Raquel Urtasun.
+V2vnet: Vehicle-to-vehicle communication for joint percep-
+tion and prediction. In ECCV, 2020. 3
+[26] Zhangjing Wang, Yu Wu, and Qingqing Niu. Multi-sensor
+fusion in automated driving:
+A survey.
+IEEE Access,
+8:2847–2868, 2020. 3
+21369
+
+
+[27] Yan Yan, Yuxing Mao, and Bo Li. Second: Sparsely embed-
+ded convolutional detection. Sensors, 2018. 3, 8
+[28] Zetong Yang, Yanan Sun, Shu Liu, and Jiaya Jia.
+3dssd:
+Point-based 3d single stage object detector.
+Proceedings
+of the IEEE Conference on Computer Vision and Pattern
+Recognition, 2020. 1, 3
+[29] Xiaoqing Ye, Mao Shu, Hanyu Li, Yifeng Shi, Yingying
+Li, Guangjie Wang, Xiao Tan, and Errui Ding.
+Rope3d:
+The roadside perception dataset for autonomous driving and
+monocular 3d object detection.
+In IEEE/CVF Conference
+on Computer Vision and Pattern Recognition (CVPR), June
+2022. 3
+[30] Fisher Yu, Haofeng Chen, Xin Wang, Wenqi Xian, Yingying
+Chen, Fangchen Liu, Vashisht Madhavan, and Trevor Dar-
+rell. Bdd100k: A diverse driving dataset for heterogeneous
+multitask learning. In Proceedings of the IEEE/CVF con-
+ference on computer vision and pattern recognition, pages
+2636–2645, 2020. 2
+[31] Junxuan Zhao, Hao Xu, Hongchao Liu, Jianqing Wu, Yichen
+Zheng, and Dayong Wu. Detection and tracking of pedestri-
+ans and vehicles using roadside lidar sensors. Transportation
+Research Part C: Emerging Technologies, 100:68–87, 2019.
+3
+21370
+
+
+10914
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 7, NO. 4, OCTOBER 2022
+V2X-Sim: Multi-Agent Collaborative Perception
+Dataset and Benchmark for Autonomous Driving
+Yiming Li
+, Student Member, IEEE, Dekun Ma, Ziyan An, Zixun Wang, Student Member, IEEE, Yiqi Zhong,
+Siheng Chen
+, and Chen Feng
+, Member, IEEE
+Abstract—Vehicle-to-everything (V2X) communication tech-
+niques enable the collaboration between vehicles and many other
+entities in the neighboring environment, which could fundamen-
+tally improve the perception system for autonomous driving. How-
+ever, the lack of a public dataset signiﬁcantly restricts the re-
+search progress of collaborative perception. To ﬁll this gap, we
+present V2X-Sim, a comprehensive simulated multi-agent percep-
+tion dataset for V2X-aided autonomous driving. V2X-Sim pro-
+vides: (1) multi-agent sensor recordings from the road-side unit
+(RSU) and multiple vehicles that enable collaborative perception,
+(2) multi-modality sensor streams that facilitate multi-modality
+perception, and (3) diverse ground truths that support various
+perception tasks. Meanwhile, we build an open-source testbed and
+provide a benchmark for the state-of-the-art collaborative percep-
+tion algorithms on three tasks, including detection, tracking and
+segmentation. V2X-Sim seeks to stimulate collaborative perception
+research for autonomous driving before realistic datasets become
+widely available.
+Index Terms—Deep learning for visual perception, multi-robot
+systems, data sets for robotic vision.
+I. INTRODUCTION
+P
+ERCEPTION is a fundamental capability for autonomous
+vehicles, which allows them to represent, identify, and
+interpret sensory input for understanding the complex surround-
+ings. In literature, single-vehicle perception has been intensively
+studied thanks to the well-established driving datasets [1]–[3],
+and researchers have proposed various algorithms to deal with
+different downstream tasks [4]–[6].
+Despite recent advances in single-vehicle perception, the
+individual viewpoint often results in degraded perception in
+Manuscript received 24 February 2022; accepted 30 June 2022. Date of
+publication 21 July 2022; date of current version 23 August 2022. This letter
+was recommended for publication by Associate Editor I. Gilitschenski and
+Editor C. C. Lerma upon evaluation of the reviewers’ comments. This work
+was supported in part by the NSF CPS Program under Grant CMMI-1932187
+and CNS-2121391, in part by the National Natural Science Foundation of China
+under Grant 62171276, in part by the Science and Technology Commission of
+Shanghai Municipal under Grant 21511100900, and in part by CALT under
+Grant 2021-01. (Corresponding authors: Siheng Chen; Chen Feng.)
+Yiming Li, Dekun Ma, Ziyan An, Zixun Wang, and Chen Feng are with
+the New York University, Brooklyn, NY 11201 USA (e-mail: yimingli9702
+@gmail.com; dm4524@nyu.edu; annieziyan1222@gmail.com; craddywang@
+gmail.com; cfeng@nyu.edu).
+Yiqi Zhong is with the University of Southern California, Los Angeles 91103
+USA (e-mail: yiqizhon@usc.edu).
+Siheng Chen is with the Cooperative Medianet Innovation Center, Shanghai
+Jiao Tong University and Shanghai AI Laboratory, Shanghai 200240, China
+(e-mail: sihengc@sjtu.edu.cn).
+Digital Object Identiﬁer 10.1109/LRA.2022.3192802
+Our dataset and code are available at https://ai4ce.github.io/V2X-Sim/
+Fig. 1.
+(a) Intersection for vehicle-to-everything (V2X) communication. (b)
+Workﬂow of multi-agent collaborative perception with intermediate-/feature-
+based strategy. We benchmark collaborative object detection, multi-object track-
+ing, and semantic segmentation in the bird’s eye view (BEV).
+long-range or occluded areas. A promising solution to this prob-
+lem is through vehicle-to-everything (V2X) [7], a cutting-edge
+communication technology that enables dialogue between a
+vehicle and other entities, including vehicle-to-vehicle (V2V)
+and vehicle-to-infrastructure (V2I). With the aid of V2X com-
+munication, we are able to upgrade single-vehicle perception
+to collaborative perception, which introduces more viewpoints
+to help autonomous vehicles see further, better and even see
+through occlusion, thereby fundamentally enhancing the capa-
+bility of perception.
+Collaborative perception naturally draws on communica-
+tion and perception. Its development requires expertise from
+both communities. Recently, the communication community
+has made enormous efforts to promote such a study [8]–[10];
+however, only a few works have been proposed from the per-
+spective of perception [11]–[15]. One major reason for this is
+the lack of well-designed and organized collaborative perception
+datasets. Due to the immaturity of V2X and the cost of simul-
+taneously operating multiple autonomous vehicles, it is very
+expensive and laborious to build such a real dataset for research
+communities. Therefore, we synthesize a comprehensive and
+publicly available dataset, named as V2X-Sim, to advance the
+study of collaborative perception for V2X-communication-aided
+autonomous driving.
+To generate V2X-Sim, we employ SUMO [16], a micro-trafﬁc
+simulation, to produce numerically-realistic trafﬁc ﬂow, and
+CARLA [17], a widely-used open-source simulator for au-
+tonomous driving research, to retrieve well-synchronized sensor
+streams from multiple vehicles as well as the road-side unit
+(RSU). Meanwhile, multi-modality sensor streams of different
+entities are recorded to enable cross-modality perception. In
+addition, diverse annotations including bounding boxes, vehicle
+2377-3766 © 2022 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission.
+See https://www.ieee.org/publications/rights/index.html for more information.
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+LI et al.: V2X-SIM: MULTI-AGENT COLLABORATIVE PERCEPTION DATASET AND BENCHMARK FOR AUTONOMOUS DRIVING
+10915
+TABLE I
+COMPARISON OF COLLABORATIVE PERCEPTION DATASETS FOR AUTONOMOUS
+DRIVING. THERE ARE NO PUBLIC DATASETS WHICH SUPPORT BOTH V2V AND
+V2I RESEARCH: MULTI-AGENT DATA ARE EITHER GENERATED BY
+SIMULATORS [12], [20] OR CREATED BY SELECTING CONSECUTIVE FRAMES
+FROM SINGLE-AGENT REAL DATASETS [11], [21], [22]. SEVERAL WORKS
+COLLECT DATA FROM MULTIPLE INFRASTRUCTURE SENSORS: [23] IN
+SIMULATION, [24], [25] IN REAL WORLD. OUR DATASET IS THE FIRST PUBLIC
+MULTI-AGENT MULTI-MODALITY DATASET WHICH SUPPORTS DIFFERENT
+COLLABORATIVE PERCEPTION TASKS.
+trajectories, and semantic labels are provided to facilitate various
+downstream tasks. To better serve multi-agent, multi-modality,
+and multi-task perception research for autonomous driving,
+we further provide a benchmark for three crucial perception
+tasks (collaborative detection, tracking, and segmentation) on
+the proposed dataset using the state-of-the-art collaboration
+strategies [12], [13], [18], [19]. In summary, our contributions
+are two-fold:
+r We propose V2X-Sim, a comprehensive V2X perception
+dataset for autonomous driving, to support multi-agent
+multi-modality multi-task perception research.
+r We create an open-source testbed for collaborative percep-
+tion methods, and provide a benchmark on three tasks to
+encourage more research in this ﬁeld.
+II. RELATED WORK
+Autonomous driving dataset: Since the pioneering dataset
+KITTI [2] was released, the autonomous driving community has
+beentryingtoincreasethedatasetcomprehensivenessintermsof
+driving scenarios, sensor modalities, and data annotations. Re-
+garding driving scenarios, current datasets cover crowded urban
+scenes [29], adverse weather conditions [30], night scenes [31],
+and multiple cities [1] to enrich the data distribution. As for
+sensor modalities, nuScenes [1] collects data with Radar, RGB
+cameras, and LiDAR in a 360◦viewpoint; WoodScape [32]
+captures data with ﬁsheye cameras. Regarding data annotations,
+semantic labels in both images [33]–[36] and point clouds [37],
+[38] are provided to enable semantic segmentation; 2D/3D
+box trajectories are offered [39], [40] to facilitate tracking and
+prediction. In summary, most real datasets emphasize the data
+comprehensiveness in single-vehicle situations, but ignore the
+multi-vehicle scenarios.
+V2X system and dataset: By sharing information with other
+vehicles or the RSU, V2X mitigates the shortcomings of single-
+vehicle perception and planning such as the limited sensing
+range and frequent occlusion [7]. Previous research [41] has
+developed an enhanced cooperative microscopic trafﬁc model
+in V2X scenarios, and studied the effect of V2X in trafﬁc
+disturbance scenarios. [42] proposes a multi-modal cooperative
+perception system that provides see-through, lifted-seat, satellite
+and all-around views to drivers. More recently, COOPER [11]
+investigates raw-data level collaborative perception to improve
+the detection capability for autonomous driving. V2VNet [12]
+proposes intermediate-feature level collaboration to promote the
+vehicle’s perception and prediction capability. Several works
+use multiple infrastructure sensors to jointly perceive the en-
+vironment and employ output-level collaboration with vehicle-
+to-infrastructure communication [23], [24]. As for the datasets,
+[11], [21], [22] simulate the V2V scenarios with different frames
+from KITTI [2]. Yet, these datasets are unrealistic multi-agent
+datasets for the measurements are not captured by different
+viewpoints. Some other works use a platoon strategy for data
+capture [43], [44], but they are biased because the observations
+were highly correlated with each other. The most relevant work
+is V2V-Sim [12], which is based on a high-quality LiDAR sim-
+ulator [26]. Unfortunately, V2V-Sim does not include the V2I
+scenario and is not publicly available. Moreover, OPV2V [20]
+and CODD [28] only support the detection task in the V2V
+scenario. Existing collaborative perception datasets are summa-
+rized in Table I: V2X-Sim1 is currently the most comprehensive
+one with multi-agent multi-modality sensory streams in both
+V2V and V2I scenarios, and can support various downstream
+tasks such as multi-agent collaborative detection, tracking, and
+semantic segmentation.
+III. V2X-SIM DATASET
+V2X-Sim could enable more research on the collaboration
+strategy among vehicles to achieve a more robust perception.
+This could fundamentally beneﬁt autonomous driving, intelli-
+gent transportation systems, smart cities, etc..
+A. Sensor Suite on Vehicles and RSU
+Multi-modality data is essential for robust perception. To
+ensure the comprehensiveness of our dataset, we equip each
+vehicle with a sensor suite composed of RGB cameras, LiDAR,
+GPS, IMU, and RSU with RGB cameras and LiDAR.
+Sensor conﬁguration: On both the vehicle and RSU, the
+camera and LiDAR cover 360◦horizontally to enable full-view
+perception. Speciﬁcally, each vehicle carries six RGB cameras
+following the nuScenes conﬁguration [1]; the RSU is equipped
+with four RGB cameras toward four directions at the cross-
+road. We employ depth camera, semantic segmentation camera,
+semantic LiDAR, and BEV semantic segmentation camera in
+CARLA to obtain the corresponding ground-truth for each RGB
+camera. Note that the BEV semantic segmentation camera is
+based on orthogonal projection while the ego-vehicle seman-
+tic segmentation camera uses perspective projection. Table II
+summarizes the detailed sensor speciﬁcation.
+Sensor layout and coordinate system: The overall sensor
+layout and coordinate system is shown in Fig. 2. The BEV
+semantic camera shares the same x, y position with LiDAR yet
+is placed higher to ensure a certain size of ﬁeld of view. Note that
+we invert the y-axis in CARLA and use a right-hand coordinate
+system following nuScenes [1].
+Diverse annotations: To assist downstream tasks including
+detection, tracking and semantic segmentation, we provide var-
+ious annotations such as 3D bounding boxes, pixel-wise and
+point-wisesemanticlabels.Eachboxisdeﬁnedbythelocationof
+its center in x, y, z coordinates, and its width, length, and height.
+In total, there are 23 categories such as the pedestrian, building,
+ground, etc. In addition, precise depth values are provided for
+depth estimation.
+1This work extends the LiDAR-based V2V data in our previous work [13]
+with more modalities, scenarios and downstream tasks.
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+10916
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 7, NO. 4, OCTOBER 2022
+TABLE II
+SENSOR SUITE OF VEHICLE (V) AND INTERSECTION (I).
+B. CARLA-SUMO Co-Simulation
+WeconsideritarealisticV2Xscenariowhenmultiplevehicles
+with their own routes are simultaneously located in the same
+intersection. Each intersection is also equipped with one RSU
+with sensing capability. Regarding the trafﬁc simulation, there
+are several non-public simulators which can explicitly generate
+data tailored for collaborative perception such as scenes with
+occlusion, and sensor range limitations [45], [46]. Yet in this
+work, we use open-source CARLA-SUMO co-simulation for
+trafﬁc ﬂow simulation and data recording. Vehicles are spawned
+in CARLA via SUMO to roam around in the town with random
+routes. Hundreds of vehicles are spawned in different towns
+(Town03, Town04 and Town05 that have crossroads as well as
+T-junctionsinboththecrowdeddowntownandsuburbhighway).
+We record several log ﬁles in different towns. Afterwards, at
+different junctions, we read out 100 scenes from the log ﬁles.
+Each scene has a 20-second duration, and we choose M(M =
+2, 3, 4, 5) vehicles as well as one RSU in each scene as intelligent
+agents to share information. Example scenarios are shown in
+Fig. 3(a).
+C. Downstream Tasks
+Our dataset not only supports single-agent perception tasks
+such as 3D object detection, tracking, image-/point-cloud-based
+semantic segmentation, depth estimation, but also enables col-
+laborative perception such as collaborative 3D object detection,
+tracking, and collaborative BEV semantic segmentation in ur-
+ban driving scenes. We provide a benchmark for collaborative
+perception algorithms.
+D. Dataset Statistics
+Annotation statistics: We provide statistics on the annotations
+and objects to highlight the inclusiveness and diversity of our
+dataset. In Fig. 3(b) we analyze the size of the cars’ bounding
+boxes within a 70 m range from ego vehicles in each frame. The
+great variation of car sizes indicates that our scenes contain a
+diverse set of car makes and models that well includes most of
+the common real-world vehicles. Fig. 3(c) shows the annotation
+count in each frame for vehicles within 0-30 m, 30-50 m, and
+50-70 m ranges from each ego vehicle. It suggests that our
+dataset features both crowded scenes (up to 100 annotations
+within 50-70 m from the ego vehicle) and less crowded driving
+scenarios (as low as 10 annotations within 30 m from the ego
+vehicle). Fig. 3(d) contains statistics on the number of LiDAR
+points per annotation for single-agent and multi-agent scenarios
+Fig. 2.
+Sensor layout and coordinate systems.
+respectively. The number of total LiDAR points of each object
+annotation increases when there are more than one agents ob-
+serving the same object. Speciﬁcally, for a single agent, there
+are 183.83 points in each annotation on average, but the number
+goes up to 875.59 points per annotation for multiple agents.
+Scene features: We analyze the distance between each two ego
+vehicles for every frame, as shown in Fig. 3(e). An overwhelm-
+ing percentage of the ego vehicles are presented within 20-30
+meters from each other, suggesting they are geographically
+closely connected. The speed of cars within 70 m from ego
+vehicles are shown in Fig. 3(f). Given the fact that our scenes
+are selected near intersections, we notice that a major fraction
+of vehicles are slower than 10 km/h. However, the maximum
+speed is as high as 90+ km/h. Fig. 3(g) shows the percentage of
+annotations observed by a certain number of ego vehicles, up to
+5. Over 60% of the annotations are observed by at least two ego
+vehicles.
+IV. COLLABORATIVE PERCEPTION BENCHMARK
+We benchmark three crucial perception tasks in autonomous
+driving within the collaboration setting: detection, tracking, and
+semantic segmentation. The three tasks have been extensively
+studied since they generate essential perception knowledge for
+autonomous vehicles to make safer decisions. For performance
+evaluation, we follow the same evaluation protocol of the three
+tasksinthesingle-agentscenario,exceptthatweutilizetheinfor-
+mation shared by other agents while the single-agent perception
+do not have access to such information. We report the results in
+two scenarios: (1) V2V only, and (2) V2X (V2V + V2I).
+Dataset format and split: Our V2X-Sim dataset follows the
+same storage format of nuScenes [1], an authoritative multi-
+modality single-agent autonomous driving dataset. nuScenes
+collected real-world single-agent driving data to promote the
+single-agent autonomous driving research; while we simulate
+multi-agent scenarios to facilitate the next-generation V2X-
+aided collaborative perception technology. Each scene in our
+dataset contains a 20 s trafﬁc ﬂow at a certain intersection
+of three CARLA towns, and the multi-modality multi-agent
+sensory streams are recorded at 5 Hz, meaning each scene is
+composed of 100 frames. We generate 100 scenes with a total
+of 10,000 frames, and in each scene, 2-5 vehicles are selected
+as the collaboration agents. We use 8,000/1,000/1,000 frames
+for training/validation/testing respectively, and we ensure that
+there is no overlap in terms of the intersections across train-
+ing/validation/testing set. Each frame has data sampled from
+multiple agents (vehicles and RSU). There are 37,200 samples
+in the training set, 5,000 samples in the validation set, and 5,000
+samples in the test set. The split is shared across tasks.
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+LI et al.: V2X-SIM: MULTI-AGENT COLLABORATIVE PERCEPTION DATASET AND BENCHMARK FOR AUTONOMOUS DRIVING
+10917
+Fig. 3.
+(a) Visualizations of the bird’s eye view point cloud from different scenes. Gray denotes the point cloud captured by the RSU LiDAR. Each color (except
+for gray) represents a vehicle, and the orange boxes denote the vehicles in the scene. (b) Statistics for car bounding box sizes. (c) Counts for annotations per
+keyframe where the annotated vehicles are presented within 0-30 m, 30-50 m, and 50-70 m of the ego vehicles. (d) Counts for LiDAR points per annotation.
+(e) Statistics of the distance between every two ego vehicles for all frames. (f) Speed of cars located within 70 m from ego vehicles. (g) Percentage of annotated
+vehicles observed by 1-5 ego vehicles.
+Implementation details: Bird’s-eye-view (BEV) is a widely
+used and powerful representation in autonomous driving be-
+cause it can describe the surrounding objects and overall context
+via a compact top-down 2D map [47]. Therefore, BEV-based
+representation is adopted in all three tasks: we use a 3D voxel
+grid to represent the 3D world, employ binary representation,
+and assign each voxel a positive label if the voxel contains
+point cloud data. Since the generated 3D voxel grid can be
+considered as a pseudo-image whose height dimension is the
+channel dimension, we can perform the efﬁcient 2D convolution
+instead of the heavy 3D convolution. Speciﬁcally, we crop the
+points located in the region of [−32, 32] × [−32, 32] × [−3, 2]
+meters for vehicles deﬁned in the ego-vehicle Euclidean coor-
+dinate and [−32, 32] × [−32, 32] × [−8, −3] meters for RSU.
+The width and length of each voxel are 0.25 m, and the height
+is 0.4 m, meaning the generated BEV-based pseudo-image has
+a dimension of 256 × 256 × 13 (W × L × H). Note that the
+models in all the tasks consume the 3D BEV map and generate
+perception results in 2D BEV.
+Benchmark models: We aim to benchmark collaborative
+perception strategies rather than the well-studied individual
+perception methods. We consider early/intermediate/late/no
+collaboration models for the benchmark. The intermediate mod-
+els, including DiscoNet [13], V2VNet [12], When2com [18],
+and Who2com [19], are based on the communication of the
+intermediate features of the neural network. The methods in
+our benchmark are as follows:
+r Lower-bound: The single-agent perception model without
+collaboration which processes a single-view point cloud is
+considered as the lower-bound.
+r Co-lower-bound: Collaborative lower-bound fuses the out-
+put from different single-agent perception models.
+r Upper-bound: The early collaboration model which trans-
+mits raw point cloud data is the upper-bound.
+r DiscoNet [13]: DiscoNet uses a directed collaboration
+graph with matrix-valued edge weight to adaptively high-
+light the informative spatial regions and reject the noisy
+regions of the messages sent by the partners. After adaptive
+message fusion, the updated features will be transmitted to
+the output head for perception.
+r V2VNet [12]: V2VNet uses a pose-aware graph neural
+network to propagate agents’ information, and employs
+a convolutional gated recurrent unit based module to ag-
+gregate other agents’ information. After several rounds of
+neural message passing, the updated features are fed into
+the output head to generate perception results.
+r When2com [18]: When2com employs attention-based
+mechanism for communication group construction: the
+partners with satisfactory correlation scores will be se-
+lected as the collaborators. After the attention-score-based
+weighted fusion, the updated features will be fed into
+the output head for perceptions.
+The model with pose
+information is marked by ∗.
+r Who2com [19]: Who2com shares a similar idea with
+When2com, yet it uses handshake mechanism to select the
+collaborator: the partner with the highest score will be se-
+lected as the collaborator. The model with pose information
+is marked by ∗.
+We implement a 3D perception pipeline that can be integrated
+with all of the communication methods mentioned above. Since
+the source codes of V2VNet is not publicly available, we re-
+implement the V2VNet in PyTorch according to its pseudo-
+code. For when2com/who2com, we borrow their communica-
+tion modules from its ofﬁcial code. All of the intermediate
+collaboration modules use the same architecture and conduct
+collaboration at the same intermediate feature layer. Moreover,
+all of the methods are trained with the same setting to ensure
+that the performance gain comes from the collaboration instead
+of irrelevant techniques.
+A. Collaborative Object Detection in BEV
+Problem deﬁnition: As the most crucial perception task in
+autonomous driving, 3D object detection aims to recognize and
+localize the objects in 3D scenes given a single frame, with the
+following tracking, prediction and planning modules all heavily
+relying on the detections. The models consume voxelized point
+cloud and output BEV bounding boxes.
+Backbone and evaluation: We use a classic anchor-based
+detector composed of a convolutional encoder, a convolutional
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+10918
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 7, NO. 4, OCTOBER 2022
+Fig. 4.
+Visualizations of BEV detection on V2X-Sim. Red and green boxes are the predictions and ground-truths respectively.
+TABLE III
+QUANTITATIVE RESULTS OF COLLABORATIVE BEV DETECTION ON V2X-SIM
+RSU Denotes the Road-Side Unit. AP Denotes the Average Precision.
+Δ is the Absolute Gain in AP Introduced by RSU
+decoder, and an output header for classiﬁcation and regres-
+sion [48]. Regarding the loss function, we use the binary cross-
+entropy loss to supervise the box classiﬁcation and the smooth
+L1 loss to supervise the box regression, following [48]. We
+employ the generic BEV detection evaluation metric: Average
+Precision (AP) at Intersection-over-Union (IoU) thresholds of
+0.5 and 0.7. We target the vehicle detection and report the results
+on the test set.
+Quantitative results: Table III demonstrates the quantitative
+comparisons on AP (@IoU = 0.5/0.7). We ﬁnd that: (1) the
+upper-boundperformsbestamongstallmethods,anditimproves
+lower-bound signiﬁcantly by 41.1% and 51.6% in terms of
+AP@0.5 and AP@0.7 in the scenario of V2V only, validating
+the necessity of collaboration; (2) V2V and V2I jointly can
+generally improve the perception over V2V only with more
+viewpoints, e.g., adding V2I can bring an improvement of 9.4%
+for upper-bound, and 5.5% for V2VNet in terms of AP@0.5;
+(3) among the intermediate models, DiscoNet achieves the
+best performance via the well-designed distilled collaboration
+graph, V2VNet achieves the second best performance via the
+powerful neural message passing, and When2com/Who2com
+only achieve comparable performance with lower-bound since
+the attention-mechanism is not suitable in point-cloud-based
+collaborative perception: the agents usually need complemen-
+tary information rather than a highly similar one; (4) the
+late collaboration model (co-lower-bound) hurts the detection
+performance because of introducing extra false positives from
+other vehicles.
+Qualitative results: The qualitative results are shown in Fig. 4.
+We see that the collaboration can fundamentally mitigate the
+problems of long-range perception and occlusion.
+B. Collaborative Multi-Object Tracking in BEV
+Problem deﬁnition: Different from detection, multi-object
+tracking requires the generation of temporally consistent per-
+ception results. Multi-object tracking in BEV is to use bounding
+boxes, object categories, and object identities to track different
+objects within a temporal sequence.
+Evaluation metrics: We mainly utilize HOTA (Higher Order
+Tracking Accuracy) [49] to evaluate our BEV tracking perfor-
+mance. HOTA can evaluate detection, association, and local-
+ization performance via a single uniﬁed metric. In addition, the
+classic multi-object tracking accuracy (MOTA) and multi-object
+tracking precision (MOTP) [50] are also employed. MOTA can
+measure detection errors and association errors. MOTP solely
+measures localization accuracy.
+Baseline tracker: We implement SORT [51] as our baseline
+tracker. Given the detection results, SORT will combine the
+Kalman Filter and Hungarian algorithm to achieve an accurate
+and efﬁcient tracking performance.
+Quantitative results: Quantitative comparisons of BEV track-
+ing are shown in Table IV. Similar to BEV detection, upper-
+bound achieves the best performance in terms of MOTA and
+HOTA. Meanwhile, adding V2I can improve MOTA largely yet
+cannot help too much in MOTP. Co-lower-bound shows good
+performanceinlocalizationaccuracy(MOTP).Amoreadvanced
+tracker is required to exploit the collaboration for ﬁlling the
+performance gap.
+C. Collaborative Semantic Segmentation in BEV
+Problem deﬁnition: We aim to conduct semantic segmentation
+in BEV using only geometry point cloud. In the collabora-
+tive perception scenarios, there are measurements collected by
+multiple agents with distinct viewpoints. Therefore, there are
+more information in the scene, facilitating the semantic scene
+understanding.
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+LI et al.: V2X-SIM: MULTI-AGENT COLLABORATIVE PERCEPTION DATASET AND BENCHMARK FOR AUTONOMOUS DRIVING
+10919
+Fig. 5.
+Visualizations of collaborative BEV semantic segmentation.
+TABLE IV
+QUANTITATIVE RESULTS OF BEV TRACKING ON V2X-SIM. MOTA: MULTIPLE OBJECT TRACKING ACCURACY. MOTP: MULTIPLE OBJECT TRACKING PRECISION.
+HOTA: HIGHER ORDER TRACKING ACCURACY. DETA: DETECTION ACCURACY. ASSA: ASSOCIATION ACCURACY. DETRE: DETECTION RECALL. DETPR:
+DETECTION PRECISION. ASSRE: ASSOCIATION RECALL. ASSPR: ASSOCIATION PRECISION. LOCA: LOCALIZATION ACCURACY. THE NUMBER TO THE LEFT OF ()
+DENOTES THE PERFORMANCE IN V2V SOLELY. THE NUMBER IN () REPRESENTS THE PERFORMANCE GAIN BY ADDING V2I
+TABLE V
+QUANTITATIVE RESULTS OF BEV SEGMENTATION ON V2X-SIM. THE NUMBER TO THE LEFT OF () DENOTES THE PERFORMANCE IN V2V SOLELY
+The Number in () Represents the Performance Gain by Adding V2I
+Baseline segmentation method and evaluation metrics: We
+follow the backbone architecture as well as the loss function
+of U-Net [52] in our baseline method. The input is a BEV-
+based voxelized point cloud, and the output is BEV semantic
+segmentation. We label and predict seven categories as listed
+in Table V, while the remaining is unlabeled. In our bench-
+mark, we evaluate the segmentation performance using mean
+Intersection-over-Union (mIoU).
+Quantitative results: As illustrated in Table V, we ﬁnd that:
+(1) V2VNet, DiscoNet, and upper-bound achieve comparable
+performance in terms of terrain and road categories; (2) the
+attention-based methods (i.e., when2com, who2com) performs
+worse because the attention-based mechanisms try to ﬁnd the
+collaboration partners with high correlation scores. Whereas,
+in 3D perception, the collaborators with complementary in-
+formation should be prioritized during the collaboration. Such
+nonalignment can make it quite hard for the attention model
+to learn; (3) there is a large gap between lower-bound and
+upper-boundregardingthetwosafety-critical categories: vehicle
+(45.93% v.s. 64.09%) and pedestrian (20.59% v.s. 31.54%),
+proving the values of collaboration; (4) employing V2V and
+V2I jointly can generally enhance the vehicle segmentation over
+using V2V solely; (5) co-lower-bound performs better than the
+lower-bound.
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+10920
+IEEE ROBOTICS AND AUTOMATION LETTERS, VOL. 7, NO. 4, OCTOBER 2022
+Fig. 6.
+Experimental results of a robustness test conducted under various magnitudes of pose noise. AUG. means augmentation which adds pose noise during
+training.
+Fig. 7.
+Experimental results of a bandwidth test conducted under various compression ratios.
+Qualitative results: Fig. 5 shows the semantics segmentation
+results. The results of upper-bound restore the semantic informa-
+tion with rich point cloud data. Intermediate-based collaboration
+strategies V2VNet and DiscoNet can achieve satisfactory per-
+formance yet When2com and Who2com hurt the performance
+compared to the lower-bound.
+D. Discussions on Pose Noise and Compression Ratio
+We further examine the robustness of different intermediate
+models against realistic pose noise (Gaussian noise with a mean
+of 0.05 m-0.25 m and a standard deviation of 0.02 cm), as
+shown in Fig. 6. We can see that the models perform comparably
+with or without pose noise in the training phase, and all the
+intermediate methods have shown stable performance against
+the pose noise. The reason is that the intermediate feature map
+has a relatively low spatial resolution (each grid in the feature
+map denotes a coverage of 2m × 2m), thus is not vulnerable
+to noisy pose. Meanwhile, we employ an 1 × 1 autoencoder to
+further compress the feature channel of the transmitted feature
+map. We test the models with different compression ratios, and
+we found that the jointly learned 1 × 1 autoencoder can even
+improve the performance a little bit, and most intermediate
+models achieve comparable performance at different levels of
+compression, as shown in Fig. 7.
+V. CONCLUSION
+We propose V2X-Sim dataset based on CARLA-SUMO
+co-simulation, in order to enable multi-agent collaborative per-
+ception research in autonomous driving. Our dataset provides
+multi-agent multi-modality sensor streams captured by the ve-
+hicles and road-side unit (RSU) in realistic trafﬁc ﬂows. Diverse
+annotations are provided to support a variety of 3D perception
+tasks. In addition, we benchmark several state-of-the-art col-
+laborative perception methods in collaborative BEV detection,
+tracking, and semantic segmentation tasks. Future works include
+the simulation of latency issues as well as the development of
+novel evaluation metrics in collaborative perception tasks. We
+believe our work can inspire many relevant research areas in-
+cluding but not limited to autonomous driving, computer vision,
+multi-robot system, communication engineering, and machine
+learning.
+ACKNOWLEDGMENT
+Theauthorswouldliketothankanonymousreviewersfortheir
+helpful suggestions, and NYU high performance computing
+(HPC) for the support.
+REFERENCES
+[1] H. Caesar et al., “NuScenes: A multimodal dataset for autonomous driv-
+ing,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit., 2020, pp. 11618–
+11628.
+[2] A. Geiger, P. Lenz, and R. Urtasun, “Are we ready for autonomous driving?
+the KITTI vision benchmark suite,” in Proc. IEEE Conf. Comput. Vis.
+Pattern Recognit., 2012, pp. 3354–3361.
+[3] P. Sun et al., “Scalability in perception for autonomous driving: Waymo
+open dataset,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit., 2020,
+pp. 2443–2451.
+[4] E. Arnold, O. Y. Al-Jarrah, M. Dianati, S. Fallah, D. Oxtoby, and A.
+Mouzakitis, “A survey on 3D object detection methods for autonomous
+driving applications,” IEEE Trans. Intell. Transp. Syst., vol. 20, no. 10,
+pp. 3782–3795, Oct. 2019.
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply. 
+
+
+LI et al.: V2X-SIM: MULTI-AGENT COLLABORATIVE PERCEPTION DATASET AND BENCHMARK FOR AUTONOMOUS DRIVING
+10921
+[5] S. M. Marvasti-Zadeh, L. Cheng, H. Ghanei-Yakhdan, and S. Kasaei,
+“Deep learning for visual tracking: A comprehensive survey,” IEEE Trans.
+Intell. Transp. Syst., vol. 23, no. 5, pp. 3943–3968, May 2022.
+[6] S. Minaee, Y. Boykov, F. Porikli, A. Plaza, N. Kehtarnavaz, and D.
+Terzopoulos, “Image segmentation using deep learning: A survey,” IEEE
+Trans.PatternAnal.Mach.Intelli.,vol.44,no.7,pp. 3523–3542,Jul.2022.
+[7] Z. MacHardy, A. Khan, K. Obana, and S. Iwashina, “V2X access technolo-
+gies: Regulation, research, and remaining challenges,” IEEE Commun.
+Surv. Tut., vol. 20, no. 3, pp. 1858–1877, Jul.–Sep. 2018.
+[8] M. Muhammad and G. A. Safdar, “Survey on existing authentication
+issues for cellular-assisted V2X communication,” Veh. Commun., vol. 12,
+pp. 50–65, 2018.
+[9] M. Hasan, S. Mohan, T. Shimizu, and H. Lu, “Securing vehicle-to-
+everything (V2X) communication platforms,” IEEE Trans. Intell. Veh.,
+vol. 5, no. 4, pp. 693–713, Dec. 2020.
+[10] V. Mannoni, V. Berg, S. Sesia, and E. Perraud, “A comparison of the V2X
+communication systems: Its-g5 and C-V2X,” in Proc. IEEE 89th Veh.
+Technol. Conf., 2019, pp. 1–5.
+[11] Q. Chen, S. Tang, Q. Yang, and S. Fu, “Cooper: Cooperative perception
+for connected autonomous vehicles based on 3D point clouds,” in Proc.
+IEEE 39th Int. Conf. Distrib. Comput. Syst., 2019, pp. 514–524.
+[12] T.-H. Wang et al., “V2VNet: Vehicle-to-vehicle communication for joint
+perception and prediction,” in Proc. Eur. Conf. Comput. Vis., 2020,
+pp. 605–621.
+[13] Y. Li, S. Ren, P. Wu, S. Chen, C. Feng, and W. Zhang, “Learning dis-
+tilled collaboration graph for multi-agent perception,” in Proc. Neural Inf.
+Process. Syst., 2021, pp. 29541–29552.
+[14] Y. Yuan and M. Sester, “Comap: A synthetic dataset for collective multi-
+agent perception of autonomous driving,” Int. Arch. Photogrammetry,
+Remote Sens. Spatial Inf. Sci., vol. 43, pp. 255–263, 2021.
+[15] Y. Yuan, H. Cheng, and M. Sester, “Keypoints-based deep feature fusion
+for cooperative vehicle detection of autonomous driving,” IEEE Robot.
+Automat. Lett., vol. 7, no. 2, pp. 3054–3061, Apr. 2022.
+[16] D. Krajzewicz, J. Erdmann, M. Behrisch, and L. Bieker, “Recent devel-
+opment and applications of SUMO-simulation of urban mobility,” Int. J.
+Adv. Syst. Meas., vol. 5, no. 3/4, pp. 128–138, 2012.
+[17] A. Dosovitskiy, G. Ros, F. Codevilla, A. Lopez, and V. Koltun, “CARLA:
+An open urban driving simulator,” in Proc. 1st Annu. Conf. Robot Learn.,
+2017, pp. 1–16.
+[18] Y.-C. Liu, J. Tian, N. Glaser, and Z. Kira, “When2com: Multi-agent
+perception via communication graph grouping,” in Proc. IEEE Conf.
+Comput. Vis. Pattern Recognit., 2020, pp. 4105–4114.
+[19] Y.-C. Liu, J. Tian, C.-Y. Ma, N. Glaser, C.-W. Kuo, and Z. Kira,
+“Who2com: Collaborative perception via learnable handshake commu-
+nication,” in Proc. IEEE Int. Conf. Robot. Automat., 2020, pp. 6876–6883.
+[20] R. Xu, H. Xiang, X. Xia, X. Han, J. Liu, and J. Ma, “OPV2V: An open
+benchmark dataset and fusion pipeline for perception with vehicle-to-
+vehicle communication,” in Proc. IEEE Int. Conf. Robot. Automat., 2022,
+pp. 2583–2589.
+[21] Z. Xiao, Z. Mo, K. Jiang, and D. Yang, “Multimedia fusion at semantic
+level in vehicle cooperactive perception,” in Proc. IEEE Int. Conf. Multi-
+media Expo Workshops, 2018, pp. 1–6.
+[22] Y. Maalej, S. Sorour, A. Abdel-Rahim, and M. Guizani, “Vanets meet
+autonomous vehicles: A multimodal 3D environment learning approach,”
+in Proc. IEEE Glob. Commun. Conf., 2017, pp. 1–6.
+[23] E. Arnold, M. Dianati, R. de Temple, and S. Fallah, “Cooperative per-
+ception for 3D object detection in driving scenarios using infrastructure
+sensors,” IEEE Trans. Intell. Transp. Syst., vol. 23, no. 3, pp. 1852–1864,
+Mar. 2022.
+[24] M. Howe, I. Reid, and J. Mackenzie, “Weakly supervised training of
+monocular 3D object detectors using wide baseline multi-view trafﬁc
+camera data,” in Proc. Brit. Mach.Vis., 2021, p. 394.
+[25] H. Yu et al., “DAIR-V2X: A large-scale dataset for vehicle-infrastructure
+cooperative 3D object detection,” in Proc. IEEE/CVF Conf. Comput. Vis.
+Pattern Recognit., 2022, pp. 21361–21370.
+[26] S. Manivasagam et al., “LiDArsim: Realistic LiDAR simulation by lever-
+aging the real world,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit.,
+2020, pp. 11164–11173.
+[27] R. Xu, Y. Guo, X. Han, X. Xia, H. Xiang, and J. Ma, “OpenCDA: An open
+cooperative driving automation framework integrated with co-simulation,”
+in Proc. IEEE Int. Intell. Transp. Syst. Conf., 2021, pp. 1155–1162.
+[28] E. Arnold, S. Mozaffari, and M. Dianati, “Fast and robust registration of
+partially overlapping point clouds,” IEEE Robot. Automat. Lett., vol. 7,
+no. 2, pp. 1502–1509, Apr. 2022.
+[29] A. Patil, S. Malla, H. Gang, and Y.-T. Chen, “The H3D dataset for full-
+surround 3D multi-object detection and tracking in crowded urban scenes,”
+in Proc. Int. Conf. Robot. Automat., 2019, pp. 9552–9557.
+[30] M. Pitropov et al., “Canadian adverse driving conditions dataset,” Int. J.
+Robot. Res., vol. 40, pp. 681–690, 2021.
+[31] Q.-H. Pham et al., “A*3D dataset: Towards autonomous driving in chal-
+lenging environments,” in Proc. IEEE Int. Conf. Robot. Automat., 2020,
+pp. 2267–2273.
+[32] S. Yogamani et al., “Woodscape: A multi-task, multi-camera ﬁsheye
+dataset for autonomous driving,” in Proc. IEEE/CVF Int. Conf. Comput.
+Vis., 2019, pp. 9307–9317.
+[33] X. Huang et al., “The apolloscape dataset for autonomous driving,” in
+Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit. Workshops, 2018,
+pp. 1067–10676.
+[34] M. Cordts et al., “The cityscapes dataset for semantic urban scene un-
+derstanding,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit., 2016,
+pp. 3213–3223.
+[35] G. Ros, L. Sellart, J. Materzynska, D. Vázquez, and A. M. López, “The
+synthia dataset: A large collection of synthetic images for semantic seg-
+mentation of urban scenes,” in Proc. IEEE Conf. Comput. Vis. Pattern
+Recognit., 2016, pp. 3234–3243.
+[36] G. Neuhold, T. Ollmann, S. R. Buló, and P. Kontschieder, “The mapillary
+vistas dataset for semantic understanding of street scenes,” in Proc. IEEE
+Int. Conf. Comput. Vis., 2017, pp. 5000–5009.
+[37] J. Behley et al., “SemanticKITTI: A dataset for semantic scene under-
+standing of LiDAR sequences,” in Proc. IEEE/CVF Int. Conf. Comput.
+Vis., 2019, pp. 9296–9306.
+[38] Q. Hu, B. Yang, S. Khalid, W. Xiao, A. Trigoni, and A. Markham, “To-
+wards semantic segmentation of urban-scale 3D point clouds: A dataset,
+benchmarks and challenges,” in Proc. IEEE Conf. Comput. Vis. Pattern
+Recognit., 2021, pp. 4977–4987.
+[39] M.-F. Chang et al., “Argoverse: 3D tracking and forecasting with rich
+maps,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit., 2019,
+pp. 8740–8749.
+[40] S. Ettinger et al., “Large scale interactive motion forecasting for au-
+tonomous driving: The waymo open motion dataset,” in Proc. IEEE/CVF
+Int. Conf. Comput. Vis., 2021, pp. 9710–9719.
+[41] D. Jia and D. Ngoduy, “Enhanced cooperative car-following trafﬁc model
+with the combination of V2V and V2I communication,” Transp. Res. Part
+B-methodological, vol. 90, pp. 172–191, 2016.
+[42] S.-W. Kim et al., “Multivehicle cooperative driving using cooperative per-
+ception: Design and experimental validation,” IEEE Trans. Intell. Transp.
+Syst., vol. 16, no. 2, pp. 663–680, Apr. 2015.
+[43] Z. Y. Rawashdeh and Z. Wang, “Collaborative automated driv-
+ing: A machine learning-based method to enhance the accuracy of
+shared information,” in Proc. Int. Conf. Intell. Transp. Syst., 2018,
+pp. 3961–3966.
+[44] Q. Chen et al., “DSRC and radar object matching for cooperative
+driver assistance systems,” in Proc. IEEE Intell. Veh. Symp., 2015,
+pp. 1348–1354.
+[45] S. Suo, S. Regalado, S. Casas, and R. Urtasun, “Trafﬁcsim: Learning
+to simulate realistic multi-agent behaviors,” in Proc. IEEE/CVF Conf.
+Comput. Vis. Pattern Recognit., 2021, pp. 10400–10409.
+[46] S. Tan et al., “Scenegen: Learning to generate realistic trafﬁc
+scenes,” in Proc. IEEE/CVF Conf. Comput. Vis. Pattern Recognit.,
+2021, pp. 892–901.
+[47] P. Wu, S. Chen, and D. Metaxas, “Motionnet: Joint perception and motion
+prediction for autonomous driving based on bird’s eye view maps,” in Proc.
+IEEE Conf. Comput. Vis. Pattern Recognit., 2020, pp. 11382–11392.
+[48] W. Luo, B. Yang, and R. Urtasun, “Fast and furious: Real time end-to-end
+3D detection, tracking and motion forecasting with a single convolu-
+tional net,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit., 2018,
+pp. 3569–3577.
+[49] J. Luiten et al., “HOTA: A higher order metric for evaluating multi-object
+tracking,” Int. J. Comput. Vis., vol. 129, no. 2, pp. 548–578, Oct. 2020.
+[50] K. Bernardin and R. Stiefelhagen, “Evaluating multiple object tracking
+performance: The clear mot metrics,” EURASIP J. Image Video Process.,
+pp. 1–10, 2008, Art. no. 246309.
+[51] A. Bewley, Z. Ge, L. Ott, F. Ramos, and B. Upcroft, “Simple online
+and realtime tracking,” in Proc. IEEE Int. Conf. Image Process., 2016,
+pp. 3464–3468.
+[52] O. Ronneberger, P. Fischer, and T. Brox, “U-Net: Convolutional networks
+for biomedical image segmentation,” in Proc. Int. Med. Image Comput.
+Comput.-Assist. Interv., 2015, pp. 234–241.
+Authorized licensed use limited to: BEIJING UNIVERSITY OF POST AND TELECOM. Downloaded on November 07,2023 at 07:46:33 UTC from IEEE Xplore.  Restrictions apply.

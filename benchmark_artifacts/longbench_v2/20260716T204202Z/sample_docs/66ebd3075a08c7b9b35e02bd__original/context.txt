@@ -1,0 +1,1396 @@
+IEEE TRANSACTION ON IMAGE PROCESSING
+1
+SDDPM: Speckle Denoising Diffusion Probabilistic
+Models
+Soumee Guha, Student Member, IEEE, and Scott T. Acton, Fellow, IEEE
+Abstract—Coherent imaging systems, such as medical ultra-
+sound and synthetic aperture radar (SAR), are subject to corrup-
+tion from speckle due to sub-resolution scatterers. Since speckle
+is multiplicative in nature, the constituent image regions become
+corrupted to different extents. The task of denoising such images
+requires algorithms specifically designed for removing signal-
+dependent noise. This paper proposes a novel image-denoising
+algorithm for removing signal-dependent multiplicative noise
+with diffusion models - Speckle Denoising Diffusion Probabilistic
+Models (SDDPM). We derive the mathematical formulations
+for the forward process, the reverse process, and the training
+objective. In the forward process, we apply multiplicative noise
+to a given image and prove that the forward process is Gaussian.
+We show that the reverse process is also Gaussian and the final
+training objective can be expressed as the Kullback–Leibler (KL)
+divergence between the forward and reverse processes. As derived
+in the paper, the final denoising task is a single-step process,
+thereby reducing the denoising time significantly. We have trained
+our model with natural land-use images and ultrasound images
+for different noise levels. Extensive experiments centered around
+two different applications show that SDDPM is robust and
+performs significantly better than the comparative models even
+when the images are severely corrupted.
+Index Terms—signal-dependent, multiplicative noise, speckle,
+diffusion models
+I. INTRODUCTION
+Image denoising has been studied by several researchers
+over the past few decades [1], [2], [3], [4]. Noise in images
+can be attributed to different methodologies involved with the
+acquisition, compression, and transmission processes, leading
+to significant distortion and loss of important information [5].
+Image denoising can be defined as an inverse problem that
+involves retrieving a denoised version of the image while
+preserving the important image features and improving the
+signal-to-noise ratio. Different types of images are corrupted
+with varying kinds of noise, i.e., Gaussian noise, Poisson
+noise, speckle, salt and pepper noise, etc. Different types of
+noise sources have different characteristics and taking into
+account the specific noise model can lead to efficient image
+denoising algorithms.
+Ultrasound images and synthetic aperture radar (SAR) im-
+ages are plagued by speckle. Unlike many other types of noise,
+speckle is signal-dependent. Thus, subsequent tasks like image
+segmentation and image classification become challenging.
+Over the last few decades, many filtering algorithms have been
+designed for speckle removal [6], [7], [8]. The filtering algo-
+rithms are typically sensitive to the shape of the filter window
+S. Guha and S. T. Acton are with the Department of Electrical and
+Computer Engineering, University of Virginia, VA, 22904-4743 USA (e-mail:
+ccf3dv@virginia.edu; acton@virginia.edu). This work was funded in part by
+NIH under 1R01GM139002 and in part by the ARO under W911NF2010206.
+and the filter size, often leading to oversmoothing or artifacts
+in the denoised images. [1] proposed a partial differential
+equation (PDE)-based approach for denoising images plagued
+by speckle noise. The denoised images not only preserved the
+edges but also enhanced them. However, all these methods
+are iterative and require a significant amount of computational
+expense to generate results.
+Alongside classical image denoising methods, a host of
+neural network models have also been proposed in recent
+years. A neural network-based image denoising model can
+be trained to generate the denoised version of any input
+image. In the past few years, denoising diffusion probabilistic
+models (DDPM), introduced by [9], [10] have been extremely
+successful for a wide range of applications. A diffusion model
+is characterized by a forward and reverse process and is pa-
+rameterized as a Markov chain. The forward process involves
+gradually adding noise until the initial image is absolutely
+corrupted. In the reverse process, a neural network model is
+trained to denoise the corrupted image in small steps. Diffusion
+models can generate remarkable results in both conditional and
+unconditional image generation.
+To date, the denoising methods proposed using DDPM
+have assumed an additive model. Unlike additive noise, multi-
+plicative noise (speckle) corrupts different parts of the image
+differently according to intensity. Mathematically, when an
+input image I is corrupted by signal-dependent noise N, the
+corrupted image I′ can be represented as:
+I′ = I + I N
+(1)
+In (1), N is zero-mean Gaussian with some variance, i.e.,
+N ∼N(0, σ2)
+(2)
+The variance of N determines the amount of noise present in
+the image. In the realm of image processing, additive noise
+induces a translation in the pixel intensities of an image. It
+achieves this by introducing random values that are either
+added or subtracted to the original pixel values, thereby in-
+stigating a persistent bias within the observations. Conversely,
+multiplicative noise operates by adjusting the original pixel
+values through a scaling mechanism. This form of noise is
+notably predisposed to influencing both the variance and the
+interdependencies among the pixel intensities in the image.
+Thus, compared to additive noise, speckle noise degrades
+images more severely, thereby making the downstream tasks
+further complicated.
+In this work, we have designed a diffusion model for
+denoising images corrupted with speckle. To the best of our
+knowledge, this is the first work that attempts to implement
+a diffusion model that considers multiplicative noise instead
+arXiv:2311.10868v1  [eess.IV]  17 Nov 2023
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+2
+of additive Gaussian noise. [11] has proposed SAR-DDPM
+which is aimed at removing multiplicative noise from SAR
+images with the denoising diffusion probabilistic model
+(DDPM) [10]. However, our work is fundamentally different
+from the SAR-DDPM model proposed in [11] as their model
+utilizes additive noise in the forward and reverse processes.
+The architecture used by SAR-DDPM is also different from
+ours. In SAR-DDPM, the diffusion model is given both the
+noisy and the original images and the denoising process is
+performed in T timesteps. In contrast, the proposed method
+assumes a multiplicative noise model, and the denoising task
+is a single-step process. The details are mentioned in Section
+III. The main contributions of this work are:
+• We propose a novel model Speckle Denoising Diffusion
+Probabilistic Models (SDDPM) for denoising speckled
+images that is particularly attuned to multiplicative
+noise. Both the forward and reverse processes assume
+multiplicative signal-dependent speckle.
+• We derive the training objective for generating the
+despeckled given any image corrupted with speckle.
+• Extensive experiments with different datasets show that
+our model achieves superior performance with respect to
+the state-of-the-art image denoising algorithms.
+II. LITERATURE SURVEY
+A. Speckle Removal Methods
+The Lee [8], Frost [6] and Kuan [7] filters are the early so-
+lutions for removing speckle. For the Lee and Kuan filters, the
+denoised image is a combination of the intensity of the center
+pixel in a window and the average intensity for the window.
+These filters smooth the homogeneous regions by averaging
+while attempting to preserve edges and point structures. The
+Frost filter is a linear, convolutional filter. It is adaptive in
+nature and is a circularly symmetric filter with exponential
+damping. In speckle reducing anisotropic diffusion (SRAD)
+[1], the authors propose a partial differential equation-based
+speckle removal method which not only preserves the existing
+edges but also enhances them. SRAD is the edge-sensitive
+extension of the contemporary adaptive speckle removal meth-
+ods. [12] introduces a novel speckle reduction algorithm by
+soft thresholding of the wavelet coefficients of the logarithm of
+the speckled image. The wavelet coefficients of the noiseless
+signal are modeled with a generalized Gaussian distribution
+whereas the speckle is modeled with a Gaussian distribution.
+[13] use a Bayesian framework to derive an adaptation of
+the non-local means filter which is adapted to the noise
+model of the ultrasound images and uses Pearson distance
+for comparing different image patches. The classical bilateral
+filter is efficient for removing Gaussian noise while preserving
+edges. [14] propose a real-time speckle-removing filter using
+local statistics of the images in the bilateral filter framework. A
+cluster-based speckle reduction technique is proposed in [15]
+which attempts to remove speckle noise in two steps. In order
+to preserve the edges in the denoised image, the pixels are first
+clustered for detecting the edges and thereafter, an adaptive
+filtering method is applied to the different pixel clusters for
+noise removal.
+There exist a number of speckle removing algorithms from
+the deep neural network community as well. An adversarial
+framework has been proposed in [16] for laser speckle removal
+in which images having coherent illumination are transformed
+to speckle-free images having incoherent illumination. For
+despeckling SAR images, access to time series data repre-
+senting different speckle realizations of the same area can
+be beneficial. [17] utilizes this idea and has proposed a self-
+supervised deep framework for generating a single despeckled
+SAR image given a time series of coregistered inputs. The self-
+supervised framework eliminates the need for a large volume
+of ground truth images. To eliminate the need for high quality
+well-registered noisy and clean image pairs, an unsupervised
+learning framework has been proposed in [18]. In this work,
+noisy images are first decomposed into the latent representa-
+tions of the denoised content and the noise. Then, a generative
+framework is used to predict the final despeckled images from
+the latent representation of the denoised content. An edge-
+preserving speckle reduction framework has been proposed
+in [19]. This solution implements a conditional generative
+adversarial network (cGAN) having a separate component for
+the edge loss along with the objective function for the cGAN
+thereby an edge-sensitive optimizing function.
+B. Diffusion Models
+Diffusion models were first introduced in [9], [10] as a
+latent variable model. They are used to convert a sample
+from a Gaussian distribution to an arbitrarily complex target
+distribution. Mathematically, diffusion models can be defined
+by a forward process q(·) and a reverse process pθ(·), both of
+which maintain the Markov property. Starting with image x0,
+the forward process q adds Gaussian noise in T steps according
+to a noise schedule αt where t ∈[1, T]. The noise parameters
+are designed such that xT ∼N(0, I). The reverse process p
+involves denoising xT in T iterations.
+Formally, the forward process can be written as:
+xt = √αtxt−1 +
+√
+1 −αtϵ; ϵ ∼N(ϵ; 0, I)
+(3)
+q(xt|xt−1) = N(xt; √αtxt−1, (1 −αt)I)
+(4)
+q(x1:T |x0) =
+T
+Y
+t=1
+q(xt|xt−1)
+(5)
+The reverse process p can be expressed as:
+p(x0:T ) = p(xT )
+T
+Y
+t=1
+pθ(xt−1|xt)
+(6)
+Each step of the denoising process is learned by a neural
+network parameterized by θ and can be simplified as:
+pθ(xt−1|xt) = N(xt−1; µθ(xt, t), Σθ(xt, t))
+(7)
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+3
+Diffusion models have been used to solve a wide class of
+problems in computer vision including semantic segmentation
+[20], image and video generation, point cloud generation [21],
+super-resolution [22], [23] and anomaly detection [24]. These
+models can be either unconditional or conditional, depending
+on the specific application. Most tasks in computer vision, that
+are specific to any application, require conditional diffusion
+models. Depending on the desired outcome, the conditioning
+can be on class labels, semantic maps, images or even graphs.
+Diffusion models conditioned on class labels can incorporate
+desired properties in the generated samples whereas those con-
+ditioned on images and semantic maps are able to incorporate
+rich semantics in the generated samples.
+Diffusion models have been applied to problems related
+to image super-resolution [25], inpainting [26] and image-to-
+image translation [27]. [22], [23] have used diffusion models
+for generating super-resolution images. [28] has proposed a
+unified conditional diffusion network for different tasks like
+inpainting, colorization and JPEG restoration. [20] has shown
+that semantic representations learned with latent diffusion
+models can aid semantic segmentation problems and [29], [30]
+show the implementation of diffusion models in high quality
+video generation tasks. In [21], the authors have proposed
+a novel method for generating point clouds using diffusion
+models and [24] shows how diffusion models can be used for
+anomaly detection.
+Numerous endeavors are exploring diffusion models that
+exhibit distinct noise structures. [31] utilize the binary latent
+space for representing the images and each image patch is
+encoded with a latent binary vector. [32] shows that noise mod-
+els that mix Gaussian and Gamma distributions can generate
+better results than the Gaussian model alone in certain appli-
+cations. [33] puts forth a framework for a generalized noise
+model and utilized the Method of Moments for optimizing
+the often intractable non-Gaussian intermediate steps. In [34],
+the authors have use diffusion models for removing structured
+noise in ill-posed inverse problems having non-Gaussian noise
+models.
+Despite such a variety of works on diffusion models, there
+has been no work that particularly considers signal-dependent
+speckle, which is a source of corruption in various practical
+applications, particularly where coherent imaging is applied.
+III. DIFFUSION MODELS FOR MULTIPLICATIVE NOISE
+This section will formulate diffusion models for images cor-
+rupted with multiplicative noise. Formally, an image corrupted
+with speckle noise can be expressed as:
+It = I0 + I0 ϵt
+(8)
+where, ϵt is sampled from a zero-mean Gaussian distribution
+with variance α2
+t , i.e,
+ϵt = N(0, α2
+t )
+(9)
+Now, for any ϵ sampled from the standard Gaussian, we
+have
+ϵt = αt ϵ
+(10)
+Substituting the expression of ϵt in (8),
+It = I0 + I0 αt ϵ
+(11)
+It = I0(1 + αtϵ)
+The logarithm of the noisy image It will be
+log It = log I0 + log (1 + αt ϵ)
+(12)
+If we have |αtϵ| < 1 for all αt, we will have:
+log It = log I0 + αt ϵ
+(13)
+where ϵ ∼N(0, I).
+In (13), αt represents the noise schedule. Following a linear
+noise schedule, for any 1 ≤t ≤T, let
+δ = αt −αt−1
+(14)
+Thus, (13) can be written as
+log It = log I0 + αt ϵ
+or, log It = log I0 + (αt−1 + δ) ϵ
+or, log It = log I0 + αt−1 ϵ + δ ϵ
+Hence, we have
+log It = log It−1 + δ ϵ
+(15)
+In this sense, the current diffusion approach is somewhat
+of a homomorphic technique. In homomorphic filtering, the
+image intensities are transformed by a logarithmic operation
+which yields an additive relationship between signal and noise
+from the multiplicative case.
+A. Forward Process
+We can represent the forward processes as follows:
+q(log It| log It−1) ∼N(log It; log It−1, δ2 I)
+(16)
+and
+q(log It| log I0) ∼N(log It; log I0, α2
+t I)
+(17)
+Using (16) and (17) and applying Bayes’ rule,
+q(log It−1| log It, log I0)
+= q(log It| log It−1, log I0) q(log It−1| log I0)
+q(log It| log I0)
+= N(log It; log It−1, δ2I) N(log It−1; log I0, α2
+t−1I)
+N(log It; log I0, α2
+t I)
+=
+exp{−1
+2[(log It −log It−1)2
+δ2
++ (log It−1 −log I0)2
+α2
+t−1
+−
+(log It −log I0)2
+α2
+t
+]}
+=
+exp{−1
+2[log I2
+t−1
+ 1
+δ2 +
+1
+α2
+t−1
+
+−
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+4
+2 log It−1
+log It
+δ2
++ log I0
+α2
+t−1
+
++ C(log It, log I0)]};
+(where
+C(log It, log I0) is a constant involving It and I0)
+∝
+exp{−1
+2[log I2
+t−1
+α2
+t−1 + δ2
+α2
+t−1 δ2
+
+−
+2 log It−1
+α2
+t−1 log It + δ2 log I0
+α2
+t−1 δ2
+
+]}
+=
+exp{−1
+2
+1
+ α2
+t−1δ2
+α2
+t−1 + δ2
+[log I2
+t−1
+−
+2 log It−1
+α2
+t−1 log It + δ2 log I0
+α2
+t−1 + δ2
+
+]}
+q(log It−1| log It) ∼N(log It−1; µq(log It, log I0), Σq(t)I)
+where
+Σq(t) =
+α2
+t−1 δ2
+α2
+t−1 + δ2
+and
+µq(log It, log I0) = α2
+t−1 log It + δ2 log I0
+α2
+t−1 + δ2
+B. Reverse Process
+The reverse process can be formulated as:
+p(log I0:T ) =
+T
+Y
+t=1
+pθ(log It−1| log It)
+(18)
+Unlike DDPM [10],
+p(log IT ) ̸= N(log IT ; 0, I)
+This is because SDDPM considers multiplicative noise and the
+constituent image regions are corrupted to different extents.
+Since the forward process q(log It−1| log It), we can set the
+reverse process to be Gaussian as well. Moreover, since
+Σq(t) =
+α2
+t−1 δ2
+α2
+t−1 + δ2
+the model estimates the mean of the Gaussian (µθ) and the
+variance is kept as Σq(t) [10].
+The reverse process pθ is:
+pθ(log It−1| log It) =
+N(log It−1; µθ(log It, τ), Σθ(t)I)
+for 2 ≤t ≤T and τ
+= {1, 2, ...T} represents the
+noise schedule. Following [10], we set Σθ(t) = Σq(t) as the
+individual variances corresponding to different timesteps are
+independent of the images It. The mean for µθ(log It, τ) will
+be:
+α2
+t−1 log It + δ2 log fθ(It, τ)
+α2
+t−1 + δ2
+where fθ(It, τ) is the prediction of the network for an input
+image corrupted with noise αt.
+IV. TRAINING OBJECTIVE
+The forward process q(log It−1| log It) and the reverse pro-
+cess pθ(log It−1| log It) are both Gaussian, and the variances
+are same, i.e,
+Σθ(t) = Σq(t)
+The Kullback–Leibler (KL) divergence (DKL) between the
+forward and the reverse processes can be minimized as [35]:
+argmin
+θ
+DKL(q(log It−1| log It, log I0))||pθ(log It−1| log It))
+= argmin
+θ
+DKL(N(log It−1; µq(log It, log I0), Σq(t)I) ||
+N(log It−1; µθ(log It, τ), Σq(t)I)).
+The above equation can be further simplified as:
+argmin
+θ
+1
+2Σq(t)
+
+||µθ −µq||2
+2
+
+(19)
+where,
+µq = µq(log It, log I0)
+and
+µθ = µθ(log It, log fθ(It, τ))
+Substituting
+the
+expressions
+of
+µq(log It, log I0)
+and
+µθ(log It, τ) in (19), the loss function reduces to:
+LD = E
+
+||fθ(It, τ) −I0||2
+2
+
+(20)
+To summarize, we train a neural network model pθ which
+learns to remove the multiplicative noise affecting the original
+images. Given any image, it learns to approximate µθ such that
+it matches µq as q(log It−1| log It) and pθ(log It−1| log It)
+are both Gaussian distributions with the same variance but
+different means.
+Algorithm 1 Training Algorithm
+Input: {I0}, τ, fθ
+Output: trained fθ
+1: while not converged do
+2:
+I0 ∼q(I0)
+3:
+t ∼Uniform(1, ..., T)
+4:
+ϵ ∼N(0, I)
+5:
+log It = log I0 + αt ϵ
+6:
+Compute gradient descent on ∇θ||fθ(It, τ) −I0||2
+2
+7:
+Update θ
+8: end while
+Algorithm 1 describes the training algorithm. At any train-
+ing epoch, the input image I0 is corrupted with noise following
+a chosen noise schedule αt where t ∈[1, T]. The noise level
+introduced in the input image is determined by t. The noisy
+image It is given to the neural network fθ and the network
+predicts the original input image. For the denoising task, the
+trained model takes as input a noisy image and predicts the
+denoised image.
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+5
+V. EXPERIMENTS
+A. Datasets
+We have performed our experiments on the UC Merced
+Land Use dataset [36] and ultrasound images [37], [38]. The
+land use dataset contains images from 21 different categories
+and each category has 100 images. Each image is 256 x 256
+in size and they are extracted from larger images obtained
+from different urban areas. The ultrasound images used in this
+paper comprise two kinds. The first set of ultrasound images
+are those of the common carotid artery (CCA) collected from
+10 volunteers. The images sizes vary between 230 × 390 and
+450 × 600. The second set of ultrasound images comprises
+images of the fetal head, lymph nodes and the brachial plexus
+[37], where all images are 256 × 320 in size.
+Fig. 1.
+Sample images from the datasets used for the experiments. The
+top row shows images from the land-use dataset and the bottom row shows
+images from the ultrasound dataset.
+B. Baseline Models
+We have compared our model to some classical methods
+and some recent deep neural network models. We have
+selected an array of denoising methods, encompassing those
+specially tailored for speckle reduction and others with a
+broader scope. In terms of comparisons to neural network
+models, we selected systems in which the input is solely the
+noisy image and the training methodology is similar to ours.
+All together, we compare to three classical approaches and to
+three recent solutions based on deep neural networks.
+1) Classical Methods:
+• The block-matching and 3D filtering (BM3D) was pro-
+posed for image denoising in [39]. A noisy image is
+partitioned into overlapping blocks and similar blocks
+are identified and grouped together. Collaborative filtering
+is applied on similar patches in a group to estimate
+the underlying clean signal. BM3D achieves state-of-the-
+art denoising performance by leveraging the redundancy
+and consistency present in groups of similar patches,
+without requiring prior knowledge about specific noise
+characteristics.
+• The non-local means [40] (NLMeans) denoising algo-
+rithm preserves the high frequency details while effec-
+tively reducing noise in images. For a patch centered
+around a pixel, NLMeans identifies similar patches cen-
+tered around other pixels and the patches are assigned
+weights based on their similarity to the central patch.
+Patches that are more similar to the central patch receive
+higher weights. Each noisy pixel is replaced by the
+average pixel value of the similar patches. This distinc-
+tive approach captures non-local information, allowing
+it to excel at maintaining fine details and global image
+structure. NLMeans is adaptable to various noise types
+and levels and is particularly adept at noise reduction in
+textured areas.
+• SRAD [1] is a partial differential equation method
+that is particularly configured for speckled images and
+considers the local structure of the image. The core idea
+of SRAD is to iteratively adjust pixel intensities based on
+the local variations in intensity. This approach effectively
+smooths
+regions
+with
+homogenous
+intensity
+values
+while retaining image features across the edges. The
+diffusion equation in SRAD incorporates an anisotropic
+term that allows diffusion to be adjusted based on the
+local coefficient of variation rather than the gradient
+magnitude.
+2) Deep Neural Network Models:
+• In [4], a feed-forward convolutional neural network-based
+image denoising algorithm has been proposed. Many
+image denoising methods involve training specific models
+for additive Gaussian noise for a specific noise level. In
+contrast, this paper proposed a method for blind Gaussian
+denoising. Instead of an explicit image prior, the proposed
+model learns to predict noise from a given noisy image.
+• SwinIR [42] is a transformer-based image restoration
+model that involves three phases, namely, shallow feature
+extraction, deep feature extraction and image reconstruc-
+tion. The shallow features are extracted by a convolu-
+tional layer whereas the deep features are extracted by
+a sequence of residual swin transformer blocks (RSTB)
+followed by a final convolutional layer. Finally, the image
+reconstruction layer is implemented with a sub-pixel
+convolutional layer [43]. Combining the shallow and deep
+features helps the model capture both the low frequency
+and high frequency details present in the input images.
+The swin transformer layer [44] differs from the original
+transformer layer [45] in the way it calculates local
+attention using a shifted window mechanism.
+• A deep blind image denoising multi-scale UNet is pro-
+posed in [41] where modeling of local and non-local
+features is boosted by swin-conv blocks. The Swin-Conv-
+UNet(SCU) has residual convolution blocks and swin
+transformer blocks [44] and can thereby achieve local and
+non-local modeling of the input data. The authors have
+also proposed a noise synthesis model that improves the
+performance of the proposed model for different images.
+C. Evaluation Metrics
+We have used peak signal-to-noise ratio (PSNR) and the
+structural similarity index (SSIM) to evaluate the quality of the
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+6
+TABLE I
+RESULTS ON LAND-USE DATASET
+Method
+αt = 0.0771
+αt = 0.2015
+αt = 0.3756
+αt = 0.5
+PSNR
+SSIM
+PSNR
+SSIM
+PSNR
+SSIM
+PSNR
+SSIM
+SRAD [1]
+25.52
+0.855
+24.96
+0.800
+22.14
+0.639
+19.23
+0.489
+BM3D [39]
+21.30
+0.777
+18.45
+0.712
+10.39
+0.296
+9.29
+0.177
+NLMeans [40]
+21.21
+0.846
+12.80
+0.511
+9.59
+0.227
+8.79
+0.150
+DnCNN [4]
+22.34
+0.699
+22.09
+0.632
+21.76
+0.544
+21.96
+0.489
+SCU [41]
+24.13
+0.755
+24.32
+0.692
+24.26
+0.572
+24.72
+0.479
+SwinIR [42]
+23.50
+0.772
+23.50
+0.688
+23.06
+0.549
+22.89
+0.452
+SDDPM (Ours)
+29.97
+0.876
+27.79
+0.771
+26.04
+0.709
+25.00
+0.662
+TABLE II
+RESULTS ON ULTRASOUND DATASETS
+Method
+αt = 0.0771
+αt = 0.2015
+αt = 0.3756
+αt = 0.5
+PSNR
+SSIM
+PSNR
+SSIM
+PSNR
+SSIM
+PSNR
+SSIM
+SRAD [1]
+29.21
+0.857
+28.78
+0.854
+26.63
+0.836
+23.95
+0.780
+BM3D [39]
+25.87
+0.758
+26.66
+0.746
+19.74
+0.560
+17.88
+0.461
+NLMeans [40]
+31.86
+0.922
+24.84
+0.773
+18.89
+0.534
+17.21
+0.405
+DnCNN [4]
+17.79
+0.281
+17.93
+0.277
+17.99
+0.263
+18.13
+0.254
+SCU [41]
+25.33
+0.854
+25.47
+0.840
+25.47
+0.802
+24.96
+0.780
+SwinIR [42]
+21.33
+0.683
+21.11
+0.665
+20.25
+0.644
+19.48
+0.599
+SDDPM (Ours)
+32.81
+0.895
+31.71
+0.883
+29.95
+0.854
+28.72
+0.828
+Noisy
+Image
+SRAD
+BM3D
+NLMeans
+DnCNN
+SCU
+SwinIR
+SDDPM
+𝛼𝑡 = 0.45
+𝛼𝑡 = 0.202
+𝛼𝑡 = 0.202
+𝛼𝑡 = 0.202
+𝛼𝑡 = 0.45
+𝛼𝑡 = 0.45
+Fig. 2.
+Results generated by the proposed model for different noise levels. The first column shows the original image. All images in a row except the first
+one show noisy and denoised versions of the original image.
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+7
+Image
+Noisy
+SDDPM
+Noisy
+SDDPM
+𝛼𝑡 = 0.202
+𝛼𝑡 = 0.251
+Noisy
+SDDPM
+𝛼𝑡 = 0.127
+Fig. 3.
+Results generated by the proposed model for different noise levels. The first column shows the original image. All images in a row except the first
+one show noisy and denoised versions of the original image.
+Image
+Noisy 
+SDDPM
+𝛼𝑡 = 0.376
+𝛼𝑡 = 0.5
+Noisy 
+SDDPM
+Fig. 4.
+Column 1: Original image with a particular selected section shown in the colored box. Column 2: The enlarged view of the area inside the box.
+Columns 3-6 show noisy and denoised versions of Column 2 for different noise levels specified by αt.
+denoised images. If Imax denotes the maximum intensity of
+an image, the PSNR and SSIM metrics are defined as follows.
+PSNR = 10 log10
+ 
+I2
+max
+|I0 −ˆ
+I0|2
+!
+(21)
+SSIM(I0, ˆ
+I0) =
+(2µI0µ ˆ
+I0 + c1)(2σI0 ˆ
+I0 + c2)
+(µ2
+I0 + µ2
+ˆ
+I0 + c1)(σ2
+I0 + σ2
+ˆ
+I0 + c2)
+(22)
+High PSNR indicates that the denoised image resembles the
+original image closely and retains the high frequency details
+present in the original image. In (22), µI0 and µ ˆ
+I0 are the
+mean pixel values of I0 and ˆ
+I0 respectively, σ2
+I0 and σ2
+ˆ
+I0
+are the variances, σI0 ˆ
+I0 is the covariance and c1 and c2 are
+constants. SSIM is a perceptual metric that is sensitive to the
+local and global variations in the images. For comparing the
+similarity between two images, SSIM considers the structural
+information along with intensity and contrast. SSIM values
+range between -1 and 1, where higher values indicate higher
+fidelity.
+D. Experimental Setup
+Both the datasets comprise multiple categories and the num-
+ber of images in each of these categories is limited. We split
+the dataset into train, validation and test sets randomly and
+augmented the training images. We applied random rotations
+to each image in the training set and added Gaussian noise
+with mean µ = {0, 0.05} and variance σ2 = {0, 0.001} to
+create the final training dataset. The models were trained for
+100 epochs. The initial learning rate was set as 0.05 and was
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+8
+reduced by a factor of 10 after every 20 epochs. The stochastic
+gradient descent (SGD) algorithm was used for optimizing all
+the models. For all the experiments, αt was varied between
+[0.005, 0.5] and the timesteps T was set as 200. All models
+were trained on 64 × 64 randomly cropped patches and the
+denoising step was performed on 128 × 128 images.
+VI. RESULTS
+Fig. 2 shows the qualitative results obtained by the different
+denoising algorithms for different noise levels. We have shown
+the results for two images from the UC Merced Land Use
+dataset and one ultrasound image. We have shown the results
+for αt = 0.202 and αt = 0.45 for every image. It should be
+noted that αt = 0.45 corresponds to very high noise and the
+images are corrupted significantly. Column 2 shows the noisy
+images generated for each of the different cases. Columns 3 - 8
+show the denoised images generated by each of the different
+baseline algorithms. Column 9 shows the results generated
+by the proposed model SDDPM. It should be noted that the
+images generated by SRAD [1] and SDDPM closely resemble
+the original image even for αt = 0.45. However, under such
+high noise conditions, the denoised images obtained with
+SRAD algorithm tend to have some artifacts which are not
+present in the denoised images obtained with SDDPM. Most
+of the high frequency information present in the original image
+is recovered by SDDPM even under extreme noise conditions.
+In Fig. 3 and 4 we take a closer look at some more denoised
+images generated by SDDPM. For both natural images and
+ultrasound images, the denoising algorithm should be able
+to reconstruct the details present in the original images as
+accurately as possible. Most denoising algorithms often suffer
+from excessive smoothing across the edges. There is often a
+trade-off between noise removal and edge preservation. This
+is also evident from the different results shown in Fig. 2. In
+Fig. 3, it can be seen that the denoised images generated
+by SDDPM for different noise levels have very prominent
+edges and textures. The results show that even for higher
+noise levels, the images denoised by SDDPM retain most
+of the structures that are present in the original images. In
+Fig. 4, we have shown the denoised ultrasound images for
+different noise levels. When medical images are denoised, the
+intrinsic structures present in the original image need to be
+retained so that an accurate diagnosis can be made from the
+denoised images. For denoising algorithms where the denoised
+images are smoothed out excessively, the important structures
+originally present in the ultrasound images can be lost. In Fig.
+4, we have shown an enlarged version of a certain section
+in each of the images where a lot of details are present. It
+can be seen that even for very high noise levels, the denoised
+images can retrieve most of the information present in the
+original image. Unlike other denoising algorithms, the images
+denoised with SDDPM can reconstruct the details present in
+the original image while maintaining the intensity variations
+at the edges.
+Tables I and II show the numerical scores of PSNR and
+SSIM metrics used for evaluating the denoised images gener-
+ated by the different methods for 4 different noise levels. αt
+is the standard deviation of noise as shown in (9). We have
+shown the numerical scores for different αt, where higher αt
+indicates more noise. In both tables, we have compared our
+method to all the baselines mentioned in V-B. Linear noise
+schedule was considered for all experiments and αt was varied
+from 0.005 to 0.5 in 200 timesteps.
+VII. DISCUSSIONS
+A. How does the performance of different models vary under
+varied noise conditions?
+The performance of SRAD, NLMeans and BM3D does not
+depend on the maximum noise level present in the training
+images. This independence is due to the fact that the methods
+are not data driven and to the fact that each noisy image is
+processed separately. However, it is worthwhile to see the
+effect of the maximum noise level (maximum value of αt)
+on the performance of DnCNN, SCU, SwinIR and SDDPM.
+We can see from Fig. 3 and 4 that SDDPM performs well
+even in the presence of high noise. Intuitively, any trained
+model should perform better when the noise is low and the
+performance drops as the noise is increased. This is what is
+seen for the SSIM and PSNR scores for SDDPM. However,
+this is not true for all the baseline models. Tables I and II
+show that the PSNR and the SSIM scores for most of the
+baseline models are much lower than the proposed model in
+all cases. In some cases (DnCNN and SCU), the PSNR scores
+are somewhat erratic. In these cases, the usual trend is not
+observed, and the performance metrics vary arbitrarily within
+a small interval. To further explore this matter, we narrowed
+down the range of αt values and conducted experiments for
+the two datasets.
+Fig. 5.
+PSNR scores (top row) and SSIM scores (bottom row) achieved by
+DnCNN, SCU, SwinIR and SDDPM for the land-use dataset.
+In Fig. 5 and 6, we have shown how the range of αt affects
+the performance of DnCNN, SCU, SwinIR and SDDPM. All
+the results shown in tables I and II are obtained with α =
+[0.005, 0.5] and the timesteps T = 200. Next, we performed all
+the experiments with reduced noise where α = [0.005, 0.1] and
+the timesteps T = 200. Low noise refers to α = [0.005, 0.1]
+whereas high noise refers to α = [0.005, 0.5]. When αt is
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+9
+Fig. 6.
+PSNR scores (top row) and SSIM scores (bottom row) achieved by
+DnCNN, SCU, SwinIR and SDDPM for the ultrasound dataset.
+low, we see that PSNR and SSIM are higher and the values
+decrease as αt increases. It should be noted that the SSIM
+scores for most of the models are high both both the datasets
+when α = [0.005, 0.1], i.e, when the noise is low. The scores
+change significantly when the overall noise level is increased
+(α = [0.005, 0.5]). This is because during training, we are
+adding different levels of noise and the baseline convolutional
+architectures are more capable of denoising when the noise
+levels do not vary too much.
+The proposed method SDDPM performs better than the
+baseline models with different noise levels. When α
+=
+[0.005, 0.1], the overall noise is low and the performance of the
+model is expected to be good. However, it should be noted that
+when α = [0.005, 0.5], SDDPM performs better than all other
+models. It should also be noted that the performance scores
+are better in the case of the ultrasound images compared to all
+the other models. Moreover, Fig. 3 and 4 show that even in the
+case of extreme noise conditions, SDDPM can perform very
+well. For both datasets, SDDPM can denoise images corrupted
+with high noise levels while recovering most of the structure
+present in the original images.
+B. Effect of timestep T
+In the case of denoising real images, the exact amount of
+noise that is present in an image is unknown. It is also almost
+certain that the noisy images might have noise that does not
+exactly correspond to the αt values that we use for training
+our model. In such a scenario, the model should be able to
+map the noisy image to one of the noise levels it has been
+trained with and thereafter generate the denoised image. This
+makes the designed model robust and can be used for practical
+denoising applications.
+In order to evaluate the efficiency of SDDPM, we trained
+the model with different training and testing timesteps. When
+the training and testing timesteps are exactly the same, the
+model does not have to interpolate between different values
+of αt. All the results shown in tables I and II are obtained with
+the same training and testing timesteps where both were set to
+Fig. 7.
+Graphical representations depict the fluctuations in PSNR scores for
+land-use images in the top row and ultrasound images in the bottom row.
+These variations occur as a consequence of altering the training timesteps
+while maintaining the test timesteps at a constant value of 200.
+Fig. 8.
+Graphical representations depict the fluctuations in SSIM scores for
+land-use images in the top row and ultrasound images in the bottom row.
+These variations occur as a consequence of altering the training timesteps
+while maintaining the test timesteps at a constant value of 200.
+200 and noise level α was varied between [0.005, 0.5]. Fig. 7
+and 8 show how the mean PSNR and SSIM scores vary when
+the training timestep is changed keeping the testing timesteps
+fixed. We fixed the test timesteps to 200 in all the experiments,
+trained our model with 50, 100, 150 and 200 timesteps and
+obtained the PSNR and SSIM scores for both datasets. Each
+curve shown in Fig. 7 and 8 is the mean curve obtained from 4
+randomly chosen train and test partitions for a particular pair
+of training and testing timesteps. It is evident from Fig. 7 and 8
+that SDDPM is robust to the selection of different training and
+testing timestep values and can be used for denoising images
+obtained from the wild.
+C. Performance of SRAD [1] and SDDPM for high noise
+(αt = 0.45)
+SRAD [1] has been specifically proposed for reducing
+speckle. From Tables I and II, we see that the SSIM scores
+of SDDPM and SRAD are comparable when noise is low. In
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+10
+Image
+Denoised
+SRAD
+SDDPM
+Fig. 9.
+Column 1: Patch from the original image. Columns 2 and 3 show
+the denoised versions obtained by SRAD (column 2) and SDDPM (column
+3) for αt = 0.45.
+scenarios where the noise is high, SDDPM starts performing
+better than SRAD. This is primarily due to the fact that the
+proposed model is data-driven and can learn the underlying
+features which in turn help in recovering the high frequency
+features. It should also be noted that the PSNR scores of the
+proposed model are consistently higher than those of SRAD
+for all noise levels.
+In order to further analyze the denoised images generated
+by SRAD and SDDPM, we take a closer look at the first two
+images shown in Fig. 2 for αt = 0.45 in Fig. 9. The denoised
+images generated by SRAD and SDDPM for αt = 0.45 have
+some structural differences. Fig. 9 shows a patch from each of
+these two denoised images corresponding to αt = 0.45. If we
+take a closer look inside the yellow boxes in Fig. 9, we will
+see that SRAD generates some white speckle artifacts in both
+images which is not present in the denoised images generated
+by SDDPM. This reverse-speckle phenomenon has been well
+studied [46] in the context of anisotropic diffusion and is seen
+in images denoised by SRAD for extreme noise conditions.
+In contrast, since SDDPM does not have any anisotropic
+component in the optimizing function, these artifacts are not
+seen.
+D. Training time, denoising time and parameters
+The computational costs of training and denoising methods
+play a pivotal role in real-world applicability. The time re-
+quired to train a model on a dataset and subsequently test
+its performance can significantly impact its feasibility for
+deployment in various applications. In this section, we delve
+into an analysis of the training and test times of DnCNN, SCU,
+SwinIR and SDDPM.
+Fig. 10 shows how the number of trainable parameters
+of SDDPM increase with the increase in training timesteps
+and the corresponding training time in seconds. The number
+of parameters of SDDPM increases monotonically with the
+(a)
+(b)
+Fig. 10.
+(a) This figure shows how the number of parameters of the proposed
+model SDDPM increases with the increase in training timesteps. (b) This
+figure shows how the training time (in seconds) of SDDPM varies with the
+increase in training timesteps for a batch of images. It can be seen that even
+though the number of trainable parameters increases with the increase in
+training timesteps, the training time of a batch of images remains unaffected.
+increase in training timesteps. This is because the input to
+the model is (xt, τ) where xt is the noisy image corrupted
+with noise level αt and τ is the noise schedule. SDDPM
+does not require the explicit knowledge of t. Instead, it
+learns to estimate t from xt and τ and then proceeds to
+denoise the corrupted image accordingly. It should be noted
+that the increase in model parameters does not affect the
+training time of SDDPM. This is because τ is integrated
+in the initial layers of the model and does not affect the
+overall training cost significantly. Fig. 11 shows the numbers
+of parameters and the corresponding denoising (inference)
+times for SDDPM, DnCNN, SCU and SwinIR. Even though
+the number of parameters of SDDPM is 10x that of SCU
+and about 100x that of DnCNN and SwinIR, it should be
+noted that the denoising time required for one image is not
+significantly higher than any of the other models for image
+sizes ranging from 8x8 to 128x128.
+(a)
+(b)
+Fig. 11. (a) This figure shows the number of trainable parameters of DnCNN,
+SCU, SwinIR and SDDPM. (b) This figure shows the denoising times (in
+seconds) of DnCNN, SCU, SwinIR and SDDPM.
+E. Computational complexity of SRAD and SDDPM
+Tables I and II show that SRAD and SDDPM perform
+consistently even for high noise levels. This is in accordance
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+11
+Fig. 12.
+This figure shows how the denoising time of SDDPM compares
+with that of SRAD. SRAD can only denoise one image at a time whereas the
+time shown for SDDPM corresponds to the denoising time for a batch of 32
+images.
+with our expectations as both the algorithms are particularly
+designed for reducing speckle. The primary difference between
+SRAD and SDDPM is that SRAD is iterative, whereas SD-
+DPM is a neural network model and data-driven. As a direct
+consequence, we can expect the denoising time for SRAD to
+be higher than SDDPM. Fig. 12 shows the comparison be-
+tween the denoising time in seconds for SRAD and SDDPM.
+For SRAD, this is the time required for denoising one image
+whereas for SDDPM, the denoising time shown is for a batch
+of 32 images. Theoretically, the computational complexity of
+SRAD can be derived to be O(IN 2k2) where I is the total
+number of iterations, the image is N×N in size and k×k is the
+neighborhood size. For the number of iterations and the same
+neighborhood size, Fig. 12 shows that the denoising time for a
+single image increases quadratically with the increase in image
+size. The computational complexity of neural network models
+depends on a wide range of factors which include the number
+of layers, the number of convolutional kernels, the kernel sizes
+and the number of feature maps among various other factors.
+Though the theoretical computational complexity of SDDPM
+is difficult to obtain, it can be seen from Fig. 12 that the overall
+denoising time for the trained SDDPM model is constant for
+a batch of images, i.e, the computational complexity of the
+denoising (inference) step is O(1). From Fig. 12, it seems that
+the denoising time for SDDPM is more than that of SRAD for
+smaller images (16×16) and (32×32). However, it should be
+noted that the denoising time for SDDPM corresponds to the
+time required for processing a batch of images (in our case
+32) and the average denoising time required by SDDPM for a
+single image is always lower than that required by SRAD for
+all image sizes.
+VIII. CONCLUSION
+In conclusion, this paper presents a novel diffusion model
+for removing speckle. The work represents the first devel-
+opment of a forward diffusion process and reverse diffusion
+process that assumes a multiplicative noise model. In addition,
+the SDDPM establishes a training objective and process for
+the speckle removal process. The proposed model SDDPM
+has been compared to classical image denoising algorithms,
+including SRAD, BM3D and NLMeans, as well as to three
+recent convolutional neural network-based models. Extensive
+experiments on different datasets show that SDDPM out-
+performs classical and learning-based solutions for almost
+all noise levels. It has also been shown that SDDPM is
+capable of recovering images even in case of extreme noise
+conditions and is robust to the choice of training and test
+timestep. The diversity among the land-use images used in our
+model evaluation, spanning 21 distinct categories, underscores
+the versatility of our proposed model. Furthermore, SDDPM
+demonstrates notable efficiency in reconstructing structures
+within noisy ultrasound images. SDDPM showcases its ef-
+ficacy in denoising a wide range of image types, even when
+noise levels are exceptionally high. Going forward, we will ex-
+plore the integration of generative modeling into the denoising
+process. This avenue of research holds promise, particularly
+in scenarios involving substantial noise corruption, where
+traditional denoising algorithms face formidable challenges in
+accurately reconstructing the original image.
+ACKNOWLEDGMENT
+We extend our heartfelt gratitude to Dr. Jie Wang (Nanjing
+University of Posts and Telecommunications) and Dr. Matthew
+Korban (University of Virginia) for their invaluable insights
+and thoughtful feedback. We also wish to express our grat-
+itude to Tanjin Taher Toma (University of Virginia) for her
+unwavering support and engaging discussions.
+REFERENCES
+[1] Y. Yu and S. T. Acton, “Speckle reducing anisotropic diffusion,” IEEE
+Transactions on image processing, vol. 11, no. 11, pp. 1260–1270, 2002.
+[2] K. Dabov, A. Foi, V. Katkovnik, and K. Egiazarian, “Image denoising
+with block-matching and 3d filtering,” in Image processing: algorithms
+and systems, neural networks, and machine learning, vol. 6064.
+SPIE,
+2006, pp. 354–365.
+[3] S. Ramani, T. Blu, and M. Unser, “Monte-carlo sure: A black-box opti-
+mization of regularization parameters for general denoising algorithms,”
+IEEE Transactions on image processing, vol. 17, no. 9, pp. 1540–1554,
+2008.
+[4] K. Zhang, W. Zuo, Y. Chen, D. Meng, and L. Zhang, “Beyond a gaussian
+denoiser: Residual learning of deep cnn for image denoising,” IEEE
+transactions on image processing, vol. 26, no. 7, pp. 3142–3155, 2017.
+[5] L. Fan, F. Zhang, H. Fan, and C. Zhang, “Brief review of image
+denoising techniques,” Visual Computing for Industry, Biomedicine, and
+Art, vol. 2, pp. 1–12, 2019.
+[6] V. S. Frost, J. A. Stiles, K. S. Shanmugan, and J. C. Holtzman, “A
+model for radar images and its application to adaptive digital filtering
+of multiplicative noise,” IEEE Transactions on pattern analysis and
+machine intelligence, no. 2, pp. 157–166, 1982.
+[7] D. Kuan, A. Sawchuk, T. Strand, and P. Chavel, “Adaptive restoration
+of images with speckle,” in Applications of Digital Image Processing
+IV, vol. 359.
+SPIE, 1983, pp. 28–38.
+[8] J.-S. Lee, “Digital image enhancement and noise filtering by use of
+local statistics,” IEEE transactions on pattern analysis and machine
+intelligence, no. 2, pp. 165–168, 1980.
+[9] J. Sohl-Dickstein, E. Weiss, N. Maheswaranathan, and S. Ganguli,
+“Deep unsupervised learning using nonequilibrium thermodynamics,”
+in International conference on machine learning.
+PMLR, 2015, pp.
+2256–2265.
+[10] J. Ho, A. Jain, and P. Abbeel, “Denoising diffusion probabilistic models,”
+Advances in neural information processing systems, vol. 33, pp. 6840–
+6851, 2020.
+[11] M. V. Perera, N. G. Nair, W. G. C. Bandara, and V. M. Patel,
+“SAR despeckling using a denoising diffusion probabilistic model,”
+IEEE Geoscience and Remote Sensing Letters, vol. 20, pp. 1–5, 2023.
+[Online]. Available: https://doi.org/10.1109%2Flgrs.2023.3270799
+
+
+IEEE TRANSACTION ON IMAGE PROCESSING
+12
+[12] S. Gupta, R. Chauhan, and S. Sexana, “Wavelet-based statistical ap-
+proach for speckle reduction in medical ultrasound images,” Medical
+and Biological Engineering and computing, vol. 42, pp. 189–192, 2004.
+[13] P. Coup´
+e, P. Hellier, C. Kervrann, and C. Barillot, “Nonlocal means-
+based speckle filtering for ultrasound images,” IEEE transactions on
+image processing, vol. 18, no. 10, pp. 2221–2229, 2009.
+[14] K. Singh, B. Sharma, J. Singh, G. Srivastava, S. Sharma, A. Aggarwal,
+and X. Cheng, “Local statistics-based speckle reducing bilateral filter for
+medical ultrasound images,” Mobile Networks and Applications, vol. 25,
+pp. 2367–2389, 2020.
+[15] M. H. Eybposh, Z. Turani, D. Mehregan, and M. Nasiriavanaki, “Cluster-
+based filtering framework for speckle reduction in oct images,” Biomed-
+ical optics express, vol. 9, no. 12, pp. 6359–6373, 2018.
+[16] T. L. Bobrow, F. Mahmood, M. Inserni, and N. J. Durr, “Deeplsr: a
+deep learning approach for laser speckle reduction,” Biomedical optics
+express, vol. 10, no. 6, pp. 2869–2882, 2019.
+[17] I. Meraoumia, E. Dalsasso, L. Denis, R. Abergel, and F. Tupin, “Multi-
+temporal speckle reduction with self-supervised deep neural networks,”
+IEEE Transactions on Geoscience and Remote Sensing, vol. 61, pp. 1–
+14, 2023.
+[18] Y. Huang, W. Xia, Z. Lu, Y. Liu, H. Chen, J. Zhou, L. Fang, and
+Y. Zhang, “Noise-powered disentangled representation for unsupervised
+speckle reduction of optical coherence tomography images,” IEEE
+Transactions on Medical Imaging, vol. 40, no. 10, pp. 2600–2614, 2020.
+[19] Y. Ma, X. Chen, W. Zhu, X. Cheng, D. Xiang, and F. Shi, “Speckle
+noise reduction in optical coherence tomography images based on edge-
+sensitive cgan,” Biomedical optics express, vol. 9, no. 11, pp. 5129–5146,
+2018.
+[20] W. Wang, J. Bao, W. Zhou, D. Chen, D. Chen, L. Yuan, and
+H. Li, “Semantic image synthesis via diffusion models,” arXiv preprint
+arXiv:2207.00050, 2022.
+[21] S. Luo and W. Hu, “Diffusion probabilistic models for 3d point cloud
+generation,” in Proceedings of the IEEE/CVF Conference on Computer
+Vision and Pattern Recognition, 2021, pp. 2837–2845.
+[22] C. Saharia, J. Ho, W. Chan, T. Salimans, D. J. Fleet, and M. Norouzi,
+“Image super-resolution via iterative refinement,” IEEE Transactions on
+Pattern Analysis and Machine Intelligence, vol. 45, no. 4, pp. 4713–
+4726, 2022.
+[23] J. Ho, C. Saharia, W. Chan, D. J. Fleet, M. Norouzi, and T. Salimans,
+“Cascaded diffusion models for high fidelity image generation,” The
+Journal of Machine Learning Research, vol. 23, no. 1, pp. 2249–2281,
+2022.
+[24] J. Wyatt, A. Leach, S. M. Schmon, and C. G. Willcocks, “Anoddpm:
+Anomaly detection with denoising diffusion probabilistic models using
+simplex noise,” in Proceedings of the IEEE/CVF Conference on Com-
+puter Vision and Pattern Recognition, 2022, pp. 650–656.
+[25] Z. Chen and Y. Tong, “Face super-resolution through wasserstein gans,”
+arXiv preprint arXiv:1705.02438, 2017.
+[26] L. Yuan, C. Ruan, H. Hu, and D. Chen, “Image inpainting based on
+patch-gans,” IEEE Access, vol. 7, pp. 46 411–46 421, 2019.
+[27] P. Isola, J.-Y. Zhu, T. Zhou, and A. A. Efros, “Image-to-image translation
+with conditional adversarial networks,” in Proceedings of the IEEE
+conference on computer vision and pattern recognition, 2017, pp. 1125–
+1134.
+[28] C. Saharia, W. Chan, H. Chang, C. Lee, J. Ho, T. Salimans, D. Fleet,
+and M. Norouzi, “Palette: Image-to-image diffusion models,” in ACM
+SIGGRAPH 2022 Conference Proceedings, 2022, pp. 1–10.
+[29] K. Mei and V. Patel, “Vidm: Video implicit diffusion models,” in
+Proceedings of the AAAI Conference on Artificial Intelligence, vol. 37,
+no. 8, 2023, pp. 9117–9125.
+[30] R. Yang, P. Srivastava, and S. Mandt, “Diffusion probabilistic modeling
+for video generation,” arXiv preprint arXiv:2203.09481, 2022.
+[31] Z. Wang, J. Wang, Z. Liu, and Q. Qiu, “Binary latent diffusion,” in
+Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, 2023, pp. 22 576–22 585.
+[32] E. Nachmani, R. S. Roman, and L. Wolf, “Non gaussian denoising
+diffusion models,” arXiv preprint arXiv:2106.07582, 2021.
+[33] A. Jolicoeur-Martineau, K. Fatras, K. Li, and T. Kachman, “Diffusion
+models with location-scale noise,” arXiv preprint arXiv:2304.05907,
+2023.
+[34] T. S. Stevens, J.-L. Robert, F. C. Yu, J. S. Shin, and R. J. van Sloun,
+“Removing structured noise with diffusion models,” arXiv preprint
+arXiv:2302.05290, 2023.
+[35] C. Luo, “Understanding diffusion models: A unified perspective,” arXiv
+preprint arXiv:2208.11970, 2022.
+[36] Y. Yang and S. Newsam, “Bag-of-visual-words and spatial extensions
+for land-use classification,” in Proceedings of the 18th SIGSPATIAL in-
+ternational conference on advances in geographic information systems,
+2010, pp. 270–279.
+[37] L. Zhang and J. Zhang, “Ultrasound image denoising using generative
+adversarial networks with residual dense connectivity and weighted joint
+loss,” PeerJ Computer Science, vol. 8, p. e873, 2022.
+[38] M. LLC. (1999) MS Windows NT kernel description. [Online].
+Available: http://splab.cz/en/download/databaze/ultrasound
+[39] K. Dabov, A. Foi, V. Katkovnik, and K. Egiazarian, “Image denoising by
+sparse 3-d transform-domain collaborative filtering,” IEEE Transactions
+on image processing, vol. 16, no. 8, pp. 2080–2095, 2007.
+[40] A. Buades, B. Coll, and J.-M. Morel, “A non-local algorithm for image
+denoising,” in 2005 IEEE computer society conference on computer
+vision and pattern recognition (CVPR’05), vol. 2.
+Ieee, 2005, pp.
+60–65.
+[41] K. Zhang, Y. Li, J. Liang, J. Cao, Y. Zhang, H. Tang, R. Timofte, and
+L. Van Gool, “Practical blind denoising via swin-conv-unet and data
+synthesis,” arXiv preprint arXiv:2203.13278, 2022.
+[42] J. Liang, J. Cao, G. Sun, K. Zhang, L. Van Gool, and R. Timofte,
+“Swinir: Image restoration using swin transformer,” in Proceedings of
+the IEEE/CVF international conference on computer vision, 2021, pp.
+1833–1844.
+[43] J. Caballero, C. Ledig, A. Aitken, A. Acosta, J. Totz, Z. Wang, and
+W. Shi, “Real-time video super-resolution with spatio-temporal networks
+and motion compensation,” in Proceedings of the IEEE conference on
+computer vision and pattern recognition, 2017, pp. 4778–4787.
+[44] Z. Liu, Y. Lin, Y. Cao, H. Hu, Y. Wei, Z. Zhang, S. Lin, and
+B. Guo, “Swin transformer: Hierarchical vision transformer using shifted
+windows,” in Proceedings of the IEEE/CVF international conference on
+computer vision, 2021, pp. 10 012–10 022.
+[45] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez,
+Ł. Kaiser, and I. Polosukhin, “Attention is all you need,” Advances in
+neural information processing systems, vol. 30, 2017.
+[46] C. A. Segall and S. T. Acton, “Morphological anisotropic diffusion,” in
+Proceedings of International Conference on Image Processing, vol. 3.
+IEEE, 1997, pp. 348–351.
+Soumee Guha (Student Member, IEEE) received
+Bachelor of Engineering in electrical engineering
+from Jadavpur University, India in 2018, and MTech
+in computer science from Indian Statistical Institute
+in 2020. She is currently pursuing the Ph.D. degree
+with the Virginia Image and Video Analysis Labora-
+tory (VIVA), University of Virginia. Her current re-
+search interests include image processing, biological
+and biomedical image analysis, image generation,
+image denoising and deep learning.
+Scott T. Acton (Fellow, IEEE) is the Lawrence
+R. Quarles Professor and Chair of Electrical &
+Computer Engineering at the University of Virginia.
+He is also appointed in Biomedical Engineering.
+For the previous three years, he was Program Di-
+rector in the Computer and Information Sciences
+and Engineering directorate of the National Science
+Foundation. He received the M.S. and Ph.D. degrees
+at the University of Texas at Austin, and he received
+his B.S. degree at Virginia Tech. Professor Acton is a
+Fellow of the IEEE “for contributions to biomedical
+image analysis.” Professor Acton’s laboratory at UVA is called VIVA -
+Virginia Image and Video Analysis. They specialize in biological/biomedical
+image analysis problems. Professor Acton has over 300 publications in the
+image analysis area including the books Biomedical Image Analysis: Tracking
+and Biomedical Image Analysis: Segmentation. He was the 2018 Co-Chair of
+the IEEE International Symposium on Biomedical Imaging. Professor Acton
+was Editor-in-Chief of the IEEE Transactions on Image Processing (2014-
+2018).

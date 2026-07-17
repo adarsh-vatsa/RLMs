@@ -1,0 +1,2338 @@
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+1
+StoreSketcher: An Interactive Framework
+for Arranging Products in Commercial Scenes
+Hou Tam, Shao-Kui Zhang, Yulin Jin, Han-Xi Zhu, Song-Hai Zhang, Member, IEEE
+Abstract—Retail space planning, arranging store sections and product placements to optimize customer ﬂow and stimulate
+purchases, is vital to retailers in increasing sales and enhancing the customer shopping experience. It can be challenging for retailers
+to arrange numerous products within limited shelf space. This paper introduces StoreSketcher, an interactive tool that assists retailers
+in planning retail scenes efﬁciently at macro and micro levels by providing intelligent suggestions. We extracted commercial relations
+among products/categories, built spatial rules for commercial objects and developed an interactive framework for synthesizing retail
+scenes. When the user points to shelf space in the scene, StoreSketcher evaluates the spatial signiﬁcance of the location and the
+commercial relation to the surrounding contexts to present appropriate suggestions. Quantitative experiments demonstrate that
+StoreSketcher signiﬁcantly assists in planning well-organized retail scenes. The suggestions provided by StoreSketcher not only boost
+cross-selling and impulse purchasing for retailers but also enhance product ﬁndability for customers.
+Index Terms—Commercial Place, Markets/Shops Planning, 3D Scene Editing, 3D Scene Synthesis, Interactive 3D Modeling.
+!
+1
+INTRODUCTION
+Research on 3D scene synthesis has gained signiﬁcant
+popularity in gaming, ﬁlmmaking, and virtual reality in
+recent years. However, current research predominantly fo-
+cuses on the synthesis of residential scenes [1], [2], [3],
+leaving a notable gap in the exploration of commercial
+scenes.
+The synthesis of commercial scenes holds substantial
+potential and relevance, especially for retailers. Interac-
+tively synthesizing the commercial scene assists retailers
+in planning retail space. Retailers can save effort and time
+in decision-making by leveraging algorithmically recom-
+mended elements. The synthesis of commercial scenes al-
+lows retailers to compare different zone layouts and product
+display strategies. Through simulations of diverse shopping
+environments and sales strategies, retailers can conduct
+comparative experiments to gain insights into optimal retail
+space conﬁgurations.
+However, there are many challenges in synthesizing
+commercial scenes. On the macro level of retail space plan-
+ning, when arranging different categories to create sections,
+we need to consider whether speciﬁc categories should be
+placed in the central area or the perimeter as it impacts
+the customer trafﬁc ﬂow throughout the store. On the mi-
+•
+Hou Tam, Shao-Kui Zhang, and Han-Xi Zhu are with the Department of
+Computer Science and Technology, Tsinghua University, Beijing, China.
+E-mail:
+th21@mails.tsinghua.edu.cn,
+shaokui@tsinghua.edu.cn,
+13651325353@sina.cn
+•
+Yulin Jin is with the Department of Computer Science and Technology at
+University of the Chinese Academy of Sciences, Beijing, China.
+E-mail: yulinjin2001@gmail.com
+•
+Song-Hai Zhang is with the Department of Computer Science and
+Technology, Tsinghua University, Beijing, China and Beijing National Re-
+search Center for Information Science and Technology (BNRist), Tsinghua
+University, Beijing, China.
+E-mail: shz@tsinghua.edu.cn
+Manuscript received - -, 2023; revised - -, -.
+(Corresponding author: Shao-Kui Zhang.)
+cro level, given the extensive range of products within a
+category, determining their placement on shelves involves
+factors such as consumer demand, proﬁt, and co-purchase
+correlations. These factors add to the complexity of deter-
+mining product categories and product arrangements. Exist-
+ing research in 3D scene synthesis primarily focuses on the
+relationships between objects in residential scenes [4], [5],
+with little attention paid to the relationships and placement
+rules among products in commercial scenes. Recent research
+has begun to explore commercial scene synthesis. The focus
+remains on the coarse level of shelf arrangement rather than
+the ﬁne level of product placement [6]. Existing methods
+also do not incorporate sophisticated commercial factors
+such as customer purchasing behavior and the purchase
+relation between products [6], [7].
+To address these challenges, we introduce StoreSketcher,
+an interactive framework that facilitates space planning for
+retailers at both macro and micro levels. Firstly, to optimize
+the store layout, the StoreSketcher evaluates the spatial
+signiﬁcance of each shelf space by computing its proximity
+to key locations and visibility to customers. We incorporate
+expert knowledge of retail store layout rules to strategi-
+cally place products and categories with higher proﬁt in
+areas of greater spatial signiﬁcance. Secondly, to model the
+commercial relations between categories and products, we
+conduct market basket analysis [8], [9] on an online grocery
+order dataset [10] to extract the co-purchased correlation at
+macro and micro levels. This extracted correlation is applied
+to guide the placement of complementary categories and
+products in proximity, enhancing cross-selling and encour-
+aging impulse buying. When users select a shelf space in
+the scene, StoreSketcher considers spatial signiﬁcance, co-
+purchase correlation and similarity to surrounding elements
+to provide ranked suggestions for the most probable and
+relevant categories or products in the selected area. Retailers
+can efﬁciently conduct space planning by selecting desired
+content from the suggestions. This easy-to-use tool relieves
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+2
+Fig. 1: We present an interactive framework to facilitate retail space planning at macro and micro levels in virtual retail
+scenes. In macro space planning (Yellow), when a user clicks on a shelf (a), the StoreSketcher provide ranked suggestions
+of categories for that “row” of shelves to help user to plan the store layout (b). After the user determines the shelf category,
+they can conduct micro space planning (Orange) and organize the product placement by selecting the placeholders on the
+shelves (c). The StoreSketcher then recommends products for the selected placeholder(s) (d). This framework iteratively
+provides suggestions for shelf categories and products based on the existing contexts and merchandising rules to streamline
+commercial scene synthesis. More interactive demos are shown in a supplementary video.
+users from laborious object searching and complex 3D scene
+editing operations such as viewpoint navigation and ob-
+ject transformations. General users can also conveniently
+populate an empty market scene by continuously selecting
+content from the suggestions, achieving high-quality scenes
+comparable to those produced by professionals.
+To suggest appropriately, we calculate the probabilities
+of shelf categories and products appearing in the context.
+We summarize the rules of product placement in real-life
+stores proposed in the existing literature [11], [12], [13], [14],
+[15]. Besides, we invited a professional team in the super-
+market to provide empirical support for the controversial
+content in the literature. Meanwhile, we use the grocery
+order dataset to indicate customers’ shopping behaviors and
+extract buying associations, widely known as the market
+basket analysis [8], [9]. With the result of market basket
+analysis and layout rules, we calculate the probabilities of a
+given category based on the selected shelves’ locations and
+the surrounding shelves’ categories. Similarly, we determine
+products’ probabilities based on the positions of the selected
+placeholders and their surrounding products.
+To make the interactive modelling process more efﬁcient,
+StoreSketcher incorporates interactive features that allow
+users to focus on the design aspect of the scene rather
+than other tedious operations such as viewpoint navigation,
+object transformations, etc.
+We conducted two experiments to evaluate the effec-
+tiveness of our framework. First, professional shelf ﬁllers
+and general users were invited to assess the utility of
+StoreSketcher by modeling retail scenes. Second, partici-
+pants simulated shopping in the virtual scenes modeled
+by people with different levels of professional backgrounds
+using StoreSketcher. The experimental results show that the
+professional shelf ﬁllers accepted the suggestions generated
+by StoreSketcher more frequently than other recommenda-
+tion methods. With the help of StoreSketcher, even non-
+professional users could produce scenes as rational and
+plausible as those produced by professional users.
+To our knowledge, no existing literature speciﬁcally ad-
+dresses interactive space planning in retail scenes. There-
+fore, this paper makes the following contributions:
+1) We present an interactive framework that assists retail
+space planning at the macro and micro levels.
+2) We provide designers with real-time recommenda-
+tions that combine the results of market basket analysis with
+proven effective layout rules.
+3) We incorporate interactive features to streamline the
+scene modeling process and make it practical for retailers.
+2
+RELATED WORKS
+Synthesizing realistic and detailed scenes is an active
+area for academia. Automatic scene synthesis develops
+rapidly and has achieved promising results with plausibility
+and aesthetics [16], [17]. To further incorporate users’ prefer-
+ences, interactive scene synthesis tools have been developed
+to provide intelligent layout suggestions and allow users
+to control the synthesized scene. Clutterpalette [4] trained
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+3
+their model on images of real-world indoor scenes to sug-
+gest appropriate small-scale objects to enrich virtual scene
+details. MageAdd [1] and SceneDirector [18] presented the
+interactive framework for iteratively synthesizing residen-
+tial scenes. It learns scene arrangement priors from a 3D
+scene dataset. However, these methods [1], [4], [18] rely on
+object relations speciﬁc to residential settings and cannot be
+directly applied to commercial scenes where object relations
+differ. Residential scene synthesis focuses on the functional
+relations between objects, such as supporting relations [4].
+However, commercial scene synthesis prioritizes relation-
+ships that impact customer behavior, such as cross-selling
+relations, consumer demands, brands and trends inﬂuences.
+While recent research has begun to address commercial
+scene synthesis, the focus has primarily been on coarse-
+level layout synthesis, i.e., the placement of shelf racks
+rather than detailed product placement [6]. While Liang et
+al [7] have delved into the ﬁne level of commercial scene
+synthesis to address product placement, its approach relies
+on spatial and exposure constraints. It lacks consideration
+for commercial factors, such as the purchase relations be-
+tween products, which limits its practicability for retailers
+in optimizing product placement. Relations between mer-
+chandises have not been utilized to synthesize market-like
+scenes. Therefore, We propose a framework for synthesizing
+commercial scenes, incorporating spatial and commercial
+rules while performing space planning.
+The arrangement of products and categories is essential
+to retailers as well. Research has investigated methodologies
+of commercial layouts [11], [12], [13], [14]. Generally, there
+are two approaches to arranging products within a shelf:
+displaying categories in the traditional taxonomic way or
+goal-based way [12], which means gathering products that
+determine a common shopping goal together on one shelf.
+Desai et al. [12] state that customers are likelier to purchase
+under goal-based displays. However, [12] also points out
+that it is questionable whether consumers are willing to put
+effort into locating all products when products are displayed
+goal-based, e.g., putting milk and bread (always appear in
+one’s shopping goal) on one shelf. Our framework considers
+the similarity of products and categories to help customers
+locate targets to adapt to both approaches. Meanwhile, we
+allow designers to conﬁgure shelves as a “mix” type, so
+items of different categories are recommended for place-
+ments.
+Additionally, location is also an essential factor inﬂuenc-
+ing product exposure and sales. [13], [15] discussed whether
+placing products near the entrance area (the decompression
+zone) can increase product sales. When placing products
+on shelves, researchers found that the “eye level” is the
+most proﬁtable location among all vertical positions [19].
+Moreover, [20] pointed out that the effects of vertical prod-
+uct positioning are much stronger than those of horizontal
+positioning.
+The purchase relations between products are crucial to
+retailers, as combined purchases can be improved by placing
+related products adjacent to each other [21]. One approach
+is to turn the association rules into an adjacency matrix and
+use multinomial tabu search to optimize the block layout
+design of grocery stores [8]. Another study [22] used a
+grocery order dataset to calculate buying associations and
+Fig. 2: Overview of the StoreSketcher framework. Retail
+space planning consists of macro and micro space planning,
+which determines the store layout at the category level and
+product placement at the SKU level. In each interactive
+session, StoreSketcher considers the user-selected location
+and the product/category’s commercial relation with the
+current scene context to generate ranked user suggestions.
+With these recommendations, users can efﬁciently synthe-
+size retail scenes by repeatedly choosing these suggestions.
+then used the associations to decide the display of products.
+However, buying associations are not the only factors that
+affect the arrangement of products. Therefore, we consider
+location, co-purchased relation and similarity to provide
+designers with appropriate product placement suggestions.
+3
+OVERVIEW
+This paper introduces the StoreSketcher, an interactive
+tool for conducting retail space planning at both the macro
+and micro levels, which enables users to synthesize retail
+scenes efﬁciently with highly plausible and controllable
+details. The StoreSketcher provide intelligent suggestions
+to assist users in determining shelf categories and product
+placement at each shelf location.
+Figure 2 shows an overview of the StoreSketcher frame-
+work. Our retail space planning process consists of two es-
+sential components: macro and micro space planning. Macro
+space planning addresses the zoning of store layouts, de-
+termining where each category inﬂuences customers’ ﬂow
+within the store. Micro space planning, on the other hand,
+operates at the SKU (stock-keeping unit) level and deals
+with the detailed arrangement of products within speciﬁc
+categories on the store shelves.
+In macro space planning, the user selects a single shelf
+or a row of shelves. StoreSketcher then recommends the
+most probable shelf category (such as snacks, fruits, etc.)
+in ranked order, and then the user assigns a category to the
+shelves according to our suggestion. In micro space plan-
+ning, after the shelf category is determined, the user places
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+4
+products of the corresponding category by simply clicking
+the placeholders on the shelves. StoreSketcher suggests the
+most appropriate products in ranked order, and the user can
+select speciﬁc product items to place them on the shelves.
+We calculate the conditional probabilities based on loca-
+tion, co-purchase relation and similarity to provide appro-
+priate suggestions for shelf categories and products. We use
+Instacart’s open-source online grocery order dataset [10] as
+our training input. We have learned the object distribution
+statistics of products and the buying patterns of customers
+from this dataset. With these learned statistics, when users
+model a retail scene, StoreSketcher evaluates the likelihood
+of each possible content appearing on the selected location
+and its relations with the surrounding shelf categories and
+products, then presents the most probable and relevant
+suggestions that align with the current context to users in
+each interaction.
+4
+SUGGESTION GENERATION
+The suggestions of macro and micro space planning
+rely on the computation of conditional probabilities that
+assess spatial signiﬁcance and commercial relations. When
+users select one or multiple shelves for category assignment
+(macro) or product arrangement (micro), StoreSketcher de-
+termines which categories or products to suggest and the
+order in which they should be presented. This is accom-
+plished by computing the probability that a hypothetical
+category/product will appear on the selected shelves. The
+probability is calculated by considering the chosen location
+and the current scene context, which includes the existing
+shelf categories or products in the scene. Subsequently, the
+suggestions are then presented to users in a ranked order
+based on their respective probabilities.
+Speciﬁcally, we denote the hypothetical category or
+product evaluated during each session as Hi. In macro space
+planning, Hi takes values from all available shelf categories
+{HC}, e.g. produce, dairy, bakery, snacks and beverages.
+In micro space planning, given the shelf category, Hi takes
+values from all available products within the category {HP }
+and evaluates each of them to provide the most appropriate
+suggestion. We calculate the following probability for each
+suggestion Hi:
+P(x = Hi|l, fco({hj}), fsim({hj}))
+(1)
+where x represents the hypothetical category/product, l
+is the selected location, and {hj} is the set of shelf categories
+or products that already exist in the scene. fco({hj}) repre-
+sents the purchase association between the hypothesis Hi
+and existing items {hj}. fsim({hj}) represents the semantic
+similarity of Hi and {hj}. Following Bayes’ theorem, we
+calculate the probability as shown in equation 2:
+P(x = Hi|l, fco({hj}), fsim({hj}))
+=P(x = Hi)P(l, fco({hj}), fsim({hj})|x = Hi)
+P(l, {hj})
+∝P(x = Hi)P(l, fco({hj}), fsim({hj})|x = Hi)
+=P(x = Hi)P(l|x = Hi)
+Y
+j
+P(fco(hj)|x = Hi)
+Y
+j
+P(fsim(hj)|x = Hi)
+(2)
+According to Bayes’ theorem, we can ignore the de-
+nominator P(l, {hj}) as it does not vary with variable i.
+Subsequently, we can obtain equation 2 using the naive
+Bayes assumption. To estimate each probability in Equation
+2, we extract buying association statistics from the market
+basket dataset.
+We ﬁrst introduce the dataset we utilized to extract
+buying association statistics in Subsection 4.1. Then, we il-
+lustrate how each probability term in Equation 2 is obtained
+in Subsections 4.2 to 4.5.
+4.1
+Dataset
+We use the Instacart Online Grocery Shopping Dataset
+[10] to extract consumer purchase patterns. Previous studies
+collect market basket data from brick-and-mortar supermar-
+kets [8], [22]. However, such data are biased due to the
+inﬂuence of store layout and marketing strategy. For exam-
+ple, if a product has a lot of exposure in a store, the sales
+of that product increase. Therefore, we choose Instacart’s
+open-source online grocery order dataset [10] for market
+basket analysis. This dataset contains over 3 million grocery
+orders from more than 200,000 users. We focus on the sales
+proportions of each category and product to determine
+customers’ shopping behaviour rules. We use market basket
+analysis [9], a data-mining technique frequently used in
+marketing, to extract the association rules from the Instacart
+dataset and better guide the layout generation considering
+customer shopping behavior.
+4.2
+Prior
+Retail shelf space is valuable yet limited. Ensuring that
+each section and product receives an appropriate space
+allocation is crucial. For instance, allocating insufﬁcient
+space for a high-demand product may result in frequent
+stockouts, leading to lost sales and disappointed customers.
+Conversely, allocating excessive facings for a slow-moving
+item would inefﬁciently use the limited shelf space.
+According to previous consumer research [23], allocating
+shelf space in proportion to historical sales is an effective
+practice to prevent out-of-stock situations, satisfy consumer
+demands and boost sales. Therefore, we deﬁne the prior
+probability P(x = Hi) for each Hi based on its historical
+sales S(Hi) and its allocated shelf space R(Hi), as shown in
+Equation 3:
+P(x = Hi) = S(Hi) ×
+1
+1 + e−k(S(Hi)−R(Hi))
+(3)
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+5
+where S(Hi) represents the sales of Hi divided by the
+total sales. The logistic function adjusts the prior probabil-
+ity, reducing it when the allocated space R(Hi) is nearly
+proportional to the sales S(Hi), ensuring that the allocated
+space for each item aligns with its historical sales.
+4.3
+Conditional Location Probability
+Supermarket sections and products are strategically ar-
+ranged at different locations within the retail store for var-
+ious reasons. For example, frozen food sections are com-
+monly positioned near walls for easy access to electricity.
+Additionally, small packages of candies and chocolates are
+often strategically placed at checkout lanes to encourage
+impulse purchases.
+When users arrange the section layout in macro space
+planning, we ﬁrst compute the distance from the selected
+location l to the point of interest (POI) lpoi (which includes
+the entrance, exit, and the nearest wall). Suppose the dis-
+tance is within a threshold d. In that case, we multiply a
+pre-deﬁned inﬂuence of the POI P(lpoi|HCi) by a distance
+decay function D(l, lpoi) to obtain its contribution to the con-
+ditional location probability. However, suppose the distance
+exceeds the threshold d, indicating that the POI is too distant
+to inﬂuence the target location signiﬁcantly. In that case,
+we omit the inﬂuence of this POI. The conditional location
+probability for macro space planning is deﬁned in Equation
+4:
+P(l|x = HCi) =
+Y
+lpoi∈POIs(l,d)
+P(lpoi|HCi) × D(l, lpoi)
+(4)
+where POIs(l, d) denote the set of points of interest
+within distance D from the location l. D(i, j) = e−γdis(i,j)2
+is a distance decay function to reduce the strength of the
+relationship between i and j as the distance between them
+increases. The distance is measured in meters, and the decay
+parameter γ is empirically set to 0.01.
+While utilising every selling spot within the store envi-
+ronment is essential, experts hold conﬂicting opinions on the
+layout rules for planning an effective section layout that can
+attract customers’ attention and increase sales. For instance,
+some literature suggests that products placed at the entrance
+area, also known as the decompression zone, have the most
+negligible impact on capturing customers’ attention [15]. In
+contrast, other studies argue the opposite [13]. Since existing
+research lacks a consensus on layout rules, we invited a team
+of professional supermarket workers specializing in shelf
+planning to evaluate the probability P(lpoi|HCi) of each
+product category located near a particular point of interest,
+including the entrance, exit and the walls. Their expertise
+was utilized to guide our macro space planning process.
+In micro space planning, determining the optimal prod-
+uct placement requires considering both the shelf space’s
+visibility and the products’ proﬁt. The visibility of a prod-
+uct’s location directly inﬂuences its exposure to potential
+customers, affecting its sales. Different arrangements of
+products with varying prices can signiﬁcantly impact the
+sales and proﬁts of retailers. A common strategy is to place
+high-priced products in areas that are easily visible and
+accessible to encourage purchases and maximize sales.
+Therefore, to suggest the best products to place given
+the 3D position l = (lx, ly, lz) of the currently selected
+shelf space, we evaluate the visibility V(l) of the shelf space
+to customers. Our goal is to arrange products with higher
+proﬁts in locations with higher visibility. Consequently, we
+combine the contributions of price and visibility in product
+placement, as shown in Equation 5, to calculate the condi-
+tional location probability for micro space planning:
+P(l|x = HPi) = V(l) × P(HPi)
+(5)
+where V(l) represents the visibility of the shelf space,
+and P(HPi) represents the proﬁt of product item HPi,
+ranging from [0, 1] according to its rank of proﬁt, where 1
+indicates the most proﬁtable and 0 indicates the least.
+The visibility V(l) is deﬁned as shown in equation 6:
+V(l) = wF VF (l) + wHVH(l)
+(6)
+where VF (l) and VH(l) represent the visible ﬁeld term
+and the vertical level term, which measure the visibility
+from the X-Y plane and Z axis, respectively. Their associated
+weights, wF and wH, are empirically set to 0.5. The visible
+ﬁeld term VF (l) quantiﬁes how far the placeholder can
+be seen from various angles and is deﬁned as shown in
+Equation 7:
+VF (l) = 1
+N
+X
+θ
+1
+Nθ
+disθ(l)
+(7)
+where disθ(l) represents the distance from the location of
+the placeholder l to its nearest obstacle (i.e., other rows of
+shelves or the wall) in the X-Y plane in the direction θ.
+The normalization constant Nθ is the maximum distance
+a placeholder can reach in the direction θ. The angle θ is uni-
+formly sampled from (θl −π
+2 , θl + π
+2 ), where θl corresponds
+to the front direction of the placeholder, and N represents
+the number of angles sampled. In our implementation, we
+set N to 11, meaning that the interval between the sampled
+angles is 15◦.
+The vertical level term VH(l) denotes the capability of
+different vertical positions to draw customer attention. Ex-
+perts suggest that products positioned between the eye and
+knee level are more likely to attract customer attention [23],
+[24]. The results of a previous consumer study [23] further
+narrow this range, indicating that positioning products at
+a vertical height of 51 −53 inches off the ﬂoor results in
+the highest increase in sales. Based on the results of [23],
+we use a Gaussian function to model the effect of vertical
+positioning on customer attention, as shown in Equation 8:
+VH(l) = e−(lz−l0)2
+2σ2
+(8)
+where lz refers to the height of the placeholder (the z
+coordinate of l) and is measured in meters. l0 is the optimal
+vertical level for products and is set to 1.32m, according
+to [23]. We use σ = 0.5m to allow the height to vary
+between eye and knee levels and reduce the visibility when
+the height exceeds this range.
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+6
+4.4
+Co-occurrence Probability
+Inspired by the well-known beer and diaper combina-
+tion, retailers often strategically arrange related sections or
+complementary products to stimulate consumer demand
+and promote cross-selling [21], [25]. For example, placing
+bread next to butter or pasta next to pasta sauces prompts
+customers to consider purchasing both items.
+To identify frequently co-purchased products and as-
+sess their co-occurrence in transactions (grocery orders), we
+employ market basket analysis, a data-mining technique
+widely used in retail research to explore relationships be-
+tween products as well as product categories [26], [27],
+[28]. This approach allows us to extract association rules
+at both micro and macro levels by calculating three metrics:
+”Support,” ”Conﬁdence” and ”Lift”.
+An association rule is deﬁned as A ⇒B, indicating that
+if the itemset A is present in the basket, there is a speciﬁed
+probability that itemset B will also be present in the same
+basket.
+“Support” measures the occurrences of the itemset A
+appear in the set of all transactions T. It is deﬁned as the
+percentage of transactions that contain the itemset A:
+S(A) = |t ∈T : A ⊆t|
+|T|
+(9)
+“Conﬁdence“ measures the strength of an association
+rule and is deﬁned as:
+C(A ⇒B) = S(A ∪B)
+S(A)
+(10)
+“Lift” measures the correlation between itemset A and
+B. It is calculated as the ratio of the conﬁdence of the rule
+to the support of B:
+L(A ⇒B) = C(A ⇒B)
+S(B)
+(11)
+It indicates whether the association between A and B is
+statistically signiﬁcant as compared to the independence of
+A and B. A lift value greater than 1.0 indicates that the
+presence of A is associated with the presence of B.
+We calculated these three metrics for each pair of prod-
+ucts from the Instacart dataset [10] and conducted Min-
+Max normalization to bring the lift value into the range of
+[0−1]. Therefore, the co-occurrence probability is calculated
+as shown in Equation 12:
+P(fco(hj)|x = Hi) = L(Hi, hj) × D(Hi, hj)
+(12)
+where the lift value is multiplied by a distance-decay
+function to decrease the strength of the association rules as
+the distance increases.
+4.5
+Similarity Probability
+While the co-occurrence probability encourages related
+sections and complementary products that are frequently
+purchased together to be arranged together (e.g., the tooth-
+brush and toothpaste, bread and butter), which in turn
+enhances complementary purchases, it is insufﬁcient to
+address the situations where similar products, which are
+typically not bought together, are commonly placed in prox-
+imity as well (e.g., toothbrush of different brands, Coca-Cola
+and Pepsi-Cola). This practice of placing similar products to-
+gether not only facilitates product comparison for customers
+during the purchasing process but also provides a substitute
+product when the customer’s target item is unavailable,
+which prevents potential sales loss [29]. Therefore, we in-
+troduce similarity probability to encourage suggestions of
+similar items to its existing neighbours, as shown in equa-
+tion 13:
+P(fsim(hj)|x = Hi) = cos(wHi, whj) × D(Hi, hj)
+(13)
+where wk is the word vector of the item k from the GloVe
+pre-trained word embedding (Wikipedia 2014 + Gigaword
+5) [30]. cos(wk, wl) calculates the cosine similarity between
+the word embedding vectors. The distance-decay function
+adjusts the strength of the similarity probability since we
+are only concerned with nearby products.
+Figure 3 shows the values of these probabilities when
+StoreSketcher generates suggestions. In each case, we se-
+lected the top recommendation results for presentation.
+Figures 3a and 3b give examples of category suggestions
+in two different contexts. Figures 3c and 3d show the
+generation of product suggestions on a shelf with a ”mix”
+category. As mentioned in Section 2, the ”mix” category
+allows users to place items belonging to different categories
+on the same shelf. Conversely, in a shelf assigned with a
+single type, products from different categories will appear in
+the recommended list after those belonging to the assigned
+category.
+5
+EXPERIMENTS AND EVALUATION
+5.1
+Results and Setup
+Figure 5 presents qualitative results generated by our
+framework. To evaluate the proposed framework, we de-
+velop a platform with sufﬁcient functionalities to support
+scene editing, viewing, manipulating, and comparing with
+other methods, as shown in Figure 4.
+Object database. Our 3D object database contains 14
+common product categories in retail stores, such as bakery,
+dairy, snacks, frozen foods, condiments and cleaning sup-
+plies. We also have 151 product object instances.
+Easy Scene Editing. Our platform frees users from com-
+plex operations, such as viewpoint navigation and object
+transformations. It provides features like “auto-perspective”
+which automatically adjusts cameras to the shelves or place-
+holders, and “simple-insertion” which eliminates the need
+for manual translation, rotation, and duplication of 3D mod-
+els.
+First-person view. This platform provides a ﬁrst-person
+view for users to stroll around and explore the virtual
+commercial scene, thus simulating the shopping experience.
+It provides a ﬁrst-person perspective similar to traditional
+ﬁrst-person video games, allowing for an immersive experi-
+ence.
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+7
+(a) Category Recommendation I
+(b) Category Recommendation II
+(c) Product Recommendation I
+(d) Product Recommendation II
+Fig. 3: The effects of different probabilities when StoreSketcher generates suggestions. Different suggestions are given to the
+user-selected shelf space (Blue). (a) The categories of “Grain”, “Bakery” and “Oil” are recommended since the surrounding
+shelves are ﬁlled with food. (b) The “Vegetable” category is recommended since it is most relevant to “Fruit”. (c) and (d)
+The bread is often co-purchased with cheese and milk, so these recommendations are presented to encourage cross-selling
+on the “mix” type of shelves.
+(a) Process of macro space planning: Users determine the cat-
+egories’ location by assigning the suggested categories to each
+group of shelves.
+(b) Process of micro space planning: Users determine the prod-
+ucts’ detailed arrangements on individual shelves by selecting
+products from the suggestion list (Red Box).
+Fig. 4: The 3D scene platform that incorporates our frame-
+work and the process of user interaction.
+5.2
+Retail Space Planning
+To evaluate the effectiveness of our framework, we in-
+vited 36 subjects to model the scene through macro and
+micro space planning. We assess the usage of suggestions
+during retail space planning.
+In macro space planning, the participants were asked
+to determine the zoning of the store layout and assign
+categories to each row of shelves. In micro space planning,
+participants were required to place products on the shelves
+with a speciﬁed category, deciding the position and allo-
+cated space for each product.
+Among the 36 participants (26 females and 10 males), 20
+were experienced supermarket shelf ﬁllers with an average
+of 8.5 years of working experience in the retail industry,
+while the remaining participants were university students.
+All participants received a brief tutorial on the user interface
+before starting the experiments.
+Participants conducted macro space planning and micro
+space planning under three settings in a random order for
+counterbalancing:
+In Setting 1, the user interface presented the category
+list and the product list in a hierarchical taxonomic way,
+similar to existing planogram software (e.g., Nexgen POG,
+OPENCatman) that presents options in orders according to
+names, universal product code (UPC), etc..
+In Setting 2, the category and product lists were pre-
+sented in a ranked order following the suggestion genera-
+tion method in Clutterpalette [4].
+In Setting 3, the category and product suggestions are
+presented in ranked order according to StoreSketcher.
+The suggestion lists of all settings are ordered. In each
+interactive planning session, we recorded the rank of the
+categories and products users chose in the suggestion list.
+This allows us to compare the settings concerning how often
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+8
+(a) Produce
+(b) Beverages
+(c) Snacks I
+(d) Bakery I
+(e) Fruits
+(f) Daily necessities
+(g) Snacks II
+(h) Bakery II
+Fig. 5: Generated Results of StoreSketcher.
+users took the suggestion within the top N recommenda-
+tions in each setting.
+Tables 1 and 2 report the usage percentages of the sug-
+gestions in each setting for professional users and general
+users respectively.
+During the macro space planning phrase, when users
+divided the retail scene into sections and assigned categories
+to shelves, professional users selected the recommended
+shelf category within the top 5 in StoreSketcher setting
+57.73% of the time on average, as opposed to the hier-
+archical taxonomic setting (33.42%) and the Clutterpalette
+setting (27.86%). For general users, the usage percentage
+of the StoreSketcher suggested categories within the top
+5 is 66.4%, higher than the hierarchical taxonomic setting
+(39.69%) and the Clutterpalette setting (30.6%). This shows
+that both professional and general users frequently accepted
+the suggestions provided by StoreSketcher and can largely
+rely on our method to plan an effective section layout
+efﬁciently for a retail store.
+In micro space planning, when professional users ar-
+range products, 62.97% of the time, they chose the sugges-
+tions ranked within the top 5 in the StoreSketcher setting, as
+opposed to the hierarchical taxonomic setting (48.26%) and
+the Clutterpalette setting (45.29%). For general users, the
+usage percentage of the StoreSketcher suggested products
+within the top 5 is 62.24%, as opposed to the hierarchical
+taxonomic setting (51.29%) and the Clutterpalette setting
+(47.13%). This shows that our suggestions align more with
+the professional supermarket workers’ expectations. The
+commercial considerations incorporated into our method
+are similar to what professional shelf ﬁllers would have
+considered when arranging products.
+After ﬁnishing space planning under the three settings,
+participants were asked to rate their satisfaction with the
+three methods. A 5-point Likert Scale was used to evaluate
+how helpful the suggestions were in helping them plan a
+retail scene efﬁciently from users’ perspectives. A rating of
+1 indicates that the suggestions were not helpful. In contrast,
+a rating of 5 indicates that the suggestions were highly
+appropriate for the selected location and satisﬁed the spatial
+constraints and commercial context.
+Table 3 shows user satisfaction with the suggestions
+provided by each setting. The participants’ satisfaction rat-
+ings for StoreSketcher’s suggestions were 4.33 on average,
+higher than the Hierarchical Taxonomic (3.17) and the Clut-
+terpalette (3.08). This result indicates that most professional
+shelf ﬁllers preferred StoreSketcher’s suggestions.
+Additionally, participants were asked to rate their satis-
+faction with the synthesized scenes under the three settings.
+A 5-point Likert Scale was used to evaluate their satisfac-
+tion, where 1 indicates very dissatisﬁed, and 5 indicates
+satisﬁed.
+Table 4 reports the user satisfaction with the result scenes
+in each setting. The result shows a less signiﬁcant difference
+since we asked all participants to model the scenes until
+they were satisﬁed.
+5.3
+Rationality of created scenes
+To evaluate the rationality of the scenes created with
+StoreSketcher, we conducted another experiment to evaluate
+whether the synthesized scenes provide a satisfactory shop-
+ping experience for customers and promote sales for retail-
+ers. We compared the following scenes to see if customers
+can ﬁnd their target products easily and if they make any
+unplanned purchases due to in-store factors such as layout
+design:
+1) The synthesized scenes modeled by professional shelf
+ﬁllers using StoreSketcher from Section 5.2 (the Professional
+Setting);
+2) The synthesized scenes modeled by non-professional
+users using StoreSketcher from Section 5.2 (the Non-
+Professional Setting);
+3) Randomly generated scenes (the Random Setting).
+Note that the ﬁrst two settings were the result scenes
+from Section 5.2.
+We invited another 30 participants to act as customers
+and complete two shopping tasks for each scene setting.
+They simulated shopping in the supermarkets using the
+ﬁrst-person views introduced in 5.1.
+In the ﬁrst task, participants were asked to quickly locate
+ﬁve targets. We recorded the search time to assess the ease
+of ﬁnding speciﬁc products. In the second task, participants
+were free to roam the supermarket while looking for three
+shopping targets without any time constraints. We kept
+track of any additional purchases they made during the
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+9
+TABLE 1: Professional users’ usage percentage of the top N suggestion(s) in each setting.
+Macro Space Planning
+Micro Space Planning
+Top 1
+Top 2
+Top 3
+Top 4
+Top 5
+Top 1
+Top 2
+Top 3
+Top 4
+Top 5
+Hierarchical
+4.58%
+12.03%
+17.88%
+29.59%
+33.42%
+12.65%
+23.05%
+32.07%
+40.45%
+48.26%
+Clutterpalette
+6.93%
+10.91%
+15.37%
+18.03%
+27.86%
+11.3%
+21.29%
+29.82%
+37.87%
+45.29%
+StoreSketcher
+23.81%
+32.94%
+42.28%
+50.31%
+57.73%
+19.64%
+30.97%
+41.66%
+51.83%
+62.97%
+TABLE 2: General users’ usage percentage of the top N suggestion(s) in each setting.
+Macro Space Planning
+Micro Space Planning
+Top 1
+Top 2
+Top 3
+Top 4
+Top 5
+Top 1
+Top 2
+Top 3
+Top 4
+Top 5
+Hierarchical
+6.17%
+13.19%
+19.27%
+32.83%
+39.69%
+11.80%
+24.51%
+35.82%
+44.33%
+51.29%
+Clutterpalette
+7.39%
+13.71%
+18.3%
+23.87%
+30.60%
+15.08%
+22.89%
+33.13%
+39.64%
+47.13%
+StoreSketcher
+27.57%
+41.13%
+50.85%
+57.69%
+66.4%
+22.95%
+34.66%
+44.69%
+53.19%
+62.24%
+TABLE 3: User satisfaction with the suggestions provided
+by hierarchical taxonomic, Clutterpalette and StoreSketcher
+on a scale of 1 to 5. The brackets indicate the standard
+deviations.
+Hierarchical Taxonomic
+Clutterpalette
+StoreSketcher
+3.31(0.86)
+3.05(0.72)
+4.33(0.66)
+TABLE 4: User satisfaction with the resulting scenes under
+setting hierarchical taxonomic, Clutterpalette and StoreS-
+ketcher on a scale of 1 to 5. The brackets indicate the
+standard deviations.
+Hierarchical Taxonomic
+Clutterpalette
+StoreSketcher
+4.13(0.57)
+3.92(0.74)
+4.54(0.64)
+shopping tour to see if the arrangement enticed the cus-
+tomers into buying things other than their original targets.
+Table 6 shows the time consumption for the ﬁrst task,
+ﬁnding ﬁve target products as soon as possible in the
+three retail scene settings. On average, participants spent
+123.11 seconds ﬁnding all ﬁve targets in the random setting.
+In scenes created by professional users, participants spent
+96.16 seconds, while it only took 72.42 seconds in scenes
+created by non-professional users with the help of StoreS-
+ketcher. The non-professional setting shows better prod-
+uct ﬁndability compared to the professional setting. This
+may be because professionals prioritize other commercial
+considerations over speed. They may intentionally place
+frequently purchased products in more distant regions so
+that customers pass by more products and potentially make
+more purchases. This result suggests that StoreSketcher can
+assist in creating layouts that improve product ﬁndability,
+making it easier for customers to ﬁnd their target products
+and providing a more intuitive shopping experience.
+As for task two, table 7 reports the average amount
+of additional purchased products when customers wan-
+der in supermarkets and search for three shopping targets
+without any time constraint. In the Professional setting,
+87% of the customers made additional purchases. On av-
+erage, customers bought 2.20 extra products besides their
+original goals. For each unplanned purchase, we analyzed
+customers’ purchase motivation. 45% of the extra purchases
+were made because the products were near their shopping
+targets. 10% were purchased due to their prominent loca-
+tions, such as the entrance area or high visibility. Other
+factors, such as attractive product displays or personal pref-
+erences, drove the rest. In the non-professional case, 87% of
+the customers also made unplanned purchases. On average,
+they bought 1.83 additional products besides their initial
+targets. 50% of the unplanned purchases were made due to
+their proximity to customers’ shopping targets. 7% occurred
+because of their prominent locations. In the Random set-
+ting, only 27% of the customers made extra purchases, and
+customers bought only 0.53 extra products on average. The
+results show that scenes created with StoreSketcher, whether
+professional or non-professional users, enhance customers’
+shopping desire and stimulate impulse purchases. On the
+other hand, random display of products signiﬁcantly re-
+duces the impulse purchase rate. These ﬁndings suggest that
+most additional purchases result from in-store factors such
+as the layout design and product placement and further
+demonstrate the rationality of the suggestions provided by
+StoreSketcher.
+After completing the two tasks, participants were asked
+to rate the scene on a scale of 1 to 5, evaluating the reason-
+ableness of the product placement. A rating of 1 represents
+a highly unconventional and uncomfortable arrangement,
+while a rating of 5 indicates a perfect placement. The re-
+sults demonstrate that scenes produced by non-professional
+users, with the assistance of StoreSketcher, achieve user
+satisfaction comparable to those created by professionals.
+The professional setting received an average score of 4.59,
+the non-professional setting scored 4.50, and the random
+setting scored 1.83.
+Table 5 shows user satisfaction’s average score and
+standard deviation with the scenes in Professional, Non-
+Professional and Random settings. Participants were asked
+to rate the scene on a scale of 1 to 5, evaluating the reason-
+ableness of the product placement. A rating of 1 represents
+a highly unconventional and uncomfortable arrangement,
+while a rating of 5 indicates a placement that makes perfect
+sense. This result demonstrates that scenes produced by
+non-professional users, with the assistance of StoreSketcher,
+achieve user satisfaction comparable to those created by pro-
+fessionals. Professionals received an average score of 4.59,
+non-professional users scored 4.50, and random placements
+scored 1.83.
+We analyzed the average number of products purchased
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+10
+TABLE 5: User satisfaction with the scenes created by Pro-
+fessionals, Non-Professional Users and Random Placement
+on a scale of 1 to 5.
+Professional
+Non-Professional
+Random
+4.59(0.49)
+4.5(0.64)
+1.83(1.00)
+when customers wander in a supermarket while searching
+for three shopping targets without any time constraints.
+Table 7 reports the result of the additional purchase rate. Re-
+sults show that scenes created with StoreSketcher, regardless
+of whether professional or non-professional users created
+them, promote customers’ shopping desires and stimulate
+impulse purchases. On the contrary, a cluttered display of
+products reduces the rate of unplanned purchases signif-
+icantly. Furthermore, we analyzed the reasons behind the
+customers’ decisions for each unplanned purchase. In the
+Professional case, 45% of the extra purchases were made be-
+cause the products were near the intended shopping target,
+10% were purchased due to their placement in prominent
+locations such as right next to the entrance, and the rest were
+driven by other factors such as attractive packaging and
+personal preferences. In the Non-Professional case, 50% of
+the unplanned purchases occurred because of the adjacency
+of the shopping target, and 7% occurred because of their
+placement in prominent locations. These ﬁndings suggest
+that most additional purchases result from the proper place-
+ment of products and further demonstrate the rationality of
+the suggestions provided by StoreSketcher.
+6
+CONCLUSION AND FUTURE WORK
+In this paper, we proposed StoreSketcher, an interactive
+tool that provides intelligent suggestions of categories and
+products to facilitate retail space planning and commercial
+scene synthesis. It leverages spatial rules and commercial
+relations derived from a large-scale grocery order dataset
+to rank the probability of each suggestion. Our experiments
+have demonstrated that StoreSketcher can assist in produc-
+ing a well-organized store layout and product placement
+that signiﬁcantly enhances sales for retailers and improves
+the shopping experience for customers. This is the ﬁrst
+interactive tool that addresses both macro and micro levels
+of space planning in commercial scene synthesis, and we
+hope our work can facilitate advancements in commercial
+scene synthesis and draw more attention to this evolving
+ﬁeld. Nevertheless, our framework may incorporate more
+reﬁnements in the future.
+One of the difﬁculties in retail space planning is bal-
+ancing conﬂicting goals, e.g., optimizing the ﬁndability of
+customers’ target products versus encouraging a longer cus-
+tomer ﬂow for increased product exposure. Our approach
+addresses these conﬂicting requirements by offering rational
+layout suggestions considering spatial rules and commercial
+relations. In future work, these goals could be presented
+explicitly, e.g., in the form of attribute panels [18], making it
+easier for users to adjust and customize.
+Moreover, our work lacked a large dataset of high-
+quality product models, reﬂecting a common problem with
+3D scene generation in a non-residential domain. The lack
+of diverse and reﬁned product models received the most
+negative feedback in our experiments. We anticipate the
+availability of more model datasets available for various
+types of scene generation in the future.
+ACKNOWLEDGMENTS
+This work was supported by the National Key Research
+and Development Program of China (No. 2023YFF0905104),
+the Natural Science Foundation of China (No. 62132012),
+Beijing Municipal Science and Technology Project (No.
+Z221100007722001) and Tsinghua-Tencent Joint Laboratory
+for Internet Innovation Technology.
+REFERENCES
+[1]
+S.-K. Zhang, Y.-X. Li, Y. He, Y.-L. Yang, and S.-H. Zhang,
+“Mageadd: Real-time interaction simulation for scene synthesis,”
+in Proceedings of the 29th ACM International Conference on Multime-
+dia, 2021, pp. 965–973.
+[2]
+L.-F. Yu, S. K. Yeung, C.-K. Tang, D. Terzopoulos, T. F. Chan,
+and S. Osher, “Make it home: automatic optimization of furniture
+arrangement.” ACM Trans. Graph., vol. 30, no. 4, p. 86, 2011.
+[3]
+Q. Fu, X. Chen, X. Wang, S. Wen, B. Zhou, and H. Fu, “Adaptive
+synthesis of indoor scenes via activity-associated object relation
+graphs,” ACM Transactions on Graphics (TOG), vol. 36, no. 6, pp.
+1–13, 2017.
+[4]
+L.-F. Yu, S.-K. Yeung, and D. Terzopoulos, “The clutterpalette: An
+interactive tool for detailing indoor scenes,” IEEE transactions on
+visualization and computer graphics, vol. 22, no. 2, pp. 1138–1148,
+2015.
+[5]
+L. Majerowicz, A. Shamir, A. Sheffer, and H. H. Hoos, “Filling your
+shelves: Synthesizing diverse style-preserving artifact arrange-
+ments,” IEEE Transactions on Visualization and Computer Graphics,
+vol. 20, no. 11, pp. 1507–1518, 2014.
+[6]
+S.-K. Zhang, J.-H. Liu, Y. Li, T. Xiong, K.-X. Ren, H. Fu,
+and S.-H. Zhang, “Automatic generation of commercial scenes,”
+in
+Proceedings
+of
+the
+31st
+ACM
+International
+Conference
+on
+Multimedia, ser. MM ’23.
+New York, NY, USA: Association for
+Computing Machinery, 2023, p. 1137–1147. [Online]. Available:
+https://doi.org/10.1145/3581783.3613456
+[7]
+W. Liang, L. Wang, X. Yu, C. Li, R. Alghofaili, Y. Lang, and L.-F. Yu,
+“Optimizing product placement for virtual stores,” in 2023 IEEE
+Conference Virtual Reality and 3D User Interfaces (VR).
+IEEE, 2023,
+pp. 336–346.
+[8]
+E. Ozgormus and A. E. Smith, “A data-driven approach to grocery
+store block layout,” Computers & Industrial Engineering, vol. 139, p.
+105562, 2020.
+[9]
+H. Aguinis, L. E. Forcum, and H. Joo, “Using market basket
+analysis
+in
+management
+research,”
+Journal
+of
+Management,
+vol.
+39,
+no.
+7,
+pp.
+1799–1824,
+2013.
+[Online].
+Available:
+https://doi.org/10.1177/0149206312466147
+[10] “The
+instacart
+online
+grocery
+shopping
+dataset
+2017,”
+https://www.instacart.com/datasets/grocery-shopping-2017.
+[11] T. Elbers, “The effects of in-store layout- and shelf designs on
+consumer behaviour,” 2016.
+[12] K. K. Desai and S. Ratneshwar, “Consumer perceptions of product
+variants positioned on atypical attributes,” Journal of the Academy
+of Marketing Science, vol. 31, no. 1, pp. 22–35, 2003. [Online].
+Available: https://doi.org/10.1177/0092070302238600
+[13] T. Otterbring, “Decompression zone deconstructed: Products lo-
+cated at the store entrance do have an impact on sales,” Interna-
+tional Journal of Retail & Distribution Management, vol. 46, no. 11/12,
+pp. 1108–1116, 2018.
+[14] C. P. Lamberton and K. Diehl, “Retail Choice Architecture: The Ef-
+fects of Beneﬁt- and Attribute-Based Assortment Organization on
+Consumer Perceptions and Choice,” Journal of Consumer Research,
+vol. 40, no. 3, pp. 393–411, 05 2013.
+[15] P. Underhill, “Inside the machine,” The Wilson Quarterly, vol. 28,
+no. 1, pp. 30–41, 2004.
+[16] K. Wang, Y.-A. Lin, B. Weissmann, M. Savva, A. X. Chang, and
+D. Ritchie, “Planit: Planning and instantiating indoor scenes with
+relation graph and spatial prior networks,” ACM Transactions on
+Graphics (TOG), vol. 38, no. 4, p. 132, 2019.
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+11
+TABLE 6: Time consumption on ﬁnding products in scene setting Professional, Non-Professional, and Random. Each cell
+includes an average time in seconds and a standard deviation.
+1st Product
+2nd Product
+3rd Product
+4th Product
+5th Product
+Professional
+13.55 (15.83)
+29.69 (26.15)
+45.44 (30.57)
+64.45 (36.75)
+90.16 (42.71)
+Non-Professional
+10.10 (9.50)
+20.93 (14.00)
+37.74 (21.08)
+52.63 (31.80)
+72.42 (37.62)
+Random
+19.79 (17.27)
+37.12 (27.64)
+61.04 (32.73)
+93.52 (47.94)
+123.11 (53.86)
+TABLE 7: Additional purchases while roaming in scene
+setting Professional, Non-Professional, and Random.
+Professional
+Non-Professional
+Random
+2.20
+1.83
+0.53
+[17] S.-K. Zhang, W.-Y. Xie, and S.-H. Zhang, “Geometry-based layout
+generation with hyper-relations among objects,” Graphical Models,
+vol. 116, p. 101104, 2021.
+[18] S.-K. Zhang, H. Tam, Y. Li, K.-X. Ren, H. Fu, and S.-H. Zhang,
+“Scenedirector: Interactive scene synthesis by simultaneously edit-
+ing multiple objects in real-time,” IEEE Transactions on Visualization
+and Computer Graphics, 2023.
+[19] J. M. Hansen, S. Raut, and S. Swami, “Retail shelf allocation: A
+comparative analysis of heuristic and meta-heuristic approaches,”
+Journal of Retailing, vol. 86, no. 1, pp. 94–105, 2010.
+[20] A. Valenzuela and P. Raghubir, “Center of orientation: Effect of
+vertical and horizontal shelf space product position,” ACR North
+American Advances, 2009.
+[21] Y.-L. Chen, J.-M. Chen, and C.-W. Tung, “A data mining approach
+for retail knowledge discovery with consideration of the effect of
+shelf-space adjacency on sales,” Decision Support Systems, vol. 42,
+no. 3, pp. 1503–1520, 2006.
+[22] I. Cil, “Consumption universes based supermarket layout through
+association rule mining and multidimensional scaling,” Expert
+Systems with Applications, vol. 39, no. 10, pp. 8611–8625, 2012.
+[23] X.
+Dr`
+eze,
+S.
+J.
+Hoch,
+and
+M.
+E.
+Purk,
+“Shelf
+management
+and
+space
+elasticity,”
+Journal
+of
+Retailing,
+vol.
+70,
+no.
+4,
+pp.
+301–326,
+1994.
+[Online].
+Available:
+https://www.sciencedirect.com/science/article/pii/0022435994900027
+[24] P. Underhill, Why we buy: The science of shopping–updated and revised
+for the Internet, the global consumer, and beyond. Simon and Schuster,
+2009.
+[25] H. Hwang, B. Choi, and M.-J. Lee, “A model for shelf space
+allocation and inventory control considering location and inven-
+tory level effects on demand,” International Journal of Production
+Economics, vol. 97, no. 2, pp. 185–195, 2005.
+[26] R. Agrawal, T. Imieli´
+nski, and A. Swami, “Mining association
+rules between sets of items in large databases,” SIGMOD
+Rec., vol. 22, no. 2, p. 207–216, jun 1993. [Online]. Available:
+https://doi.org/10.1145/170036.170072
+[27] M. J. Berry and G. Linoff, Data Mining Techniques: For Marketing,
+Sales, and Customer Support.
+USA: John Wiley &amp; Sons, Inc.,
+1997.
+[28] H. Aguinis, L. E. Forcum, and H. Joo, “Using market basket
+analysis in management research,” Journal of Management, vol. 39,
+no. 7, pp. 1799–1824, 2013.
+[29] A. G. K¨
+ok and M. L. Fisher, “Demand estimation and assortment
+optimization under substitution: Methodology and application,”
+Operations research, vol. 55, no. 6, pp. 1001–1021, 2007.
+[30] J. Pennington, R. Socher, and C. D. Manning, “Glove: Global
+vectors for word representation,” in Empirical Methods in Natural
+Language Processing (EMNLP), 2014, pp. 1532–1543. [Online].
+Available: http://www.aclweb.org/anthology/D14-1162
+Hou Tam received his bachelor’s degree in
+Computer Science and Technology from Ts-
+inghua University in 2021. He is currently pur-
+suing his master’s degree in the Department
+of Computer Science and Technology, Tsinghua
+University.
+Shao-Kui Zhang received the PhD degree of
+Computer Science and Technology from Ts-
+inghua University, Beijing, in 2023. He is cur-
+rently a postdoc in the Department of Computer
+Science and Technology at Tsinghua University.
+His research interests include computer graph-
+ics, 3D scene synthesis and intelligent 3D scene
+interaction.
+Yulin Jin received her bachelor’s degree from
+Tsinghua University in 2023 and is currently
+studying for a master’s degree in the Department
+of Computer Science and Technology at Univer-
+sity of Chinese Academy of Sciences.
+Han-Xi Zhu is a undergraduate student in the
+Department of Computer Science and Technol-
+ogy at Tsinghua University, Beijing, China. His
+research interests include computer graphics,
+3D scene synthesis and intelligent 3D scene
+interaction.
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. -, NO. -, - -
+12
+Song-Hai Zhang received the PhD degree of
+Computer Science and Technology from Ts-
+inghua University, Beijing, in 2007. He is cur-
+rently an associate professor in the Department
+of Computer Science and Technology at Ts-
+inghua University. His research interests include
+computer graphics and virtual reality.
+
+
+TRANSACTIONS ON VISUALIZATION AND COMPUTER GRAPHICS, VOL. ??, NO. ??, ?? 2015
+1
+The Clutterpalette: An Interactive Tool for
+Detailing Indoor Scenes
+Lap-Fai Yu, Member, IEEE, Sai-Kit Yeung, Member, IEEE, and Demetri Terzopoulos, Fellow, IEEE
+Abstract—We introduce the Clutterpalette, an interactive tool for detailing indoor scenes with small-scale items. When the user points
+to a location in the scene, the Clutterpalette suggests detail items for that location. In order to present appropriate suggestions, the
+Clutterpalette is trained on a dataset of images of real-world scenes, annotated with support relations. Our experiments demonstrate
+that the adaptive suggestions presented by the Clutterpalette increase modeling speed and enhance the realism of indoor scenes.
+Index Terms—interactive 3D modeling, scene modeling, scene understanding, indoor scenes, modeling tools, suggestive user
+interfaces
+!
+1
+INTRODUCTION
+V
+ISUAL realism is one of the deﬁning goals of computer
+graphics. While realism is often approached in terms of
+rendering ﬁdelity, it is also a modeling problem [1]. Realism
+calls for creating synthetic environments that display a
+convincing level of detail, on par with typical real-world
+scenes.
+Consider the kitchens in Fig. 2. The contrast between the
+real-world scenes and the synthetic ones is stark. Without
+the odds and ends that populate real-world scenes, the syn-
+thetic environments appear eerily barren, devoid of traces
+of life. The lack of small-scale objects is characteristic of
+synthetic environments and commonly undermines their
+realism. As observed by Xu et al. [2], “computer graphics
+scenes are often unrealistically simple or overly tidy.”
+The difﬁculty of populating a scene with detail items
+is due in part to the large number and variety of such
+objects that can appear in a typical scene. A realistic in-
+door environment can easily contain over a hundred detail
+items—books, stationery, and computing equipment in an
+ofﬁce; dinnerware, cookware, and food items in a kitchen;
+clothes, bedding, and decor in a bedroom. Searching for
+each individual item becomes tedious at this scale. The mere
+identiﬁcation of items that could ﬁt well at a particular place
+in the scene becomes a chore when it must be repeated
+hundreds of times.
+To facilitate the enhancement of synthetic indoor scenes
+with detail items, we propose the Clutterpalette, an inter-
+active tool that helps modelers enrich their scenes. When
+the modeler points to a location in the scene, the Clutter-
+palette suggests appropriate items to detail that location.
+The user thus retains control over the content of the scene,
+but the laborious search for appropriate clutter objects is
+automated. The Clutterpalette identiﬁes appropriate clutter
+items, which are presented to the user. A scene can thus be
+•
+L.-F. Yu is with the University of Massachusetts Boston. The work
+reported herein was done in part when he was at the University of
+California, Los Angeles, and at the Singapore University of Technology
+and Design.
+•
+S.-K. Yeung is with the Singapore University of Technology and Design.
+•
+D. Terzopoulos is with the University of California, Los Angeles.
+Manuscript received ?? ??, 2014; revised ?? ??, 2015.
+Fig. 1. A living-room before (top) and after (bottom) detailing using the
+Clutterpalette.
+rapidly populated by repeatedly picking a suggested object
+from the Clutterpalette until a sufﬁcient level of detail is
+reached. Fig. 1 shows a living-room scene before and after
+detailing using the Clutterpalette.
+To suggest appropriate objects, the Clutterpalette must
+be trained using data, since manually codifying the de-
+pendencies between hundreds of types of clutter objects,
+furniture objects, and scenes would be impractical. The need
+for training data presents us with a circular dependency:
+Since creating realistically detailed scenes using current
+modeling tools is tedious and time-consuming, there are
+few such scenes in the public domain. We overcome this
+0000–0000/00/$00.00 c
+⃝2015 IEEE
+Published by the IEEE Computer Society
+
+
+2
+TRANSACTIONS ON VISUALIZATION AND COMPUTER GRAPHICS, VOL. ??, NO. ??, ?? 2015
+Fig. 2. Real-world (left) and synthetic (right) kitchens. The images of real-world scenes were obtained by searching Flickr Creative Commons with
+the keyword “kitchen”; the synthetic scenes were obtained by searching the Trimble 3D Warehouse with the same keyword. The synthetic scenes
+appear comparatively barren.
+difﬁculty by training the Clutterpalette on real-world im-
+agery. Speciﬁcally, the Clutterpalette is trained on a dataset
+of images of real-world indoor scenes, annotated with object
+types and support relations. This yields a scalable training
+pipeline that transfers the semantics of real-world scenes to
+3D modeling.
+We evaluate the utility of the Clutterpalette in a set of
+experiments in which participants model different types of
+indoor scenes and independent evaluators assess relative
+scene realism. The experimental results demonstrate that
+the suggestions presented by the Clutterpalette speed up
+modeling time and enhance the realism of indoor scenes.
+2
+BACKGROUND
+2.1
+Set Dressing
+The task of populating a scene with clutter objects is referred
+to as set dressing in ﬁlm making [3], which is carried out
+by set dressers under the direction of a leadman, a set
+decorator, a property master, and a production designer. Set
+dressing is an important step that sets the tone and ensures
+the authenticity of a ﬁlm. Similarly, in the production of
+computer-animated ﬁlms and video games, professional
+set dressers are hired to model and dress sets and props
+for the virtual worlds in which ﬁlming or gameplay takes
+place. The Clutterpalette facilitates and simpliﬁes the digital
+production process, by providing convenient and realistic
+suggestions of clutter objects to “dress” the virtual scene.
+Figure 3 illustrates the task of set dressing a virtual scene.
+2.2
+Related Work
+The difﬁculty of modeling realistic indoor scenes has been
+recognized in computer graphics for a long time. Early work
+focused on assisted placement and arrangement of objects.
+Bukowski and S´
+equin [4] developed a system for assisted
+placement of furniture and other objects in indoor scenes.
+The system helped align objects by associating them to each
+other—keeping bookshelves against walls, for example, or
+tables on ﬂoors. The associations between different types of
+Fig. 3. Left: An input scene. Right: Snapshot of a portion of our clutter
+object database. Set dressing involves the non-trivial task of selecting
+proper clutter objects to detail a scene.
+objects were speciﬁed manually. Xu et al. [2] introduced a
+system that automatically placed a large number of objects
+in an indoor scene. The system is guided by a set of
+manually-speciﬁed constraints that describe relationships
+between different types of objects. Following this line of
+work, Merrell et al. [5] presented a system that assists
+furniture arrangement in indoor scenes. The system relies on
+manually-encoded interior design guidelines. Relationships
+between furniture types are again speciﬁed manually. The
+reliance on manual constraint speciﬁcation limits the scala-
+bility of these approaches. For example, in order to handle
+a new scene type, such as a classroom or a hotel lobby, all
+relevant relationships between all types of objects would
+need to be speciﬁed in detail. In contrast, our Clutterpalette
+pipeline is designed to deal with the numerous small and
+diverse detail items that populate indoor scenes. As we
+demonstrate, it is highly scalable.
+Yu et al. [6] introduced an optimization-based approach
+for furniture arrangement that is trained on data. For each
+type of scene, ﬁve example scenes were manually con-
+structed to illustrate relationships between furniture types.
+This limits the scalability of the approach in dealing with
+new scene types and with a large number of clutter objects.
+Fisher and Hanrahan [7] described a context-aware search
+engine for 3D models that is trained on data. Given an
+incomplete indoor scene and a bounding box speciﬁed by
+the user, the system retrieves objects that ﬁt the scene and
+
+
+YU et al.: THE CLUTTERPALETTE: AN INTERACTIVE TOOL FOR DETAILING INDOOR SCENES
+3
+Fig. 4. The Clutterpalette framework.
+the bounding box, based on pairwise relationships and
+individual object descriptors extracted from the data. The
+training data is assumed to consist of complete 3D scenes
+and the system relies on ﬁne-grained geometric properties
+of and spatial relationships between objects in the dataset. In
+our setting, this assumption is untenable due to the dearth of
+realistically cluttered scenes in publicly available 3D virtual
+scene repositories. For this reason, our Clutterpalette is
+trained on annotated images of real-world scenes.
+Fisher et al. [8] describe an approach to comparing
+synthetic 3D scenes based on geometric properties of and
+spatial relationships between objects in the scenes, which
+also relies on the availability of a dataset of synthetic scenes
+that demonstrate proper relationships between objects. By
+contrast, our approach decouples the dataset of clutter
+objects from the dataset of images that demonstrate rela-
+tionships between objects. This allows our two datasets to
+scale independently—additional clutter instances broaden
+the range of objects available to the modeler and additional
+training images broaden the system’s knowledge about ob-
+ject relationships. Clutter instances and real-world training
+images can be added independently.
+Yeh et al. [9] describe an optimization approach that
+procedurally arranges a large number of objects in a scene,
+which relies on manually speciﬁed relationships between
+objects. Fisher et al. [10] present an approach that synthe-
+sizes object arrangements that are similar to given input ar-
+rangements. Xu et al. [11] present a sketch-based modeling
+system for indoor scenes. These approaches are not trained
+on real-world data. Alternatively, Majerowicz et al. [12]
+learn object arrangement from annotated images of real-
+world shelves to automatically generate style-preserving
+object arrangements for virtual shelves. Their focus is on
+synthesizing object arrangements on shelves while ours is
+on devising an interactive, suggestive modeling interface
+for detailing general indoor scenes.
+Unlike existing approaches, we train a general-purpose
+model using an indoor scene dataset to learn clutter ob-
+ject distributions as observed in real-world settings. The
+indoor scene dataset contains real-world scene images pre-
+categorized into different scene types. Each image is also
+annotated with the labels of the supporter and clutter objects
+as well as the support relations. This allows our model
+to learn and reason about object distributions both in the
+global (scene) and local (supporter) contexts, for use in
+detailing complete virtual scenes. Our Clutterpalette tool
+learns to suggest different objects for the same supporter
+in different types of scenes. For example, while detailing
+the same shelf, a pair of shoes is suggested in the context
+of a bedroom, while a plate is suggested in the context
+of a kitchen. Our model also learns different co-occurrence
+probabilities according to the scene type. For example, while
+the model ﬁnds it likely to put multiple laptops in an ofﬁce,
+it ﬁnds it much less likely to have more than one or two
+laptops in a bedroom.
+Our general-purpose model is capable of detailing any
+supporter—e.g., ﬂoor, bed, table, shelves, wall, door—on
+which clutter objects lie or to which clutter objects are
+attached in the real world. We base our model on ﬁrst
+principles and train it with real-world probabilities. The
+ﬁnal formulas are simple and closed-form, yet they are
+well-grounded, making them practical for building a novel
+interactive modeling tool where real-time performance is
+necessary. Compared to automatic synthesis approaches,
+our interactive approach enables the artist to retain control
+over the modeling process while detailing a scene to any de-
+sired extent, greatly reducing the tedium of object selection
+from a large database of clutter objects.
+Our interface builds on the idea of suggestive interfaces
+proposed by Igarashi and Hughes [13]. In such interfaces,
+the authoring tool reasons about operations that the user is
+likely to undertake and presents suggestions that anticipate
+the user’s choices. The user can pick one of the suggestions
+or disregard them all. In this way, content creation is made
+faster and easier. Suggestive interfaces have been proposed
+for use in various applications, including modeling individ-
+ual 3D objects [14], [15], assigning textures to surfaces in
+3D scenes [16], assigning materials to parts of 3D objects
+[17], designing physically valid furniture [18], and designing
+building layouts [19]. In our earlier work [20], we devel-
+oped a data-driven suggestive interface for dressing virtual
+characters. In the present paper, we develop a suggestive
+
+
+4
+TRANSACTIONS ON VISUALIZATION AND COMPUTER GRAPHICS, VOL. ??, NO. ??, ?? 2015
+Fig. 5. Interaction with the Clutterpalette. Left: The user points to the
+counter to add a clutter object. This prompts the Clutterpalette to sug-
+gest objects appropriate for the location. Right: the scene after one of
+the suggested objects is selected by the user and added to the scene.
+interface for enhancing the level of detail of indoor scenes.
+3
+OVERVIEW
+Fig. 4 shows an overview of the Clutterpalette framework.
+The training input consists of an indoor scene dataset that
+has been manually annotated with object types and support
+relations. The Clutterpalette is trained in advance using
+the object distribution statistics learned from this dataset.
+Subsequently, during use, the Cluttterpalette is linked to
+a 3D object database, from which highly probable clutter
+objects are selected and suggested to the user. As the user
+interactively details different parts of the scene, the Clut-
+terpalette adaptively provides suggestions, taking into ac-
+count the objects that have already been added by the user.
+The interactive modeling process continues until the scene
+has been detailed to the user’s satisfaction. The following
+sections explain the interaction and the training processes.
+4
+INTERACTION
+We assume that the user starts with a room in which
+appropriate furniture has been arranged, say with any of the
+existing approaches to furniture layout [2], [4], [5], [6]. The
+user then enhances the scene using the Clutterpalette. When
+the user points to a location in the scene, the Clutterpalette
+suggests the types of objects that are most likely to appear
+there. The likelihood computation is based on the type of
+scene (kitchen, bedroom, ofﬁce, etc.), the type of supporting
+object (ﬂoor, wall, desk, bed, etc.), and the clutter items that
+are already present on the supporter. This computation is
+based on statistics extracted from a dataset of real-world
+images of indoor scenes, which we will describe in the next
+section.
+The most likely clutter types for a given location are
+presented in ranked order within a menu. For each clut-
+ter type, a randomly chosen object of this type is shown
+in situ, in the context of the scene, so that the user can
+conveniently preview how the scene would appear if the
+object were added. If the chosen object collides with existing
+clutter objects, another object of the same type is sampled.
+Fig. 5 depicts the interface. The user can quickly place the
+presented object in the scene by double-clicking on it. To
+see additional instances of the presented type (e.g., other
+bottles, other jars, other cups, etc.), the user can click on
+the corresponding object once, which brings up a secondary
+panel that shows additional instances of the clicked object
+type (in our experiments described in Section 7, the Clut-
+terpalette presents about 5 object instances for each object
+type). Again, the user can immediately place one of the
+object instances in the scene by double-clicking on it. This
+hierarchical selection scheme affords greater ﬂexibility in
+choosing a particular object instance of the suggested type;
+for example, out of personal preference for object color or
+style.
+Throughout the modeling process, the user can also
+freely reposition and delete objects, after which the new
+scene setting will automatically be taken into account and
+appropriate new suggestions will be presented by the Clut-
+terpalette. The Clutterpalette interface is further demon-
+strated in the accompanying video.
+5
+TRAINING DATA
+The suggestive functionality of the Clutterpalette relies on
+computing the likelihood of a given clutter type appearing
+at the selected location. Section 6 describes the likelihood
+computation more fully. The computation relies on condi-
+tional probabilities that relate types and quantities of clutter
+objects to each other and to the scene type as well as to
+the type of supporting object on which the clutter resides.
+These probabilities are estimated by extracting empirical
+statistics from real-world observations of lived-in, cluttered,
+indoor scenes. Each observation needs to provide only the
+following information: The type of the scene (e.g., kitchen), a
+list of observed supporting objects (e.g., ﬂoor, wall, counter),
+and a list of clutter objects on each supporting object (e.g.,
+bottle on counter, another bottle on counter, cup on counter,
+clock on wall, garbage bin on ﬂoor).
+The NYU Depth Dataset produced by Silberman et
+al. [21] to provide data for training and evaluating scene un-
+derstanding algorithms serves as our source of observations
+about real-world scenes. This dataset contains 1449 RGBD
+images of 464 indoor scenes from 3 cities. The scenes appear
+in their natural, messy condition. They employed the Ama-
+zon Mechanical Turk crowdsourcing Internet marketplace
+to annotate individual objects in the images as well as the
+support relationships between objects. We use the annotated
+information to train our Clutterpalette.
+Although the NYU Depth Dataset contains both color
+and range images, the range data was not used in obtaining
+the annotations—only the color images were provided to
+Amazon Mechanical Turk. A dataset of similarly annotated
+color images can thus be used to provide additional training
+data for the Clutterpalette.
+A sample image from the NYU Depth Dataset is shown
+in Fig. 6. We trained the Clutterpalette on ﬁve scene types
+from the dataset—bedrooms, kitchens, living-rooms, ofﬁces,
+and classrooms. For each scene type, we identiﬁed the most
+common clutter types (e.g., book, bottle, box, etc.). As shown
+in Table 1, several dozen clutter types were identiﬁed for
+each scene type. Some of the object types annotated in the
+NYU Depth Dataset were not used due to a lack of available
+3D models. For each clutter type that was used, we collected
+4 or 5 object instances from the Trimble 3D Warehouse and
+
+
+YU et al.: THE CLUTTERPALETTE: AN INTERACTIVE TOOL FOR DETAILING INDOOR SCENES
+5
+Fig. 6. An image from the NYU Depth Dataset [21] with some of the
+annotated support relations indicated.
+from other online sources of free 3D models. In total, our
+3D object database contains 176 clutter object types and 786
+object instances.
+6
+SUGGESTION GENERATION
+When the user points to a location in the scene, the Clut-
+terpalette must determine which clutter types to suggest
+and in what order. In essence, it must answer the following
+question: “If there was an additional clutter item at this
+location, what would that item most likely be?” This is done
+by evaluating the likelihood that a given clutter type would
+appear at the identiﬁed location. The types with the highest
+likelihood are presented to the user in rank order.
+The Clutterpalette evaluates the likelihood of a given
+clutter type conditioned on the type of the scene, the type of
+the supporting object, and the clutter objects that are already
+present on this supporter. Speciﬁcally, denoting Y = {Yi}
+as the set of all available clutter types, the Clutterpalette
+evaluates the following probability for each clutter type Yi:
+P(x = Yi|w, s, {nj}),
+(1)
+where x is the hypothetical new clutter item type, w is the
+scene type (‘kitchen’, ‘bedroom’, etc.), s is the supporting
+object type (‘ﬂoor’, ‘desk’, ‘wall’, etc.), and nj is the number
+of clutter objects of type Yj that are already present on s,
+for each type Yj for which nj > 0. Note that Yj may be
+equal to Yi; for example, when the Clutterpalette considers
+the probability of adding a second monitor on a desk. To
+evaluate the probability (1) in terms of empirical statistics
+that we can extract from the training data, we use the naive
+Bayes model
+P(x = Yi|w, s, {nj})
+= P(x = Yi)P(w, s, {nj}|x = Yi)
+P(w, s, {nj})
+(2)
+∝P(x = Yi)P(w, s, {nj}|x = Yi)
+(3)
+= P(x = Yi)P(w|x = Yi)P(s|x = Yi)
+Y
+j
+P(nj|x = Yi).
+(4)
+Number of
+Number of
+Number of
+training images
+clutter types
+support relations
+Bedroom
+383
+85
+5843
+Kitchen
+225
+67
+4067
+Living-room
+221
+66
+3712
+Ofﬁce
+78
+53
+1245
+Classroom
+49
+62
+1315
+TABLE 1
+Properties of the NYU Depth Dataset [21] used to train the
+Clutterpalette.
+Equation (2) follows from Bayes’ theorem. Equation (3)
+holds because we are interested only in the relative or-
+dering of the likelihoods for different clutter types Yi, and
+P(w, s, {nj}) does not vary with i. Equation (4) holds by the
+naive Bayes assumption. We now describe how we estimate
+each of the probabilities in (4).
+Prior P(x = Yi). There are several ways to approximate
+the prior, the simplest being a uniform approximation. We
+use a more informed empirical prior. To estimate P(x =
+Yi), we enumerate all clutter instances from all classes in all
+input scenes and compute the fraction that belong to class
+Yi.
+Conditional scene probability P(w|x = Yi). We es-
+timate the conditional scene probability by enumerating
+all clutter instances from class Yi in the training set and
+computing the fraction that occur in scenes of type w:
+P(w|x = Yi) = P(w, x = Yi)
+P(x = Yi) .
+(5)
+Fig. 7(a) illustrates the effect of the scene probability on the
+presented suggestions.
+Conditional supporter probability P(s|x = Yi). Simi-
+larly, we estimate the conditional supporter probability by
+enumerating all clutter instances from class Yi in the train-
+ing set and computing the fraction that occur on supporters
+of class s:
+P(s|x = Yi) = P(s, x = Yi)
+P(x = Yi) .
+(6)
+Fig. 7(b) illustrates the effect of the supporter probability.
+Co-occurrence probability P(nj|x = Yi). This is the
+probability that there are currently at least nj instances of
+class Yj on the given supporter, conditioned on x being
+a new instance of class Yi. Note that Yj can equal Yi, in
+which case the instance x is not included in the number ni;
+thus, ni is the number of other instances from class Yi that
+are already on the supporter. Note also that P(nj|x = Yi)
+is interpreted as the probability that there are at least nj
+instances of class Yj on the current supporter (not counting
+x), because when we consider adding x to the scene, we
+do not know what other clutter objects will be subsequently
+added by the user. Fig. 7(c) illustrates the effect of the co-
+occurrence probability.
+We can evaluate P(nj|x = Yi) by enumerating all
+supporters in which at least one instance of Yi appears
+and computing the fraction of these supporters in which
+at least nj instances of Yj appear. In the special case of
+Yj = Yi, we take the fraction of the scenes in which at
+least ni + 1 instances of Yi appear. Only pairs of clutter
+
+
+6
+TRANSACTIONS ON VISUALIZATION AND COMPUTER GRAPHICS, VOL. ??, NO. ??, ?? 2015
+(a) The effect of scene probability. Different sets of suggestions are given to detail a shelf in a bedroom (top) and a shelf in a kitchen (bottom).
+(b) The effect of supporter probability. Detailing three different supporters in the scene yields different supporter probabilities for the different clutter
+objects. The speaker has a preference for the ﬂoor, the bottle has a preference for the desk, and the book has a preference for the shelves.
+(c) The effect of co-occurrence probability. When the desk is ﬁrst detailed (top), the paper and monitor are the most likely clutter types. After a monitor
+is placed (bottom), the mouse and keyboard become the most likely clutter types to add.
+Fig. 7. The effect of different probability terms on clutter type likelihood.
+
+
+YU et al.: THE CLUTTERPALETTE: AN INTERACTIVE TOOL FOR DETAILING INDOOR SCENES
+7
+objects within a distance threshold of 1.5 meters from each
+other are considered in the co-occurrence estimation (both
+at runtime and during training). This is done in order to
+deal with larger supporters, such as ﬂoors, which can cover
+a large area with numerous clusters of clutter.
+To alleviate data fragmentation, we quantize nj to three
+possible values: ‘zero’, ‘some’, and ‘many’. To determine
+the quantization boundaries, in a preprocessing step we
+enumerate the objects of class Yj that occurred together on
+individual supporters in all scenes in the training set. Let mj
+be the median of this set. We set nj to ‘zero’ if there are no
+items of class Yj on the current supporter, to ‘some’ if there
+are from 1 to mj such items, and to ‘many’ if the number of
+such items is greater than mj.
+Precomputation. In practice, the probabilities on the
+right-hand side of (4) can be precomputed, by enumerating
+all possible combinations of object types and scene types
+available in the training data. The probabilities are stored
+in matrices. For example, in the matrix of conditional scene
+probabilities, each entry represents the probability of a scene
+type given an object type. During the interaction stage, (4)
+can be evaluated by quickly retrieving the corresponding
+probabilities stored in the matrices and multiplying them
+together to compute P(x = Yi|w, s, {nj}).
+Note that we use uniform small-sample correction in all
+empirical estimates to avoid zeroing out the probabilities.
+This is done by adding a default, small observation count σ
+when estimating each of the probabilities on the right-hand
+side of (4). We use σ = 1 in our experiments.
+7
+PERFORMANCE AND EVALUATION
+The Clutterpalette was implemented in C++, and our experi-
+ments were run on a 3.33GHz Intel Xeon machine with 12GB
+of RAM. In a preprocessing training stage, the required
+empirical statistics were calculated in a total of about 9 min-
+utes with an unoptimized Matlab implementation. Thanks
+to the closed-form formulations, a probability of the form
+(1) is computed in less than 0.1 milliseconds at runtime.
+Therefore, the Clutterpalette presents its suggestions almost
+instantaneously, as is demonstrated in the accompanying
+video, which also includes a demonstration of the inter-
+active detailing of an ofﬁce scene using the suggestions
+provided by the Clutterpalette.
+To evaluate the utility of the Clutterpalette, we recruited
+20 university students and staff, including 12 male and 8
+female volunteers, to detail indoor scenes. All participants
+were frequent computer users and most reported some
+experience in using simple visual authoring interfaces in-
+tended for the general public, such as those used in video
+games or in photo editing applications.
+Each participant was given a brief 5–10-minute tutorial
+on the Clutterpalette interface. We then let the partici-
+pants experiment freely with the interface until they felt
+comfortable with its functionality. Our simple interface is
+demonstrated in the accompanying video: It allows users
+to add, delete, move, and rotate clutter objects. All partici-
+pants reported becoming comfortable with the functionality
+within 15 minutes.
+Each participant was assigned one of the scene types—
+bedroom, kitchen, living-room, ofﬁce, or classroom. The par-
+ticipant was shown several images of real-world scenes of
+Fig. 9. Screenshot of the interface of a commercial interior design
+software system, Autodesk R
+⃝Homestyler R
+⃝, which uses a conventional
+clutter-object selection menu. To detail a scene, the user manually
+chooses objects from an alphabetical list.
+this type collected from Google Images. The participant was
+then asked to use the Clutterpalette to create a realistic scene
+of the given type, starting from an initial scene containing
+only the basic furniture. The initial scenes, which we had
+manually created, are shown in Fig. 8(a).
+The participants used the Clutterpalette to detail the
+scene to a level of realism with which they were satisﬁed. No
+time limit was imposed; each participant decided on their
+own when they were done. Modeling times ranged from 6
+to 25 minutes. We assigned each participant randomly to
+one of the following two settings:
+In Setting 1, the Clutterpalette presented suggestions
+ranked according to the model described in Section 6. The
+participants could alternatively browse in a separate tab an
+alphabetical list of available clutter types and choose objects
+from that list. Each clutter type was accompanied with a
+thumbnail to ease browsing. The participants could easily
+toggle between the two tabs.
+In Setting 2, the Clutterpalette presented only the alpha-
+betical list. The suggestion engine described in Section 6 was
+deactivated. Note that this setting is similar to conventional
+clutter object selection menus used in interior design or
+game level design software.1 Fig. 9 shows an example.
+The participants were not informed about the different
+settings. Ten scenes were produced in each of the two
+settings. The number of scenes of each type was the same for
+both settings. The scenes produced in Setting 1 (suggestions
+& alphabetical) are shown in Fig. 8(b).
+7.1
+Modeling Time
+In Setting 1 (suggestions & alphabetical), participants added
+34.1 objects to the scene on average, whereas in Setting 2
+(alphabetical only) they added 30.8 objects on average. In
+1. Examples include Autodesk R
+⃝Homestyler R
+⃝, IKEA Home Planner,
+Asset Preview for Unity, etc.
+
+
+8
+TRANSACTIONS ON VISUALIZATION AND COMPUTER GRAPHICS, VOL. ??, NO. ??, ?? 2015
+Bedroom
+Kitchen
+Living-room
+Ofﬁce
+Classroom
+(a) Input scene
+(b) After detailing
+Fig. 8. Modeling experiments. (a) Initial scenes given to the participants. (b) Detailed scenes produced by the participants using the Clutterpalette.
+
+
+YU et al.: THE CLUTTERPALETTE: AN INTERACTIVE TOOL FOR DETAILING INDOOR SCENES
+9
+Navigate
+Select
+Move
+Rotate
+Total
+Setting 1
+8.95
+7.72
+3.82
+1.76
+22.25
+Setting 2
+9.05
+17.36
+4.94
+1.82
+33.17
+TABLE 2
+Average time (in seconds) spent on different user interactions between
+object additions in Setting 1 (suggestions+alphabetical) and Setting 2
+(alphabetical only).
+Fig. 10. Usage of the Clutterpalette suggestions (blue) versus the alpha-
+betical list (red) by each user in Setting 1.
+Setting 1, the average time between object addition was
+22.25 seconds, whereas in Setting 2 it was 33.17 seconds.
+Our suggestion engine thus resulted in a 33% improvement
+in modeling speed.
+Table 2 shows the average time spent on different user
+interactions between object additions—navigating the scene,
+selecting an object to add, translating an added object, and
+rotating an added object. Users tended to select objects faster
+in Setting 1 than in Setting 2. In Setting 1, users also tended
+to spend slightly less time on moving objects. This can be
+due to the fact that in Setting 2 some users tended to browse
+through the alphabetical list to search for a relevant object
+to add to the scene without caring about the location of
+the object in the ﬁrst place. After adding the object, the
+user would then drag it to a desirable location in the scene.
+Therefore more time is needed for moving the object. By
+contrast, in Setting 1 when a user points to a location to add
+objects, the Clutterpalette makes suggestions that already ﬁt
+within the scene context; hence, comparatively less time is
+needed for moving objects.
+Compared to the other user interactions, rotating objects
+takes less time on average. This may be due to the fact
+that the objects are already in an upright orientation, and
+because many clutter objects (e.g., bowls) lack any frontal
+orientation and need not be rotated.
+7.2
+Usage Pattern
+For
+each
+of
+the
+10
+users
+in
+Setting
+1
+(sugges-
+tions+alphabetical), Fig. 10 indicates the percentage of time
+that the Clutterpalette’s suggestions were used relative to
+Ranking
+1
+2
+3
+4
+5
+6 to 10
+Usage
+28.07%
+21.05%
+12.28%
+7.02%
+8.77%
+22.81%
+TABLE 3
+Usage of the suggestions for each ranking in Setting 1.
+Preferred Before
+Detailing
+Preferred After
+Detailing
+No Preference
+4.1%
+94.6%
+1.3%
+TABLE 4
+Independent evaluators comparing the realism of scenes before and
+after detailing using the Clutterpalette.
+Setting 1 Preferred
+Setting 2 Preferred
+No Preference
+47.6%
+36.5%
+15.9%
+TABLE 5
+Independent evaluators comparing the realism of scenes created in
+Setting 1 and Setting 2.
+the alphabetical list. Clearly, users had a strong preference
+for employing the Clutterpalette’s suggestions; on average,
+the suggestions were used 87% of the time, while the
+alphabetical list was used only 13% of the time. Table 3
+further reports the usage percentages of the suggestions in
+each ranking. When users decided to add objects from the
+suggestion menu, they usually (77% of the time) chose the
+suggestions ranked within the top 5. Note that suggestions
+ranked from 6 to 10 are still relevant to the scene context,
+albeit with lower probabilities.
+7.3
+Scene Realism
+We performed two experiments to evaluate the relative
+realism of the initial scenes, the scenes produced by users
+in Setting 1, and the scenes produced by users in Setting 2.
+In the ﬁrst experiment, our goal was to evaluate the
+relative realism of the scenes before and after detailing via
+the Clutterpalette. To this end, we recruited through social
+media a separate group of 25 evaluators. The evaluators
+were shown pairs of images. Each evaluator had to indicate
+which image in each pair is the more realistic, or to indicate
+no preference. The images in each pair were shown side
+by side and the left-right order was randomized. Each pair
+of images was of the same scene type. One image showed
+a scene produced by participants in Setting 1 while the
+other showed the scene in its initial condition (Fig. 8(a)).
+The evaluators were not told how the scenes were produced
+and in what way they were related to each other. In total, 500
+pairwise comparisons were performed. Table 4 summarizes
+the results of this experiment. The evaluators overwhelm-
+ingly preferred the scenes detailed using the Clutterpalette.
+In informal exit interviews, the evaluators who voted for
+the uncluttered scenes remarked that empty classrooms are
+often encountered in the real world, e.g., when class is not
+in session, so they regarded empty classroom scenes to be
+realistic.
+In the second experiment, we evaluated the rela-
+tive realism of scenes produced in Setting 1 (sugges-
+
+
+10
+TRANSACTIONS ON VISUALIZATION AND COMPUTER GRAPHICS, VOL. ??, NO. ??, ?? 2015
+tions+alphabetical) and scenes produced in Setting 2 (alpha-
+betical only). We recruited through social media a separate
+group of 32 evaluators, distinct from the prior groups of
+participants and evaluators. The evaluators performed ran-
+domized pairwise image comparisons. One of the images
+of each pair was of a scene created in Setting 1 and the
+other was of a scene of the same type created in Setting 2.
+The evaluators performed 1280 comparisons, summarized
+in Table 5. According to a two-tailed t-test, the evaluators
+had statistically signiﬁcant preference for the scenes created
+in Setting 1 (p-value < 0.05).
+8
+DISCUSSION AND FUTURE WORK
+Real-world data and user-created content are becoming in-
+creasingly available. Such “big data” creates good opportu-
+nities for devising data-driven tools for computer graphics
+applications. A key idea in our work is training the Clutter-
+palette on a dataset of real-world scenes in order to address
+the problem of modeling virtual indoor scenes. We expect
+this idea to have broader applicability in training a variety
+of intelligent visual authoring tools based on the semantics
+of real-world scenes.
+In the application of such data-driven approaches, an-
+notation is often necessary to exploit the full potential of
+the training data. The NYU Depth Dataset [21], from which
+we selected 5 scene types for our experiments, provides
+annotated data for 26 common indoor scene types with
+substantial amounts of annotation collected by leveraging
+manual human effort through the Amazon Mechanical Turk.
+In principle, our model can be trained through automatic
+annotation approaches. The automatic annotation of big
+datasets—for example, the automatic semantic labeling of
+indoor scenes [22]—is an actively researched topic. Recent
+research suggests that one can simultaneously infer the fur-
+niture types and scene types through a top-down/bottom-
+up inference algorithm [23], [24]. Our approach can poten-
+tially incorporate such an algorithm so that, rather than
+being preset, the scene type of the room being detailed can
+be automatically inferred from the types of objects being
+added by the user.
+We believe that there remain many possibilities for fur-
+ther developing interactive tools for enhancing the detail of
+scenes. In our current approach, we operate on a purely
+semantic level. While this enables our Clutterpalette to
+be trained on sparsely-annotated images that are easy to
+acquire for a variety of domains, the lack of geometric
+information is a major drawback. In its current level of
+development, our Clutterpalette does not reason about the
+careful placement or orientation of objects, thus necessi-
+tating user effort that can be demanding on a large scale.
+The tool also does not take into account the appearance
+of objects. It would be interesting to investigate scalable
+approaches to training models that can also reason about
+ﬁner-grained geometric properties, orientation properties,
+and aesthetic qualities from real-world scenes.
+As Table 2 shows, a considerable amount of time is usu-
+ally spent navigating the scene in search of a suitable region
+for detailing. A semi-automated technique for reasoning
+about and suggesting good regions to detail will make an
+interactive modeling tool even more convenient.
+9
+CONCLUSION
+We introduced the Clutterpalette, an interactive tool for en-
+hancing the level of detail of indoor scenes. Our experiments
+demonstrate that people ﬁnd scenes detailed with objects
+to be substantially more realistic than their stark counter-
+parts. The adaptive suggestion generation functionality of
+the Clutterpalette was found to facilitate the creation of
+realistic scenes and improve modeling time. We expect the
+Clutterpalette to be useful in a variety of scene modeling
+applications, including video game level design interfaces,
+home modeling and remodeling applications, and virtual
+set-dressing for use in motion pictures.
+ACKNOWLEDGMENTS
+The authors would like to thank Vladlen Koltun for dis-
+cussing ideas, Ariel Shamir and Qiming Hou for their valu-
+able comments, Yibiao Zhao for helping with the evalua-
+tion, and Michael S. Brown for narrating the demonstration
+video. This research was supported in part by Singapore
+University of Technology and Design (SUTD) StartUp Grant
+ISTD 2011 016, by SUTD-MIT International Design Center
+Grant IDG31300106, Singapore MOE Academic Research
+Fund MOE2013-T2-1-159, National Research Foundation,
+Prime Minister’s Ofﬁce, Singapore, under its IDM Futures
+Funding Initiative, administered by the Interactive and Dig-
+ital Media Programme Ofﬁce, and by University of Mas-
+sachusetts Boston StartUp Grant P20150000029280.
+REFERENCES
+[1]
+M. E. Newell and J. F. Blinn, “The progression of realism in
+computer generated images,” in Proceedings of the 1977 Annual
+Conference, ser. ACM ’77.
+New York, NY, USA: ACM, 1977, pp.
+444–448.
+[2]
+K. Xu, J. Stewart, and E. Fiume, “Constraint-based automatic
+placement for scene composition,” in Proc. Graphics Interface, Cal-
+gary, Alberta, May 2002, pp. 25–34.
+[3]
+Set dresser. Wikipedia: The Free Encyclopedia. Accessed 16-
+Feb-2014. [Online]. Available: http://en.wikipedia.org/wiki/Set
+dresser
+[4]
+R. W. Bukowski and C. H. S´
+equin, “Object associations: A simple
+and practical approach to virtual 3d manipulation,” in Proceedings
+of the 1995 Symposium on Interactive 3D Graphics, ser. I3D ’95.
+New
+York, NY, USA: ACM, 1995, pp. 131–138.
+[5]
+P. Merrell, E. Schkufza, Z. Li, M. Agrawala, and V. Koltun, “In-
+teractive furniture layout using interior design guidelines,” ACM
+Trans. Graph., vol. 30, no. 4, pp. 87:1–87:10, Jul. 2011.
+[6]
+L.-F. Yu, S. K. Yeung, C.-K. Tang, D. Terzopoulos, T. F. Chan,
+and S. Osher, “Make it home: automatic optimization of furniture
+arrangement,” ACM Trans. Graph., vol. 30, no. 4, pp. 86:1–86:12,
+Jul. 2011.
+[7]
+M. Fisher and P. Hanrahan, “Context-based search for 3d models,”
+ACM Trans. Graph., vol. 29, no. 6, pp. 182:1–182:10, Dec. 2010.
+[8]
+M. Fisher, M. Savva, and P. Hanrahan, “Characterizing structural
+relationships in scenes using graph kernels,” ACM Trans. Graph.,
+vol. 30, no. 4, pp. 34:1–34:12, Jul. 2011.
+[9]
+Y.-T. Yeh, L. Yang, M. Watson, N. D. Goodman, and P. Hanra-
+han, “Synthesizing open worlds with constraints using locally
+annealed reversible jump mcmc,” ACM Trans. Graph., vol. 31, no. 4,
+pp. 56:1–56:11, Jul. 2012.
+[10] M. Fisher, D. Ritchie, M. Savva, T. A. Funkhouser, and P. Hanra-
+han, “Example-based synthesis of 3d object arrangements,” ACM
+Trans. Graph., vol. 31, no. 6, pp. 135:1–135:11, Nov. 2012.
+[11] K. Xu, K. Chen, H. Fu, W.-L. Sun, and S.-M. Hu, “Sketch2scene:
+Sketch-based co-retrieval and co-placement of 3d models,” ACM
+Trans. Graph., vol. 32, no. 4, pp. 123:1–123:15, Jul. 2013.
+
+
+YU et al.: THE CLUTTERPALETTE: AN INTERACTIVE TOOL FOR DETAILING INDOOR SCENES
+11
+[12] L. Majerowicz, A. Shamir, A. Sheffer, and H. H. Hoos, “Filling your
+shelves: Synthesizing diverse style-preserving artifact arrange-
+ments,” IEEE Transactions on Visualization and Computer Graphics,
+vol. 20, no. 11, p. 1, Oct. 2013.
+[13] T. Igarashi and J. F. Hughes, “A suggestive interface for 3d
+drawing,” in Proceedings of the 14th Annual ACM Symposium on
+User Interface Software and Technology, ser. UIST ’01.
+New York,
+NY, USA: ACM, 2001, pp. 173–181.
+[14] S. Chaudhuri and V. Koltun, “Data-driven suggestions for creativ-
+ity support in 3d modeling,” ACM Trans. Graph., vol. 29, no. 6, pp.
+183:1–183:10, Dec. 2010.
+[15] S. Chaudhuri, E. Kalogerakis, L. J. Guibas, and V. Koltun, “Prob-
+abilistic reasoning for assembly-based 3d modeling,” ACM Trans.
+Graph., vol. 30, no. 4, pp. 35:1–35:10, Jul. 2011.
+[16] M. G. Chajdas, S. Lefebvre, and M. Stamminger, “Assisted texture
+assignment,” in Proceedings of the 2010 ACM SIGGRAPH Sympo-
+sium on Interactive 3D Graphics and Games, ser. I3D ’10.
+New York,
+NY, USA: ACM, 2010, pp. 173–179.
+[17] A. Jain, T. Thorm¨
+ahlen, T. Ritschel, and H.-P. Seidel, “Material
+memex: automatic material suggestions for 3d objects,” ACM
+Trans. Graph., vol. 31, no. 6, pp. 143:1–143:8, Nov. 2012.
+[18] N. Umetani, T. Igarashi, and N. J. Mitra, “Guided exploration of
+physically valid shapes for furniture design,” ACM Trans. Graph.,
+vol. 31, no. 4, pp. 86:1–86:11, Jul. 2012.
+[19] F. Bao, D.-M. Yan, N. J. Mitra, and P. Wonka, “Generating and
+exploring good building layouts,” ACM Trans. Graph., vol. 32,
+no. 4, pp. 122:1–122:10, Jul. 2013.
+[20] L.-F. Yu, S. K. Yeung, D. Terzopoulos, and T. F. Chan, “Dressup!:
+Outﬁt synthesis through automatic optimization,” ACM Transac-
+tions on Graphics, vol. 31, no. 6, pp. 134:1–134:14, Dec. 2012.
+[21] N. Silberman, D. Hoiem, P. Kohli, and R. Fergus, “Indoor segmen-
+tation and support inference from rgbd images,” in Proceedings of
+the 12th European Conference on Computer Vision - Volume Part V, ser.
+ECCV’12.
+Berlin, Heidelberg: Springer-Verlag, 2012, pp. 746–760.
+[22] S. Gupta, P. Arbelaez, and J. Malik, “Perceptual organization and
+recognition of indoor scenes from rgb-d images,” in Proceedings of
+the 2013 IEEE Conference on Computer Vision and Pattern Recognition,
+ser. CVPR ’13.
+Washington, DC, USA: IEEE Computer Society,
+2013, pp. 564–571.
+[23] Y. Zhao and S.-C. Zhu, “Scene parsing by integrating function,
+geometry and appearance models,” in Proceedings of the 2013 IEEE
+Conference on Computer Vision and Pattern Recognition, ser. CVPR
+’13.
+Washington, DC, USA: IEEE Computer Society, 2013, pp.
+3119–3126.
+[24] W. Choi, Y.-W. Chao, C. Pantofaru, and S. Savarese, “Understand-
+ing indoor scenes using 3d geometric phrases,” in Proceedings of the
+2013 IEEE Conference on Computer Vision and Pattern Recognition,
+ser. CVPR ’13.
+Washington, DC, USA: IEEE Computer Society,
+2013, pp. 33–40.
+Lap-Fai Yu is an assistant professor at the Uni-
+versity of Massachusetts Boston. He received
+his BEng (ﬁrst class honors) and MPhil degrees
+in computer science from the Hong Kong Uni-
+versity of Science and Technology (HKUST) in
+2007 and 2009 respectively, and his PhD de-
+gree in computer science from the University of
+California, Los Angeles (UCLA), in 2013, where
+he received the Cisco Outstanding Graduate Re-
+search Award. He was a postdoctoral research
+fellow at the Singapore University of Technology
+and Design (SUTD), a visiting scholar at Stanford University, and a
+visiting scientist at the Massachusetts Institute of Technology (MIT).
+His research interests include computer graphics, computer vision, and
+computational photography. He served as a Program Co-Chair of the
+Workshop on Vision Meets Cognition: Functionality, Physics, Intention-
+ality and Causality (FPIC), organized in conjunction with the IEEE CVPR
+2014 Conference. He is a member of the IEEE.
+Sai-Kit Yeung is an assistant professor at the
+Singapore University of Technology and Design
+(SUTD), where he leads the Vision, Graphics
+and Computational Design (VGD) Group. He
+was also a visiting assistant professor at MIT
+and Stanford University. Before joining SUTD,
+he was a postdoctoral scholar in the Depart-
+ment of Mathematics, University of California,
+Los Angeles (UCLA). He was also a visiting stu-
+dent at the Image Processing Research Group
+at UCLA in 2008 and at the Image Sciences
+Institute, University Medical Center Utrecht, the Netherlands, in 2007.
+He received his PhD in Electronic and Computer Engineering from the
+Hong Kong University of Science and Technology (HKUST) in 2009.
+He also received a BEng degree (First Class Honors) in Computer
+Engineering in 2003 and an MPhil degree in Bioengineering in 2005
+from HKUST. Dr Yeungs research expertise is in the areas of computer
+vision and computer graphics. His current research focus is on scene
+acquisition, scene understanding, functional realistic scene re-modeling,
+and computational fabrication. He is a member of the IEEE and the IEEE
+Computer Society.
+Demetri Terzopoulos, Chancellor’s Professor
+of Computer Science at the University of Cal-
+ifornia, Los Angeles, holds the rank of Distin-
+guished Professor and directs the UCLA Com-
+puter Graphics & Vision Laboratory. He gradu-
+ated from McGill University in Honours Electrical
+Engineering and received the PhD degree in
+EECS from the Massachusetts Institute of Tech-
+nology (MIT) in 1984. He is or was a Guggen-
+heim Fellow, a Fellow of the ACM, IEEE, Royal
+Society of Canada, and Royal Society of Lon-
+don, and a Member of the European Academy of Sciences, the New
+York Academy of Sciences, and Sigma Xi. Among his many awards are
+an Academy Award for Technical Achievement from the Academy of Mo-
+tion Picture Arts and Sciences for his pioneering work on physics-based
+computer animation, and the inaugural Computer Vision Distinguished
+Researcher Award from the IEEE for his pioneering and sustained
+research on deformable models and their applications. ISI and other
+indexes list him among the most highly-cited authors in engineering and
+computer science, with more than 300 published research papers and
+several volumes, primarily in computer graphics, computer vision, med-
+ical imaging, computer-aided design, and artiﬁcial intelligence/life. He
+has given hundreds of invited talks around the world about his research,
+including more than 100 distinguished lectures and keynote/plenary
+addresses. Prior to joining UCLA in 2005, Dr. Terzopoulos held the
+Lucy and Henry Moses Endowed Professorship in Science at New York
+University and was Professor of Computer Science and Mathematics
+at NYU’s Courant Institute of Mathematical Sciences. Previously, he
+was Professor of Computer Science and Professor of Electrical and
+Computer Engineering at the University of Toronto. Before becoming an
+academic in 1989, he was a Program Leader at Schlumberger corporate
+research centers in California and Texas.

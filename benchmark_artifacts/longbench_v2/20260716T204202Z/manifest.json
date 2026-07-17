@@ -1,0 +1,173 @@
+{
+  "run_id": "20260716T204202Z",
+  "created_at": "2026-07-17T06:15:48.283334+00:00",
+  "started_at": "2026-07-16T20:42:02.745933+00:00",
+  "finished_at": "2026-07-17T06:15:48.283334+00:00",
+  "elapsed_seconds": 34425.537,
+  "benchmark_target": "longbench_v2",
+  "suite_csv": "benchmark_data/long_bench_v2/data_cache_suite.csv",
+  "suite_csv_sha256": "32fda08f5bcbeaaf36077ca0203ace3cb94d2330168c4866e36252b16fbf51d7",
+  "source_json_path": "benchmark_data/long_bench_v2/data.json",
+  "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+  "mode": "cache",
+  "llm_provider": "openai_compatible",
+  "api_key_env": null,
+  "openrouter_base_url": "https://openrouter.ai/api/v1",
+  "openai_compat_base_url": "http://127.0.0.1:8000/v1",
+  "openai_compat_executor_base_url": "http://g102.eth.cluster:8000/v1",
+  "openai_compat_evaluator_base_url": "http://g201.cm.cluster:8011/v1",
+  "openai_compat_api_key_env": "",
+  "openai_compat_extra_body": {
+    "common": {},
+    "executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    }
+  },
+  "executor_model": "Qwen/Qwen3.6-35B-A3B",
+  "evaluator_model": "Qwen/Qwen3.5-35B-A3B",
+  "top_k": 10,
+  "top_k_effective": null,
+  "iterative_top_k_ignored": true,
+  "rerank_top": 3,
+  "rerank_top_effective": null,
+  "iterative_rerank_top_ignored": true,
+  "synthesis_max_chunks": 3,
+  "mcq_prompt_style": "strict",
+  "mcq_synthesis_max_tokens": 8,
+  "search_mode": "iterative",
+  "iterative_reader_version": 13,
+  "scan_min_chunk_ratio": 0.5,
+  "scan_max_chunk_ratio": 0.65,
+  "scan_min_chunks": 4,
+  "scan_max_chunks": 0,
+  "scan_max_tokens": 1536,
+  "scan_empty_ledger_fallback_ratio": 1.0,
+  "iterative_packed_fallback_input_token_budget": 60000,
+  "iterative_memory_max_chars": 16000,
+  "iterative_batch_max_chunks": 3,
+  "iterative_batch_input_token_budget": 50000,
+  "scan_order": "faiss_ranked_ordering_document_order",
+  "doc_chunk_size": 10000,
+  "doc_chunk_overlap": 1000,
+  "doc_chunk_tokens": 10000,
+  "doc_chunk_overlap_tokens": 2000,
+  "doc_chunk_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
+  "embedding_query_instruction": "Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it.",
+  "embedding_batch_size": 2,
+  "embedding_max_length": 8192,
+  "embedding_device": "cuda",
+  "embedding_dtype": "auto",
+  "reranker_relevance_threshold": 0.2,
+  "reranker_batch_size": 4,
+  "reranker_max_length": 8192,
+  "min_reranked_results": 5,
+  "synthesis_input_token_budget": 0,
+  "reranker_disabled": true,
+  "embedding_device_effective": "cuda",
+  "embedding_dtype_effective": "bfloat16",
+  "cache_save_interval": 10,
+  "row_order": "source_grouped",
+  "row_types_requested": [
+    "original",
+    "exact",
+    "semantic"
+  ],
+  "max_rows": 0,
+  "rows_selected": 1509,
+  "row_type_counts": {
+    "exact": 503,
+    "original": 503,
+    "semantic": 503
+  },
+  "answer_correct_count": 708,
+  "answer_accuracy": 0.469185,
+  "actual_route_counts": {
+    "exact": 503,
+    "knowledge": 0,
+    "miss": 509,
+    "semantic": 497,
+    "unknown": 0
+  },
+  "by_row_type": {
+    "exact": {
+      "rows": 503,
+      "answer_accuracy": 0.469185,
+      "cache_hit_rate": 1.0
+    },
+    "original": {
+      "rows": 503,
+      "answer_accuracy": 0.469185,
+      "cache_hit_rate": 0.0
+    },
+    "semantic": {
+      "rows": 503,
+      "answer_accuracy": 0.469185,
+      "cache_hit_rate": 0.988072
+    }
+  },
+  "timing_summary": {
+    "cache_load_ms": 0.042,
+    "cache_final_save_ms": 326.296,
+    "cache_save_count": 151,
+    "context_write_ms": 1155.0,
+    "ingest_ms": 3088444.736,
+    "search_ms": 31299088.183,
+    "interval_save_ms": 24818.785,
+    "row_wall_ms": 34413576.229
+  },
+  "artifacts": {
+    "predictions": "benchmark_artifacts/longbench_v2/20260716T204202Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/longbench_v2/20260716T204202Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/longbench_v2/20260716T204202Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/longbench_v2/20260716T204202Z/official_longbench_v2_eval_report.json"
+  },
+  "total_api_calls": 7438,
+  "total_input_tokens": 175728258,
+  "total_output_tokens": 3595843,
+  "total_tokens": 179324101,
+  "full_context_query_baseline_input_tokens": 213816093,
+  "input_token_savings_vs_full_context_query_baseline": 38087835,
+  "input_token_savings_percent_vs_full_context_query_baseline": 17.813362,
+  "unique_source_context_token_estimate": 71272031,
+  "input_token_savings_vs_unique_source_context": -104456227,
+  "input_token_savings_percent_vs_unique_source_context": -146.559914,
+  "total_dataset_context_token_estimate": 213816093,
+  "input_token_savings_vs_context": 38087835,
+  "input_token_savings_percent": 17.813362,
+  "total_estimated_cost_usd": 0.0,
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "longbench_v2__exact-original-semantic__3c8eef7af4ba0f82",
+    "dataset_signature": "9e045a3af18b1fcf",
+    "cache_state_root": "/home/edogu/adarsh-rlms-cache-state",
+    "cache_state_path": "/home/edogu/adarsh-rlms-cache-state/longbench_v2__exact-original-semantic__3c8eef7af4ba0f82",
+    "cache_state_existed_before_reset": false,
+    "cache_state_existed_before_run": false,
+    "cache_reset_requested": true,
+    "run_start_type": "cold_start",
+    "cache_load_attempts": 1,
+    "cache_load_successes": 0,
+    "cache_entries_before_run": 0,
+    "cache_entries_after_run": 509,
+    "cache_hits": 1000,
+    "cache_hit_rate": 0.662691
+  },
+  "note": "jarvis-l40s-full-iterative-scan-strict-mcq"
+}

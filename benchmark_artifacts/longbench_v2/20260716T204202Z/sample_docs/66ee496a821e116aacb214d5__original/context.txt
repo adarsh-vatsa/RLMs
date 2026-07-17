@@ -1,0 +1,3497 @@
+Abstract. Multigrid methods are well suited to large massively parallel computer architectures
+because they are mathematically optimal and display excellent parallelization properties. Since cur-
+rent architecture trends are favoring regular compute patterns to achieve high performance, the
+ability to express structure has become much more important. The hypre software library provides
+high-performance multigrid preconditioners and solvers through conceptual interfaces, including a
+semi-structured interface that describes matrices primarily in terms of stencils and logically struc-
+tured grids. This paper presents a new semi-structured algebraic multigrid (SSAMG) method built
+on this interface.
+The numerical convergence and performance of a CPU implementation of this
+method are evaluated for a set of semi-structured problems. SSAMG achieves signiﬁcantly better
+setup times than hypre’s unstructured AMG solvers and comparable convergence. In addition, the
+new method is capable of solving more complex problems than hypre’s structured solvers.
+Key words. algebraic multigrid, semi-structured multigrid, semi-structured grids, structured
+adaptive mesh reﬁnement
+AMS subject classiﬁcations. 65F08, 65F10, 65N55
+1. Introduction. The solution of partial diﬀerential equations (PDEs) often
+involves solving linear systems of equations
+(1.1)
+Ax = b,
+where A ∈RN×N is a sparse matrix; b ∈RN is the right-hand side vector, and
+x ∈RN is the solution vector.
+In modern simulations of physical problems, the
+number of unknowns N can be huge, e.g., on the order of a few billion. Thus, fast
+solution methods must be used for Equation (1.1).
+Multigrid methods acting as preconditioners to Krylov-based iterative solvers are
+among the most common choices for fast linear solvers. In these methods, a multilevel
+hierarchy of decreasingly smaller linear problems is used to target the reduction of
+error components with distinct frequencies and solve (1.1) with O(N) computations
+in a scalable fashion. There are two basic types of multigrid methods [7]. Geometric
+multigrid employs rediscretization on coarse grids, which needs to be deﬁned explicitly
+by the user. A less invasive and less problem-dependent approach is algebraic multi-
+grid (AMG) [27], which uses information coming from the assembled ﬁne level matrix
+A to compute a multilevel hierarchy. The hypre software library [21, 15] provides
+high-performance preconditioners and solvers for the solution of large sparse linear
+systems on massively parallel computers with a focus on AMG methods. It features
+three diﬀerent interfaces, a structured, a semi-structured, and a linear-algebraic inter-
+face. Its most used AMG method, BoomerAMG [19], is a fully unstructured method,
+built on compressed sparse row matrices (CSR). The lack of structure presents seri-
+ous challenges to achieve high performance on GPU architectures. The most eﬃcient
+solver in hypre is PFMG [2], which is available through the structured interface. It
+is well suited for implementation on accelerators, since its data structure is built on
+∗Submitted to the editors on July 15, 2021.
+This work was performed under the auspices of the U.S. Department of Energy by Lawrence Liv-
+ermore National Laboratory under Contract DE-AC52-07NA27344. LLNL-JRNL-834288-DRAFT.
+†Lawrence Livermore National Laboratory (paludettomag1@llnl.gov).
+‡Lawrence Livermore National Laboratory (falgout2@llnl.gov).
+§Lawrence Livermore National Laboratory (yang11@llnl.gov).
+1
+arXiv:2205.14273v1  [math.NA]  27 May 2022
+
+
+2
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+grids and stencils, and achieves signiﬁcantly better performance than BoomerAMG
+when solving the same problems [4, 14]; however, it is applicable to only a subset of
+the problems that BoomerAMG can solve. This work presents a new semi-structured
+algebraic multigrid (SSAMG) preconditioner, built on the semi-structured interface,
+consisting of mostly structured parts and a small unstructured component. It has
+the potential to achieve similar performance as PFMG with the ability to solve more
+complex problems.
+There have been other eﬀorts to develop semi-structured multigrid methods. For
+example, multigrid solvers for hierarchical hybrid grids (HHG) have shown to be highly
+eﬃcient [6, 5, 17, 18, 22]. These grids are created by regularly reﬁning an initial,
+potentially unstructured grid. Geometric multigrid methods for semi-structured tri-
+angular grids that use a similar approach have also been proposed [25]. More recently,
+the HHG approach has been generalized to a semi-structured multigrid method [24].
+Regarding applications, there are many examples employing semi-structured meshes
+which can beneﬁt from new semi-structured algorithms, e.g., petroleum reservoir sim-
+ulation [16], marine ice sheets modeling [9], next-generation weather and climate
+models [1], and solid mechanics simulators [26], to name a few. In addition, software
+frameworks that support the development of block-structured AMR applications such
+as AMReX [29, 30] and SAMRAI [20] can beneﬁt from the development of solvers for
+semi-structured problems.
+This paper is organized as follows. Section 2 reviews the semi-structured con-
+ceptual interface of hypre, which enables the description of matrices and vectors that
+incorporate information about the problem’s structure. Section 3 describes the new
+semi-structured algorithm in detail. In section 4, we evaluate SSAMG’s performance
+and robustness for a set of test cases featuring distinct characteristics and make com-
+parisons to other solver options available in hypre.
+Finally, in section 5, we list
+conclusions and future work.
+2. Semi-structured interface in hypre. The hypre library provides three
+conceptual interfaces by which the user can deﬁne and solve a linear system of equa-
+tions: a structured (Struct), a semi-structured (SStruct) and a linear algebraic (IJ)
+interface. They range from highly specialized descriptions using structured grids and
+stencils in the case of Struct to the most generic case where sparse matrices are stored
+in a parallel compressed row storage format (ParCSR) [12, 13]. In this paper, we focus
+on the SStruct interface [12, 13], which combines features of the Struct and the IJ
+interfaces and targets applications with meshes composed of a set of structured sub-
+grids, e.g, block-structured, overset, and structured adaptive mesh reﬁnement grids.
+The SStruct interface also supports multi-variable PDEs with degrees of freedom ly-
+ing in the center, corners, edges or faces of cells composing logically rectangular boxes.
+From a computational perspective, these variable types are associated with boxes that
+are shifted by diﬀerent oﬀset values. Thus, we consider only cell-centered problems
+here for ease of exposition.
+The current CPU implementation of SSAMG cannot
+deal with problems involving multiple variable types yet; however, the mathematical
+algorithm of SSAMG expands to such general cases.
+There are ﬁve fundamental components required to deﬁne a linear system in the
+SStruct interface: a grid, stencils, a graph, a matrix, and a vector.
+The grid is
+composed of np structured parts with independent index spaces and grid spacing.
+Each part is formed topologically by a group of boxes, which are a collection of cell-
+centered indices, described by their “lower” and “upper” corners. Figure 1 shows an
+example of a problem geometry that can be represented by this interface. Stencils
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+3
+Figure 1. A semi-structured grid composed of ﬁve parts. Part 4 (orange) consists of two boxes,
+while the others consist of just a single box. Furthermore, Part 1 (green) has a reﬁnement factor of
+two with respect to the other parts. The pairs (x, y) denote cell coordinates in the i and j topological
+directions, respectively. Note that the indices of lower-left cells for each part are independent, since
+the grid parts live in diﬀerent index spaces.
+are used to deﬁne connections between neighboring grid cells of the same part, e.g., a
+typical ﬁve-point stencil would connect a generic grid cell to itself and its immediate
+neighbors to the west, east, south, and north. The graph describes how individual
+parts are connected, see Figure 3 for an example.
+We have now the components
+to deﬁne a semi-structured matrix A = S + U, which consists of structured and
+unstructured components, respectively.
+S contains coeﬃcients that are associated
+with stencil entries. These can be variable coeﬃcients for each stencil entry in each
+cell within a part or can be set to just a single value if the stencil entry is constant
+across the part. U is stored in ParCSR format and contains the connections between
+parts. Lastly, a semi-structured vector describes an array of values associated with
+the cells of a semi-structured grid.
+3. Semi-structured algebraic multigrid (SSAMG). In the hypre package,
+there is currently a single native preconditioner for solving problems with multiple
+parts through the SStruct interface, which is a block Jacobi method named Split. It
+uses one V-cycle of a structured multigrid solver as an approximation to the inverse
+of the structured part of A.
+This method has limited robustness since it consid-
+ers only structured intra-grid couplings in a part to build an approximation of A−1.
+In this paper, we present a new solver option for the SStruct interface that com-
+putes a multigrid hierarchy taking into account inter-part couplings. This method
+is called SSAMG (Semi-Structured Algebraic MultiGrid).
+It is currently available
+in the recmat branch of hypre. This section deﬁnes coarsening, interpolation, and
+relaxation for SSAMG (subsections 3.1, 3.2, and 3.4, respectively). It also describes
+how coarse level operators are constructed (subsection 3.3) and discusses a strategy
+for improving the method’s eﬃciency at coarse levels (subsection 3.5).
+
+
+4
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+3.1. Coarsening. As in PFMG [2], we employ semi-coarsening in SSAMG. The
+coarsening directions are determined independently for each part of the SStructGrid
+to allow better treatment of problems with diﬀerent anisotropies among the parts.
+The idea of semi-coarsening is to coarsen in a single direction of strong coupling such
+that every other perpendicular line/plane (2D/3D) forms the new coarse level. For
+an illustration, see Figure 3, where coarse points are depicted as solid circles.
+In the original PFMG algorithm, the coarsening direction was chosen to be the
+dimension with smallest grid spacing. This option is still available in hypre by allowing
+users to provide an initial nd-dimensional array of “representative grid spacings” that
+are only used for coarsening. However, both PFMG and SSAMG can also compute
+such an array directly from the matrix coeﬃcients. In SSAMG, this is done separately
+for each part, leading to a matrix W ∈Rnp×nd, where np and nd denote the number
+of parts and problem dimensions. Here, element Wpd is heuristically thought of as
+a grid spacing for dimension d of part p, and hence a small value indicates strong
+coupling.
+To describe the computation of W in part p, consider the two-dimensional nine-
+point stencil in Figure 2c and assume that AC > 0 (simple sign adjustments can be
+made if AC < 0). The algorithm extends naturally to three dimensions. Note also that
+both PFMG and SSAMG are currently restricted to stencils that are contained within
+this nine-point stencil (27-point in 3D). The algorithm proceeds by ﬁrst reducing
+the nine-point matrix to a single ﬁve-point stencil through an averaging process,
+then computing the (negative) sum of the resulting oﬀ-diagonal coeﬃcients in each
+dimension. That is, for the i-direction (d = 1), we compute
+(3.1)
+c1 =
+X
+(i,j)
+−(ASW + AW + ANW ) −(ASE + AE + ANE),
+where the stencil coeﬃcients are understood to vary at each point (i, j) in the grid.
+Here the left and right parenthetical sums contribute to the “west” and “east” co-
+eﬃcients of the ﬁve-point stencil. The computation is analogous for the j-direction.
+From this, we deﬁne
+(3.2)
+Wpd =
+s max
+0≤i<nd ci
+cd
+,
+based on the heuristic that the ﬁve-point stencil coeﬃcients are inversely proportional
+to the square of the grid spacing.
+With W in hand, the semi-coarsening directions for each level and part are com-
+puted as described in Algorithm 3.1. The algorithm starts by computing a bounding
+box1 around the grid in each part, then loops through the grid levels from ﬁnest
+(level 0) to coarsest (level nl). For a given grid level l and part p, the coarsening
+direction d⋆is set to be the one with minimum2 value in Wp (line 8). Then, the
+bounding box for part p is coarsened by a factor of two in direction d⋆(line 9) and
+Wp,d⋆is updated to reﬂect the coarser “grid spacing” on the next grid level (line 10).
+If the bounding box is too small, no coarsening is done (line 7) and that part becomes
+inactive. The coarsest grid level nl is the ﬁrst level with total semi-structured grid
+1Given a set of boxes, a bounding box is deﬁned by the cells with minimum index (lower corner)
+and maximum index (upper corner) over the entire set.
+2In the case of two or more directions sharing the same value of Wpd, as in an isotropic scenario,
+we set d⋆to the one with smallest index.
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+5
+size less than a given maximum size smax, unless this exceeds the speciﬁed maximum
+number of levels lmax.
+Algorithm 3.1 SSAMG coarsening
+1: procedure SSAMGCoarsen(W)
+2:
+for p = 1, np do
+3:
+Compute part bounding boxes bboxp
+4:
+end for
+5:
+for l = 1, nl do
+6:
+for p = 1, np do
+7:
+if volume bboxp > 1 then
+8:
+d⋆= arg mind Wpd
+9:
+Coarsen bboxp in direction d⋆by a factor of 2
+10:
+Wpd⋆= 2 ∗Wpd⋆
+11:
+end if
+12:
+end for
+13:
+end for
+14: end procedure
+3.2. Interpolation. A key ingredient in multigrid methods is the interpolation
+(or prolongation) operator P, the matrix that transfers information from a coarse
+level in the grid hierarchy to the next ﬁner grid. The restriction operator R moves
+information from a given level to the next coarser grid. For a numerically scalable
+method, error modes that are not eﬃciently reduced by relaxation should be captured
+in the range of P, so they can be reduced on coarser levels [7].
+In SSAMG, we employ a structured operator-based method for constructing pro-
+longation similar to the method used in [2]. It is “structured” because P is composed
+of only a structured component; interpolation is only done within a part, not between
+them. It is “operator-based” because the coeﬃcients are algebraically computed from
+S and are able to capture heterogeneity and anisotropy. In hypre, P is a rectangular
+matrix deﬁned by two grids (domain and range), a stencil, and corresponding stencil
+coeﬃcients. In the case of P, the domain grid is the coarse grid and the range grid
+is the ﬁne grid. Since SSAMG uses semi-coarsening, the stencil for interpolation con-
+sists of three coeﬃcients that are computed by collapsing the stencil of A, a common
+procedure for deﬁning interpolation in algebraic multigrid methods.
+To exemplify how P is computed, consider the solution of the Poisson equation on
+a cell-centered grid (Figure 2a) formed by a single part and box. Dirichlet boundary
+conditions are used and discretization is performed via the ﬁnite diﬀerence method
+with a nine-point stencil (Figure 2c). Assume that coarsening is in the i-direction
+by selecting ﬁne grid cells with even i-coordinate index (depicted in darker red) and
+renumbering them on the coarse grid as shown in Figure 2b. The prolongation oper-
+ator connects ﬁne grid cells to their neighboring coarse grid cells with the following
+stencil (see [11] for more discussion of stencil notation)
+P ∼
+
+PW
+1
+PE
+
+c =
+PW
+∗
+PE
+r1
+c
+⊕
+∗
+1
+∗r2
+c ,
+where
+(3.3)
+PW = ASW + AW + ANW
+AS + AC + AN
+, and
+PE = ASE + AE + ANE
+AS + AC + AN
+.
+
+
+6
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+(1,1)
+(5,5)
+(3,3)
+(a) Fine grid
+(1,1)
+(b) Coarse grid
+(2,5)
+AW
+ASW
+ANW
+ANE
+AE
+ASE
+AN
+AS
+(c) Stencil of A
+centered at (3,3)
+AC
+Figure 2. (a) and (b) show one example of ﬁne and coarse grids, respectively, also known as
+range and domain grids for the purpose of prolongation. Coarsening is done in the i-direction, as
+depicted by the darker cells in the ﬁne grid. (c) shows the stencil coeﬃcients of A relative to the
+grid point (3, 3) from the ﬁne grid. Stencil coeﬃcients for a given grid point can be viewed as the
+nonzero coeﬃcients of its respective row in a sparse matrix.
+Here, r1 denotes the range subgrid given by the light-colored cells in Figure 2a, and r2
+denotes the subgrid given by the dark-colored cells. For a ﬁne-grid cell such as (3, 3)
+in Figure 2, interpolation applies the weights PW and PE to the coarse-grid unknowns
+associated with cells (2, 3) and (4, 3) in the ﬁne-grid indexing, or (1, 3) and (2, 3) in the
+coarse-grid indexing. For a ﬁne-grid cell such as (2, 3), interpolation applies weight 1
+to the corresponding coarse-grid unknown.
+When one of the stencil entries crosses a part boundary that is not a physical
+boundary, we set the coeﬃcient associated with it to zero and update the coeﬃcient
+for the opposite stencil entry so that the vector of ones is contained in the range
+of the prolongation operator. Although this gives a lower order interpolation along
+part boundaries, it limits stencil growth and makes the computation of coarse level
+matrices cheaper, see section 3.3. It also assures that the near kernel of A is well
+interpolated between subsequent levels.
+Another component needed in a multigrid method is the restriction operator,
+which maps information from ﬁne to coarse levels.
+SSAMG follows the Galerkin
+approach, where restriction is deﬁned as the transpose of prolongation (R = P T ).
+3.3. Coarse level operator. The coarse level operator Ac in SSAMG is com-
+puted via the Galerkin product P T AP. Since the prolongation matrix consists only
+of the structured component, the triple-matrix product can be rewritten as
+(3.4)
+Ac = P T SP + P T UP,
+where the ﬁrst term on the right-hand side is the structured component of Ac, and
+the second its unstructured component. Note that the last term involves the mul-
+tiplication of matrices of diﬀerent types, which we resolve by converting one matrix
+type to the other. Since it is generally not possible to represent a ParCSR matrix in
+structured format, we convert the structured matrix P to the ParCSR format. How-
+ever, we consider only the entries of P that are actually involved in the triple-matrix
+multiplication P T UP to decrease the computational cost of the conversion process.
+If we examine the new stencil size for Ac, we note that the use of the two-point
+interpolation operator limits stencil growth. For example, in the case of a 2D ﬁve-
+point stencil at the ﬁnest level, the maximum stencil size on coarse levels is nine, and
+for a 3D seven-point stencil at the ﬁnest level, the maximum stencil size on coarse
+levels is 27.
+We prove here that under certain conditions, the unstructured portion of the
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+7
+Figure 3. Example of a graph of the matrix U and graph of matrix P derived from the semi-
+structured grid shown in Figure 1.
+The graph of U is depicted by black-solid edges.
+The graph
+of P consists of ﬁve unconnected subgraphs illustrated by the dotted multicolored lines. Lastly, the
+boundary points are depicted by black-rimmed circles.
+coarse grid operator stays restricted to the part boundaries and does not grow into
+the interior of the parts. Note that we deﬁne a part boundary δΩi here as the set of
+points in a part Ωi that are connected to neighboring parts in the graph of the matrix
+U. For an illustration, see the black-rimmed points in Figure 3. Figure 3 shows the
+graph of P for the semi-structured grid in Figure 1 and an example of a graph for the
+unstructured matrix U.
+Theorem 3.1. We make the following assumptions:
+• The grid Ωconsists of k parts: Ω= Ω1 ∪... ∪Ωk, where Ωi ∩Ωj = ∅.
+• The grid has been coarsened using semi-coarsening.
+• The interpolation P interpolates ﬁne points using at most two adjacent coarse
+points aligned with the ﬁne points and maps coarse points onto themselves.
+• The graph of the unstructured matrix U contains only connections between
+boundary points, i.e., ui,j = 0 if i ∈Ωm \ δΩm, m = 1, ..., k, or j ∈Ωn \
+δΩn, n = 1, ..., k, and there are no connections within a part, i.e., ui,j = 0 for
+i, j ∈Ωm, m = 1, ..., k.
+Then the graph of the unstructured part Uc = P T UP also contains only connections
+between boundary points, i.e., uc
+i,j = 0 if i ∈Ωc
+m \ δΩc
+m, m = 1, ..., k, or j ∈Ωc
+n \
+δΩc
+n, n = 1, ..., k, and there are no connections within a part, i.e., uc
+i,j = 0 for i, j ∈
+Ωc
+m, m = 1, ..., k..
+Proof. Since we want to examine how boundary parts are handled, we reorder
+the interpolation matrix P and the unstructured part U, so that all interior points
+are ﬁrst followed by all boundary points. The matrices P and U are then deﬁned as
+follows:
+(3.5)
+P =
+
+P I
+P IB
+P BI
+P B
+
+,
+U =
+ 0
+0
+0
+U B
+
+.
+Note that while U B maps δΩonto δΩ, P B maps δΩc onto δΩ. Thus, in the extreme
+case that all boundary points are ﬁne points, P IB and P B do not exist. Then, the
+
+
+8
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+coarse unstructured part is given as follows:
+(3.6)
+Uc = P T UP =
+ (P BI)T U BP BI
+(P BI)T U BP B
+(P B)T U BP BI
+(P B)T U BP B
+
+.
+It is clear already that there is no longer a connection to P I and P IB, eliminating
+many potential connections to interior points; however, we still need to investigate
+further the inﬂuence of P BI and P B.
+Since P BI, P B, and U B are still very complex due to their dependence on k
+parts, we further deﬁne them as follows using the fact that P is deﬁned only on the
+structured parts and U only connects boundary points of neighboring parts.
+(3.7) P x =
+
+
+
+
+
+P x
+1
+P x
+2
+...
+P x
+k
+
+
+
+
+,
+U B =
+
+
+
+
+
+
+0
+U B
+1,2
+...
+U B
+1,k
+U B
+2,1
+0
+...
+.
+.
+.
+.
+.
+.
+...
+...
+U B
+k−1,k
+U B
+k,1
+...
+U B
+k,k−1
+0
+
+
+
+
+
+
+.
+Note that while U B
+ij maps δΩi to δΩj, only the coeﬃcients corresponding to edges in
+the graph of U that connect points in δΩi to δΩj are nonzero, all other coeﬃcients
+are zero. Then, (P x)T U BP y, where “x” and “y” can stand for “BI” as well as “B”,
+is given by
+(3.8)
+
+
+
+
+
+
+0
+(P x
+1 )T U B
+1,2P y
+2
+...
+(P x
+1 )T U B
+1,kP y
+k
+(P x
+2 )T U B
+2,1P y
+1
+0
+...
+.
+.
+.
+.
+.
+.
+...
+...
+(P x
+k−1)T U B
+k−1,kP y
+k
+(P x
+k )T U B
+k,1P y
+1
+...
+(P x
+k )T U B
+k,k−1P y
+k−1
+0
+
+
+
+
+
+
+.
+This allows us to just focus on the submatrices (P x
+i )T U B
+ij P y
+j . There are three potential
+scenarios that can occur at the boundary between two parts due to our use of semi-
+coarsening and a simple two-point interpolation (Figure 3):
+• all boundary points are coarse points as shown at the right boundary of part
+2 and the left boundary of part 3;
+• all boundary points are ﬁne points as at the right boundary of part 1 and 4;
+• the boundary points are alternating coarse and ﬁne points as illustrated at
+the right boundary of part 5.
+Let us deﬁne P x
+i |δΩij as the matrix that consists of the rows of P x
+i that correspond
+to all boundary points in δΩi that are connected to boundary points in δΩj. If all
+points are coarse points, P B
+i |δΩij = I and P BI
+i
+|δΩij = 0, since there are no connections
+from the boundary to the interior for P BI
+i
+|δΩij. If all points are ﬁne points, P B
+i |δΩij
+does not exist, and P BI
+i
+|δΩij is a matrix with at most one nonzero element per row.
+Since coarse points in Ωi adjacent to the ﬁne boundary points in δΩi become boundary
+points of Ωc
+i, e.g., see right boundary of part 1 or left and right boundaries of part
+4, all nonzero elements in P BI
+i
+|δΩij are associated with a column belonging to δΩi.
+In the case of alternating ﬁne and coarse points, P BI
+i
+|δΩij = 0, since there are no
+connections from the boundary to the interior, and P B
+i |δΩij is a matrix with at most
+two nonzeros in the j-th and k-th columns, where j and k are elements of δΩc
+i. Recall
+that all columns in Uij belonging to points outside of δΩj and all rows belonging
+to points outside of δΩi are zero. Based on this and the previous observations it is
+clear that if all points are coarse or we are dealing with alternating ﬁne and coarse
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+9
+points, the submatrices in 3.8 that involve P BI
+i
+will be 0, since P BI
+i
+|δΩij = 0 and
+P BI
+j
+|δΩji = 0. Any additional nonzero coeﬃcients in P BI
+i
+or P BI
+j
+due to boundary
+points next to other parts will be canceled out in the matrix product. It is also clear,
+since the columns of P B
+i
+pertain only to points in δΩc
+i, that the graph of the product
+(P B
+i )T UijP B
+j
+only contains connections of points of δΩc
+i to points of δΩc
+j and none to
+the interior or to itself.
+Let us further investigate the case where all boundary points are ﬁne points. We
+ﬁrst consider (P BI
+i
+)T UijP BI
+j
+. Since we have already shown that P BI
+i
+|δΩij = 0 for
+boundaries with coarse or alternating points leading to zero triple products in 3.8,
+we can ignore these scenarios and assume that for both P BI
+i
+and P BI
+j
+the boundary
+points adjacent to each other are ﬁne points. Each row of P BI
+i
+|δΩij has at most one
+nonzero element in the column corresponding to the interior coarse point connected
+to the ﬁne boundary point. This interior point is also an element in δΩc
+i. Therefore
+the graph of the product (P BI
+i
+)T UijP BI
+j
+only contains connections of points of δΩc
+i to
+points of δΩc
+j and none to the interior or to itself. Finally, this statement also holds
+for the triple products (P B
+i )T UijP BI
+j
+and (P BI
+i
+)T UijP B
+j
+using the same arguments
+as above.
+Note that the number of nonzero coeﬃcients in Uc can still be larger than those
+in U, however the growth only occurs along part boundaries.
+3.4. Relaxation. Relaxation, or smoothing, is an important element of multi-
+grid whose task is to eliminate high frequency error components from the solution
+vector x.
+The relaxation process at step k > 0 can be described via the generic
+formula:
+(3.9)
+xk = xk−1 + ωM −1 (b −Axk−1) ,
+where M −1 is the smoother operator and ω is the relaxation weight. In SSAMG, we
+provide two pointwise relaxation schemes. The ﬁrst one is weighted Jacobi, in which
+M −1 = D−1, with D being the diagonal of A. Moreover, ω varies for each multigrid
+level and semi-structured part as a function of the grid-spacing metric W:
+(3.10)
+ωp =
+2
+3 −βp/αp
+,
+where
+(3.11)
+αp =
+nd
+X
+d=0
+1
+W 2
+pd
+and
+βp =
+nd
+X
+d = 0,
+d̸=d⋆
+1
+W 2
+pd
+.
+The ratio βp/αp adjusts the relaxation weight to more closely approximate the optimal
+weight for isotropic problems in diﬀerent dimensions. To see how this works, consider
+as an example a highly-anisotropic 3D problem that is nearly decoupled in the k-
+direction and isotropic in i and j. Because of the severe anisotropy, the problem is
+eﬀectively 2D, so the optimal relaxation weight is 4/5. Since our coarsening algorithm
+will only coarsen in either directions i or j, we get βp/αp = 1/2, and ωp = 4/5 as
+desired.
+The second relaxation method supported by SSAMG is L1-Jacobi. This method
+is similar to the previous one, in the sense that a diagonal matrix is used to construct
+
+
+10
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+the smoother operator; however, here, the i-th diagonal element of M equals the
+L1-norm of the i-th row of A:
+Mii =
+N
+X
+j=0
+|Aij| .
+This form leads to guaranteed convergence when A is positive deﬁnite, i.e., the error
+propagation operator E = I −M −1A has a spectral radius smaller than one. We refer
+to [3] for more details. This option tends to give slower convergence than weighted
+Jacobi; however, a user-deﬁned relaxation factor in the range (1, 2/λmax(M −1A))
+(λmax is the maximum eigenvalue) can be used to improve convergence.
+To reduce the computational cost of a multigrid cycle within SSAMG, we also
+provide an option to turn oﬀrelaxation on certain multigrid levels in isotropic (or
+partially isotropic) scenarios. We call this option “skip”, and it has the action of
+mimicking full-coarsening. For a given part, SSAMG’s algorithm checks if the coars-
+ening directions for levels “l” and “l−nd” match
+d⋆
+l = d⋆
+l−nd
+
+. If yes, then relaxation
+is turned oﬀ(skipped) at level l.
+3.5. Hybrid approach. Since SSAMG uses semi-coarsening, the coarsening ra-
+tio between the number of variables on subsequent grids is 2. In classical algebraic
+multigrid, this value tends to be larger, especially when aggressive coarsening strate-
+gies are applied. This leads to the creation of more levels in the multigrid hierarchy
+of SSAMG when compared to BoomerAMG. Since the performance beneﬁts of ex-
+ploiting structure decreases on coarser grid levels, we provide an option to transition
+to an unstructured multigrid hierarchy at a certain level or coarse problem size cho-
+sen by the user. This is done by converting the matrix type from SStructMatrix
+to ParCSRMatrix at the transition level. The rest of the multigrid hierarchy is set
+up using BoomerAMG conﬁgured with the default options used in hypre. With a
+properly chosen transition level, this hybrid approach can improve performance. In
+the non-hybrid case, SSAMG employs one sweep of the same relaxation method used
+in previous levels.
+4. Numerical results. In this section, we investigate convergence and perfor-
+mance of SSAMG when used as a preconditioner for the conjugate gradient method
+(PCG). We also compare it to three other multigrid schemes in hypre, namely PFMG,
+Split, and BoomerAMG. The ﬁrst is the ﬂagship multigrid method for structured prob-
+lems in hypre based on semi-coarsening [2, 8], the second, a block-Jacobi method built
+on top of the SStruct interface [21], in which blocks are mapped to semi-structured
+parts, and the last scheme is hypre’s unstructured algebraic multigrid method [19].
+Each of these preconditioners has multiple setup parameters that aﬀect its perfor-
+mance. For the comparison made here, we select those leading to the best solution
+times on CPU architectures. In addition, we consider four variants of SSAMG in an
+incremental setting to demonstrate the eﬀects of diﬀerent setup options described in
+the paper. A complete list of the methods considered here is given below:
+• PFMG: weighted Jacobi3 smoother and “skip” option turned on.
+• Split: block-Jacobi method with one V-cycle of PFMG as the inner solver for
+parts.
+• BoomerAMG: Forward/Backward L1-Gauss-Seidel relaxation [3]; coarsening
+via HMIS [10] with a strength threshold value of 0.25; modularized option for
+3This is the default relaxation method of PFMG.
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+11
+computing the Galerkin product RAP; one level (ﬁrst) of aggressive coars-
+ening with multi-pass interpolation [28] and, in the following levels, matrix-
+based extended+i interpolation [23] truncated to a maximum of four nonzero
+coeﬃcients per row.
+• SSAMG-base:
+baseline conﬁguration of SSAMG employing weighted L1-
+Jacobi smoother with relaxation factor equal to 3/2.
+• SSAMG-skip: above conﬁguration plus the “skip” option.
+• SSAMG-hybrid: above conﬁguration plus the “hybrid” option for switching
+to BoomerAMG as the coarse solver at the 10th level, which corresponds to
+three steps of full grid reﬁnement in 3D, i.e., 512 times reduction on the
+number of degrees of freedom (DOFs).
+• SSAMG-opt: refers to the best SSAMG conﬁguration and employs the same
+parameters as SSAMG-hybrid except for switching to BoomerAMG at the
+7th level. This results in six pure SSAMG coarsening levels and reduction
+factor of 64 on the number of DOFs.
+Every multigrid preconditioner listed above is applied to the residual vector via a
+single V(1,1)-cycle. The coarsest grid size is at most 8 in all cases where BoomerAMG
+is used, it equals the number of parts for SSAMG-base and SSAMG-skip, and one for
+PFMG. The number of levels in the various multigrid hierarchies changes for diﬀerent
+problem sizes and solvers.
+We consider four test cases featuring three-dimensional semi-structured grids,
+diﬀerent part distributions, and anisotropy directions. Each semi-structured part is
+formed by a box containing m × m × m cells.
+Similarly, in a distributed parallel
+setting, each semi-structured part is owned by p × p × p unique MPI tasks, meaning
+that the global semi-structured grid is formed by replicating the local m3-sized boxes
+belonging to each part by p times in each topological direction. This leads to a total
+of npp3 MPI tasks for np parts. We are particularly interested in evaluating weak
+scalability of the proposed method for a few tasks up to a range of thousands of MPI
+tasks. Thus, we vary the value of p from one to eight with increments of one.
+For the results, we report the number of iterations needed for convergence, setup
+time of the preconditioner, and solve time of the iterative solver. All experiments
+were performed on Lassen, a cluster at LLNL equipped with two IBM POWER9
+processors (totaling 44 physical cores) per node. However, we note that up to 32
+cores per node were used in the numerical experiments to reduce the eﬀect of limited
+memory bandwidth. Convergence of the iterative solver is achieved when the L2-
+norm of the residual vector is less than 10−6||b||2. The linear systems were formed
+via discretization of the Poisson equation through the ﬁnite diﬀerence method, and
+zero Dirichlet boundary conditions are used everywhere except for the k = 0 boundary,
+which assumes a value of one. The initial solution guess passed to PCG is the vector
+of zeros. The discretization scheme we used leads to the following seven-point stencil:
+(4.1)
+A ∼
+−γ
+
+
+−β
+−α
+2(α + β + γ)
+−α
+−β
+
+−γ
+where α, β, and γ denote the coeﬃcients in the i, j, and k topological directions. For
+the isotropic problems, α = β = γ = 1, for the anisotropic cases we deﬁne their values
+in section 4.2.
+4.1. Test case 1 - cubes side-by-side. The ﬁrst test case is made of an iso-
+tropic and block-structured three-dimensional domain composed of four cubes, where
+
+
+12
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+each contains the same number of cells and refers to a diﬀerent semi-structured part.
+Figure 4 shows a plane view of one particular case with cubes formed by four cells in
+each direction. Regarding the solver choices, since PFMG works only for single-part
+problems, we translated parts into diﬀerent boxes in an equivalent structured grid.
+Note that such a transformation is only possible due to the simplicity of the current
+problem geometry and is unattainable in more general cases such as those described
+later in sections 4.3 and 4.4.
+Part 0
+Part 2
+Part 1
+Part 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+Proc 0 Proc 1
+Proc 2 Proc 3
+(b) Grid partitioning (4 processes)
+(a) Base grid
+Figure 4. ij-plane cut of the three-dimensional base grid used for test case 4.1. There are no
+adjacent parts in the k-direction. Colors denote diﬀerent parts, and the experiments showed in this
+section are produced by equally reﬁning the base grid in all directions.
+For the numerical experiments, we consider m = 128, which gives a local problem
+size per part of 2, 097, 152 DOFs and a global problem size of 8, 388, 608 DOFs for 4
+MPI tasks (p = 1). The largest problem we consider here, obtained when p = 8, has
+a global size of about 4.3B DOFs.
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+1
+2
+3
+4
+5
+6
+7
+Setup time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+0
+5
+10
+15
+20
+25
+30
+35
+Solve time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+0
+20
+40
+60
+80
+100
+Iterations
+SSAMG-base
+SSAMG-skip
+SSAMG-hybrid
+SSAMG-opt
+BoomerAMG
+Split
+PFMG
+Figure 5. Weak scalability results for test case 1. Three metrics are shown in the ﬁgure, i.e.,
+setup phase times in seconds (left); solve phase times in seconds (middle), and number of iterations
+(right). All curves are plotted with respect to the number of MPI tasks, Nprocs, which varies from 4
+(p = 1) up to 2048 (p = 8).
+Figure 5 shows weak scalability results for this test case. Analyzing the itera-
+tion counts, Split is the only method that does not converge in less than a maximum
+iteration count of 100 for runs larger than 500M DOFs (p = 4). This lack of numeri-
+cal scalability was already expected since couplings among parts are not captured in
+Split’s multigrid hierarchy. The best iteration counts are reached by PFMG, which is
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+13
+natural since this method can take full advantage of the problem’s geometry. Notice-
+ably, the iteration counts of SSAMG-opt follow PFMG closely, since part boundaries
+are no longer considered after switching to BoomerAMG on the coarser levels and the
+switch is done earlier here than in SSAMG-hybrid; the other SSAMG variants need
+a higher number of iterations for achieving convergence, since the interpolation is of
+lower quality along part boundaries. Lastly, the BoomerAMG preconditioner shows a
+modest increase in iteration counts for increasing problem sizes, and this is common
+in the context of algebraic multigrid.
+Solve times are directly related to iteration counts.
+Since Split has a similar
+iteration cost to the other methods but takes the largest number of iterations to
+converge, it is the slowest option in solution time. For the same reason, the three
+SSAMG variants except for SSAMG-opt are slower than the remaining precondition-
+ers. Still, SSAMG-skip is faster than SSAMG-base despite showing more iterations
+because the “skip”option reduces its iteration cost. The optimal variant SSAMG-opt
+is able to beat BoomerAMG by a factor of 1.6x for p = 1 and 2.3x for p = 8. More-
+over, SSAMG-opt shows little performance degradation with respect to the fastest
+preconditioner (PFMG).
+BoomerAMG is the slowest option when analyzing setup times. This is a result
+of multiple reasons, the three most signiﬁcant ones being:
+• BoomerAMG employs more elaborate formulas for computing interpolation,
+which require more computation time than the simple two-point scheme used
+by PFMG and SSAMG;
+• the triple-matrix product algorithm for computing coarse operators imple-
+mented for CSR matrices is less eﬃcient than the specialized algorithm em-
+ployed by Struct and SStruct matrices4;
+• BoomerAMG’s coarsening algorithm involves choosing ﬁne/coarse nodes on
+the matrix graph besides computing a strength of connection matrix. Those
+steps are not necessary for PFMG or SSAMG.
+This is followed by Split, which should have setup times close to PFMG, but due
+to a limitation of its parallel implementation, the method does not scale well with
+an increasing number of parts. On the other hand, all the SSAMG variants show
+comparable setup times, up to 2.8x faster than BoomerAMG. The ﬁrst two SSAMG
+variants share the same setup algorithm, and their lines are superposed. SSAMG-opt
+has a slightly slower setup for p ≤5 than SSAMG-base, but for p > 5 the setup
+times of these two methods match. The fastest SSAMG variant by a factor of 1.2x
+with respect to the others is SSAMG-hybrid, and that holds because it generates a
+multigrid hierarchy with fewer levels than the non-hybrid SSAMG variants leading to
+less communication overhead associated with collective MPI calls. The same argument
+is true for SSAMG-opt; however, the beneﬁts of having fewer levels is outweighed by
+the cost of converting the SStructMatrix to a ParCSRMatrix in the switching level.
+Still, SSAMG-opt is 2.3x and 3x faster than BoomerAMG for p = 1 and p = 8,
+respectively. Finally, PFMG yields the best setup times with a speedup of nearly 4.6x
+with respect to BoomerAMG and up to 1.9x with respect to SSAMG.
+We note that PFMG is naturally a better preconditioner for this problem than
+SSAMG since it interpolates across part boundaries.
+However, this test case was
+signiﬁcant to show how close the performance of SSAMG can be to PFMG, and we
+demonstrated that SSAMG-opt is not much behind PFMG, besides yielding faster
+solve and setup times than BoomerAMG.
+4We plan to explore this statement with more depth in a following communication.
+
+
+14
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+4.2. Test case 2 - anisotropic cubes. This test case has the same problem
+geometry and sizes (m = 128) as the previous test case; however, it employs diﬀerent
+stencil coeﬃcients (α, β, and γ) for each part of the grid with the aim of evaluating
+how anisotropy aﬀects solver performance. Particularly, we consider three diﬀerent
+scenarios (Figure 6) where the coeﬃcients relative to stencil entries belonging to the
+direction of strongest anisotropy for a given part are 100 times larger than the re-
+maining ones.
+The directions of prevailing anisotropy for each scenario are listed
+below:
+(A) “i” (horizontal) for all semi-structured parts.
+(B) “i” for parts zero and two; “j” (vertical) for parts one and three.
+(C) “i” for part zero, “j” for part three, and “k” (depth) for parts one and two.
+Regarding the usage of PFMG for this problem, the same transformation mentioned
+in section 4.1 apply here as well.
+(a) Scenario A
+(b) Scenario B
+(c) Scenario C
+Figure 6. XY -plane cut of the three-dimensional grids used in test case 4.2. We consider
+three anisotropy scenarios. Arrows indicate the direction of prevailing anisotropy in each part of the
+grid, e.g., i-direction in scenario A. Diagonal arrows in the rightmost case indicate the k-direction.
+Figure 7 shows the results referent to scenario A. The numerical scalabilities of the
+diﬀerent methods look better than in the previous test case. This is valid especially
+for the SSAMG variants, because the two-point interpolation strategy is naturally a
+good choice for the ﬁrst few coarsening levels when anisotropy is present in the matrix
+coeﬃcients. Such observation also applies to the less scalable Split method, explaining
+the better behavior seen here with respect to Figure 5. Again, PFMG uses the least
+number of iterations followed closely by SSAMG-opt and BoomerAMG.
+Regarding solve times, SSAMG-opt is about 1.3x faster than BoomerAMG for
+p ≤2, while for p > 2 these methods show similar times. The “skip” option of SSAMG
+is not beneﬁcial for this case since the solve times of SSAMG-skip are higher than
+SSAMG-base. In fact, such an option does not play a signiﬁcant role in reducing the
+solve time compared to isotropic test cases. This is because coarsening happens in the
+same direction for the ﬁrst few levels in anisotropic test cases, and thus relaxation is
+skipped only in the later levels of the multigrid hierarchy where the cost per iteration
+associated with them is already low compared to the initial levels. Moreover, the
+omission of relaxation in coarser levels of the multigrid hierarchy can be detrimental
+for convergence in SSAMG, explaining why SSAMG-skip requires more iterations
+than SSAMG-base. Following the fact that PFMG is the method that needs fewer
+iterations for convergence, it is also the fastest in terms of solution times. For setup
+times, the four SSAMG variants show comparable results, and similar conclusions to
+test case 1 are valid here. Lastly, the speedups of SSAMG-opt over BoomerAMG are
+3.3x and 2.5x for p = 1 and p = 8, respectively.
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+15
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+1
+2
+3
+4
+5
+6
+7
+Setup time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+5
+10
+15
+20
+25
+30
+35
+Solve time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+0
+10
+20
+30
+40
+50
+60
+70
+80
+Iterations
+SSAMG-base
+SSAMG-skip
+SSAMG-hybrid
+SSAMG-opt
+BoomerAMG
+Split
+PFMG
+Figure 7. Weak scalability results for scenario A of test case 2. Three metrics are shown in the
+ﬁgure, i.e., setup phase times in seconds (left); solve phase times in seconds (middle), and number
+of iterations (right). All curves are plotted with respect to the number of MPI tasks, Nprocs, which
+varies from 4 (p = 1) up to 2048 (p = 8).
+Results for scenario B are shown in Figure 8. The most signiﬁcant diﬀerence
+here compared to scenario A are the results for PFMG. Particularly, the number
+of iterations is much higher than in the previous cases. This is caused by the fact
+that PFMG employs the same coarsening direction everywhere on the grid, and thus
+it cannot recognize the diﬀerent regions of anisotropy as done by SSAMG. This is
+clearly sub-optimal since a good coarsening scheme should adapt to the direction of
+largest coupling of the matrix coeﬃcients. The larger number of iterations is also
+reﬂected in the solve times of PFMG, which become less favorable than those by
+SSAMG and BoomerAMG. Setup times of PFMG continue to be the fastest ones;
+however, this advantage is not suﬃcient to maintain its position of fastest method
+overall. The comments regarding the speedups of SSAMG compared to BoomerAMG
+made for scenario A also apply here.
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+1
+2
+3
+4
+5
+6
+7
+Setup time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+5
+10
+15
+20
+25
+30
+35
+40
+Solve time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+0
+20
+40
+60
+80
+Iterations
+SSAMG-base
+SSAMG-skip
+SSAMG-hybrid
+SSAMG-opt
+BoomerAMG
+Split
+PFMG
+Figure 8. Weak scalability results for scenario B of test case 2. Three metrics are shown in the
+ﬁgure, i.e., setup phase times in seconds (left); solve phase times in seconds (middle), and number
+of iterations (right). All curves are plotted with respect to the number of MPI tasks, Nprocs, which
+varies from 4 (p = 1) up to 2048 (p = 8).
+We conclude this section by analyzing the results, given in Figure 9, for the last
+anisotropy scenario C. Since there is a mixed anisotropy conﬁguration in this case as in
+scenario B, PFMG does not show a satisfactory convergence behavior. On the other
+
+
+16
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+hand, the SSAMG variants show good numerical and computational scalabilities,
+and, particularly, SSAMG-opt shows similar speedups compared to the BoomerAMG
+variants as discussed in the previous scenarios. When considering all three scenarios
+discussed in this section, we note that SSAMG shows good robustness with changes
+in anisotropy, and this an important advantage over PFMG.
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+1
+2
+3
+4
+5
+6
+7
+8
+Setup time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+5
+10
+15
+20
+25
+Solve time [s]
+0
+256
+512
+768
+1024
+1280
+1536
+1792
+2048
+MPI tasks
+0
+10
+20
+30
+40
+50
+60
+Iterations
+SSAMG-base
+SSAMG-skip
+SSAMG-hybrid
+SSAMG-opt
+BoomerAMG
+Split
+PFMG
+Figure 9. Weak scalability results for scenario C of test case 2. Three metrics are shown in the
+ﬁgure, i.e., setup phase times in seconds (left); solve phase times in seconds (middle), and number
+of iterations (right). All curves are plotted with respect to the number of MPI tasks, Nprocs, which
+varies from 4 (p = 1) up to 2048 (p = 8).
+4.3. Test case 3 - three-points intersection. In this test case, we consider a
+grid composed topologically of three semi-structured cubic parts that share a common
+intersection edge in the k-direction (Figure 10).
+Stencil coeﬃcients are isotropic,
+but this test case is globally non-Cartesian. In particular, the coordinate system is
+diﬀerent on either side of the boundary between parts 1 and 2. For example, an east
+stencil coeﬃcient coupling Part 1 to Part 2 is symmetric to a north coeﬃcient coupling
+Part 2 to Part 1.
+Part 0
+Part 1
+Part 2
+i
+j
+i
+j
+i
+j
+Figure 10. ij-plane view of the base geometry for test case 4.3. Equally reﬁned instances of
+this problem in all directions are used for obtaining the results.
+For the numerical experiments of this section, we use m = 160, which gives a local
+problem size per part of 4, 096, 000 DOFs, and a global problem size of 12, 288, 000
+DOFs, when p = 1, i.e., three parts and MPI tasks. Figure 11 reports weak scalability
+results for the current test case. As noted in section 4.1, it is not possible to recast
+this problem into a single part; thus, we cannot show results for PFMG here.
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+17
+0
+192
+384
+576
+768
+960
+1152
+1344
+1536
+MPI tasks
+2
+4
+6
+8
+10
+12
+Setup time [s]
+0
+192
+384
+576
+768
+960
+1152
+1344
+1536
+MPI tasks
+10
+20
+30
+40
+50
+60
+Solve time [s]
+0
+192
+384
+576
+768
+960
+1152
+1344
+1536
+MPI tasks
+0
+20
+40
+60
+80
+100
+Iterations
+SSAMG-base
+SSAMG-skip
+SSAMG-hybrid
+SSAMG-opt
+BoomerAMG
+Split
+Figure 11. Weak scalability results for test case 3. Three metrics are shown in the ﬁgure, i.e.,
+setup phase times in seconds (left); solve phase times in seconds (middle), and number of iterations
+(right). All curves are plotted with respect to the number of MPI tasks, Nprocs, which varies from 3
+(p = 1) up to 1536 (p = 8).
+Examining the iteration counts reported in Figure 11, we see that SSAMG-opt
+is the fastest converging option with the number of iterations ranging from 11, for
+p = 1 (3 MPI tasks), to 14, for p = 8 (1536 MPI tasks). This is the best numerical
+scalability among the other methods, including BoomerAMG. On the other hand, the
+remaining SSAMG variants do not show such good scalability as in the previous test
+cases. Once again, this is related to how SSAMG computes interpolation weights of
+nodes close to part boundaries. In this context, we plan to investigate further how to
+improve SSAMG’s interpolation such that the non-hybrid SSAMG variants can have
+similar numerical scalability to SSAMG-opt. As in the previous test cases, the Split
+method is the least performing method and does not converge within 100 iterations
+for p ≥3 (Np ≥81).
+Regarding solve times, SSAMG-opt is the fastest method since it needs the min-
+imum amount of iterations to reach convergence.
+Compared to BoomerAMG, its
+speedup is 1.3x for p = 1 and 1.1x for p = 8. SSAMG-skip shows solution times
+smaller than SSAMG-base, and, here, the “skip” option is beneﬁcial to performance.
+Lastly, looking at setup times, all SSAMG variants show very similar timings and
+the optimal variant is up to 2.9x faster than BoomerAMG, proving once again the
+beneﬁts of exploiting problem structure.
+4.4. Test case 4 - structured adaptive mesh reﬁnement (SAMR). In the
+last problem, we consider a three-dimensional SAMR grid consisting of one level of
+grid reﬁnement, and thus composed of two semi-structured parts (Figure 12). The
+ﬁrst one, in red, refers to the outer coarse grid, while the second, in blue, refers to
+the reﬁned patch (by a factor of two) located in the center of the grid. Each part has
+the same number of cells. To construct the linear system matrix for this problem,
+we treat coarse grid points living inside of the reﬁned part as ghost unknowns, i.e.,
+the diagonal stencil entry for these points is set to one and the remaining oﬀ-diagonal
+stencil entries are set to zero. Inter-part couplings at ﬁne-coarse interfaces are stored
+in the unstructured matrix (U), and the value for the coeﬃcients connecting ﬁne
+grid cells with its neighboring coarse grid cells (and vice-versa) is set to 2/3. This
+value was determined by composing a piecewise constant interpolation formula with a
+ﬁnite volume discretization rule. We refer the reader to the SAMR section of hypre’s
+documentation [21] for more details.
+
+
+18
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+Part 0
+Part 1
+Figure 12. XY -plane cut of the three-dimensional semi-structured grid used in test case 4.4
+when m = 8. The semi-structured parts represent two levels of reﬁnement and contain the same
+number of cells.
+The numerical experiments performed in this section used m = 128, leading to a
+local problem size per part of 2, 097, 152 DOFs, and a global problem size of 4, 194, 304
+DOFs, for p = 1 (Nprocs = 2). Figure 13 shows weak scalability results for this test
+case. This problem is not suitable for PFMG, thus we do not show results for PFMG.
+0
+128
+256
+384
+512
+640
+768
+896
+1024
+MPI tasks
+2
+3
+4
+5
+6
+7
+8
+Setup time [s]
+0
+128
+256
+384
+512
+640
+768
+896
+1024
+MPI tasks
+5
+10
+15
+20
+25
+30
+Solve time [s]
+0
+128
+256
+384
+512
+640
+768
+896
+1024
+MPI tasks
+0
+20
+40
+60
+80
+100
+Iterations
+SSAMG-base
+SSAMG-skip
+SSAMG-hybrid
+SSAMG-opt
+BoomerAMG
+Split
+Figure 13. Weak scalability results for test case 4. Three metrics are shown in the ﬁgure, i.e.,
+setup phase times in seconds (left); solve phase times in seconds (middle), and number of iterations
+(right). All curves are plotted with respect to the number of MPI tasks, Nprocs, which varies from 2
+(p = 1) up to 1024 (p = 8).
+As in the previous test cases, Split does not reach convergence within 100 itera-
+tions when p ≥3. Then, SSAMG-skip is the second least convergent option followed
+by SSAMG-base. The best option is again SSAMG-opt with the number of iterations
+ranging from 15 (p = 1) to 20 (p = 8). Furthermore, its iteration counts are practi-
+cally constant for the several parallel runs, except for slight jumps located at p = 4
+(Nprocs = 128) and p = 8 (Nprocs = 1024), which are present in SSAMG-hybrid as
+well.
+As noted before, solve times reﬂect the methods’ convergence performance. In
+particular, the cheaper iterations of SSAMG-skip are not able to oﬀset the higher
+number of iterations for convergence over SSAMG-base. That explains why these
+two methods show very similar solve times. Split is the least performing option due
+to its lack of robustness. SSAMG-opt and BoomerAMG have similar performance,
+with SSAMG-opt slightly better for various cases, but BoomerAMG showing more
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+19
+consistent performance here.
+Setup times of the SSAMG variants are very similar. Listing them in decreasing
+order of times, SSAMG-base and SSAMG-skip show nearly the same values, followed
+by SSAMG-opt, and SSAMG-hybrid is the fastest option. The results for Split are
+better here than in the previous test cases, and this is due to the small number of
+semi-structured parts involved in this SAMR problem. Still, SSAMG leads to the
+fastest options. The slowest method for setup is again BoomerAMG and SSAMG-opt
+speedups with respect to it are 4x for p = 1 and 2.7x for p = 8.
+5. Conclusions. In this paper, we presented a novel algebraic multigrid method,
+built on the semi-structured interface in hypre, capable of exploiting knowledge about
+the problem’s structure and having the potential of being faster than an unstruc-
+tured algebraic multigrid method such as BoomerAMG on CPUs and accelerators.
+Moreover, SSAMG features a multigrid hierarchy with controlled stencil sizes and
+signiﬁcantly improved setup times.
+We developed a distributed parallel implementation of SSAMG for CPU archi-
+tectures in hypre. Furthermore, we tested its performance, when used as a precondi-
+tioner to PCG, for a set of semi-structured problems featuring distinct characteristics
+in terms of grid, stencil coeﬃcients, and anisotropy. SSAMG proves to be numerically
+scalable for problems having up to a few billion degrees of freedom and its current
+implementation achieves setup phase speedups up to a factor of four and solve phase
+speedups up to 1.4x with respect to BoomerAMG.
+For future work, we plan to improve diﬀerent aspects of SSAMG and its implemen-
+tation. We will further investigate SSAMG convergence for more complex problems
+than have been considered so far. We want to explore adding an unstructured com-
+ponent to the prolongation matrix to improve interpolation across part boundaries
+and evaluate how this beneﬁts convergence and time to solution. We also plan to add
+a non-Galerkin option for computing coarse operators targeting isotropic problems
+since this approach applied in PFMG has shown excellent runtime improvements on
+both CPU and GPU. Finally, we will develop a GPU implementation for SSAMG.
+Acknowledgments. This material is based upon work supported by the U.S.
+Department of Energy, Oﬃce of Science, Oﬃce of Advanced Scientiﬁc Computing
+Research, Scientiﬁc Discovery through Advanced Computing (SciDAC) program.
+REFERENCES
+[1] S. Adams, R. Ford, M. Hambley, J. Hobson, I. Kavˇ
+ciˇ
+c, C. Maynard, T. Melvin,
+E. M¨
+uller, S. Mullerworth, A. Porter, M. Rezny, B. Shipway, and R. Wong,
+LFRic: Meeting the challenges of scalability and performance portability in weather and
+climate models, Journal of Parallel and Distributed Computing, 132 (2019), pp. 383–396,
+https://doi.org/10.1016/j.jpdc.2019.02.007.
+[2] S. F. Ashby and R. D. Falgout, A parallel multigrid preconditioned conjugate gradient al-
+gorithm for groundwater ﬂow simulations, Nuclear Science and Engineering, 124 (1996),
+pp. 145 – 159, https://doi.org/10.13182/nse96-a24230.
+[3] A. H. Baker, R. D. Falgout, T. V. Kolev, and U. M. Yang, Multigrid smoothers for
+ultraparallel computing, SIAM Journal on Scientiﬁc Computing, 33 (2011), pp. 2864–2887,
+https://doi.org/10.1137/100798806.
+[4] A. H. Baker, R. D. Falgout, T. V. Kolev, and U. M. Yang, Scaling Hypre’s Multigrid
+Solvers to 100,000 Cores, Springer London, London, 2012, pp. 261–279, https://doi.org/
+10.1007/978-1-4471-2437-5 13.
+[5] B. Bergen, G. Wellein, F. H¨
+ulsemann, and U. R¨
+ude, Hierarchical hybrid grids: achieving
+TERAFLOP performance on large scale ﬁnite element simulations, International Journal
+
+
+20
+V. A. P. MAGRI, R. D. FALGOUT, AND U. M. YANG
+of Parallel, Emergent and Distributed Systems, 22 (2007), pp. 311–329, https://doi.org/
+10.1080/17445760701442218.
+[6] B. K. Bergen and F. H¨
+ulsemann, Hierarchical hybrid grids: data structures and core algo-
+rithms for multigrid, Numerical Linear Algebra with Applications, 11 (2004), pp. 279–291,
+https://doi.org/10.1002/nla.382.
+[7] W. L. Briggs, V. E. Henson, and S. F. McCormick, A Multigrid Tutorial, Second Edition,
+Society for Industrial and Applied Mathematics, second ed., 2000, https://doi.org/10.1137/
+1.9780898719505.
+[8] P. N. Brown, R. D. Falgout, and J. E. Jones, Semicoarsening multigrid on distributed
+memory machines, SIAM Journal on Scientiﬁc Computing, 21 (2000), pp. 1823–1834,
+https://doi.org/10.1137/S1064827598339141.
+[9] S. L. Cornford, D. F. Martin, D. T. Graves, D. F. Ranken, A. M. Le Brocq, R. M.
+Gladstone, A. J. Payne, E. G. Ng, and W. H. Lipscomb, Adaptive mesh, ﬁnite volume
+modeling of marine ice sheets, Journal of Computational Physics, 232 (2013), pp. 529–549,
+https://doi.org/10.1016/j.jcp.2012.08.037.
+[10] H. De Sterck, U. M. Yang, and J. J. Heys, Reducing complexity in parallel algebraic
+multigrid preconditioners, SIAM Journal on Matrix Analysis and Applications, 27 (2006),
+pp. 1019–1039, https://doi.org/10.1137/040615729.
+[11] C. Engwer, R. D. Falgout, and U. M. Yang, Stencil computations for PDE-based applica-
+tions with examples from DUNE and hypre, Concurrency and Computation: Practice and
+Experience, 29 (2017), p. e4097, https://doi.org/10.1002/cpe.4097.
+[12] R. D. Falgout, J. E. Jones, and U. M. Yang, Conceptual interfaces in hypre, Future Gen-
+eration Computer Systems, 22 (2006), pp. 239–251, https://doi.org/10.1016/j.future.2003.
+09.006.
+[13] R. D. Falgout, J. E. Jones, and U. M. Yang, The design and implementation of hypre,
+a library of parallel high performance preconditioners, in Numerical Solution of Par-
+tial Diﬀerential Equations on Parallel Computers, A. M. Bruaset and A. Tveito, eds.,
+Berlin, Heidelberg, 2006, Springer Berlin Heidelberg, pp. 267–294, https://doi.org/10.
+1007/3-540-31619-1 8.
+[14] R. D. Falgout, R. Li, B. Sj¨
+ogreen, L. Wang, and U. M. Yang, Porting hypre to heteroge-
+neous computer architectures: Strategies and experiences, Parallel Computing, 108 (2021),
+p. 102840, https://doi.org/10.1016/j.parco.2021.102840.
+[15] R. D. Falgout and U. M. Yang, hypre: A library of high performance preconditioners, in
+Computational Science — ICCS 2002, P. M. A. Sloot, A. G. Hoekstra, C. J. K. Tan, and
+J. J. Dongarra, eds., Berlin, Heidelberg, 2002, Springer Berlin Heidelberg, pp. 632–641,
+https://doi.org/10.1007/3-540-47789-6 66.
+[16] B. Ganis, G. Pencheva, and M. F. Wheeler, Adaptive mesh reﬁnement with an en-
+hanced velocity mixed ﬁnite element method on semi-structured grids using a fully coupled
+solver, Computational Geosciences, 23 (2019), pp. 1573–1499, https://doi.org/10.1007/
+s10596-018-9789-6.
+[17] B. Gmeiner and U. R¨
+ude, Peta-scale hierarchical hybrid multigrid using hybrid paralleliza-
+tion, in Large-Scale Scientiﬁc Computing, I. Lirkov, S. Margenov, and J. Wa´
+sniewski,
+eds., Berlin, Heidelberg, 2014, Springer Berlin Heidelberg, pp. 439–447, https://doi.org/
+10.1007/978-3-662-43880-0 50.
+[18] B. Gmeiner, U. R¨
+ude, H. Stengel, C. Waluga, and B. Wohlmuth, Towards textbook eﬃ-
+ciency for parallel multigrid, Numerical Mathematics: Theory, Methods and Applications,
+8 (2015), p. 22–46, https://doi.org/10.4208/nmtma.2015.w10si.
+[19] V. E. Henson and U. M. Yang, BoomerAMG: A parallel algebraic multigrid solver and pre-
+conditioner, Applied Numerical Mathematics, 41 (2002), pp. 155–177, https://doi.org/10.
+1016/S0168-9274(01)00115-5. Developments and Trends in Iterative Methods for Large
+Systems of Equations - in memorium Rudiger Weiss.
+[20] R. D. Hornung and S. R. Kohn, Managing application complexity in the SAMRAI object-
+oriented framework, Concurrency and Computation: Practice and Experience, 14 (2002),
+pp. 347–368, https://doi.org/10.1002/cpe.652.
+[21] hypre: High performance preconditioners. http://www.llnl.gov/CASC/hypre/, https://github.
+com/hypre-space/hypre.
+[22] N. Kohl and U. R¨
+ude, Textbook eﬃciency: massively parallel matrix-free multigrid for the
+stokes system, (2020), https://doi.org/10.48550/arXiv.2010.13513.
+[23] R. Li, B. Sj¨
+ogreen, and U. M. Yang, A new class of AMG interpolation methods based on
+matrix-matrix multiplications, SIAM Journal on Scientiﬁc Computing, 43 (2021), pp. S540–
+S564, https://doi.org/10.1137/20M134931X.
+[24] M. Mayr, L. Berger-Vergiat, P. Ohm, and R. S. Tuminaro, Non-invasive multigrid for
+
+
+SEMI-STRUCTURED ALGEBRAIC MULTIGRID
+21
+semi-structured grids, 2021, https://doi.org/10.48550/arXiv.2103.11962.
+[25] C. Rodrigo, F. J. Gaspar, and F. J. Lisbona, Multigrid methods on semi-structured grids,
+Archives of Computational Methods in Engineering, 19 (2012), pp. 499–538, https://doi.
+org/10.1007/s11831-012-9078-9.
+[26] B. Runnels, V. Agrawal, W. Zhang, and A. Almgren, Massively parallel ﬁnite diﬀer-
+ence elasticity using block-structured adaptive mesh reﬁnement with a geometric multigrid
+solver, Journal of Computational Physics, 427 (2021), p. 110065, https://doi.org/10.1016/
+j.jcp.2020.110065.
+[27] K. St¨
+uben, A review of algebraic multigrid, Journal of Computational and Applied Mathemat-
+ics, 128 (2001), pp. 281–309, https://doi.org/10.1016/S0377-0427(00)00516-1. Numerical
+Analysis 2000. Vol. VII: Partial Diﬀerential Equations.
+[28] U. M. Yang, On long-range interpolation operators for aggressive coarsening, Numerical Linear
+Algebra with Applications, 17 (2010), pp. 453–472, https://doi.org/10.1002/nla.689.
+[29] W. Zhang, A. Almgren, V. Beckner, J. Bell, J. Blaschke, C. Chan, M. Day, B. Friesen,
+K. Gott, D. Graves, et al., AMReX: a framework for block-structured adaptive mesh
+reﬁnement, Journal of Open Source Software, 4 (2019), pp. 1370–1370, https://doi.org/10.
+21105/joss.01370.
+[30] W. Zhang, A. Myers, K. Gott, A. Almgren, and J. Bell, AMReX: Block-structured adap-
+tive mesh reﬁnement for multiphysics applications, The International Journal of High
+Performance Computing Applications, 35 (2021), pp. 508–526, https://doi.org/10.1177/
+10943420211022811.
+
+
+NON-INVASIVE MULTIGRID FOR SEMI-STRUCTURED GRIDS∗
+MATTHIAS MAYR†, LUC BERGER-VERGIAT‡, PETER OHM§, AND RAYMOND S. TUMINARO¶
+Abstract. Multigrid solvers for hierarchical hybrid grids (HHG) have been proposed to promote the eﬃcient utilization
+of high performance computer architectures. These HHG meshes are constructed by uniformly reﬁning a relatively coarse
+fully unstructured mesh. While HHG meshes provide some ﬂexibility for unstructured applications, most multigrid calcula-
+tions can be accomplished using eﬃcient structured grid ideas and kernels. This paper focuses on generalizing the HHG idea
+so that it is applicable to a broader community of computational scientists, and so that it is easier for existing applications
+to leverage structured multigrid components. Speciﬁcally, we adapt the structured multigrid methodology to signiﬁcantly
+more complex semi-structured meshes. Further, we illustrate how mature applications might adopt a semi-structured solver
+in a relatively non-invasive fashion.
+To do this, we propose a formal mathematical framework for describing the semi-
+structured solver. This formalism allows us to precisely deﬁne the associated multigrid method and to show its relationship
+to a more traditional multigrid solver. Additionally, the mathematical framework clariﬁes the associated software design
+and implementation. Numerical experiments highlight the relationship of the new solver with classical multigrid. We also
+demonstrate the generality and potential performance gains associated with this type of semi-structured multigrid.
+1. Introduction. Multigrid (MG) methods have been developed for both structured and unstruc-
+tured grids [7,15,20,23]. In general, unstructured meshes are heavily favored within sophisticated science
+and engineering simulations as they facilitate the representation of complex geometric features. While
+unstructured approaches are often convenient, there are signiﬁcant potential advantages to structured
+meshes on exascale systems in terms of memory, setup time, and kernel optimization. In recent years,
+multigrid solvers for hierarchical hybrid grids (HHGs) have been proposed to provide some ﬂexibility for
+unstructured applications while also leveraging some features of structured multigrid for performance
+on advanced computing systems [3]. Hierarchical hybrid grids are formed by regular reﬁnement of an
+initial coarse grid. The result is a HHG grid hierarchy containing regions of structured mesh, even if the
+initial coarse mesh is completely unstructured [3]. Essentially, each structured region in an HHG mesh
+corresponds to one element of the original coarse mesh that has been uniformly reﬁned. A corresponding
+multigrid solver can then be developed using primarily structured multigrid ideas. Figure 1.1 illustrates
+a two dimensional HHG mesh hierarchy with three structured regions. Here, the two rightmost grids
+might be used as multigrid coarse grids for a discretization on the ﬁnest mesh. The key point is that
+Fig. 1.1. A hierarchy of two dimensional HHG meshes created by regular reﬁnement of a 3 element mesh
+structured multigrid kernels can be used for most of the computation. These structured computations
+require signiﬁcantly less memory and generally less communication than their unstructured counterparts.
+Further, the structured multigrid kernels are signiﬁcantly more amenable to performance optimization
+on advanced architectures. A series of papers [2,4,11–14] have documented noticeably impressive HPC
+performance using an HHG approach on realistic simulations, some involving over one trillion unknowns.
+In these papers, the primarily structured nature of the mesh is heavily leveraged throughout the multigrid
+solver in an essentially matrix-free fashion.
+While HHG solvers provide some balance between ﬂexibility and structured performance, they do
+impose restrictions on the type of meshes that can be considered. Additionally, it is diﬃcult to adapt ex-
+isting ﬁnite element applications to HHG solvers. Of course there are alternative approaches to structure
+∗This work was supported by the U.S. Department of Energy, Oﬃce of Science, Oﬃce of Advanced Scientiﬁc Computing
+Research, Applied Mathematics program. Sandia National Laboratories is a multimission laboratory managed and operated
+by National Technology and Engineering Solutions of Sandia, LLC., a wholly owned subsidiary of Honeywell International,
+Inc., for the U.S. Department of Energy’s National Nuclear Security Administration under grant DE-NA-0003525. This
+paper describes objective technical results and analysis.
+Any subjective views or opinions that might be expressed in
+the paper do not necessarily represent the views of the U.S. Department of Energy or the United States Government.
+SAND2021-3211 O
+†Institute for Mathematics and Computer-Based Simulation, University of the Bundeswehr Munich, Werner-Heisenberg-
+Weg 39, 85577 Neubiberg, Germany (matthias.mayr@unibw.de), This work was partially performed while this authors was
+aﬃliated with Sandia National Laboratories, Livermore, CA 94551,
+‡Sandia National Laboratories, Albuquerque, NM 87185 (lberge@sandia.gov),
+§Sandia National Laboratories, Albuquerque, NM 87185 (pohm@sandia.gov),
+¶Sandia National Laboratories, Livermore, CA 94551 (rstumin@sandia.gov)
+1
+arXiv:2103.11962v1  [math.NA]  22 Mar 2021
+
+
+including composite grids, overset meshes, and octree meshes (for example [9,16–18,21,22]). Addition-
+ally, Hypre has some semi-structured capabilities [10]. While these approaches can also attain good
+scalability on high performance architectures, most scientiﬁc teams have been resistant to investigate
+these structured grid possibilities due to concerns about their intrusive nature, often requiring fundamen-
+tal changes to the mesh representations and discretization technology employed within the application.
+This is especially true for unstructured ﬁnite element simulations, which dominate the discretization
+approaches employed at Sandia.
+Our aim in this paper is to at least partially address these obstacles by broadening the HHG approach
+to a wider class of meshes and by providing an easier or less-invasive code path to migrate existing
+applications toward semi-structured solvers. To do this, we introduce a mathematical framework centered
+around the idea of a region representation. The region perspective decomposes the original domain into a
+set of regions that only overlap at inter-region interfaces and where the computational mesh also conforms
+at these interfaces. The main diﬀerence from the typical situation (which we refer to as the composite
+mesh to emphasize the diﬀerences) is that each region has its own copy of solution unknowns along its
+interfaces. If all regions are structured, the overall grid is a block structured mesh (BSM). BSMs can be
+constructed by joining separately meshed components or a regular reﬁnement of an unstructured mesh
+as in the HHG case. Thus, BSMs are a generalization of the HHG idea. As in the HHG case, a special
+region-oriented solver can take advantage of structure within structured regions.
+The mathematical framework allows us to consider region-oriented versions of algorithms developed
+from a traditional composite mesh perspective. It also provides conditions on the region-oriented grid
+transfer operators to guarantee a mathematical equivalence relationship between region-oriented multigrid
+and a traditional solver. In some cases, it is easy to accomplish this exact equivalence while in other cases
+there are practical tradeoﬀs that must be weighed, comparing additional computational/communication
+requirements against a possible convergence beneﬁt to exact equivalence. One key result of the mathemat-
+ical framework is that in some cases (linear interpolation grid transfers without curved region interfaces)
+it is possible to construct a region multigrid hierarchy without communication. This includes no commu-
+nication requirement for the Galerkin triple matrix product (used to project the discretization operator)
+when all associated matrices adopt a region representation. This is in contrast to a standard AMG setup
+algorithm where communication costs can be noticeable especially when the density of the discretization
+sparsity pattern increases as one constructs coarser and coarser matrices.
+The mathematical framework is fairly general in that it is not restricted to structured regions. That
+is, it allows for the possibility that some regions might be structured while others are unstructured. This
+can be useful in applications where it might be awkward to resolve certain geometries or to capture
+local features with only structured regions. Figure 1.2 illustrates some partially structured meshes. The
+leftmost image corresponds to a mesh used to represent wires. The middle picture illustrates a main
+body mesh with an attached part. The rightmost example displays a background mesh with some split
+elements to represent an interface. In this last case, an unstructured region might be employed only to
+surround the interface. Our software considers these types of situation again using the mathematical
+Fig. 1.2. Radial tri-section mesh (left), unstructured region attached to an HHG mesh (middle), interface with cut
+element mesh (right).
+framework as a guide for the treatment of grid transfer operators near region interfaces. Of course, a
+matrix-free approach would be problematic in this more general setting and performance in unstructured
+regions might be poorer, though there will be much fewer unstructured regions.
+One nice aspect of the mathematical framework is that it formalizes the transformation between
+composite and region perspectives. As noted, this is helpful when designing grid transfers near region
+interfaces.
+It is also helpful, however, when understanding the minimal application requirements for
+employing such a region-oriented solver. In particular, the ﬁnite element software must provide a struc-
+tured PDE matrix for each structured region as well as more detailed information on how to glue regions
+together. It is easy for the requirements of a semi-structured or an HHG framework to become intru-
+2
+
+
+sive on the application infrastructure. The philosophy taken in this paper is toward the development
+of algorithms and abstractions that are suﬃciently ﬂexible to model complex features without imposing
+over-burdensome requirements. To this end, we propose a software framework that transforms a standard
+fully assembled discretization matrix (that might be produced with any standard ﬁnite element software)
+into a series of structured matrices. Of course, the underlying mesh used with the ﬁnite element software
+must coincide with a series of structured regions (e.g., as in Figure 1.1). Additionally, the ﬁnite element
+software must provide some minimal information about the underlying structured region layout.
+An overall semi-structured solver is being developed within the Trilinos framework1 in conjunction
+with the Trilinos/MueLu [5, 6] multigrid package. This solver is not oriented toward matrix-free rep-
+resentations in favor of greater generality, though some matrix-free performance/memory beneﬁts are
+sacriﬁced. The ideas described in this paper are intended to facilitate the use of semi-structured solvers
+within the ﬁnite element community and to ultimately provide signiﬁcant performance gains over existing
+fully unstructured algebraic multigrid solvers (such as those provided by MueLu). Section 2 motivates
+and describes some semi-structured mesh scenarios. Section 3 is the heart of the mathematical framework,
+describing the key kernels and their equivalence to a standard composite grid multigrid scheme. Here,
+the V-cycle application relies heavily on developing a matrix-vector product suitable for matrices stored
+in a region-oriented fashion. We also detail the hierarchy setup, focusing on the construction of region-
+oriented matrices to represent grid transfers and the coarse discretization matrix. Section 4 describes the
+framework and the non-invasive application requirements while Section 5 discusses unstructured regions
+focusing on the treatment of multigrid transfer operators at region interfaces. We conclude with some
+numerical experiments to highlight the potential of such a semi-structured multigrid solver.
+2. Semi-structured grids and mesh abstractions. Unstructured meshes facilitate the modeling
+of complex features, but induce performance challenges. Our goal is to provide additional mechanisms to
+address unstructured calculations while furnishing enough structure to reap performance beneﬁts. Our
+framework centers around block structured meshes (BSMs). In our context, it is motivated by an existing
+Sandia hypersonic ﬂow capability where the solution quality obtained with block structured meshes is
+noticeably superior than solutions obtained with fully unstructured meshes2. In this case, BSMs generated
+Fig. 2.1.
+Hypersonic BSM domain (outline of region boundaries depicted; structured grid lines not shown) and
+BSM/HHG mesh.
+by meshing separate components are of signiﬁcantly greater interest than meshes of the HHG variety.
+Figure 2.1 illustrates a general BSM and a BSM/HHG mesh.
+While BSMs provide a certain degree of ﬂexibility, unstructured meshes are often natural to capture
+complex features locally.
+Figure 1.2 illustrates some scenarios where unstructured regions might be
+desirable. Figure 2.2 shows another case which is similar to our motivating/target hypersonic example.
+In our hypersonic problem, reﬁned structured meshes are needed in sub-domains upstream of the obstacle.
+In the wake area, however, much lower resolution meshes (and unstructured meshes) can be employed. In
+this case, unstructured mesh regions can be used to transition between structured meshes where modeling
+characteristics allow for a large diﬀerence in resolutions. Speciﬁcally, two conformal structured meshes
+could have been used to represent the domain in Figure 2.2 (one upstream and the other in the wake).
+However, the use of small unstructured mesh regions allows for a much coarser version of the wake mesh,
+even though most of the wake can still be represented with structured mesh regions.
+Our ultimate target is a mesh that includes an arbitrary number of structured or unstructured regions
+that conform at region interfaces. In this ideal setting, a ﬁnite element practitioner would have complete
+freedom to decide the layout of the mesh regions that is most suitable for the application of interest.
+Of course, such a mesh must be suitably partitioned over processors so that the structured regions can
+take advantage of structured algorithms and that the overall calculation is load balanced. Here, load
+1https://trilinos.github.io
+2This is due to the discretization characteristics and mesh alignment with the ﬂying object and with the bow shock.
+3
+
+
+Fig. 2.2. Primarily structured mesh with small unstructured regions (left) with a close up view of one of the unstruc-
+tured regions (right).
+function mgSetup(A, Ψ)
+function mgCycle(A, u, b) :
+sData ←smootherSetup(A)
+u ←S(A, u, b, sData)
+P
+←constructP(A)
+r ←b −A u
+R
+←P T
+¯
+u ←0
+¯
+A
+←RAP
+¯
+u ←solve( ¯
+A, ¯
+u, R r)
+u ←u + P ¯
+u
+Fig. 3.1. Two level multigrid for the solution of A u = b.
+balance must take into account that calculations in unstructured regions will likely be less eﬃcient than
+those in structured regions. While our framework has been designed with this ultimate target in mind,
+some aspects of the present implementation limit the current software to the restriction of one region per
+processor.
+3. Region-oriented multigrid. We sketch the main ideas behind a region-oriented version of a
+multigrid solver. In some cases, this region-oriented multigrid is mathematically identical to a classical
+multigrid solver, though implementation of the underlying kernels will be diﬀerent. In other cases, it is
+natural to introduce modest numerical changes to the region-oriented version (e.g., a region-local Gauss–
+Seidel smoother). To simplify notation, we describe only a two level multigrid algorithm, as the extension
+to the multilevel case is straight-forward.
+Figure 3.1 provides a high-level illustration of the setup and
+solve phases of a classical two level multigrid algorithm. Therein, A refers to the discretization operator
+on the ﬁne level of the multigrid hierarchy. S denotes the ﬁne level multigrid smoother. P interpolates
+solutions from the coarse level to the ﬁne level while R restricts residuals from the ﬁne level to the coarse
+level. sData refers to any pre-computed quantities that might be used in the smoother (e.g., ILU factors).
+Coarse level matrices and vectors are delineated by over bars (e.g., ¯
+A is the coarse level discretization
+matrix and ¯
+u is the coarse level correction). In this paper, R is always taken as the transpose of P,
+though the ideas easily generalize to other choices for R. Finally, the coarse discretization is deﬁned by
+the projection
+¯
+A = RAP.
+For a two-level method, solve() might correspond to a direct factorization solution method or possibly
+coarse level smoother sweeps. In these cases, mgSetup() must include the setup of the LU factors or
+coarse level smoothing data. A multilevel algorithm is realized by instead deﬁning solve() to be a recursive
+invocation of mgCycle().
+The region-oriented multigrid cycle is identical to this standard cycle. The only diﬀerences are that
+• A, ¯
+A, R, and P are stored in a region-oriented format,
+• all vectors (e.g., approximate solutions, residuals) are stored in a region-oriented format,
+• all operations (e.g., smoothing kernels) are implemented in a region-oriented fashion with the
+exception of the coarsest direct solve.
+To describe region-oriented multigrid, we begin with a deﬁnition of the region layout for vectors and
+matrices. The creation of region-oriented matrices and vectors is delineated in two parts. The ﬁrst part
+focuses on the hierarchy construction of region-oriented operators when region-oriented operators are
+provided on the ﬁnest level. The second part then proposes a mechanism for generating the ﬁnest level
+region-oriented operators using information that a standard ﬁnite element application can often supply.
+4
+
+
+𝛺(")
+𝛺($)
+𝛺(%)
+Γ
+!"
+Γ"#
+Fig. 3.2. Sample domain decomposed into three sub-regions.
+3.1. Region matrices and vectors. Consider the discretization of a partial diﬀerential equation
+(PDE) and boundary conditions on a domain Ωresulting in the discrete matrix problem
+Au = b.
+Often we will refer to the n × n matrix A as the composite matrix. Consider now a decomposition of the
+domain Ωinto a set of m sub-regions Ω(i) such that
+Ω= ∪m
+i=1 Ω(i).
+These regions only overlap at interfaces where they meet (e.g., see Figure 3.2). That is,
+Γij = Γji = Ω(i) ∩Ω(j).
+In general, several regions might also meet at so-called corner vertices. The regions can now be used to
+split the composite matrix such that
+(3.1)
+A =
+X
+1≤k≤m
+A(k)
+where
+(3.2)
+A(k)
+ij ̸= 0
+⇒
+i, j ∈S(k).
+and
+(3.3)
+A(k)
+ij ̸= 0
+⇒
+Aij ̸= 0.
+Here, S(k) is the set of mesh nodes located within Ω(k) (including those on the interface). While formally
+A(k) is n × n, most rows are identically zero (i.e., rows not associated with Sk) and so the associated
+software would only store or compute on non-zero rows.
+Mathematically, a region vector is an extended version of a composite vector that we express as
+JvKT =
+
+JvKT
+1 ,
+...,
+JvKT
+m
+T
+where double brackets denote regional representations, v is the associated composite vector, and JvKk is a
+sub-vector of JvK that consists of all degrees-of-freedom (dofs) that are co-located with the composite dofs
+given by S(k). We assume without loss of generality that region dofs within the same region are ordered
+consecutively (because region dofs can be ordered arbitrarily). As composite interface dofs reside within
+several regions, the vector JvK will be of length nr where nr ≥n. If we consider a scalar problem and
+discrete representation of the example given in Figure 3.2, JvK consists of two dofs for each composite dof
+on Γ12 and Γ23.
+A region framework can now be understood via a set of boolean transformation matrices. In par-
+ticular, a composite vector must be transformed to a region vector where dofs associated with interfaces
+are replicated. To do this, consider an n × nr boolean matrix that maps regional dofs to composite dofs.
+Speciﬁcally, a nonzero in the ith row and jth column implies that the jth regional unknown is co-located
+with the ith composite unknown. Each column of Ψ has only one non-zero entry while the number of
+non-zeros in a row i of Ψ is equal to the number of regions that share the ith composite dof. Thus, a
+composite vector v is mapped to a region vector JvK via JvK = ΨT v. The following properties are easily
+veriﬁed:
+ΨΨT
+is a diagonal matrix where the (j, j) entry is the number of region dofs that are
+co-located with the jth composite dof;
+5
+
+
+w = ΨJvK
+deﬁnes the jth element of w as the sum of the co-located regional elements in
+v associated with composite dof j;
+JwK = ΨT ΨJvK
+deﬁnes the jth element of w as the sum of the co-located regional elements in
+v associated with regional dof j;
+w = (ΨΨT )−1ΨJvK
+deﬁnes the jth element of w as the average of the co-located regional elements in
+v associated with composite dof j;
+JwK=ΨT (ΨΨT )−1ΨJvK deﬁnes the jth element of w as the average of the co-located regional elements in
+v associated with regional dof j.
+Further, one can partition the columns of Ψ in a region-wise fashion such that
+(3.4)
+Ψ = [Ψ1,
+...,
+Ψm] .
+Thus, ΨT
+k maps composite dofs to only region k’s dofs, i.e., JvKk = ΨT
+k v.
+The following additional
+properties hold:
+ΨkΨT
+k
+ﬁlters out dofs not associated with region k. In particular, ΨkΨT
+k maps region
+vectors to new region vectors where the only nonzero matrix entries correspond
+to an identity block for dofs associated with region k;
+S = ΨkΨT
+k S
+if and only if S only contains nonzeros in rows associated with region k;
+S = SΨkΨT
+k
+if and only if S only contains nonzeros in columns associated with region k;
+ΨT
+k SΨk
+is the submatrix of S corresponding to the rows and columns of region k.
+The boolean transformation matrices are not explicitly stored/manipulated in our software. Instead,
+functions are implemented to perform some of the properties listed above (e.g., averaging interface values).
+A block diagonal region matrix can now be deﬁned as
+(3.5)
+[
+[
+[A]
+]
+] =
+
+
+
+
+
+
+ΨT
+1 A(1)Ψ1
+.
+.
+.
+ΨT
+mA(m)Ψm
+
+
+
+
+
+
+.
+Here, we employ a slightly diﬀerent bracket symbol to emphasize that rows/columns associated with
+co-located dofs do not necessarily have the same values in this regional representation.
+Lemma 3.1. Let [
+[
+[A]
+]
+] be deﬁned by (3.5) and Ψ be the boolean transformation matrix between region
+dofs and vector dofs. Then,
+(3.6)
+Ψ[
+[
+[A]
+]
+]ΨT = A
+when each split matrix A(k) only contains nonzeros in rows and columns associated with region k’s dofs.
+Proof.
+Ψ[
+[
+[A]
+]
+]ΨT = Ψ1ΨT
+1 A(1)Ψ1ΨT
+1 + ... + ΨmΨT
+mA(m)ΨmΨT
+m
+(3.7)
+= A(1)Ψ1ΨT
+1 + ... + A(m)ΨmΨT
+m
+(3.8)
+= A(1) + ... + A(m)
+(3.9)
+= A
+(3.10)
+where the simpliﬁcations to obtain (3.8) and (3.9) require that A(k) only have nonzeros in rows and
+columns associated with region k.
+To rewrite a multigrid V-cycle in a region oriented fashion, operations such as matrix-vector products
+must be performed with region matrices. For example, matrix-vector products with the discretization
+operator in the original multigrid cycle can instead be accomplished using (3.6). We also need to replace
+matrix-vector products associated with the grid transfers. For grid transfers, we prefer a diﬀerent type
+of region matrix that we refer to as replicated interface matrices. Speciﬁcally, the replicated interface
+matrix for interpolation is deﬁned by
+(3.11)
+JPK =
+
+
+
+
+
+
+ΨT
+1 P ¯
+Ψ1
+.
+.
+.
+ΨT
+mP ¯
+Ψm
+
+
+
+
+
+
+6
+
+
+where ¯
+Ψ is the boolean matrix associated with the regional to composite transformation on the coarse
+grid. Contrary to the standard region matrices, the composite operator (instead of split matrices) is
+injected to each of the regions. This implies that along the inter-region interfaces, matrix entries are
+replicated.
+Lemma 3.2.
+(3.12)
+JPK¯
+ΨT = ΨT P
+when rows in the matrix P do not contain nonzeros associated with multiple region interiors (i.e., non-
+interface dofs from multiple regions).
+Proof.
+JPK¯
+ΨT =
+
+
+
+
+
+
+ΨT
+1 P ¯
+Ψ1 ¯
+ΨT
+1
+.
+.
+.
+ΨT
+mP ¯
+Ψm ¯
+ΨT
+m
+
+
+
+
+
+
+=
+
+
+
+
+
+
+ΨT
+1 P
+.
+.
+.
+ΨT
+mP
+
+
+
+
+
+
+= ΨT P
+(3.13)
+where we use the fact that the matrix ΨkP only contains rows associated with region k and that this
+submatrix contains only nonzeros in columns associated with region k (under the assumption that P’s
+rows do not cross multiple region interiors).
+Lemma 3.3.
+(3.14)
+¯
+ΨJRK = RΨ
+when
+(3.15)
+JRK =
+
+
+
+
+
+
+¯
+ΨT
+1 RΨ1
+.
+.
+.
+¯
+ΨT
+mRΨm
+
+
+
+
+
+
+and R contains no columns where the nonzeros are associated with multiple region interiors.
+Proof. Proof omitted as it is essentially identical to the proof for Lemma 3.2.
+Theorem 3.4. ¯
+ΨJRK[
+[
+[A]
+]
+]JPK¯
+ΨT = RAP
+Proof. Follows as a direct result of applying (3.14), (3.12), and (3.6).
+Having established basic relationships between region and composite operations, we now re-formulate
+the multigrid algorithm primarily in terms of regional matrices and vectors. This re-formulation must be
+applied to both the multigrid setup phase and the multigrid cycle phase.
+3.2. Multigrid Setup. The multigrid method requires that the discretization matrices, smoothers,
+and grid transfers be deﬁned for all levels. For now, let us assume that we have Ψ and [
+[
+[A]
+]
+] on the ﬁnest
+level. For a two level multigrid method, we must deﬁne JPK, JRK, ¯
+Ψ, the regional coarse discretization op-
+erator J ¯
+AK, and the region-based smoothers. For grid transfers, we directly create regional forms and never
+directly form the composite representation. That is, the composite P and R are only deﬁned implicitly. In
+constructing region grid transfers, it is desirable to leverage standard structured mesh multigrid software3
+(e.g., apply structured multigrid software to each region without knowledge of other regions). However,
+when creating the regional grid transfers, the implicitly deﬁned composite interpolation must not contain
+any row where diﬀerent nonzeros are associated with diﬀerent region interiors. Further, stencils from
+diﬀerent region blocks (of the block diagonal interpolation matrix) must be identical for co-located dofs.
+These requirements imply that ﬁne interface vertices must interpolate only from coarse interface vertices
+and that interpolation coeﬃcients for ﬁne interface dofs have to be identical from neighboring regions.
+To satisfy these requirements, we use standard software in conjunction with some post-processing. In
+particular, the standard grid transfer algorithm must generate some coarse points on its region boundary
+(i.e., the interface) that can be used to fully interpolate to ﬁne vertices on its region boundary. This is
+relatively natural for structured mesh multigrid software. It is also natural that interpolation stencils
+match along interfaces when using structured multigrid based on linear interpolation within neighboring
+regions. In this case, grid transfers can be constructed without any communication assuming that each
+3By “structured multigrid”, we refer to projection-based multigrid to form coarse operators, but simultaneously exploit-
+ing grid structure in the (ﬁne level) discretization. This contrasts geometric multigrid, where coarse levels are formed by
+an actual re-discretization of the operator on a coarser mesh.
+7
+
+
+processor owns one region. That is, each processor constructs the identical interpolation operator along
+the interface assuming that each processor has a copy of the coordinates and employs the same coarse grid
+points. However, if an algorithm is employed that does not produce identical interpolation coeﬃcients
+from diﬀerent regions, then a natural possibility would be to average the diﬀerent interpolation stencils
+on a shared interface to redeﬁne matching interpolation stencils at all co-located vertices. This averaging
+would incur some communication when each region is assigned to a diﬀerent processor. This type of
+averaging might be employed if, for example, black box multigrid [8] is used to generate interpolation
+within each region as opposed to structured multigrid. In this way, the region interpolation algorithm will
+implicitly deﬁne a composite grid interpolation matrix that satisﬁes (3.11). Regional restriction matrices
+are obtained by taking the transpose of the regional interpolation matrices.
+Coarse level discretizations can be constructed trivially. As indicated by Theorem 3.4, the regional
+coarse discretization is given by
+J ¯
+AK = JRK[
+[
+[A]
+]
+]JPK,
+(3.16)
+which corresponds to performing a separate triple-matrix product for each diagonal block associated
+with each region. When a single region is owned by a single processor, no communication is needed in
+projecting the ﬁne level regional discretization operator to the coarser levels. Given the major scaling
+challenges of these matrix-matrix operations within standard AMG algorithms, the importance of being
+able to perform this operation in a completely region-local fashion is signiﬁcant. It should be noted,
+however, that a composite discretization matrix might be needed at the coarsest level for third-party
+software packages used to provide direct solvers or to further coarsen meshes in an unstructured AMG
+fashion. Of course, these composite matrices will only be needed at fairly coarse resolutions and they can
+be formed on the targeted level only (i.e., they do not have to be carried through all hierarchy levels).
+Thus, the costs associated with this construction via (3.6) should be modest.
+To complete the multigrid setup, smoothers may require some setup phase.
+For Jacobi, Gauss–
+Seidel, and Chebyshev smoothing, the diagonal of the composite matrix must be computed during the
+setup phase. This is easily accomplished by storing the diagonal of the regional discretization matrix as a
+regional vector, e.g. JvK = diag(JAK) using Matlab notation, and then simply applying the transformation,
+i.e., ΨT ΨJvK. For more sophisticated smoothers, it is natural to generate region analogs that are not
+completely equivalent to the composite versions. For example, one can generate region-local versions of
+Gauss–Seidel smoothers and Schwarz type methods where again ΨT Ψ may be used to perform sums of
+nonzeros from diﬀerent regions associated with co-located vertices. In this paper, we consider Jacobi,
+Gauss–Seidel, and Chebyshev smoothers. Some discussion of more sophisticated smoothers can be found
+in [3].
+Finally, construction of a coarse level composite operator ¯
+A is also trivial. In particular, ¯
+Ψ is just
+the submatrix of Ψ corresponding to taking rows associated with coarse composite vertices and columns
+associated with the co-located coarse region vertices. Thus, it is convenient if the interpolation algorithm
+also provides a list of coarse vertices, though this can be deduced from the interpolation matrix (i.e., the
+vertices associated with rows containing only one nonzero).
+Having computed the coarse level operator J ¯
+AK via the recursive application of (3.16), its composite
+representation is given as
+¯
+A = ¯
+ΨJ ¯
+AK.
+(3.17)
+This corresponds to forming sums of matrix rows that correspond to co-located nodes on region interfaces.
+3.3. Multigrid Cycle. The multigrid cycle consists primarily of residual calculations, restriction,
+interpolation, and smoother applications. The composite residual can be calculated with region matrices
+via
+(3.18)
+r = b −Au = b −Ψ[
+[
+[A]
+]
+]ΨT u.
+Normally, however, one seeks to compute the regional form of the residual using regional representations
+of b and u via
+(3.19)
+JrK = JbK −ΨT Ψ[
+[
+[A]
+]
+]JuK,
+which is derived by pre-multiplying (3.18) by ΨT and recognizing that JrK = ΨT r, JbK = ΨT b, and
+JuK = ΨT u. Thus, the only diﬀerence with a standard residual calculation is the interface summation
+given by ΨT Ψ. For interpolation, we seek the regional version of interpolation
+JwK = ΨT Pv
+(3.20)
+= JPK¯
+ΨT v
+(3.21)
+= JPKJvK
+(3.22)
+8
+
+
+where we used Lemma 3.2 to simplify the interpolation expression. Thus, the interpolation matrix-vector
+product is identical to a standard matrix-vector product, incurring no inter-region communication.
+The region version of the restriction matrix-vector product is a bit more complicated. We begin by
+observing that
+R = ¯
+ΨJRKΨT (ΨΨT )−1
+(3.23)
+= ¯
+ΨJRKJΨΨT K−1ΨT .
+(3.24)
+Lemma 3.3 can be used to verify (3.23). For (3.24), we deﬁne an interface version of ΨΨT analogous
+to (3.11) and (3.15). Speciﬁcally, the JΨΨT K matrix is both diagonal and block diagonal where the kth
+block is given by ΨT
+k (ΨΨT )Ψk. By employing a commuting relationship (whose proof is omitted as it
+closely resembles that of Lemma 3.2), one arrives at (3.24). Finally, pre-multiplying w = Rv by ¯
+ΨT ,
+substituting (3.24) for R, and recognizing that JwK = ΨT w and JvK = ΨT v, it can be shown that the
+desired matrix-vector product relationship is given by
+JwK = ¯
+ΨT ¯
+ΨJRKJΨΨT K−1JvK.
+Thus, the restriction matrix-vector product corresponds to region-local scaling, followed by a region-local
+matrix-vector product followed by summation of co-located regional quantities.
+3.4. Region level smoothers. Jacobi smoothing is given by
+JuK ←JuK + ω J ˜
+D−1KJrK
+with JrK computed via (3.19), ω is a damping parameter, and J ˜
+DK is the diagonal of the composite
+operator A stored in regional form (as discussed in Section 3.2).
+Implementation of a classic Gauss–Seidel algorithm always requires some care on parallel computers,
+even when using standard composite operators. Though a high degree of concurrency is possible with
+multi-color versions, these are diﬃcult to develop eﬃciently and require communication exchanges for
+each color on message passing architectures. Instead, it is logical to adapt region Gauss–Seidel using
+domain decomposition ideas (as is typically done for composite operators as well). The K sweep Gauss–
+Seidel smoother is summarized in Algorithm 1. Here, the notation r(ℓ)
+i
+refers to the ith component of the
+Algorithm 1: Gauss–Seidel smoother for region-type problems
+Require: ω, JAK, JbK, J ˜
+DK, JuK
+for k = 0, . . . , K −1 do
+JδK = 0
+compute JrK via (3.19)
+// for each region ...
+for ℓ= 1, . . . , m do
+for i = 0, . . . , N (ℓ) do
+r(ℓ)
+i
+= r(ℓ)
+i
+= −ΣjA(ℓ)
+ij δ(ℓ)
+j
+δ(ℓ)
+i
+= ωr(ℓ)
+i / ˜
+d(ℓ)
+ii
+u(ℓ)
+i
+= u(ℓ)
+i
++ δ(ℓ)
+i
+ℓth region’s vector while A(ℓ)
+ij refers to a particular nonzero in region ℓ’s matrix. The intermediate quantity
+δ(ℓ)
+i
+is used to update the local solution and the local residual. Notice that the only communication is
+embedded within the residual calculation at the top of the outer loop. This low communication version of
+the algorithm diﬀers from true Gauss–Seidel in that a region’s updated residual only takes into account
+solution changes within the region. This means that solution values along a shared interface are not
+guaranteed to coincide during this state of the algorithm.
+Chebyshev smoothing relies on optimal Chebyshev polynomials tailored to reduce errors within the
+eigenvalue interval λi ∈[λmin, λmax] with λmin and λmax denoting the smallest and largest eigenvalue
+of interest of the operator JAK.
+The largest eigenvalue is obtained by a few iterations of the power
+method.
+Following the Chebyshev implementation in Ifpack2 [19], we approximate this interval by
+[λmin, λmax] ≈[α, β] with α = ˜
+λmax/η and β = κ˜
+λmax where ˜
+λmax is the estimate obtained via the power
+method,
+η denotes a ratio that is either user supplied or given by the coarsening rate between levels
+(defaulting to η = 20) and κ is the so-called “boost factor” (often defaulting to κ = 1.1). The Chebyshev
+smoother up to polynomial degree K is summarized in Algorithm 2.
+9
+
+
+Algorithm 2: Chebyshev smoother for region-type problems
+Require: θ = α+β
+2 , δ =
+2
+β−α, JAK, J ˜
+DK, JuK, JrK
+ρ = (θδ)−1
+JdK = 1
+θδJ ˜
+D−1KJrK
+for k = 0, . . . , K do
+JuK = JuK + JdK
+compute JrK via (3.19)
+ρold = ρ
+ρ = (2θδ −ρold)−1
+JdK = ρρoldJdK + 2ρδJ ˜
+D−1KJrK
+3.5. Coarse level solver. The region hierarchy consists of Lr levels ℓ∈{0, . . . , Lr −1}. Having
+computed the coarse composite operator ¯
+A via (3.17) on level Lr −1, we construct a coarse level solver
+for the region MG hierarchy. We explore two options:
+• Direct solver: If tractable, a direct solver relying on the factorization ¯
+A = ¯
+L ¯
+U is constructed.
+As usual, its applicability and performance (especially w.r.t. setup time) largely depend on the
+number of unknowns on the coarse level.
+• AMG V-cycle: If ¯
+A is too large to be tackled by a direct solver, one can construct a standard
+AMG hierarchy with an additional Lc levels.
+The coarse level solve of the region MG cycle
+is then replaced by a single V-cycle using (SA-)AMG [24]. This AMG hierarchy requires only
+the operator ¯
+A and its nullspace, which can be extracted from the region hierarchy. The AMG
+V-cycle itself will create as many levels as needed, such that its coarsest level can be addressed
+using a direct solver. The number of additional levels for the AMG V-cycle is denoted by Lc. For
+eﬃciency, load re-balancing is crucial. (Note that the total number of levels is now L = Lr+Lc−1,
+where the subtraction by one reﬂects the change of data layout from region to composite format
+without coarsening.)
+The latter option is also of interest for problems, where the regional ﬁne mesh has been constructed
+through regular reﬁnement of an unstructured mesh. Here, the region MG scheme can only coarsen until
+the original unstructured mesh is recovered. AMG has to be used for further coarsening. Assuming
+one MPI rank per region, i.e. one MPI rank per element in the initial unstructured mesh, the need for
+re-balancing (or even multiple re-balancing operations throughout the AMG hierarchy) becomes obvious.
+3.6. Regional multigrid summary. To summarize, the mathematical foundation and exact equiv-
+alence with standard composite grid multigrid requires that
+1. the composite matrix be split according to (3.1) such that each piece only includes nonzeros
+deﬁned on its corresponding region;
+2. each row (column) of the composite interpolation (restriction) matrix cannot include nonzeros
+associated with multiple region interiors;
+Thus, co-located ﬁne interpolation rows consist only of nonzeros associated with coarse co-located vertices.
+Likewise, co-located coarse restriction columns only include nonzeros associated with ﬁne co-located
+vertices. Finally, the grid transfer condition implies that regional forms of interpolation (restriction)
+must have matching rows (columns) associated with co-located dofs. It is important to notice that if the
+region interfaces are not curved or jagged and if linear interpolation is used to deﬁne the grid transfer along
+region interfaces (where ﬁne interface points only interpolate from coarse points on the same interface),
+then each region’s block of the block interpolation operator can be deﬁned independently as long as the
+selection of coarse points on the interface match. That is, the resulting region interpolation operator will
+satisfy the Lemma conditions without the need for any communication. If, however, a more algebraic
+scheme is used to generate the inter-grid transfers, then some communication might be needed to ensure
+that the interpolation operators satisfy the Lemma conditions at the interface. This would be true if a
+black box multigrid [8] is used to deﬁne the grid transfers or if a more general algebraic multigrid scheme
+such as smoothed aggregation [24] is used to deﬁne grid transfers. This is discussed further in Section 5.
+Figure 3.3 summarizes the regional version of the two level algorithm. Besides the inject() operation,
+the only possible diﬀerence during setup is a small modiﬁcation of constructP() that may be necessary
+to ensure that interpolation stencils match at co-located vertices. In applySmoother(), any region level
+smoother from Section 3.4 is applied. The main diﬀerence in the solve() phase is the scaling JΨΨT K−1,
+the interface summation ΨT Ψ, and possibly the need to convert between regional and composite forms
+if third party software is employed at suﬃciently coarse levels.
+4. Non-invasive construction of region application operators. To this point, we have as-
+sumed that Ψ and [
+[
+[A]
+]
+] on the ﬁnest level are available. However, most ﬁnite element software is not
+10
+
+
+function mgSetup([
+[
+[A]
+]
+])
+function mgCycle([
+[
+[A]
+]
+], JuK, JbK) :
+JDK ←diag(ΨT Ψ diag([
+[
+[A]
+]
+]))
+JuK ←applySmoother(JuK, JbK, [
+[
+[A]
+]
+])
+JPK ←constructP([
+[
+[A]
+]
+])
+JrK ←JbK −ΨT Ψ[
+[
+[A]
+]
+]JuK
+JRK ←JPKT
+J¯
+uK ←0
+[
+[
+[ ¯
+A]
+]
+] ←JRK[
+[
+[A]
+]
+]JPK
+J¯
+uK ←solve([
+[
+[ ¯
+A]
+]
+], J¯
+uK, ¯
+ΨT ¯
+ΨJRKJΨΨT K−1JrK)
+¯
+Ψ ←inject(Ψ)
+JuK ←JuK + JPKJ¯
+uK
+Fig. 3.3. Two level regional multigrid for the solution of A u = b.
+1
+6
+2
+9
+12
+18
+17
+10
+14
+7
+20
+13
+16
+8
+5
+0
+3
+15
+11
+19
+4
+1
+6
+2
+9
+12
+18
+17
+10
+14
+7
+20
+13
+16
+8
+5
+0
+3
+15
+11
+19
+4
+23
+22
+21
+composite view 
+region view 
+region 
+0
+region 
+1
+Fig. 4.1. Sample user-provided mapping of mesh nodes to regions.
+organized to generate these. Our goal is to limit the burden on application developers by instead em-
+ploying a fully assembled discretization or composite matrix on the ﬁnest level. In this section, we ﬁrst
+describe the application information that we require to generate Ψ. Then, we describe an automatic
+matrix splitting or dis-assembly process so that our software can generate [
+[
+[A]
+]
+], eﬀectively via (3.5).
+In addition to fairly standard distributed matrix requirements (e.g., each processor supplies a subset
+of owned matrix rows and a mapping between local and global indices for the owned rows), applications
+must provide information to construct Ψ and to facilitate fast kernels. Speciﬁcally, applications furnish
+a region id and the number of grid points in each dimension for regions owned by a processor. As noted,
+our software is currently limited in that each processor owns one entire region. However, we will keep
+the discussion general.
+The main additional requirement is a description of the mesh at the region interfaces. In particular,
+it must be known, to which region(s) each node belongs. If a node is a region-internal node, it only
+belongs to one region. If it resides on a region interface, it belongs to multiple regions. Note that the
+number of associated regions depends on the spatial dimension, the location within the mesh, and the
+region topology. For example, nodes on inter-region faces (not also on edges and corners), edges (not also
+on corners), and corners belong to 2 regions, 4 regions, and 8 regions respectively for a three-dimensional
+problem with cartesian-type cuboid regions. Figure 4.1 gives a concrete two region example in a two-
+dimensional setting. In this example, one processor owns the entire 5 × 3 topmost rectangular region
+while another processor owns the bottom most 3 × 2 rectangular region. The mapping for this example
+looks as follows:
+• Nodes 0, 1, 3, 4, 5, 10, 11, 12, 14, 15, 17, 18, 19 reside in region Ω(0).
+• Nodes 2, 7, 9, 13, 16, 20 reside in region Ω(1).
+• Nodes 6, 8, 14 are located on the region interface and belong to both regions Ω(0) and Ω(1).
+Based on this user-provided mapping data, we can now “duplicate” interface nodes and assign unique
+GIDs for all replicated interface nodes and their associated degrees of freedom.
+The right-hand side
+sketch in Figure 4.1 illustrates a computed mapping of global composite ids to the global region layout
+ids. Notice that the only global ids to change are the composite ghost ids. Speciﬁcally, new global ids
+are assigned by the framework to the ghosts associated with the bottom processor so that each of the
+unknowns along a shared interface has a unique global id. The overall structured framework can be setup
+11
+
+
+based on this user-supplied mapping and eﬀectively build the Ψ operator. Of course, we do not explicitly
+form Ψ, but build data structures and functions to perform the necessary operations associated with Ψ.
+To apply (3.5), the composite matrix must ﬁrst be split so that (3.1), (3.2) and (3.3) are satisﬁed.
+Mathematically, matrix entries associated with co-located vertices must be split or divided between
+diﬀerent terms in the summation. In this paper, we scale any oﬀ-diagonal matrix entries by the number
+of regions that share the same edge. Formally, scaled entries correspond to Aij ̸= 0 such that there exist
+exactly q (≥2) Ψk’s with a nonzero in the ith and jth rows. If we denote these Ψk’s by Ψk1, Ψk2, ..., Ψkq,
+then
+A(k1)
+ij
+= A(k2)
+ij
+= ... = A(kq)
+ij
+= Aij/q.
+The matrix diagonal is then scaled so that the row sum of each region matrix is identically zero. With Ψ
+and the splitting choice speciﬁed, the entire multigrid cycle is now deﬁned. Though this splitting choice is
+relatively simple, it has no numerical impact when geometric grid transfers are employed in conjunction
+with a Jacobi smoother. However, some multigrid components such as region-oriented smoothers (e.g.,
+region-local Gauss–Seidel) and matrix-dependent algorithms for generating grid transfers (e.g., black-box
+multigrid) are aﬀected by the splitting choice. We simply remark that we have experimented with a
+variety of scalar PDEs using black-box multigrid, and this splitting choice generally leads to multigrid
+convergence rates that are similar to conventional multigrid algorithms applied to composite problems.
+While we do not provide the implementation details associated with computations such as ΨT
+k A(k)Ψk
+and the conversions between regional and composite vectors, it is worth pointing out that some imple-
+mentation aspects can leverage ghosting and overlapping Schwarz capabilities found in many iterative
+solver frameworks. In our case, some of these operations can be performed in a relatively straight-forward
+fashion using Trilinos’ import/export mechanism. The import feature is most commonly used in Trilinos
+to perform operations such a matrix-vector products. An import can be used to take vectors without
+ghost unknowns and create a new vector with ghost unknowns obtained from neighboring processors.
+This standard import operation is similar to transforming a composite vector to a region vector. The
+main diﬀerence is that only some ghost unknowns (those that correspond to a shared interface) need to
+be obtained from neighboring processors.
+The import facility is fairly general in that it can also be used to replicate matrix rows needed within a
+standard overlapping Schwarz preconditioner. In this case, import takes a non-overlapped matrix where
+each matrix row resides on only one processor and creates an overlapped matrix, where some matrix
+rows are duplicated and reside within more than one sub-domain.
+When an overlap of one is used,
+each processor receives a duplicate row for each of its ghost unknowns.
+This is similar to the process of
+generating regional matrices from composite matrices (only requiring rows from a subset of ghosts). Once
+matrix rows (corresponding to interfaces) have been replicated, they must be modiﬁed to satisfy (3.1). In
+particular, any column entries (within interface rows) that correspond to connections with neighboring
+regions must be removed. Further, entries that have been replicated along the interface must be scaled
+in a post-processing step.
+In a standard Schwarz preconditioner, solutions obtained on each sub-domain must be combined.
+That is, overlapped solution values must be combined (e.g., averaged) to deﬁne a unique non-overlapping
+solution. For this mapping from overlapped to non-overlapped, Trilinos contains an export mechanism.
+This export allows for diﬀerent type of operations (e.g., averages or sums) to be used when combining
+multiple entries associated with the same non-overlapped unknown.
+This is similar to transforming
+regional vectors to composite vectors. One somewhat subtle issue is that the unique region global ids
+presented in Figure 4.1 are not needed in an overlapping Schwarz capability, but are needed for the region-
+multigrid framework to perform further operations on the region-layout systems. Thus, the conversions
+between composite and regional forms has been implemented in two steps. The ﬁrst step closely resembles
+the Schwarz process and corresponds to the movement of data between overlapped and non-overlapped
+representations as just discussed, but without introducing the new global ids. The second step then
+deﬁnes the new global ids to complete the conversion process.
+5. Structured/unstructured mesh hybrid. We now discuss the adaptation of regional multigrid
+to the case where some unstructured regions are introduced into the grid. As the mathematical foundation
+presented earlier makes no assumptions on grid structure, the requirements summarized in Section 3.6
+still hold. The unstructured regions do not introduce software modiﬁcations associated with satisfying
+the matrix splitting or dis-assembly requirements. However, grid transfer construction requires some
+care. In particular, some pre- and post-processing modiﬁcations are needed for the AMG algorithm that
+constructs regional grid transfers within the unstructured regions. No additional modiﬁcations are needed
+to produce structured grid multigrid transfers within the structured regions.
+Figure 5.1 provides a simple illustration of an unstructured triangular region attached to a 7 × 7
+structured region. In Figure 5.1 a subset of vertices are labelled with a ‘c’ to denote a possible choice of
+12
+
+
+Fig. 5.1. Structured square region attached to an unstructured triangular region. The structure/unstructured interface
+is given by a dark dashed line. A c denotes the location of a Cpt. Red dashed lines encircle unstructured aggregates.
+coarse points denoted as Cpts. The Cpts set refers to a subset of ﬁne mesh vertices that are chosen by a
+classical AMG algorithm to deﬁne the mesh vertices of the coarse mesh. Notice that within structured
+regions, the Cpts have been deﬁned in a standard structured fashion. Ideally, it would be attractive to
+apply a standard AMG algorithm with no software modiﬁcations to coarsen and deﬁne grid transfers for
+unstructured regions. However, the resulting grid transfers stencils at co-located vertices must match
+their structured region counter-parts. This means that the same set of three Cpts should be chosen by
+the structured algorithm and the unstructured algorithm along the interface in our Figure 5.1 example
+and that the interpolation coeﬃcients along the interface be chosen in a very speciﬁc way.
+In this paper, we do not employ classical AMG for unstructured regions, but instead use the simpler
+plain aggregation variant of smoothed aggregation AMG method (SA) [24]. With both smoothed aggre-
+gation and plain aggregation multigrid, the coarsening procedure is the same. In particular, coarsening
+is performed by aggregating together sets of ﬁne vertices as opposed to identifying Cpts. Each aggregate
+is essentially formed by choosing a root vertex and including all of the root’s neighbors that have not al-
+ready been included in another aggregate. Loosely, one can think of the aggregate root point as a Cpt. In
+Figure 5.1, four aggregates in the unstructured region are depicted with dashed red lines. To enforce the
+consistency of the Cpts choice at the interface, the unstructured aggregation software must be changed so
+that it initially chooses root points and aggregates associated with structured coarsening. In our standard
+coarsening software, aggregation occurs in stages that are pipelined together. Each stage applies a speciﬁc
+algorithm that might only aggregate a subset of ﬁne mesh vertices and then pass the partially-aggregated
+mesh to the next stage (that attempts to add more aggregates). Staging is a practical way to combine
+diﬀerent aggregation algorithms with diﬀerent objectives to ensure that all mesh vertices are eventually
+aggregated. To accommodate structured/unstructured interfaces, a new aggregation stage was devised
+to start the aggregation process. This new stage only aggregates vertices on interfaces and chooses root
+nodes in a structured fashion (employing a user-deﬁned coarsening rate). Aggregates are chosen so that
+no interface vertices remain unaggregated after this stage. Once this new stage completes, the stan-
+dard unstructured aggregation stages can proceed without further modiﬁcation. Notice that coarsening
+of structured and unstructured regions can proceed fully in parallel (with no need for communication
+between the regions) as processors responsible for unstructured regions redundantly coarsen/aggregate
+the interface using the new devised aggregation stage while structured regions also coarsen the interface
+using a standard structured coarsening scheme. Since both structured and unstructured regions employ
+structured aggregation along the mesh interface, matching Cpts are guaranteed.
+Not only should coarsening be consistent along interfaces, but interpolation coeﬃcients at co-located
+vertices should match those produced by the structured regions. For plain aggregation, multigrid this
+will be the case as long as the structured region grid transfers use the same methodology of piecewise
+constant basis functions. Speciﬁcally, the corresponding plain aggregation interpolation basis functions
+are just piecewise constants for most applications. As the plain aggregation basis functions do not rely
+on the coeﬃcients of the discretization matrix, each region’s version of an interpolation stencil for a
+common interface will coincide exactly in the plane aggregation case. This will not generally be true
+for more sophisticated AMG schemes such as smoothed aggregation where the interpolation coeﬃcients
+depend on the discretization matrix coeﬃcients. Eﬀectively, a diﬀerent algorithm is used to generate
+the interpolation coeﬃcients and so there is no reason why interpolation stencils should match those
+produced with linear interpolation. In this paper, we avoid this issue by only considering plain aggregation
+AMG for unstructured regions in conjunction with piecewise constant interpolation (as opposed to linear
+interpolation) for structured regions. However, we have identiﬁed two relatively straight-forward options
+13
+
+
+both involving some form of post-processing to the grid transfer operators. One possibility is that a subset
+of processors communicate/coordinate with each other to arrive at one common interpolation stencil for
+each unknown on a shared interface. Obviously, this requires communication and is somewhat tedious
+to implement.
+The second possibility is that linear basis functions always deﬁne interpolation along
+interfaces between structured and unstructured regions. In this case, communication can be avoided by
+employing a post-processing procedure within the unstructured grid transfer algorithm to calculate (and
+overwrite) the appropriate interpolation operator along its interfaces. We omit the details but indicate
+that all the required information (coarse grid point locations and ﬁne grid point locations) is already
+available within our software framework.
+To complete the discussion, we highlight some implementation aspects associated with incorporating
+these pre- and post-processing changes into a code such as MueLu which is based on a factory design,
+where diﬀerent classes must interact with diﬀerent objects (e.g., aggregates, grid transfer matrices) needed
+to construct the multigrid hierarchy. In particular, parameter lists are used to enter algorithm choices and
+application speciﬁc data. In our context, the application must indicate the following for each processor
+via parameter list entries:
+• whether or not it owns a structured region or an unstructured region
+• the dimensions and coarsening rate for processors owning structured regions
+• the dimensions and coarsening rate of each neighboring structured region for processors owning
+unstructured regions
+Further, processors owning unstructured regions, that border structured regions, must still provide struc-
+tured region information for structured interfaces. This includes a list of neighboring regions and the
+mapping of mesh nodes to regions as introduced in Figure 4.1.
+With the proper user-supplied information, MueLu assigns a hybrid factory to address the prolon-
+gators. This hybrid factory includes an internal switch to then invoke either a structured region grid
+transfer factory or an unstructured region grid transfer factory. The hybrid factory essentially creates the
+grid transfer matrix object, allowing the sub-factories to then populate this matrix object with suitable
+entries. It is this hybrid factory that invokes the aggregation process that starts with the interface aggre-
+gation stage for unstructured regions. It is also responsible for the post-processing (i.e., the updating of
+the prolongator matrix rows corresponding to interface rows) for the unstructured regions. In this way,
+the standard structured factories and standard unstructured factories require virtually no modiﬁcations,
+as these are mostly conﬁned to the hybrid factory. More information about MueLu’s factory design can
+be found in [6].
+6. Numerical Results. Computational experiments are performed to highlight the equivalence
+between MG cycles employing either composite operators or region operators as described by the Lem-
+mas/Theorems presented earlier. This is followed by experiments to illustrate performance beneﬁts of
+structured MG. Finally, we conclude this section with an investigation demonstrating a structured region
+approach that also incorporates a few unstructured sub-domains. All the experiments that follow can be
+reproduced using Trilinos at commit 86095f3d93e.
+6.1. Region MG Equivalence. To assess the equivalence of structured region MG to standard
+structured MG (without regions and region interfaces), we study a two-dimensional Laplace problem
+discretized with a 7-point stencil on two diﬀerent meshes, a square 730 × 730 mesh and a rectangular
+700 × 720 mesh. The problem is run on 9 MPI ranks for the region solver and run in serial for standard
+structured MG. Here, we employ MG as a solver (not as a preconditioner within a Krylov method), and
+the iteration is terminated when the relative residual drops below 10−12.
+The structured MG scheme employs a standard fully assembled matrix (i.e., a composite matrix in this
+paper’s terminology). It uses a coarsening rate of 3 in each coordinate direction and linear interpolation
+deﬁnes the grid transfer. The multigrid hierarchy consists of 4 levels. Speciﬁcally, the hierarchy mesh
+sizes from ﬁnest to coarsest for the square mesh are 730 × 730, 244 × 244, 82 × 82, and 28 × 28. Notice
+that all of these meshes correspond to 3k + 1 points in each coordinate direction. Our software does
+not require these speciﬁc mesh sizes, but this is needed to demonstrate exact equivalence. That is, both
+the composite MG and the region MG must coarsen identically. For the rectangular mesh, sizes are
+not chosen so that the coarsening is identical (i.e., the number of vertices in each mesh dimension do
+not correspond to 3k + 1). Thus, we expect some small residual history diﬀerences for the rectangular
+mesh.
+Fully structured multigrid is implemented in Trilinos/MueLu using an option referred to as
+structured uncoupled aggregation. For the region MG hierarchy on the other hand, the mesh is partitioned
+into 9 (= 3 × 3) regions, where each region is assigned to one MPI rank. In this case, the square domain
+multigrid hierarchy for each processor’s sub-mesh or region mesh is 244×244, 82×82, 28×28, and 9×9.
+In each coordinate direction, the overall ﬁnest mesh appears to have 732 (= 3 processors
+× 244 per
+processor) mesh points, which is not equal to the 730 mesh points used for the fully structured composite
+MG cycle. However, one must keep in mind that 2 vertices are replicated along a mesh line in a coordinate
+14
+
+
+direction (due to region the interfaces). Again, these carefully chosen sizes are to enforce an identical
+coarsening procedure for the two MG solvers (and thus satisfy the conditions of the Lemmas/Theorems
+presented earlier), as opposed to a hard requirement of the software. The region multigrid method also
+uses a structured aggregation option to implement this type of structured coarsening.
+Table 6.1 reports residual histories using Jacobi, Gauss–Seidel, and Chebyshev as relaxation methods
+Table 6.1
+Residual histories to study the equivalence of the structured region MG scheme to a classical structured MG
+(a) 730 × 730 square mesh
+Jacobi
+Gauss–Seidel
+Chebyshev
+#its.
+Structured
+9 Regions
+Structured
+9 Region
+Structured
+9 Regions
+0
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1
+1.77885821e-02
+1.77885821e-02
+1.34144214e-02
+1.34395087e-02
+1.42870540e-02
+1.42868592e-02
+2
+3.09066249e-03
+3.09066249e-03
+1.22727384e-03
+1.23709339e-03
+9.93752447e-04
+9.93713870e-04
+3
+6.17432509e-04
+6.17432509e-04
+1.27481334e-04
+1.29627870e-04
+1.21921975e-04
+1.21914771e-04
+4
+1.29973612e-04
+1.29973612e-04
+1.41133381e-05
+1.45165400e-05
+1.58413729e-05
+1.58401012e-05
+5
+2.81812370e-05
+2.81812370e-05
+1.61878817e-06
+1.69088891e-06
+2.11105538e-06
+2.11083642e-06
+6
+6.22574415e-06
+6.22574415e-06
+1.89847271e-07
+2.02561731e-07
+2.86037857e-07
+2.86000509e-07
+7
+1.39312700e-06
+1.39312700e-06
+2.26276959e-08
+2.48757453e-08
+3.92564304e-08
+3.92500462e-08
+8
+3.14666393e-07
+3.14666393e-07
+2.73250326e-09
+3.13452182e-09
+5.44989750e-09
+5.44879379e-09
+9
+7.15836477e-08
+7.15836477e-08
+3.33798476e-10
+4.06768456e-10
+7.65555357e-10
+7.65361045e-10
+10
+1.63770972e-08
+1.63770972e-08
+4.12201997e-11
+5.46524944e-11
+1.08974518e-10
+1.08939546e-10
+11
+3.76413472e-09
+3.76413472e-09
+5.14512205e-12
+7.64221900e-12
+1.57581213e-11
+1.57516868e-11
+12
+8.68493274e-10
+8.68493274e-10
+6.49387222e-13
+1.11538919e-12
+2.32197807e-12
+2.32077246e-12
+13
+2.01044350e-10
+2.01044350e-10
+1.69735837e-13
+3.49742848e-13
+3.49514354e-13
+14
+4.66714466e-11
+4.66714466e-11
+15
+1.08616953e-11
+1.08616953e-11
+16
+2.53347464e-12
+2.53347464e-12
+17
+5.92132868e-13
+5.92132868e-13
+(b) 700 × 720 rectangular mesh
+Jacobi
+Gauss–Seidel
+Chebyshev
+#its.
+Structured
+9 Regions
+Structured
+9 Region
+Structured
+9 Regions
+0
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1.00000000e+00
+1
+1.78374178e-02
+1.77971728e-02
+1.34028366e-02
+1.34057178e-02
+1.26092241e-02
+1.25980465e-02
+2
+3.09747239e-03
+3.08750444e-03
+1.22692052e-03
+1.22958855e-03
+7.39937462e-04
+7.40632616e-04
+3
+6.17958674e-04
+6.15974350e-04
+1.27486109e-04
+1.28178073e-04
+7.93385189e-05
+7.96677401e-05
+4
+1.29899263e-04
+1.29526261e-04
+1.41232878e-05
+1.42759476e-05
+9.07488160e-06
+9.15976761e-06
+5
+2.81258416e-05
+2.80574257e-05
+1.62135195e-06
+1.65159920e-06
+1.06848944e-06
+1.08744092e-06
+6
+6.20516379e-06
+6.19293768e-06
+1.90317494e-07
+1.95946605e-07
+1.28512584e-07
+1.32547397e-07
+7
+1.38672740e-06
+1.38463243e-06
+2.27023402e-08
+2.37209815e-08
+1.57501731e-08
+1.65970557e-08
+8
+3.12830389e-07
+3.12499063e-07
+2.74346365e-09
+2.92685712e-09
+1.96757719e-09
+2.14457022e-09
+9
+7.10802795e-08
+7.10369390e-08
+3.35333590e-10
+3.68648440e-10
+2.51098105e-10
+2.87885059e-10
+10
+1.62430334e-08
+1.62406131e-08
+4.14287275e-11
+4.75775741e-11
+3.28456275e-11
+4.04047421e-11
+11
+3.72913854e-09
+3.73041913e-09
+5.17289942e-12
+6.32676763e-12
+4.41956012e-12
+5.94633832e-12
+12
+8.59490959e-10
+8.60260047e-10
+6.53051744e-13
+8.72272622e-13
+6.13278643e-13
+9.15663966e-13
+13
+1.98754318e-10
+1.99060540e-10
+14
+4.60939586e-11
+4.62011981e-11
+15
+1.07170764e-11
+1.07525542e-11
+16
+2.49746150e-12
+2.50886608e-12
+17
+5.83206191e-13
+5.86815903e-13
+(1 pre- and 1 post-relaxation per level) in conjunction with a direct solve on the coarsest level. In all cases,
+an identical right hand side and initial guess are used. Since the damped Jacobi smoother (which uses
+ω = .6) only involves matrix-vector products and the true composite matrix diagonal, the residual histories
+match exactly for the square mesh. The square mesh residual histories are also nearly identical with the
+Chebyshev smoother, though there are small diﬀerences between the computed Chebyshev eigenvalue
+intervals (whose calculation employs diﬀerent random vectors). In the case of the Gauss–Seidel relaxation,
+residual histories are still close, but do show slight diﬀerences. This is due to the parallelization of Gauss–
+Seidel. As composite MG is run in serial, it employs a true Gauss–Seidel algorithm while parallel region
+MG uses processor based (or domain decomposition based) Gauss–Seidel. Speciﬁcally, applying Gauss–
+Seidel on a matrix row associated with a node in region Ω(i) on region interface Γij requires oﬀ-diagonal
+entries to represent the connections to neighboring nodes. However, one (or more) neighboring nodes
+reside in the neighboring region Ω(j) and, thus, their matrix entries are not accessible for the Gauss–Seidel
+smoother. The method does compute the true composite residual before the Gauss–Seidel iteration, but
+only solution changes local to its region are reﬂected in residual updates that occur within the smoother.
+Something similar occurs with composite MG Gauss–Seidel relaxation in parallel, though the nature of its
+processor sub-domains are a bit diﬀerent from those associated with regions. Even though the algorithms
+diﬀer, one can see that the residual histories are close and only separate somewhat more signiﬁcantly
+after more than 10 orders of magnitude reduction in the residual. The results for the rectangular mesh
+mirror those for the square mesh. The residual diﬀerences between the standard composite MG and
+region MG are generally a tiny bit further from each other in this case as the coarsening schemes for the
+two algorithms are no longer identical.
+15
+
+
+Table 6.2
+Region MG vs. AMG for three-dimensional Poisson example: conﬁguration and performance
+Mesh
+nproc
+L
+Structured MG
+Pure Algebraic MG
+nodes
+Lr/Lc (L)
+#its
+Setup
+V-cycle
+#its
+Setup
+V-cycle
+823
+27
+3/2 (3)
+13
+0.0728 s
+0.193 s
+13
+0.117 s
+0.242 s
+1633
+216
+3/2 (4)
+13
+0.104 s
+0.241 s
+13
+0.176 s
+0.273 s
+3253
+1728
+3/3 (5)
+13
+0.352 s
+0.428 s
+13
+0.581 s
+0.400 s
+6223
+12167
+3/3 (6)
+13
+0.386 s
+0.425 s
+13
+0.711 s
+0.423 s
+Table 6.3
+Region MG vs. AMG for three-dimensional elasticity example: conﬁguration and performance for Jacobi smoother
+Mesh
+nproc
+#levels
+Structured MG
+Pure Algebraic MG
+nodes
+Lr/Lc (L)
+#its
+Setup
+V-cycle
+#its
+Setup
+V-cycle
+823
+27
+3/2 (4)
+22
+0.333 s
+1.94 s
+35
+2.46 s
+4.23 s
+1633
+216
+3/3 (5)
+21
+0.423 s
+1.97 s
+33
+2.78 s
+4.34 s
+3253
+1728
+3/3 (5)
+21
+0.697 s
+2.38 s
+32
+3.54 s
+4.92 s
+6223
+12167
+3/4 (6)
+20
+1.199 s
+2.63 s
+32
+3.92 s
+5.06 s
+6.2. Multigrid performance. Region-based MG is motivated by potential performance gains when
+compared to a classical unstructured AMG method. In the region-based case, one can exploit the regular
+structure of the mesh when designing both the data structure and implementing the key kernels used
+within the MG setup and V-cycle phases to avoid less indirect addressing and to reduce the overall
+memory bandwidth requirements.
+Our region MG is implemented in MueLu, which is part of the Trilinos framework. Trilinos and
+MueLu have been designed and optimized for the type of fully unstructured meshes that might arise
+from a ﬁnite element discretization of a PDE problem. The underlying matrix data structure is based
+on the Compressed Row Sparse format [1] which can address these types of general sparse unstructured
+data. At present, our region MG software is in its initial stages and so it utilizes these same underlying
+unstructured data formats for matrices and vectors. Thus, it has not been optimized for structured grids.
+Interestingly, we are able to demonstrate some performance gains in the case of PDE systems, even with
+the current software limitations. We begin ﬁrst with some Poisson results and then follow this with
+elasticity experiments where signiﬁcant gains are observed. In both cases, linear ﬁnite elements with
+hexahedral elements are used to construct the linear systems.
+For both the Poisson and the elasticity experiments, the problem setup is as follows. Each region
+performs coarsening by a rate of 3, until three levels have been formed. On the coarsest region-level Lr−1,
+we then apply AMG as a coarse level solver as outlined in Section 3.5. Depending on the problem size
+on the ﬁnest level, 1 −3 rounds of additional coarsening will be performed algebraically until the coarse
+operator of the AMG hierarchy has less than 900 rows and can be tackled by a direct solver. On all
+levels ℓ∈{0, 1, . . . , L −2}, but the coarsest, damped Jacobi smoothing is employed using a damping
+parameter of .67. That is, both the region hierarchy and the coarse-solver AMG hierarchy use the same
+smoother settings.
+On the coarsest region-level Lr −1, each MPI rank only owns a few rows, so a
+repartitioning/rebalancing step is performed before constructing the AMG coarse level solver to avoid
+having a poorly balanced AMG coarse solve that requires a signiﬁcant amount of communication.
+To avoid confusion, we now use the term pure AMG to describe the standard AMG approach (without
+any levels using a region format) that is used for the comparisons. The pure AMG hierarchy uses the
+same smoother settings employed for the region multigrid method as well as the same total number of
+levels L (counting both the region/structured levels and coarse-solver AMG levels). As with region MG, a
+direct solver is applied on the coarsest level. In all cases where AMG is employed, level transfer operators
+are constructed using SA-AMG [24] with MueLu’s uncoupled aggregation and a prolongator smoothing
+damping parameter ω = 4/3. To counteract poor load balancing during coarsening, we repartition such
+that each MPI rank at least owns 800 rows and that the relative mismatch in size between all subdomains
+is less than 10%. Partitioning is perform via multi-jagged coordinate partitioning using Trilinos’ Zoltan2
+package4. Since our examples focus on a direct comparison of region MG and AMG, we apply the MG
+scheme as a solver without any outer Krylov method. Of course, application codes will often invoke MG
+as a preconditioner within a Krylov method. We report timings for the both the MG hierarchy setup
+and for the solution phase of the algorithm.
+Table 6.2 and Table 6.3 present the timings.
+These tests were performed in parallel on Cori5 at the
+4https://trilinos.github.io/zoltan2.html
+5https://docs.nersc.gov/systems/cori/
+16
+
+
+National Energy Research Scientiﬁc Computing Center (NERSC), Berkeley, CA. The mesh sizes as well
+as parallel resources are given in the ﬁrst two columns of each table. The column entitled “mesh nodes”
+denotes the number of grid nodes in the cube-type mesh. The number of MPI ranks nproc is increased at
+the same rate as the mesh size, yielding a weak scaling type of experiment. For the region MG algorithm,
+the number of MPI ranks also denotes the number of regions, such that the number of unknowns per
+region is kept constant across all experiments at ≈20k unknowns per MPI rank.
+The gains for the Poisson problem correspond to about a factor of two in the setup phase.
+It
+is important to recall that many of the key computational kernels (e.g., the matrix-matrix multiply)
+employ the same code for the region MG and for pure AMG. These setup gains come primarily from
+a faster process to generate grid transfers and having somewhat fewer nonzeros within the coarse level
+matrices. Without doubt, the most time consuming kernel on larger core counts comes from repartitioning
+the matrix supplied to the coarse AMG solver.
+This repartitioning reduces communication costs in
+constructing the coarse AMG hierarchy, but it comes with a high price. While the actual data transfer
+associated with rebalancing requires some communication, the great bulk of this repartitioning time
+involves the cost associated with using Trilinos’ framework to set up the communication data structure
+(which includes some neighbor discovery process). It is important to notice that when solving a sequence
+of linear systems on the same mesh (e.g., within a nonlinear solution scheme or within a time stepping
+algorithm), this communication data structure remains the same throughout the sequence 6. Thus, it
+should be possible to form this data structure just once and reuse it over the entire sequence, drastically
+reducing this communication cost.
+The elasticity results exhibit more than a factor of three improvement in the setup phase and a factor
+of two in the solve phase, even without using kernels geared toward structured grids. In the case of AMG
+setup, this is mostly due to the lower number of coarse operators nonzeros. This is reﬂected in multigrid
+operator complexities (which measures the ratio of the total number of nonzeros in the discretization
+matrices on all levels versus the number of nonzeros in the ﬁnest level matrix. In the region case it is
+under 1.1 (which includes nonzeros associated with coarse-solver AMG levels). In the pure AMG case it
+is over 1.4. Additionally, there are some savings in that no communication is required while constructing
+the region part of the hierarchy, though once again there are costs associated with the coarse AMG setup.
+For the solve phase, the beneﬁts come from having less nonzeros and also requiring fewer iterations, which
+is due to the fact that linear interpolation is the better grid transfer than that provided by SA-AMG for
+this problem.
+6.3. Multigrid kernel performance. While the current structured region code is unoptimized,
+we have started experimenting with alternative multigrid kernels outside of the Trilinos package.
+In
+this section we illustrate the potential gains that may be possible even while retaining a matrix data
+structure best suited for fully unstructured grids. Speciﬁcally, timing comparisons are made between the
+multigrid matrix-matrix multiply kernel from our standard unstructured AMG package, Trilinos/MueLu,
+and a special purpose one written for two dimensional structured meshes. This special purpose matrix-
+matrix multiply also requires a small amount of additional information (e.g., number of grid points in
+the coordinate directions for each region). In all cases, the kernels produce the same results (with the
+exception of slight numerical rounding variations). The only diﬀerence is that the new kernel leverages the
+structured grid layout. While one might consider designing new data structures to support structured
+kernels, we are currently evaluating tradeoﬀs.
+Using the same unstructured data structures greatly
+facilitates the integration and maintenance of the new structured capabilities within our predominantly
+unstructured AMG package, though it may somewhat curb or limit the performance gains attained by
+the structured kernels.
+For the matrix-matrix multiplication the underlying matrix data structure consists of two integer
+arrays and one double precision array associated with the compressed row matrix format [1]. One of
+the integer arrays consists of pointers to the starting location (within the other two arrays) of the data
+corresponding to a matrix row. The other two arrays hold column indices and matrix values for the
+nonzeros. While all three arrays are still passed to the matrix-multiply kernel, one nice beneﬁt of the
+structured algorithms is that access to the two integer arrays can be limited. In particular, all the data
+within the integer arrays can be inferred or deduced once the structured stencil pattern and grid layout
+are known.
+This ultimately reduces memory access and allows for a number of other optimizations.
+See [3] for some examples.
+To demonstrate the matrix-multiply gains, we evaluate the matrix triple product or Galerkin projec-
+tion step within the multigrid setup phase corresponding to
+¯
+A = RAP.
+6This would not necessarily be true for an AMG scheme that uses a strength-of-connection method that eﬀectively
+alters the matrix-graph based on the matrix’s nonzero values.
+17
+
+
+Fig. 6.1. One grid transfer column stencil associated with the central coarse point using piecewise constants (left) and
+linear interpolation (right). Only a portion of the mesh is shown and circles denote coarse mesh points.
+Table 6.4
+Timings (in seconds) for diﬀerent triple-matrix product kernels. 9 pt Basis ( 25 pt Basis) indicates 9 (25) point
+basis functions for P and R. Const, Geo, and Generic denote the structured triple product for piecewise constant, ideal
+geometric, and general grid transfers.
+coarse
+9 pt Basis
+25 pt Basis
+mesh size
+MueLu
+Const
+MueLu
+Generic
+Geo
+140 × 36
+.0024
+.0001
+.0109
+.0012
+.0009
+140 × 180
+.0124
+.0006
+.0572
+.0061
+.0046
+700 × 180
+.0726
+.0070
+.2944
+.0320
+.0240
+700 × 900
+.3702
+.0356
+1.4786
+.1606
+.1208
+A two dimensional mesh is considered along with a perfect factor of three coarsening in each coordinate
+direction. For the unstructured MueLu implementation, the product AP is ﬁrst formed using a two-
+matrix multiplication procedure. The product of R and the result of the ﬁrst two-matrix multiplication
+is then performed to arrive at the desired result. For the structured implementation, the triple product
+is formed directly. That is, explicit formulas have been determined (using a combination of Matlab,
+Mathematica, and pre/post processing programs) for each of ¯
+A’s entries. Speciﬁcally, there are four sets
+of formulas for rows of ¯
+A corresponding to each of the four mesh corners. There are an additional four
+sets of formulas for the four mesh sides (excluding the corners). Finally, there is one last set of formulas
+for the mesh interior. As noted above, the integer arrays are not used in the evaluation of these formulas.
+Three diﬀerent structured functions have been developed. One corresponds to the use of piecewise
+constant grid transfers; another is for geometric grid transfers on a regular uniform mesh; the third allows
+for general grid transfers (which have the same sparsity pattern as the geometric grid transfers but allow
+for general coeﬃcient values). An interior basis function stencil (or column) is depicted in Figure 6.1 for
+the piecewise constant case and for the ideal geometric case. In these two contexts, the coeﬃcients of R,
+and P do not need to be accessed as they are known ahead of time and have been included in the explicit
+formulas. In the general situation, the double precision arrays for R and P must be accessed to perform
+the triple product. In all cases, A is assumed to have a nine point stencil within the interior. Stencils
+along the boundary have the same structure where entries are dropped if they are associated with points
+that extend outside of the mesh.
+Table 6.4 illustrates some representative serial timings. The reported mesh sizes refer to the coarse
+mesh.
+The corresponding ﬁne mesh is given by (3nx −2) × (3ny −2) for a coarse nx × ny mesh.
+Here, one can see that the structured versions are generally an order of magnitude faster than the
+unstructured Trilinos/MueLu kernel. These timings correspond to the core multiply time (excluding a
+modest amount of time needed in Trilinos to pre/post process data to pre-compute additional information
+needed for parallel computations). As no inter-region communication is required (due to Theorem 3.4),
+the structured serial run times are representative of parallel run times when one region is assigned to
+each processor. Given the fact the triple product is one of the most costly AMG setup kernels and the
+fact that the Trilinos matrix-matrix multiply has been optimized many times over the years, these 10x
+gains are signiﬁcant.
+It should be noted, however, that we have not integrated the improved triple products into our
+framework. In particular, we have not yet developed eﬃcient 3D formulas, which is somewhat labor
+intensive to perform properly. Additionally, we still have several framework decisions concerning how
+diﬀerent structured grid cases are addressed and merged within our generally unstructured AMG package.
+18
+
+
+Table 6.5
+Iteration counts for various structured/unstructured setups. The regions are setup in a 3 × 3 × 3 format. For struc-
+tured/unstructured testing, we solve a 3D Laplace equation on a 100 × 100 × 100 cube.
+Two iterations of Symmetric
+Gauss–Seidel are used as the pre smooth and post smooth for a 3-level W-cycle multigrid iteration with piecewise constant
+interpolation.
+Region Layout
+Iterations
+AMG with no region formatting
+17
+no unstructured regions
+15
+no structured regions
+18
+Front Face unstructured
+17
+Back Face unstructured
+17
+Top Face unstructured
+17
+Bottom Face unstructured
+16
+Left Face unstructured
+17
+Right Face unstructured
+16
+Eight Corners unstructured
+16
+Region 2 unstructured
+15
+Region 13 unstructured
+16
+Region 24 unstructured
+15
+Regions 2, 13, 24 unstructured
+16
+0
+1
+2
+2
+5
+8
+9
+10
+11
+11
+14
+17
+18
+19
+20
+20
+23
+26
+18
+19
+20
+21
+22
+23
+24
+25
+26
+Fig. 6.2. On the left, a visualization of a 3 × 3 × 3 Region layout on a cube. On the right, an example of the region
+aggregates, with region 2 unstructured.
+6.4. Multigrid for hybrid structured/unstructured meshes. To demonstrate the ﬂexibility
+of the proposed region MG scheme to handle semi-structured meshes containing unstructured regions
+we consider a 3 × 3 × 3 region setup with diﬀerent regions ﬂagged as either structured or unstructured.
+The region layout is illustrated in Figure 6.2 along with a visualization of the aggregates when one
+region, region 2, is treated as unstructured. For the numerical tests, we solve a 3D Poisson equation
+with a 7-point stencil on a 100 × 100 × 100 mesh cube using a 3-level W-cycle and piecewise constant
+interpolation for both the structured multigrid and for the unstructured region AMG. Presently, our
+implementation only properly addresses a structured/unstructured region combination using piecewise
+constant interpolation (i.e., the Lemmas presented in this paper are satisﬁed). Proper extensions for
+linear interpolation (discussed in Section 5) are planned for a a refactored version of the software. Two
+iterations of Symmetric Gauss–Seidel are used as the pre and post smoothers, and the coarse grid is
+solved with a direct solve. The problem is solved to a tolerance of 10−6. Table 6.5 shows iteration counts
+when diﬀerent regions are marked as unstructured, and the remaining regions are structured.
+We see that the introduction of unstructured regions does have a small impact on the convergence
+rate of the method, with more unstructured regions resulting in slightly more iterations, up to the limit
+of all regions being treated as unstructured. This is likely a result of suboptimal aggregates being formed
+along the interfaces due to the forced matching of aggregates between neighboring regions. We have
+observed that this eﬀect is more pronounced when the coarsening rate in the structured regions diﬀers
+from the coarsening rate of the unstructured region (in experiments not shown in this paper). Here,
+the structured regions used a coarsening rate of 3 and the unstructured regions have an approximate
+coarsening rate of 3 as well.
+7. Concluding remarks. We have presented a generalization of the HHG idea to a semi-structured
+framework. Within this framework, the original computational domain is decomposed into regions that
+19
+
+
+only overlap at inter-region interfaces. Unknowns along region interfaces are replicated so that each region
+has its own copy of the solution along its interfaces. This facilitates the use of structured grid kernels
+within a multigrid algorithm when regions are structured. We have presented a mathematical framework
+to represent this region decomposition. The framework allows us to precisely deﬁne components of a
+region multigrid algorithm and understand the conditions by which such a region multigrid algorithm is
+identical to a traditional multigrid algorithm. Using this framework, we illustrate how a region multigrid
+hierarchy can be constructed without requiring inter-region communication in some cases. We have also
+presented some ideas towards making the use of such a region multigrid solver less invasive for application
+developers. These ideas exploit transformations that deﬁne conversions between a region representation
+and a more traditional representation for vectors and matrices. We also illustrated how such a multigrid
+solver can account for some unstructured regions within the domain. Finally, we have presented some
+evidence of the potential of such an approach in terms of computational performance.
+REFERENCES
+[1] R. Barret, M. Berry, T. F. Chan, J. Demmel, J. Donato, J. Dongarra, V. Eijkhout, R. Pozo, C. Romine, and H. v. d.
+Vorst. Templates for the Solution of Linear Systems: Building Blocks for Iterative Methods. SIAM, Philadelphia,
+PA, USA, 1994.
+[2] B. K. Bergen, T. Gradl, F. H¨
+ulsemann, and U. R¨
+ude. A Massively Parallel Multigrid Method for Finite Elements.
+Computing in Science & Engineering, 8(6):56–62, 2006.
+[3] B. K. Bergen and F. H¨
+ulsemann.
+Hierarchical hybrid grids:
+data structures and core algorithms for multigrid.
+Numerical Linear Algebra with Applications, 11(2-3):279–291, 2004.
+[4] B. K. Bergen, G. Wellein, F. H¨
+ulsemann, and U. R¨
+ude. Hierarchical hybrid grids: achieving TERAFLOP performance
+on large scale ﬁnite element simulations. International Journal of Parallel, Emergent and Distributed Systems,
+22(4):311–329, 2007.
+[5] L. Berger-Vergiat, C. A. Glusa, J. J. Hu, M. Mayr, P. Ohm, A. Prokopenko, C. M. Siefert, R. S. Tuminaro, and T. A.
+Wiesner. The MueLu Multigrid Framework. https://trilinos.github.io/muelu.html, 2020.
+[6] L. Berger-Vergiat, C. A. Glusa, J. J. Hu, M. Mayr, A. Prokopenko, C. M. Siefert, R. S. Tuminaro, and T. A. Wiesner.
+MueLu User’s Guide. Technical Report SAND2019-0537, Sandia National Laboratories, Albuquerque, NM (USA)
+87185, 2019.
+[7] W. L. Briggs, V. E. Henson, and S. F. McCormick. A Multigrid Tutorial. SIAM, 2nd edition, 2000.
+[8] J. E. Dendy and J. D. Moulton. Black box multigrid with coarsening by a factor of three. Numerical Linear Algebra
+with Applications, 17(2-3):577–598, 2010.
+[9] A. Dubey, A. Almgren, J. Bell, M. Berzins, S. Brandt, G. Bryan, P. Colella, D. Graves, M. Lijewski, F. L¨
+oﬄer,
+B. O’Shea, E. Schnetter, B. V. Straalen, and K. Weide. A survey of high level frameworks in block-structured
+adaptive mesh reﬁnement packages. J. of Par. and Distr. Comput., 74(12):3217 – 3227, 2014.
+[10] R. Falgout, J. Jones, and U. Yang. The design and implementation of hypre, a library of parallel high performance
+preconditioners. In A. Bruaset and A. Tveito, editors, Numerical Solution of Partial Diﬀerential Equations on
+Parallel Computers, volume 51 of Lecture Notes in Computational Science and Engineering. Springer, Berlin,
+2006.
+[11] B. Gmeiner, T. Gradl, F. Gaspar, and U. R¨
+ude. Optimization of the multigrid-convergence rate on semi-structured
+meshes by local Fourier analysis. Computers & Mathematics with Applications, 65(4):694–711, 2013.
+[12] B. Gmeiner, M. Huber, L. John, U. R¨
+ude, and B. I. Wohlmuth. A quantitative performance study for Stokes solvers
+at the extreme scale. Journal of Computational Science, 17(3):509–521, 2016.
+[13] B. Gmeiner, M. Mohr, and U. R¨
+ude. Hierarchical Hybrid Grids for Mantle Convection: A First Study. In 2012 11th
+International Symposium on Parallel and Distributed Computing, pages 309–314, 2012.
+[14] B. Gmeiner, U. R¨
+ude, H. Stengel, C. Waluga, and B. I. Wohlmuth. Performance and Scalability of Hierarchical Hybrid
+Multigrid Solvers for Stokes Systems. SIAM Journal on Scientiﬁc Computing, 37(2):C143–C168, 2015.
+[15] W. Hackbusch. Iterative Solution of Large Sparse Systems of Equations, volume 95 of Applied Mathematical Sciences.
+Springer, 1994.
+[16] W. Henshaw and D. Schwendeman.
+Parallel computation of three-dimensional ﬂows using overlapping grids with
+adaptive mesh reﬁnement. J. of Comp. Phys., 227(16):7469 – 7502, 2008.
+[17] B. Lee, S. Mccormick, B. Philip, and D. Quinlan. Asynchronous fast adaptive composite-grid methods: Numerical
+results. SIAM J. Sci. Comput., 25:2003, 2003.
+[18] B. Philip and T. Chartier. Adaptive algebraic smoothers. J. of Comp. and Appl. Math., 236(9):2277 – 2297, 2012.
+[19] A. Prokopenko, C. M. Siefert, J. J. Hu, M. Hoemmen, and A. Klinvex. Ifpack2 User’s Guide 1.0. Technical Report
+SAND2016-5338, Sandia National Laboratories, 2016.
+[20] Y. Saad. Iterative Methods for Sparse Linear Systems. SIAM, Philadelphia, PA, USA, 2003.
+[21] R. Sampath and G. Biros. A parallel geometric multigrid method for ﬁnite elements on octree meshes. SIAM J. Sci.
+Comput., 32(3):1361–1392, 2010.
+[22] J. Schmidt, M. Berzins, J. Thornock, T. Saad, and J. Sutherland. Large scale parallel solution of incompressible ﬂow
+problems using Uintah and Hypre. In Cluster, Cloud and Grid Computing (CCGrid), 2013 13th IEEE/ACM
+International Symposium on, pages 458–465, May 2013.
+[23] U. Trottenberg, C. W. Oosterlee, and A. Schuller. Multigrid. Academic Press, 2000.
+[24] P. Vanˇ
+ek, J. Mandel, and M. Brezina. Algebraic Multigrid By Smoothed Aggregation For Second And Fourth Order
+Elliptic Problems. Computing, 56:179–196, 1996.
+20

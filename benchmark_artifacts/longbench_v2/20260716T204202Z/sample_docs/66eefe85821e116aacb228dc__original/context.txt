@@ -1,0 +1,2307 @@
+Responsive Real-Time Grass Rendering for General 3D Scenes
+Klemens Jahrmann∗
+Michael Wimmer†
+TU Wien
+TU Wien
+Figure 1: This ﬁgure shows an example of our rendering technique. The collision reaction is visible at the trail of the bowling ball. The right
+side is rendered in wireframe mode to show the accuracy of our occlusion culling method.
+Abstract
+Grass plays an important role in most natural environments. Most
+interactive applications use image-based techniques to approximate
+ﬁelds of grass due to the high geometrical complexity, leading to vi-
+sual artifacts. In this paper, we propose a grass-rendering technique
+that is capable of drawing each blade of grass as geometrical ob-
+ject in real time. Accurate culling methods together with an adapt-
+able rendering pipeline ensure that only the blades of grass that are
+important for the visual appearance of the ﬁeld of grass are ren-
+dered. In addition, we introduce a physical model that is evaluated
+for each blade of grass. This enables that a blade of grass can react
+to its environment by calculating the inﬂuence of gravity, wind and
+collisions. A major advantage of our approach is that it can ren-
+der ﬁelds of grass of arbitrary shape and spatial alignment. Thus,
+in contrast to previous work, the blades of grass can be placed on
+any 3D model, which is not required to be a ﬂat surface or a height
+map.
+Keywords: real-time rendering, vegetation, hardware tessellation
+Concepts: •Computing methodologies →Rendering; Physical
+simulation; Visibility;
+1
+Introduction
+Rendering outdoor scenes is an important task for many interac-
+tive applications. Almost all of these outdoor scenes contain grass
+∗e-mail:klemens.jahrmann@net1220.at
+†e-mail:wimmer@cg.tuwien.ac.at
+Permission to make digital or hard copies of all or part of this work for per-
+sonal or classroom use is granted without fee provided that copies are not
+made or distributed for proﬁt or commercial advantage and that copies bear
+this notice and the full citation on the ﬁrst page. Copyrights for components
+of this work owned by others than the author(s) must be honored. Abstract-
+ing with credit is permitted. To copy otherwise, or republish, to post on
+servers or to redistribute to lists, requires prior speciﬁc permission and/or a
+fee. Request permissions from permissions@acm.org. c
+⃝2017 Copyright
+held by the owner/author(s). Publication rights licensed to ACM.
+I3D ’17, February 25 - 27, 2017, San Francisco, CA, USA
+ISBN: 978-1-4503-4886-7/17/03
+DOI: http://dx.doi.org/10.1145/3023368.3023380
+or grass-like vegetation.
+Due to the high geometrical complex-
+ity, ﬁelds of grass are often rendered using billboards or other
+image-based techniques. However, image-based techniques have
+the drawback that the realism depends on the position and the
+viewing direction of the camera. To remedy this, modern grass-
+rendering techniques draw each blade of grass as geometrical ob-
+ject. While this enables the animation of each blade according to
+its environment, it also requires acceleration structures to handle
+the high amount of geometrical objects. Therefore, most of these
+techniques use hardware instancing to draw patches of grass in a
+grid-based data structure. This limits the shape of a ﬁeld of grass to
+height ﬁelds, which is a problem since many terrains are not equiv-
+alent to height maps.
+In this paper, we propose a rendering technique that is capable of
+rendering ﬁelds of grass on arbitrary 3D models by drawing each
+blade of grass as geometrical object indexed by a geometry-agnostic
+acceleration structure. For the rendering of each blade, we use
+hardware tessellation to apply dynamic level of detail, and the shape
+of a blade is deﬁned by an analytic function. Each blade of grass
+is inﬂuenced by environmental forces, like gravity, wind and col-
+lisions with both simple and complex objects. In addition, several
+culling methods ensure that only those blades are rendered that have
+an impact on the visual appearance of the ﬁeld of grass. In addition
+to standard occlusion culling, we also use the orientation and the
+distance to the camera as culling criteria. All of these computations
+are carried out completely on the GPU through indirect rendering,
+avoiding costly round-trips between CPU and GPU.
+2
+Previous Work
+Current grass-rendering techniques can can be divided into image-
+based, geometric and hybrid approaches. Image-based rendering
+techniques are used most often in interactive applications because
+they are fast. Most of these techniques draw billboards with semi-
+transparent grass textures. The billboards can be camera-facing
+[Whatley 2005] or arranged in star-shaped clusters [Pelzer 2004].
+Orthmann et al. [2009] introduce a billboard technique that is able
+to react to collisions with complex objects. Other image-based tech-
+niques use transparent texture slices that are placed in a grid [Habel
+et al. 2007]. The major drawback of all image-based techniques
+is that the visual quality is different when viewed from different
+
+
+angles. In addition, wind animation and reaction to collisions can
+heavily distort the used textures, which leads to rendering artifacts
+and lack of realism.
+Similar to our rendering technique, there are several methods that
+draw single blades of grass as geometrical objects. Most of them
+draw patches that consist of many blades of grass multiple times
+using hardware instancing. However, this requires that the ﬁeld of
+grass is placed on a height map, which limits the ﬁeld of applica-
+tion. The advantage of geometric methods is that each blade can
+be individually inﬂuenced by its environment. This inﬂuence can
+be processed in different ways. A skeleton [Wang et al. 2005] can
+be added to each blade of grass that can be animated to simulate
+wind effects. Another approach simulates collisions using wave
+calculations [Chen and Johan 2010]. Jahrmann et al. [2013] trans-
+late the tip of a blade of grass according to a wind animation and
+use image-based methods to approximate collisions. More sophis-
+ticated collisions are introduced by Fan et al. [2015], who evaluate
+collisions between single blades of grass and spheres. However, the
+wind is calculated separately using an analytic function. In contrast
+to these methods, our rendering technique is not limited to height
+maps. Furthermore, a single consistent physical model is evaluated
+for each blade of grass to calculate natural forces like gravity or
+wind, and collisions with both simple and complex objects, while
+no previous method combines all these effects.
+An alternative to pure geometry-based or image-based rendering
+is to draw a billboard only as a proxy geometry and evaluate the
+exact curve geometry in the fragment shader [Loop and Blinn
+2005], however, this was not implemented for grass yet. Finally,
+Boulanger et al. [2009] propose a hybrid grass-rendering technique
+that uses both geometric and image-based approaches as different
+static level-of-detail stages. Grass that is near the camera is drawn
+as geometric objects, whereas grass that is further away is drawn by
+rendering multiple horizontal and vertical texture slices. This ap-
+proach is able to render realistic images in real time, and was used
+in production video games such as Madden NFL 25 (EA Sports
+R
+⃝).
+However, the blades of grass are static and cannot react to colli-
+sions or natural forces. The idea of multiple level-of-detail stages
+can be added to our approach as future work to further increase the
+rendering performance.
+3
+Overview
+In a preprocessing phase, the blades of grass are distributed on
+the surface of a 3D model, and subsequently divided into mul-
+tiple patches, where each patch contains approximately the same
+number of blades. Note that the patches can have arbitrary shapes
+and alignments, since they are only container objects of individual
+blades of grass. During the rendering of each image, three steps are
+performed:
+1. The physical model is evaluated for each blade of grass.
+2. The culling methods cull the blades that are not important for
+the ﬁnal rendering, based on occlusions and the orientation
+and distance of the blade to the camera.
+3. Each blade of grass is rendered as tessellated geometric object
+using an indirect rendering approach.
+The following sections describe each step in detail.
+4
+Preprocessing
+During the preprocessing step, the blades of grass are generated on
+the surface of a 3D model and the patches are generated from these
+Figure 2: Illustration of the deﬁnition of a blade of grass.
+blades. We start by introducing our model for a single blade of
+grass.
+Grass blade model
+In our system, a blade of grass consists of
+three vertices, v0...2, which are the control points of a quadratic
+B´
+ezier curve. The ﬁrst control point v0 indicates the ﬁxed position
+of the blade of grass, v2 is moved according to the physical model
+described in the next section, and v1 is positioned according to v2.
+In addition, a blade of grass has several further attributes: height,
+width, stiffness coefﬁcient, up-vector and direction angle, which in-
+dicates the alignment of the blade on the local plane deﬁned by the
+up-vector. Altogether, a blade of grass can be completely described
+by four 4D vectors. An illustration of a blade of grass is shown in
+Figure 2.
+Grass distribution
+During the generation of the blades of grass,
+either single blades or whole tufts of grass can be generated. The
+amount of blades that are generated is deﬁned by a user-deﬁned
+density value and the total area of the 3D model. In case of gen-
+erating tufts of grass, we use Poisson-disk sampling on the surface
+[Cline et al. 2009] to ensure that the tufts are not clumped together.
+The blades of a tuft are placed randomly in the vicinity of the tuft
+center, and orientation and attributes are also assigned randomly
+within certain ranges. In case of generating single blades of grass,
+the blades are distributed randomly on the surface of the 3D model,
+without Poisson-disk sampling, since random clumping of blades
+is beneﬁcial for a natural grass distribution. Single-blade seeding
+is good for covering ﬁelds of grass with equal density, whereas tuft
+seeding generates a more natural grass distribution. Therefore, a re-
+alistic meadow can be generated using a combination of both seed-
+ing methods. Each blade of grass is generated in an initial pose
+where the control points v1 and v2 share the same position, which
+is above the ground position v0 according to the height and the up-
+vector.
+Patch generation
+After the blades of grass have been generated,
+patches are formed. The number of patches generated from the
+blades is crucial for the performance of our rendering algorithm,
+and the optimal number depends on the graphics hardware. The
+evaluation of the physical model and culling will be performed
+using compute shaders. To maximize parallelism, the number of
+blades in a patch should therefore be (1) the same in all patches and
+(2) allow maximum occupancy in compute shader dispatches. In
+practice, we use a multiple of the maximum number of workgroup
+invocations reported by the hardware. Furthermore, the shape of a
+patch should be as compact and rectangular as possible to achieve
+a tight bounding box, which improves the effectiveness of culling.
+
+
+Splitting the blades into compact and equally sized patches can be
+seen as balanced clustering problem [Malinen and Fr¨
+anti 2014],
+which has the constraint of equal-element clusters. The balanced
+clustering problem can be efﬁciently solved using linear program-
+ming or graph-theoretical approaches. In our case, the elements are
+the blades of grass, the resulting clusters are the patches and the
+metric used for clustering is proximity. For measuring the proxim-
+ity, we use the Euclidean and the Manhattan distance metrics. After
+the division into patches, the blades of each patch are sorted to en-
+sure that nearby blades have similar indices, which is necessary for
+our algorithm. Currently, a simple lexicographical sort according
+to the coordinates has proven efﬁcient, although more sophisticated
+sorting algorithms (like Morton order) could be investigated.
+5
+Physical Model
+Our physical model simulates natural forces and collisions with
+other objects, represented as collections of spheres, and is evalu-
+ated for each blade of grass separately for highest realism. Figure
+3 shows an illustration of the different inﬂuences. The calculations
+are performed completely on the graphics card using a compute
+shader. In order to allow free movement for a blade of grass, the
+forces ﬁrst manipulate only the tip of the blade (v2), followed by
+three correction steps to achieve a valid state for the blade. This
+validation procedure is explained in Section 5.2.
+The translation ⃗
+δ of v2 is calculated by using three natural forces
+(recovery r, gravity g and wind w) and a displacement d caused by
+collisions. The forces are applied to the translation by a heuristic.
+This heuristic uses the natural forces directly as displacement that
+is normalized by a time interval ∆t, which corresponds to the time
+required for the last frame. The collision reaction is already calcu-
+lated as displacement and must not be normalized. This leads to a
+reaction of the blade to the environment that is independent of the
+frame rate.
+⃗
+δ = (r + g + w) ∆t + d
+(1)
+The ﬁnal translation is saved in a texture, called force map, where
+each blade of grass has a distinct texel. In addition, the fourth di-
+mension of a texel in the force map saves the strength of the col-
+lisions that inﬂuence this blade of grass. This collision strength is
+used in later frames to have a persistent crippling effect of collisions
+on each blade of grass. Over the time, this value decreases, which
+makes the blade stand up after some time if no further collisions are
+detected. In order to simulate the fading over time of the collision
+strength η, we multiply a constant user-deﬁned amount of decrease
+a with ∆t:
+η = max (c −a∆t, 0)
+(2)
+5.1
+Natural Forces
+In our physical model, we consider three different natural forces:
+recovery, gravity and wind. Most related algorithms, like Fan et al.
+[2015], focus more on collisions than on the natural forces and only
+simulate wind by procedurally modifying the geometry during the
+rendering.
+Recovery
+The recovery force is the counterforce to previously
+applied forces, which follows Hooke’s law. It is directed towards
+the initial pose of the blade of grass Iv2 and its strength depends
+on the stiffness coefﬁcient s of the blade. In order to simulate the
+crippling effect of a blade, the collision strength η is added to the
+equation to suppress the effect of the recovery force r.
+r = (Iv2 −v2) s max (1 −η, 0.1)
+(3)
+Figure 3: Illustration of the different inﬂuences that are considered
+in the physical model.
+Gravity
+The inﬂuence of gravity on a blade of grass consists of
+two additive forces. One force represents the gravity of the whole
+scene. We call this inﬂuence the environmental gravity, gE. In
+order to be adaptable to various scenes, the environmental gravity
+can be represented in two different ways: It can be a global gravity
+direction that is the same for the whole scene, or it can be a gravity
+center to which all gravity forces point. In practice, we allow both
+representations to be used simultaneously and interpolate them with
+a user-deﬁned parameter t:
+gE = m
+ Dxyz
+∥Dxyz∥Dw (1 −t) + Cxyz −v0
+Cxyz −v0 Cw t
+
+(4)
+In this equation, m is the mass of a blade and D is the four-
+dimensional gravity direction, where the fourth component indi-
+cates the gravitational acceleration. In the same way, C is the cen-
+ter of a gravity force. The vector of the other inﬂuencing force is
+orthogonal to the width of the blade of grass. Based on the direc-
+tion of this inﬂuence, we call it front gravity, gF . This simulates the
+elasticity of a blade of grass, which causes the tip of the grass being
+bent by the inﬂuence of the gravity. The strength of gF depends on
+the strength of gE, which is expressed in the following equation:
+gF = 1
+4 ∥gE∥f,
+(5)
+where f indicates the front direction that is perpendicular to the
+width of the blade. The total gravity force g is computed by the
+sum of both gravity forces:
+g = (gE + gF )
+(6)
+Wind
+The third natural force is the wind inﬂuence, which is com-
+puted by using analytic functions that represent wind waves moving
+through 3D space. The inﬂuence of this wind wave on a single blade
+of grass depends on three criteria: the direction and strength of the
+wind wave at the position of the blade of grass, and the alignment of
+the blade towards the wind wave. Thus, the analytic wind function
+is responsible for computing a vector wi (v0) that represents the
+direction and the strength of the wind inﬂuence at the position of a
+blade of grass. The analytic functions can be modeled heuristically
+using multiple sine and cosine functions with different frequencies.
+This can simulate wind coming from some direction or a speciﬁc
+source, like a helicopter or a fan. Figure 4 shows some examples of
+
+
+Figure 4: This ﬁgure shows the results of two different wind func-
+tions in 2D space.
+The height of the red surface indicates the
+strength of the wind at the respective position and the black ar-
+rows illustrate the direction of the inﬂuence as well as the move-
+ment of the wind wave. The upper function simulates a common
+wind comming from a direction, whereas the lower function shows
+the inﬂuence of a speciﬁc wind source.
+2D representations of wind functions. The alignment of the blade
+towards the wind wave is developed following two ideas: First, a
+blade of grass that is standing in its straight position should be inﬂu-
+enced more by the wind than a blade that is pushed to the ground. In
+addition, if the direction of the force caused by the wind is directed
+along the width of the blade, the inﬂuence should be less than if the
+direction of the wind is orthogonal to the blade. Thus, the align-
+ment value θ (wi (v0) , h) consists of two factors: the directional
+alignment fd (wi (v0)) towards the wind inﬂuence wi (v0) and the
+height ratio fr (h) that indicates the straightness of the blade with
+respect to the up-vector up.
+fd (wi (v0)) = 1 −
+
+
+
+
+wi (v0)
+∥wi (v0)∥·
+v2 −v0
+∥v2 −v0∥
+
+
+
+
+fr (h) = (v2 −v0) · up
+h
+θ (wi (v0) , h) = fd (wi (v0)) fr (h)
+(7)
+Finally, the resulting wind force on a blade of grass is deﬁned by
+the following equation:
+w = wi (v0) θ (wi (v0) , h)
+(8)
+5.2
+State Validation
+A valid state of a blade of grass is deﬁned by three conditions: v2
+must not be pushed beneath the ground, the position of v1 has to
+be set according to the position of v2, and the length of the curve
+must be equal to the height of the blade of grass. These conditions
+have to be fulﬁlled for a blade of grass before it is used for collision
+detection or rendering.
+Since it would require too much time to check whether v2 is pushed
+inside the underlying 3D model, we assume that the surface is a
+plane deﬁned by the up-vector of the blade locally. By this assump-
+tion, a position of v2 above the local plane can be ensured by a
+single equation:
+v2 = v2 −up min (up · (v2 −v0) , 0) ,
+(9)
+where up represents the up-vector of the blade.
+After a valid position for v2 is found, the position of v1 can be
+calculated. This position is constrained to be always above v0 ac-
+cording to the up-vector of the blade. For the position calculation,
+Figure 5: Illustration of the relation between v1 and v2. The dif-
+ferent colors symbolize different states of the blade of grass.
+the length of the vector from v0 to v2 projected onto the ground
+plane lproj is computed:
+lproj = ∥v2 −v0 −up ((v2 −v0) · up)∥,
+(10)
+where up is the up-vector of the blade. If this length is zero, v2
+rests in the idle position and v1 has the same position. Otherwise,
+the more v2 is pushed away from the idle position the lower is the
+position of v1. However, in order to ensure that the blade of grass
+always has at least a slight curvature, the position of v1 is never the
+same as the position of v0. This is illustrated in Figure 5 and can
+be calculated using the following equation:
+v1 = v0+h up max
+
+1 −lproj
+h , 0.05 max
+lproj
+h , 1
+
+, (11)
+where h is the height of the blade, up its up-vector and 0.05 is the
+constant factor to ensure that the position of v1 is not equal to the
+position of v0.
+The last validation step has to ensure that the length of the B´
+ezier
+curve is not larger than the height of the blade. Without this step, the
+length of a blade of grass would not be consistent if it is inﬂuenced
+by forces, which is a major drawback of the algorithm of Jahrmann
+et al. [2013]. However, calculating and correcting the length of
+a curve precisely for each blade of grass requires too much time.
+Therefore, we use an approximation for the length L of a Bezier
+curve of degree n [Gravesen 1993]:
+L = 2L0 + (n −1) L1
+n + 1
+,
+(12)
+where L0 indicates the distance between the ﬁrst and the last control
+point and L1 is the sum of all distances between a control point and
+its subsequent one. After the length of the curve is measured, the
+ratio r between the height of the blade and the measured length
+is calculated. Finally, the correction of the length is performed by
+multiplying each segment between the control points with r, which
+is shown in Equation 13, where v1corr respectively v2corr are the
+corrected positions of the control points.
+r = h
+L
+v1corr = v0 + r (v1 −v0)
+v2corr = v1corr + r (v2 −v1)
+(13)
+5.3
+Collision
+In order to simulate natural behavior of a blade of grass, it has to be
+able to react to its environment. Therefore, we detect and react to
+
+
+Figure 6: Illustration of two possible collisions between a blade of
+grass and a sphere.
+collisions for each blade of grass separately. We use spheres as ob-
+ject representation, which allows fast calculation with a low mem-
+ory footprint since a sphere can be completely deﬁned by a 4D vec-
+tor. Thus, complex objects have to be approximated using spheres.
+In our application, we use a sphere-packing approach [Weller and
+Zachmann 2010] to generate the sphere representation, but repre-
+sentations with overlapping spheres [Stolpner et al. 2012] should
+be applicable as well. Since it would require too much time to mea-
+sure the exact intersection between a curve and a sphere, we use
+two points for the calculations, which are v2 and the center point
+m of the curve, which can be computed using curve interpolation:
+m = 1
+4v0 + 1
+2v1 + 1
+4v2
+(14)
+However, our physical model can only modify v2. Thus, a collision
+reaction of m has to be translated to a reaction of v2, which can be
+easily achieved by multiplying the translation vector by 4.
+In order to detect a collision, we test whether one of the two points
+is inside the sphere. If a collision is detected, the reaction is the
+translation of the point to the nearest point on the surface of the
+sphere. Both steps can be formulated by a single equation:
+d = min (∥c −p∥−r, 0)
+c −p
+∥c −p∥,
+(15)
+where d is the resulting translation, p is the point that is tested and
+c and r represent the center position and the radius of the sphere.
+Figure 6 shows an illustration of the collision calculation. Each
+time a collision is detected, the squared length of the translation is
+added to the collision strength η, which is stored in the force map
+for the following frame:
+η = η + d · d
+(16)
+6
+Rendering
+For rendering a ﬁeld of grass, we draw each blade as a tessellated
+2D object. Similar to the method of Jahrmann et al. [2013], we
+use the tessellation pipeline to provide dynamic level of detail to
+the shape of a blade. However, instead of using an alpha texture to
+create the shape of the blade, we use analytic functions that directly
+modify the geometry, which is explained in Section 6.3. Since each
+blade of grass has its individual state and position, we cannot render
+multiple instances of a single patch. In order to achieve real-time
+performance, we use culling on the basis of single blades to render
+only the blades that have an impact on the appearance of the ﬁeld of
+grass. The culling of single blades requires a rendering pipeline that
+allows a varying amount of geometry to be rendered each frame.
+Therefore, we use an indirect rendering approach, which is de-
+scribed in the following section.
+6.1
+Indirect Rendering
+In contrast to common direct rendering, an indirect rendering call
+does not include the parameters of the draw command. Instead,
+the parameters are read from a buffer in GPU memory. This en-
+ables the parameter buffer to be modiﬁed inside a compute shader
+without synchronizing with the CPU. In our technique, we use a
+compute shader to cull unwanted blades of grass. The deﬁnition of
+an unwanted blade of grass is given in the following section. Each
+blade that is not culled increases the object count of the parameter
+buffer and writes its index to an index buffer.
+6.2
+Culling
+Culling is performed in two steps. First, the bounding box of the
+patches are tested against the camera’s view frustum. Note that in
+preprocessing, bounding-box calculation takes the potential blade
+movement into account to avoid false positives. Then, each blade
+of grass of visible patches is tested based on occlusions by other
+objects and its orientation and distance to the camera. This leads to
+four tests that each blade has to pass to be rendered. These tests are
+explained in the following.
+Orientation test
+This test culls a blade based on its orientation
+towards the camera. This is important due to the pseudo three-
+dimensionality of a blade of grass, as it has no thickness. Thus,
+blades that are approximately parallel to the viewing direction can
+cause unwanted aliasing artifacts since their projected pixel width
+is less than the size of a pixel. Therefore, we calculate the absolute
+value of the cosine of the angle between the viewing direction dirc
+and the vector along the width of the blade dirb and cull the blade
+if this value exceeds 0.9.
+0.9 > |dirc · dirb| →blade culled
+(17)
+View-frustum test
+The second test checks whether a blade is in-
+side the camera’s view frustum. Since it is impossible to test each
+point on the blade against the view frustum, we only consider three
+points (v0, midpoint of the curve m and v2) and add some toler-
+ance to the calculation. The calculation of m is shown in Equation
+14. In order to test a point against the view frustum, we project the
+point to normalized device coordinates using the view-projection
+matrix VP and homogenous coordinates. After the projection, the
+test can be performed by comparing the x-, y- and z-coordinates
+with the homogenous coordinate. This is shown in the following
+equation for some point p, where p′ indicates the normalized de-
+vice coordinates of the point, t is a small tolerance value and h is the
+homogenous coordinate with added tolerance. The boolean result v
+indicates if a point is inside the view frustum. If the test results in
+false for all three points, the blade is culled.
+p′ = VP p
+h = p′
+w + t
+v = p′
+x ∈[−h, h] ∧p′
+y ∈[−h, h] ∧p′
+z ∈[−h, h]
+(18)
+As an optimization, this test could be omitted for patches that are
+fully inside the view frustum.
+Distance test
+The third test culls blades of grass according to
+their distance towards the camera. This is important since a ﬁeld of
+grass appears to be more dense near the horizon due to perspective.
+This high density can cause two problems during the rendering.
+First, due to the lower precision of depth values in the distance, z-
+ﬁghting can occur. Second, blades at high distances are smaller than
+
+
+Figure 7: Illustration of the effect of the occlusion test in wireframe
+mode. The left image is rendered with occlusion test, the right one
+without.
+a pixel, which can cause aliasing artifacts. Note that the density
+increase due to perspective is stronger near the horizon than when
+the ﬁeld of grass is viewed from above. Therefore, the distance
+from the camera to the blade of grass is projected onto the local
+plane deﬁned by the up-vector before it is used for distance culling:
+dproj = ∥v0 −c −up ((v0 −c) · up)∥,
+(19)
+where dproj is the projected distance, c is the position of the cam-
+era and up the blade’s up-vector. According to this distance, the
+blade is classiﬁed into one of n distance levels, which are evenly
+distributed over the interval [0, dmax], where dmax is a user-deﬁned
+maximum distance. The lowest level culls no blades. The second-
+lowest level culls one out of n blades, etc., until the nth level culls
+all blades. In order to determine which blades of the same distance
+level are culled, the index id of each blade is used, which is shown
+in the following inequality:
+id mod n <
+
+n
+
+1 −dproj
+dmax
+
+→blade culled
+(20)
+The distance test assumes that nearby blades have similar indices.
+Thus, the blades must not be indexed in an arbitrary way, otherwise
+the distance test can introduce bare spaces. This is ensured by the
+patch generation algorithm, which is described in Section 4.
+Occlusion test
+The last test checks whether a blade of grass is
+occluded by another object. Similar to the view-frustum test, this
+test is applied to three points of the curve, which are projected to
+screen coordinates. These coordinates are used to sample a previ-
+ously generated texture that represents the linear depth values of
+opaque scene objects. The sampled depth values are compared to
+the blade’s distance to the camera. If the depth value is smaller,
+the blade of grass is culled. Similar to the problems of shadow
+mapping [Everitt et al. 2001], unwanted artifacts can appear from
+aliasing if the sampled depth values refer to surfaces which are not
+perpendicular to the viewing direction. Therefore, a small bias has
+to be added to the depth values. Figure 7 shows the result of the
+occlusion test.
+6.3
+Blade Geometry
+During rendering, each blade is drawn as 2D object positioned in
+3D space. The generation of the shape of a blade is performed
+in the tessellation evaluation shader, which is uses the information
+of the hardware-tessellation unit to position the generated vertices.
+Initially, the blade geometry is a ﬂat quad that is deﬁned by the
+interpolation parameters u and v, where u indicates the interpola-
+tion along the width of the blade and v the interpolation along the
+height. By evaluating the curve interpolation of the control points
+for each generated vertex, the quad becomes aligned to the B´
+ezier
+Figure 8: Illustration of the four basic shapes: quad, triangle,
+quadratic and triangle-tip. The red and green dotted lines repre-
+sent the positions of c0 and c1.
+curve. This is achieved by using De Casteljau’s algorithm [Farin
+and Hansford 2000], which also calculates the tangent vector t0 as
+intermediate results. The bitangent t1 is given directly by the di-
+rection vector along the width of the blade, which is calculated in
+advance. With the two tangent vectors, the normal n can be com-
+puted by using the cross product. These calculations are shown in
+the following equation, where c is the curve point using interpola-
+tion parameter v and c1 and c2 are the two resulting curve points
+that span the width w of the blade. In addition, a respectively b are
+auxiliary vectors.
+a = v0 + v (v1 −v0)
+b = v1 + v (v2 −v1)
+c = a + v (b −a)
+c0 = c −wt1
+c1 = c + wt1
+t0 =
+b −a
+∥b −a∥
+n =
+t0 × t1
+∥t0 × t1∥
+(21)
+In order to apply more sophisticated shapes to the blade of grass, we
+use analytic functions to calculate the ﬁnal position of the generated
+vertices. The input of these functions are the interpolation parame-
+ters u and v generated by the tessellation, the resulting curve points
+c0 and c1, and the normal vector n. The parameter u can only have
+the distinct values 0, 0.5 and 1, where a value of 0.5 indicates the
+middle axis of the blade. The speciﬁc values of v that are inside the
+interval [0, 1] depend on the grade of the tessellation. In the follow-
+ing, we present four basic shapes, which are illustrated in Figure 8.
+In addition, we also show the possibility to create complex shapes
+with analytic functions by introducing a function that represents a
+dandelion leaf. Furthermore, two additional features can be added
+to the shape of a blade, which are a 3D displacement and a width
+correction that reduces aliasing for tipped shapes by forcing a quad
+shape if the width becomes too small due to perspective.
+Basic shapes
+The position p of a vertex for a basic shapes is
+computed by interpolating between the two curve points c0 and c1
+using an interpolation parameter t that depends on u and v:
+p = (1 −t) c0 + tc1,
+(22)
+The quad shape simply uses the parameter u as interpolation pa-
+rameter, t = u, so that either c0, c or c1 is emitted. The trian-
+gle’s interpolation parameter is calculated by applying the equa-
+tion: t = u + 0.5v −uv. The quadratic shape is formed like
+a quad on one side and like a parabola on the other side. This
+is achieved by using the parameter t = u −uv2. Finally, the
+triangle-tip shape is a combination of a quad near the ground and
+
+
+Figure 9: Illustration of the dandelion shape. The left image repre-
+sents the graph of the analytic dandelion function, where the x-axis
+represent v and the y-axis represent u. The different colors cor-
+respond to different tessellation levels. The right image shows a
+rendering of a dandelion tuft.
+a triangle further up. The border between these two shapes is de-
+ﬁned by a threshold τ, which is in the interval [0, 1). The inter-
+polation parameter for this shape is calculated using the equation
+t = 0.5 + (u −0.5)
+
+1 −max(v−τ,0)
+1−τ
+
+.
+Dandelion
+In the same way as the basic shapes, the dandelion
+function interpolates between c0 and c1. The interpolation param-
+eter is calculated by a complex equation that uses trigonometric
+functions that we developed heuristically. Figure 9 shows an illus-
+tration of the graph of this function together with a rendered image
+of a dandelion leaf. In order to not lose any spikes due to aliasing
+when the tessellation level is low, the tessellation level is included
+in the equation.
+3D displacement
+The 3D displacement is an additional feature
+that can be added to the shape of a blade, where the middle axis of
+the blade is translated along the normal vector, resulting in a “v”-
+shape in its cross-section. If the shape has a tip, it is important
+that the translation has to decrease the nearer the generated point
+is to the top. Otherwise, the blade has a depth but no width at the
+tip. Equation 23 shows the calculation of the displacement vector
+d, where n is the normal vector and w the width of the blade. By
+adding this displacement, the shape has approximately a right angle
+and the unfolded width of the blade increases by the factor
+√
+2.
+d = w n (0.5 −|u −0.5| (1 −v))
+(23)
+Width correction
+When rendering blades at greater distance, es-
+pecially tipped shapes can be thinner than the size of a pixel, which
+can lead to aliasing artifacts. This effect can be reduced by mod-
+ifying the interpolation parameter of the respective shape with a
+correction value based on the width in pixels, so that blades of
+grass at far distances are rendered as quads regardless of the cho-
+sen shape. The pixel width of the blade is calculated in four steps.
+First, the curve points are transformed to screen coordinates in the
+range [0, 1]. Second, the difference between these screen coordi-
+nates is calculated. Third, this difference vector is multiplied with
+the screen resolution. Finally, the length of the difference vector
+wp represents the width of the blade in pixels. The correction value
+Φ can be calculated with respect to two constant values, wmin and
+wspan. The value of wmin indicates the minimum width for a blade.
+If the width of a blade is smaller than or equal to wmin, Φ is equal to
+one, which enforces the blade to be shaped as a quad. If Φ is equal
+to zero, the interpolation of the shape is not inﬂuenced at all. The
+second value wspan indicates the length of the interval, in which
+the shape is corrected. Thus, if wmin is set to 1 and wspan is set to
+2, the shape of all blades having a pixel size in the range [0, 3] are
+corrected. The following equation shows the calculation of Φ and
+how it is applied to the shape’s interpolation parameter t:
+Φ = 1 −min
+
+max
+wp −wmin
+wspan
+, 0
+
+, 1
+
+t = t (1 −Φ) + u Φ2
+(24)
+7
+Results
+In this section, we present the results of our rendering technique
+and compare them to related algorithms. The evaluation of our
+results is based on visual appearance, elapsed time on the graph-
+ics card and the total time required for a frame.
+The results
+are rendered in a testing framework that focuses on the geome-
+try and the animation of the ﬁeld of grass, but lacks additional
+photo-realistic rendering techniques that are common in modern
+engines like shadows, ambient occlusion or atmospheric effects.
+Note, however, that this is not a limitation of the method: since
+the grass blades are drawn as geometrical objects, it is straightfor-
+ward to integrate our method into an engine that supports such tech-
+niques. The framework is implemented in C++ and OpenGL, ver-
+sion 4.5. The results are generated on a machine using an NVIDIA
+GeForce GTX 780M graphics card and an Intel Core i7-4800 @
+2.7 GHz CPU with 32 GB Ram. The resolution that is used for
+the renderings is 1024x768 pixels. In order to reduce aliasing arti-
+facts, MSAA with 8 samples is used. A representative open-source
+demo application of our grass-rendering technique is availlable at
+https://github.com/klejah/ResponsiveGrassDemo.
+In the following, we present two scenes that are evaluated and dis-
+cussed. The evaluation is based on different measurements, which
+are: the rendered frames per second, the time for rendering the
+frame, the number of blades that are drawn, the number of blades
+that are culled, the time used for the evaluation of the physical
+model, the time used for the visibility calculation and indirect ren-
+dering setup, the time used for rendering and the number of colli-
+sion spheres that are considered in the force update. The time values
+are measured in milliseconds. The measurements are gathered un-
+der three different circumstances: all features are enabled, collision
+detection disabled, culling disabled. In order to guarantee a reason-
+able comparison, all measurements of a scene are taken from frames
+having the exact same input data from a ﬁxed reference viewpoint
+as shown in the respective renderings (Figures 10,11). Animated
+renderings of these scenes can be found in the accompanying video.
+7.1
+Nature scene
+The nature scene consists of several 3D objects and resembles an
+outdoor scenario. A rendering of this scene is presented in Figure
+10. The ﬁeld of grass is generated on a terrain with smooth hills.
+It consists of 397,881 blades of grass. Each blade of grass has a
+moderate width, which leads to a high density. The scene contains
+a bunny model, which is represented by 1000 collision spheres in
+total. The effect of the physical model is shown by two rolling
+balls, which leave a trail behind. Additionally, several objects are
+added for a better visual representation. Table 1 presents the mea-
+surements of the nature scene.
+The evaluation proves the advantage of the culling methods based
+on each blade of grass. Almost three-fourths of all blades of grass
+of visible patches are culled by our algorithm. Nevertheless, the
+appearance of the meadow is still dense without any bare spaces.
+Table 2 shows the number of blades that are culled by the different
+tests. Note that the sum of culled blades is larger than the number
+of blades, since some blades fail multiple tests. The visibility test
+that culls the most blades is based on the view frustum. If all culling
+
+
+Figure 10: The left image shows the rendering of the nature scene
+as it is evaluated. The right image visualizes the sphere representa-
+tion of the bunny model.
+Measurement
+All
+Collision
+Culling
+features
+disabled
+disabled
+FPS
+123
+129
+78
+Frame time
+8.130
+7.742
+12.821
+Blades drawn
+43,128
+43,128
+168,333
+Blades culled
+125,205
+125,205
+0
+Time physical model
+0.547
+0.041
+0.519
+Time visibility
+1.401
+1.392
+2.375
+Time rendering
+2.057
+2.082
+3.872
+Amount collision spheres
+183
+0
+183
+Table 1: Evaluation of the nature scene. The most interesting mea-
+surements are highlighted.
+methods are disabled, an interesting phenomenon occurs. The re-
+quired time for the visibility test increases, although no visibility
+tests are performed. This shows that more time is required to set
+up of the indirect buffer if more blades are visible. Thus, the less
+blades are culled the more time is required for both the update and
+the rendering pass.
+Visibility test
+Blades culled
+Orientation test
+44,695
+View-frustum test
+79,533
+Distance test
+46,965
+Occlusion test
+6,025
+Table 2: The amount of blades culled by each visibility test in the
+nature scene.
+Another important fact is shown in the time used for the evalua-
+tion of the physical model. Even though many collision spheres
+have to be checked for collision, the calculation is performed in
+less time than one millisecond. However, if the collision detection
+is disabled, the force update requires almost no time, which shows
+the high performance of the calculations, especially considering the
+fact that the physical model is evaluated not only for visible blades
+of grass.
+7.2
+Helicopter scene
+The helicopter scene shows the impact of the wind effect together
+with the rendering of a ﬁeld of grass of extreme density. Since the
+only other 3D model is a helicopter that ﬂies above the ground, no
+blades can be culled due to occlusion, which resembles a worst-case
+scenario for our algorithm. The ﬁeld of grass consists of 900,000
+blades. The wind effect of the helicopter is simulated by a point-
+based wind with the helicopter being the wind source. Figure 11
+shows a rendering of this scene and Table 3 presents the measure-
+ments.
+Figure 11: This ﬁgure shows a rendering of the helicopter scene.
+Measurement
+All
+Collision
+Culling
+features
+disabled
+disabled
+FPS
+56
+56
+35
+Frame time
+17.860
+17.692
+28.624
+Blades drawn
+165,135
+165,135
+503,382
+Blades culled
+338,247
+338,247
+0
+Time physical model
+1.421
+1.372
+1.570
+Time visibility
+6.817
+6.792
+8.142
+Time rendering
+5.471
+5.398
+9.149
+Amount collision spheres
+0
+0
+0
+Table 3: This table shows the evaluation of the helicopter scene.
+The most interesting measurements are highlighted.
+Since the helicopter scene does not contain any collision spheres,
+there is obviously no signiﬁcant difference if the collision detection
+is disabled. Similar to the previous measurement, a huge amount of
+blades can be culled without a noticeable difference in the density
+of the ﬁeld of grass. The high amount of blades makes the im-
+provement of the performance even more signiﬁcant if the culling
+methods are enabled. Note that distance and orientation culling can
+introduce some popping artifacts for moving cameras, depending
+on the number of levels used, as can also be seen in the accompa-
+nying video.
+7.3
+Comparison to related work
+In contrast to many related grass rendering techniques, especially
+geometrical approaches, our technique is capable of processing
+ﬁelds of grass of arbitrary shape and spatial alignment. This en-
+ables a variety of different scenes that can not be modeled as a
+heightmap. In addition, grass that is able to grow on top of a 3D
+model can also simulate fur or hair. Figures 12 and 13 show grass
+growing on three models of different topologies, which cannot be
+represented as heightmaps.
+A major contribution of our technique is the physical interaction.
+The work of Orthmann et al. [2009] as well as the work of Fan et
+al. [2015] focus on the interaction between grass and environmen-
+tal colliders. Orthmann et al. use billboards for the grass represen-
+tation that are able to react to the collision with complex objects.
+When a collision is detected, the vertices of the billboard are dis-
+placed and after a ﬁxed time the billboard regains its original state.
+The algorithm of Fan et al. follows a similar procedure. However,
+the blades of grass are represented as 3D objects and the collision
+detection is limited to spheres. As reaction to the collision, the
+vertices of the corresponding blades are displaced and after a ﬁxed
+time period the blade resets to its initial state.
+
+
+Figure 12: This ﬁgure shows grass growing on two complex 3D
+models with different color textures.
+Figure 13: This ﬁgure shows grass growing on a model of a M¨
+obius
+strip.
+In contrast to these approaches, our technique is able to operate on
+each single blade and can react to collisions with both spheres and
+complex objects. In addition, each blade saves its individual an-
+imation state, which allows that the time until a blade regains its
+initial state can depend on the collision that occurred and no ﬁxed
+time period has to be set. In comparison to the technique of Orth-
+mann et al., we modeled a scene where a hand moves over a ﬁeld
+of grass. As it is shown in Figure 14, the trails of the ﬁngers are
+clearly visible where the blades were pushed down. The rendering
+of Orthmann et al. shows the drawbacks of using billboards, be-
+cause the trails are also visible, but the textures of the billboards
+are heavily distorted due to the displacement. In comparison to Fan
+et al., we generated a scene with many balls being thrown over the
+ﬁeld of grass, which is shown in Figure 15. Since the meadow is
+much denser in our rendering, the collision reaction is more visible.
+Table 4 summarizes the differences of our method to Fan et al.’s
+method.
+The work of Wang et al. [2005] represents realistic natural forces
+that are applied to each blade of grass. The technique is capable of
+producing special variants of wind inﬂuence that can simulate the
+effect of a landing helicopter or even a tornado. For the calcula-
+tion of the wind inﬂuence, the authors assume the blade to be in its
+straight up position and compute the displacement that is cause by
+the wind effect. In comparison, our physical model has a persistent
+state over more than a single frame, which allows the implementa-
+tion of natural forces and collisions with one physical model. Fig-
+ure 16 represents two scenes with special wind effects that simulate
+a helicopter and a tornado.
+Jahrmann et al. [2013] use a similar rendering approach, which uses
+the tessellation pipeline to render smoothly shaped blades of grass.
+The shape of the blade is generated by an alpha texture and invisi-
+Figure 14: This ﬁgure shows the comparison between the technique
+of Orthmann et al. [2009] (left) and our technique (right). Both
+scenes show a complex objects moving through a meadow. This
+illustrates the advantage of drawing each blade as geometric object
+instead of using billboards.
+Figure 15: This ﬁgure presents the comparison between the tech-
+nique of Fan et al. [2015] (left) and our technique (right). Both
+scenes show a ﬁeld of grass with hundreds of balls being thrown
+around. The collsion effect is more visible in the right image, since
+the ﬁeld of grass has more density.
+ble fragments are discarded. This enables an easy way to generate
+different shapes. However, the resolution of the texture that is used
+is crucial for the visual appearance, since texture sampling artifacts
+can appear if the resolution is too low. The higher the resolution
+of the alpha, the higher is the memory footprint of the technique
+and the method becomes slower. In comparison, we generate the
+shape by modifying directly the geometry of a blade using ana-
+lytic functions. This reduces the amount of fragments that has to
+be computed and the edges of the shape have the same smoothness
+regardless of the distance to the camera. Figure 17 shows a closeup
+view of a blade of grass of both techniques.
+8
+Conclusion and Future Work
+In this paper, we have proposed a novel grass-rendering technique
+that is capable of rendering dense ﬁelds of grass in real time. In
+comparison to related work, the ﬁeld of grass can have any shape
+or spatial alignment. In addition, our approach renders each blade
+as geometric object that can react to its environment. This reaction
+to its environment is performed by evaluating a physically based
+model for each blade separately. This model includes the inﬂu-
+ence of gravity, wind, and collisions with both simple and complex
+objects. We use a sphere-packing approach to represent complex
+objects during the collision detection. In order to achieve real-time
+performance, we introduce culling methods that are able to cull sin-
+gle blades based on occlusion and their orientation and distance to-
+wards the camera. The culling methods are able to cull up to 75%
+of all blades of grass in a standard frame without decreasing the
+density of the ﬁeld of grass signiﬁcantly. However, the rendering of
+each blade of grass is still the bottleneck for the performance. Dif-
+ferent level-of-detail representations like in the work of Boulanger
+et al. [Boulanger et al. 2009] can be introduced as future work to
+
+
+Feature
+Proposed method
+Fan et al.
+grass ﬁeld
+arbitrary geometry
+height ﬁeld only
+blade geometry
+three control points with dynamically tessellated quads
+ﬁxed number of quads
+LOD
+dynamic tessellation, culling based on orientation and distance
+distance culling only
+effects
+wind, gravity, collisions
+wind, collisions
+physical model
+integrated model
+separate models for wind and collision
+colliders
+complex objects using sphere packing
+single spheres only
+collision recovery
+recovery time depends on original displacement
+ﬁxed recovery time
+Table 4: This table shows the most important differences between the method of Fan et al. [2015] and ours.
+Figure 16: This ﬁgure presents the comparison between the tech-
+nique of Wang et al. [2005] (left) and our technique (right). Both
+techniques are capable of creating special wind effects that are
+more complex than calculating the inﬂuence by trigonometric func-
+tions.
+further reduce the rendering time.
+References
+BOULANGER, K., PATTANAIK, S. N., AND BOUATOUCH, K.
+2009. Rendering grass in real time with dynamic lighting. IEEE
+Comput. Graph. Appl. 29, 1 (Jan.), 32–41.
+CHEN, K., AND JOHAN, H. 2010. Real-time continuum grass. In
+2010 IEEE Virtual Reality Conference (VR), 227–234.
+CLINE, D., JESCHKE, S., RAZDAN, A., WHITE, K.,
+AND
+WONKA, P. 2009. Dart throwing on surfaces. Computer Graph-
+ics Forum 28, 4 (June), 1217–1226.
+EVERITT, C., REGE, A., AND CEBENOYAN, C. 2001. Hardware
+shadow mapping. White paper, nVIDIA 2.
+FAN, Z., LI, H., HILLESLAND, K., AND SHENG, B. 2015. Simu-
+lation and rendering for millions of grass blades. In Proceedings
+of the 19th Symposium on Interactive 3D Graphics and Games,
+ACM, New York, NY, USA, i3D ’15, 55–60.
+FARIN, G. E., AND HANSFORD, D.
+2000.
+The essentials of
+CAGD. AK Peters Natick.
+GRAVESEN, J. 1993. Adaptive subdivision and the length of Bezier
+curves.
+Mathematical Institute, Technical University of Den-
+mark.
+Figure 17: This ﬁgure presents the comparison between the tech-
+nique of Wang et al. [2005] (left) and our technique (right). Both
+renderings show a closeup view of a blade of grass. The shape
+generated by an alpha texture shows texture sampling artifacts,
+whereas the analytic functions generate smooth edges.
+HABEL, R., WIMMER, M., AND JESCHKE, S. 2007. Instant ani-
+mated grass. Journal of WSCG 15, 1-3, 123–128.
+JAHRMANN, K., AND WIMMER, M. 2013. Interactive grass ren-
+dering using real-time tessellation. In WSCG 2013 Full Paper
+Proceedings, M. Oliveira and V. Skala, Eds., 114–122.
+KLEBER, G., 2015. Ea sports madden nﬂ: Breakthroughs in real-
+time rendering for next-gen consoles. SIGGRAPH 2015 Talks.
+LOOP, C., AND BLINN, J. 2005. Resolution independent curve
+rendering using programmable graphics hardware. Transactions
+on Graphics 24, 3.
+MALINEN, M. I., AND FR ¨
+ANTI, P. 2014. Balanced K-Means for
+Clustering. Springer Berlin Heidelberg, Berlin, Heidelberg, 32–
+41.
+ORTHMANN, J., REZK-SALAMA, C., AND KOLB, A. 2009. Gpu-
+based responsive grass. Journal of WSCG 17, 65–72.
+PELZER, K. 2004. Rendering countless blades of waving grass. In
+GPU Gems, R. Fernando, Ed. Addison-Wesley, 107–121.
+STOLPNER, S., KRY, P., AND SIDDIQI, K. 2012. Medial spheres
+for shape approximation. IEEE Transactions on Pattern Analysis
+and Machine Intelligence 34, 6 (June), 1234–1240.
+WANG, C., WANG, Z., ZHOU, Q., SONG, C., GUAN, Y., AND
+PENG, Q. 2005. Dynamic modeling and rendering of grass wag-
+ging in wind: Natural phenomena and special effects. Comput.
+Animat. Virtual Worlds 16, 3-4 (July), 377–389.
+WELLER, R., AND ZACHMANN, G. 2010. Protosphere: A gpu-
+assisted prototype guided sphere packing algorithm for arbitrary
+objects. In ACM SIGGRAPH ASIA 2010 Sketches, ACM, New
+York, NY, USA, SA ’10, 8:1–8:2.
+WHATLEY, D. 2005. Toward photorealism in virtual botany. In
+GPU Gems 2, M. Pharr, Ed. Addison-Wesley, 7–25.
+
+
+Citation: Choi, N.; Sung, M.
+CWD-Sim: Real-Time Simulation on
+Grass Swaying with Controllable
+Wind Dynamics. Appl. Sci. 2024, 14,
+548. https://doi.org/10.3390/
+app14020548
+Academic Editor: João M.
+F. Rodrigues
+Received: 29 November 2023
+Revised: 1 January 2024
+Accepted: 6 January 2024
+Published: 8 January 2024
+Copyright: © 2024 by the authors.
+Licensee MDPI, Basel, Switzerland.
+This article is an open access article
+distributed
+under
+the
+terms
+and
+conditions of the Creative Commons
+Attribution (CC BY) license (https://
+creativecommons.org/licenses/by/
+4.0/).
+applied  
+sciences
+Article
+CWD-Sim: Real-Time Simulation on Grass Swaying with
+Controllable Wind Dynamics
+Namil Choi
+and Mankyu Sung *
+Department of Computer Engineering, Keimyung University, Daegu 42601, Republic of Korea;
+chnamil21@gmail.com
+* Correspondence: mksung@kmu.ac.kr
+Abstract: In this paper, we propose algorithms for the real-time simulation of grass deformation
+and wind flow in complex scenes based on the Navier–Stokes fluid. Grasses play an important role
+in natural scenes. However, accurately simulating their deformation due to external forces such as
+the wind can be computationally challenging. We propose algorithms that minimize computational
+cost while producing visually appealing results. We do this by grouping the grass blades and then
+applying the same force to the group to reduce the computation time. We also use a quadratic
+equation to deform the blades affected by the wind force rather than using a complicated spline
+technique. Wind force is fully modeled by the Navier–Stokes fluid equation, and the blades react to
+this force as if they were being swept by the wind. We also propose the AGC interface (Arrow-Guided
+wind flow Control), which allows the direction and intensity of the wind to be manipulated using an
+arrow-shaped interface. Through this interface, users can have grass sway in response to user-defined
+wind forces in a real-time rate. We verified that the proposed algorithms can simulate 900% more
+grass blades than the compared paper’s algorithms.
+Keywords:
+interactive visualization; natural scene visualization; grass animation; real-time
+simulation; fluid dynamics in graphics
+1. Introduction
+Simulating natural phenomena presents a significant challenge but is essential in
+computer graphics, especially for creating realistic scenes in applications like video games
+and virtual environments. Grass, ubiquitous in natural landscapes, plays a pivotal role. The
+accurate simulation of grass swaying in the wind necessitates a detailed modeling of each
+blade and an in-depth understanding of the wind flow dynamics. Achieving such realism
+requires sophisticated physics algorithms capable of simulating intricate wind patterns and
+blade deformation along with substantial computing resources to simulate and render a
+large number of blades effectively.
+In this paper, we introduce the Controllable Wind Dynamics (CWD) techniques, which
+were designed to facilitate the real-time simulation of numerous grass blades interacting
+with external forces. This approach leverages the parallel computation capabilities of GPUs
+for the simulation, deformation, and rendering of grass blades. To minimize unnecessary
+transfer overhead between the CPU and GPU, all data updates are confined to the GPU
+memory buffer. The computation of blade deformation is contingent upon the direction
+and magnitude of the artificially generated wind. We achieve a precise representation
+of wind force and its interaction with the blades through fluid simulation governed by
+the Navier–Stokes equations, which are fundamental to fluid dynamics. The methodol-
+ogy for implementing fluid simulation using the Navier–Stokes equations is extensively
+documented. In our research, we have adopted the methods delineated in [1–5].
+The reason why the CWD-Sim algorithm uses minimal computational resources
+compared to previous methods is that it uses a combination of techniques specifically
+Appl. Sci. 2024, 14, 548. https://doi.org/10.3390/app14020548
+https://www.mdpi.com/journal/applsci
+
+
+Appl. Sci. 2024, 14, 548
+2 of 14
+designed to optimize simulation steps. First, unlike the method proposed in [6], which uses
+Bezier curves to deform the grass blades, our method uses a simple quadratic equation to
+stretch the grass blade model vertically and bend it in all directions. This approach requires
+fewer operations than spline curves, although both produce similar results. Second, instead
+of simulating individual blades, we group them based on their world positions and place
+them in a grid structure. All blades in a group can have different deformation effects,
+even if they are exposed to the same wind force because they have slightly different initial
+physical properties. This grouping significantly reduces the computation time without
+causing any noticeable visual artifacts. Through experiments, we have found that the
+computation speed remains almost constant regardless of the number of blades and objects.
+Essentially, the value of a cell on the grid computed by the fluid simulation determines the
+curvature, orientation, and shadow of the blade through specific separate equations. In
+particular, we use the quadratic equation to deform the blade model into a curved shape,
+as if it were under the influence of gravity. The curved shape of the blade model can also
+be bent or stretched by external wind forces.
+An important problem to be addressed is how to efficiently specify the direction and
+force of the wind in the environment. Our method proposes the AGC (Arrow-Guided wind
+flow Control) interface, which allows users to intuitively control wind flow. The interface
+adds a set of 2D arrows that represent wind directions for a given time period directly into
+the environment. These arrows are connected to control the flow. Using this interface, users
+can manage complex flows, such as branching and merging of the wind.
+The remaining sections consist of the following. Section 2 provides an overview of
+related work and a comparison with the proposed algorithm. Section 3 describes the
+technical details of the CWD-Sim algorithms. Section 4 presents the experimental results
+and performance graphs. Finally, Section 5 concludes the paper with a discussion and
+outlines future work that could improve our CWD method.
+2. Related Works
+2.1. Static Grasses
+In recent years, several methods have been proposed for real-time grass simulation.
+For example, ref. [7] proposed a non-dynamic method to render more than 627,000,000
+virtual grass blades in real time at 18 fps. However, this method could not simulate the
+deformation of grass by external forces, such as the wind or objects, and could only render
+a static grass model without dynamic grass deformation. Similarly, Deussen et al. proposed
+a method that did not focus on rendering time [8]. It showed the most colorful plant
+composition among the papers referenced, but it could only render a static grass model
+and takes 75 min to render the scene.
+2.2. Grass Deformation with External Forces
+Habel focused on real-time vegetation rendering and animation [9] but did not specif-
+ically address the aspects of wind interaction and manipulation in detail. Chen et al.
+presented a 2D approach to animate 3D vegetation in real time [10]. While their previous
+method proposed a simple method to animate vegetation with billboard images based
+on simulation-guided grid-based warping, the methods did not provide specific features
+for the wind interaction. Qiu et al. proposed a rendering system for large-scale grass [11].
+The three-layer framework separated the rendering task from the data logic, making it
+convenient to add new vegetation simulation methods on the data layer, but it did not
+propose an interaction with external forces. Max et al. proposed a method for render-
+ing grasses blowing in the wind with global illumination [12] using a lattice Boltzmann
+model, a mass-spring system and multiple scattering. However, since the simulation
+and rendering were performed on the CPU, performance was limited. Fan et al. utilized
+physical laws to simulate the movement of grasses deformed by a rolling ball [13]. The
+authors were able to reduce the computational load by activating and deactivating tile
+groups, which is the subdivision of the environment, as the ball passes over them for a
+
+
+Appl. Sci. 2024, 14, 548
+3 of 14
+certain period of time. Although this approach showed highly dynamic grass interactions,
+it did not account for interactions with the wind. Furthermore, if global wind affecting
+the entire scene or interactions with rigid body objects was required, then this method
+would result in a significant computational burden. Similarly, Wang et al. proposed a
+GPU-based grass simulation with accurate blade reconstruction [14], which focused on im-
+proving the grass blade representation. But it still did not address the wind interaction and
+manipulation extensively.
+2.3. Grass Deformation with Fluid Dynamics
+In [6], Lo et al. used a 60 × 60 × 20 3D Navier–Stokes simulation for wind dynamics,
+and each grass blade calculated four control points of the parametric spline to represent a
+curved shape swaying by the wind. Although their approach was able to produce highly
+realistic grass animation, simulating 3D fluids and finding four control points of each blade
+of grass were computationally intensive for large scenes.
+Our method proposes a 1000 × 1000 2D Navier–Stokes simulation for wind dynamics
+instead. Complex wind dynamics created by the proposed method and its interaction
+with grasses in Figure 1. Our method produces more detailed wind interaction than [6]
+and is able to cover larger complex scenes due to a more detailed and highly optimized
+wind dynamic control scheme. For instance, our quadratic equation for the deformation
+of the grass blade offers an alternative approach that can represent natural movement in
+all directions within a three-dimensional space while reducing the computational com-
+plexity involved in deforming the blades. Please refer to the accompanying video clip
+(Supplementary Materials) for more details.
+Appl. Sci. 2024, 1, 0
+3 of 14
+period of time. Although this approach showed highly dynamic grass interactions, it
+did not account for interactions with the wind. Furthermore, if global wind affecting
+the entire scene or interactions with rigid body objects was required, then this method
+would result in a significant computational burden. Similarly, Wang et al. proposed a
+GPU-based grass simulation with accurate blade reconstruction [14], which focused on
+improving the grass blade representation. But it still did not address the wind interaction
+and manipulation extensively.
+2.3. Grass Deformation with Fluid Dynamics
+In [6], Lo et al. used a 60 × 60 × 20 3D Navier–Stokes simulation for wind dynamics,
+and each grass blade calculated four control points of the parametric spline to represent a
+curved shape swaying by the wind. Although their approach was able to produce highly
+realistic grass animation, simulating 3D fluids and finding four control points of each blade
+of grass were computationally intensive for large scenes.
+Our method proposes a 1000 × 1000 2D Navier–Stokes simulation for wind dynamics
+instead. Complex wind dynamics created by the proposed method and its interaction with
+grasses in Figure 1. Our method produces more detailed wind interaction than [6] and is
+able to cover larger complex scenes due to a more detailed and highly optimized wind dy-
+namic control scheme. For instance, our quadratic equation for the deformation of the grass
+blade offers an alternative approach that can represent natural movement in all directions
+within a three-dimensional space while reducing the computational complexity involved
+in deforming the blades. Please refer to the accompanying video clip (Supplementary
+Materials) for more details.
+Figure 1. Complex wind dynamics created by the proposed method and its interaction with grasses.
+The blue arrows splat the wind and can be moved through the red colored control point.
+Another point that makes our approach different from all the other work is the wind
+force authoring technique. Our method includes the ability to control the flow of the
+wind in a way that designers intend. All previous work [8,12,13,15–18] did not address
+the problem of wind authoring. For comparison, ref. [6] provides only a one-way wind
+generator. However, in our proposed method, the designer can place and modify the wind
+flow directly in the environment with the AGC interface. The designer can also adjust
+the strength of the wind and the area affected by the wind. To put a wind force, the AGC
+interface allows users to put a starting point and an arrow guideline in front and behind
+the starting point. It is also possible for multiple arrows to be branched out from a single
+starting point, showing that various wind dynamics can be designed according to the
+designer’s intent.
+Figure 1. Complex wind dynamics created by the proposed method and its interaction with grasses.
+The blue arrows splat the wind and can be moved through the red colored control point.
+Another point that makes our approach different from all the other work is the wind
+force authoring technique. Our method includes the ability to control the flow of the
+wind in a way that designers intend. All previous work [8,12,13,15–18] did not address
+the problem of wind authoring. For comparison, ref. [6] provides only a one-way wind
+generator. However, in our proposed method, the designer can place and modify the wind
+flow directly in the environment with the AGC interface. The designer can also adjust
+the strength of the wind and the area affected by the wind. To put a wind force, the AGC
+interface allows users to put a starting point and an arrow guideline in front and behind
+the starting point. It is also possible for multiple arrows to be branched out from a single
+
+
+Appl. Sci. 2024, 14, 548
+4 of 14
+starting point, showing that various wind dynamics can be designed according to the
+designer’s intent.
+3. Proposed Algorithms
+The CWD-Sim method describes a computationally efficient technique to realistically
+simulate the sway of the grass by the wind. It involves grouping grass blades into a
+two-dimensional grid, simplifying the forces affecting the grass, on the vertex shaders to
+deform the grass model, and allowing the designer to control the flow of wind using arrow
+guides. We are going to explain all steps in detail in the following sections.
+3.1. Grouping of Grasses
+Performing individual fluid simulation calculations for every grass blade increases the
+computational load. It blocks the real-time performance required for interactive applica-
+tions. To solve this problem, the grass blades are grouped and assigned to a grid structure.
+To do so, the world positions of the blade groups are converted to a group index. The group
+index, G ∈Z, is calculated in Equation (1).
+G =
+ Px
+w + 0.5, Pz
+h + 0.5
+
+(1)
+where G ∈R2, w is the width of the grid, h is the height of the grid, Px and Pz are the x and
+z world coordinates of the blade.
+This equation divides the whole world into a 2D grid with a fixed cell size. Each cell
+contains a group of grass blades within its range.
+The grid,
+which has a
+1000 × 1000 resolution in our case, is used for fluid simulation of wind dynamics. However,
+this grid resolution can be reduced to obtain faster simulation speeds. Our experiments
+indicate that reducing it to 200 × 200 would not make a big difference in visual quality.
+The 1000 × 1000 grid size means that there would be a total of 1,000,000 groups of grass
+blades. Using the instance ID, which is the ID number of the instance when we use the GPU
+Instancing technique [19], we can calculate the appropriate grid position for each grass
+blade based on its world coordinates and then assign it to the appropriate group. Once we
+determine the cells of all blade groups, we can make all blades in a group receive the same
+force instead of applying a different force to each individual blade. This approach greatly
+reduces the computational load because all blades within a group receive the same force.
+However, the visual quality does not decrease because there are so many grasses with
+different sizes and orientations. Figure 2 represents the 2D grid structure and the positions
+where the grass blades are placed. Note that the grass blades are randomly distributed on
+the cell.
+Appl. Sci. 2024, 1, 0
+4 of 14
+3. Proposed Algorithms
+The CWD-Sim method describes a computationally efficient technique to realistically
+simulate the sway of the grass by the wind. It involves grouping grass blades into a
+two-dimensional grid, simplifying the forces affecting the grass, on the vertex shaders to
+deform the grass model, and allowing the designer to control the flow of wind using arrow
+guides. We are going to explain all steps in detail in the following sections.
+3.1. Grouping of Grasses
+Performing individual fluid simulation calculations for every grass blade increases the
+computational load. It blocks the real-time performance required for interactive applica-
+tions. To solve this problem, the grass blades are grouped and assigned to a grid structure.
+To do so, the world positions of the blade groups are converted to a group index. The group
+index, G ∈Z, is calculated in Equation (1).
+G = ( Px
+w + 0.5, Pz
+h + 0.5)
+(1)
+where G ∈R2, w is the width of the grid, h is the height of the grid, Px and Pz are the x and
+z world coordinates of the blade.
+This equation divides the whole world into a 2D grid with a fixed cell size. Each
+cell contains a group of grass blades within its range. The grid, which has a 1000 × 1000
+resolution in our case, is used for fluid simulation of wind dynamics. However, this grid
+resolution can be reduced to obtain faster simulation speeds. Our experiments indicate that
+reducing it to 200 × 200 would not make a big difference in visual quality. The 1000 × 1000
+grid size means that there would be a total of 1,000,000 groups of grass blades. Using
+the instance ID, which is the ID number of the instance when we use the GPU Instancing
+technique [19], we can calculate the appropriate grid position for each grass blade based on
+its world coordinates and then assign it to the appropriate group. Once we determine the
+cells of all blade groups, we can make all blades in a group receive the same force instead
+of applying a different force to each individual blade. This approach greatly reduces the
+computational load because all blades within a group receive the same force. However,
+the visual quality does not decrease because there are so many grasses with different sizes
+and orientations. Figure 2 represents the 2D grid structure and the positions where the
+grass blades are placed. Note that the grass blades are randomly distributed on the cell.
+(a)
+(b)
+Figure 2. (a): Visualization of the 2D grid. (b): Grass blades represented as black points in the (a) cell.
+3.2. Wind Force Modeling
+Simulating wind on a computer is commonly achieved using the Navier–Stokes equa-
+tions. These can be effectively solved through computational fluid dynamics methods,
+as detailed in [1]. The wind force in our simulation is modeled by a real-time fluid simula-
+Figure 2. (a): Visualization of the 2D grid. (b): Grass blades represented as black points in the (a) cell.
+
+
+Appl. Sci. 2024, 14, 548
+5 of 14
+3.2. Wind Force Modeling
+Simulating wind on a computer is commonly achieved using the Navier–Stokes equa-
+tions. These can be effectively solved through computational fluid dynamics methods, as
+detailed in [1]. The wind force in our simulation is modeled by a real-time fluid simulation
+algorithm grounded in the theory of Stable Fluid introduced by Jos Stam in [1,3]. In this
+section, we will briefly summarize the basic fluid simulation algorithms. This algorithm
+provides a stable numerical solution to solve the Navier–Stokes equation, which is denoted
+in Equation (2).
+∂u
+∂t = −(u·∇)u −1
+ρ∇p + ν∇2u + F
+(2)
+∇·u = 0
+(3)
+where ∂is partial derivative, u is fluid velocity, t is time, ∇is gradient operator, ν is the
+kinematic viscosity, ∇2 is the Laplacian operator quantifying the diffusion, p is pressure,
+∂u
+∂t is the local or temporal acceleration, reflecting the changes in velocity at a specific
+point over time, and the term (u·∇)u is the convective acceleration that represents the
+transport of momentum by the fluid. The term ν∇2u represents the viscous diffusion
+of momentum. The term −∇p represents the pressure gradient, which is responsible
+for driving or opposing fluid motion. Finally, F represents any external forces acting
+on the fluid, such as the wind. Most air movement in the atmosphere is considered
+incompressible, and Equation (3) embodies the assumption of incompressibility for the
+fluid. Our implementation is based on the procedures proposed by Dobryakov et al. [3].
+The procedures consist of multiple steps given a 2D grid to obtain the velocity grid V,
+where Vi,j ∈R2 is a cell in the ith row and the jth column. To obtain the final updated
+velocity grid V′′′, the algorithm performs the following processes from (4) to (9) in order.
+First, we calculate the curl of the velocity field as shown in Equation (4) that provides a
+quantification of the rotation at each point.
+Ci,j = Vi+1,j −Vi−1,j + Vi,j+1 −Vi,j−1
+(4)
+where Ci,j is a 2D curl value at the ith row and jth cell of the grid. The subtraction term,
+Vi+1,j −Vi−1,j, approximates the median difference for the derivative of the velocity. The
+term Vi+1,j represents a single step speed to the right cell from the current position and
+Vi−1,j represents a single step speed for the left cell. Also, Vi,j+1 −Vi,j−1 indicates the
+vertical speed. The calculation of these two directions gives a rotation measurement at (i, j)
+points. Next, we apply the vorticity confinement as described in Equation (5). This process
+helps to improve the smaller swirls that are noticeable in the fluid flow.
+fi,j =
+Ci,j+1 −Ci,j−1, Ci+1,j −Ci−1,j
+·λ
+V′
+i,j = Vi,j + fi,j·∆t
+(5)
+where V′
+i,j is the first updated velocity, fi,j ∈R2 is the force at (i, j), ∆t is the time step and
+λ is the vorticity confinement factor. The divergence of the velocity field is then computed
+as in Equation (6) in the next step. In fluid dynamics, this calculation gauges the rate at
+which the density leaves a specific region of space.
+Di,j =
+
+V′
+i,j+1 −V′
+i,j−1 + V′
+i+1,j −V′
+i−1,j
+
+/2
+(6)
+where Di,j ∈R2 is the divergence value. This step is followed by the projection of the
+pressure, which is described in Equation (7). This step eliminates the component of the
+velocity that does not contribute to the advection along the vector field, leaving only the
+divergence-free component.
+Pi,j =
+Pi,j+1 + Pi,j−1 + Pi+1,j −Pi−1,j −Di,j
+
+/4
+(7)
+
+
+Appl. Sci. 2024, 14, 548
+6 of 14
+where Pi,j ∈R2 is the pressure and Di,j is the divergence at the gi,j. Next, the pressure
+gradient is subtracted from the velocity field as indicated in Equation (8). This step ensures
+the conservation of mass within our fluid system.
+V′′
+i,j = V′
+i,j −
+Pi+1,j −Pi−1,j, Pi,j+1 −Pi,j−1
+
+(8)
+where V′′
+i,j is the second updated velocity and V′
+i,j the first updated velocity obtained in
+Equation (5). In the final step, the velocity field is then advected along itself. This stage
+creates the illusion of motion and fluidity, which is a critical aspect of fluid dynamics
+visualization. Let us say that the 2D coordinates of cell is α = (i, j). Then, the updated
+coordinate α′ is first calculated from the second updated velocity and the grid size s. Note
+that the grid has a square shape where the width and height are equal to s.
+α′ = α −V′′
+i,j·s·∆t
+(9)
+Once the advection is complete, the final velocity V′′′
+i,j is obtained through Equation (10).
+V′′′
+i,j = V′′
+α′/(1.0 + λ·∆t)
+(10)
+The calculated V′′′ in Equation (9) is used to model the deformation of the grass group.
+Each blade in a grass group calculates the deformation vector with Equation (12) based on
+V′′′ in the next Section 3.3.
+3.3. Deformation of the Grass Model
+From real-world observations of grass swaying in the wind, we propose a basic grass
+deformation model. It replicates grass dynamics through a blend of the two most significant
+grass motions, as shown in Figure 3. Bending is due to the influence of gravity, and the
+swaying of the grass is due to the wind force.
+Appl. Sci. 2024, 1, 0
+6 of 14
+where Pi,j ∈R2 is the pressure and Di,j is the divergence at the gi,j. Next, the pressure
+gradient is subtracted from the velocity field as indicated in Equation (8). This step ensures
+the conservation of mass within our fluid system.
+V′′
+i,j = V′
+i,j −(Pi+1,j −Pi−1,j, Pi,j+1 −Pi,j−1)
+(8)
+where V′′
+i,j is the second updated velocity and V′
+i,j the first updated velocity obtained in
+Equation (5). In the final step, the velocity field is then advected along itself. This stage
+creates the illusion of motion and fluidity, which is a critical aspect of fluid dynamics
+visualization. Let us say that the 2D coordinates of cell is α = (i, j). Then, the updated
+coordinate α′ is first calculated from the second updated velocity and the grid size s. Note
+that the grid has a square shape where the width and height are equal to s.
+α′ = α −V′′
+i,j · s · ∆t
+(9)
+Once the advection is complete, the final velocity V′′′
+i,j is obtained through Equation (10).
+V′′′
+i,j = V′′
+α′/(1.0 + λ · ∆t)
+(10)
+The calculated V′′′ in Equation (9) is used to model the deformation of the grass group.
+Each blade in a grass group calculates the deformation vector with Equation (12) based on
+V′′′ in the next Section 3.3.
+3.3. Deformation of the Grass Model
+From real-world observations of grass swaying in the wind, we propose a basic grass
+deformation model. It replicates grass dynamics through a blend of the two most significant
+grass motions, as shown in Figure 3. Bending is due to the influence of gravity, and the
+swaying of the grass is due to the wind force.
+(a)
+(b)
+(c)
+Figure 3. Shows the detailed bending effect of a grass blade due to the wind force. (a): Default state.
+(b): Only gravity. (c): Gravity with external wind force.
+The deformation of the grass is carried out in the vertex shader. Initially, before the
+wind force is applied, the only force that acts on the grass is gravity. This force consistently
+bends the blade downward, and the amount of bending depends on the weight of the blade
+in the absence of wind force. This process is divided into gravity deformation and external
+force deformation. In the first step, we apply an initial deformation based on the elevation
+value Py ∈R of the position of the vertex. This step modifies the original position of the
+vertex P ∈R3 to a new position P′, as shown in Figure 4. The second step converts the
+external force into a translation vector using a quadratic equation, as shown in Figure 5.
+Figure 3. Shows the detailed bending effect of a grass blade due to the wind force. (a): Default state.
+(b): Only gravity. (c): Gravity with external wind force.
+The deformation of the grass is carried out in the vertex shader. Initially, before the
+wind force is applied, the only force that acts on the grass is gravity. This force consistently
+bends the blade downward, and the amount of bending depends on the weight of the blade
+in the absence of wind force. This process is divided into gravity deformation and external
+force deformation. In the first step, we apply an initial deformation based on the elevation
+value Py ∈R of the position of the vertex. This step modifies the original position of the
+vertex P ∈R3 to a new position P′, as shown in Figure 4. The second step converts the
+external force into a translation vector using a quadratic equation, as shown in Figure 5.
+
+
+Appl. Sci. 2024, 14, 548
+7 of 14
+This calculation of a quadratic equation eliminates the computational overhead of using a
+Bezier curve in [6] and provides a similar translation result.
+P′ =
+
+Px, Py −k1·
+Py
+2, Pz + k2·
+Py
+2
+(11)
+where k1 and k2 are parameters to control the shape of the curve.
+For comparison,
+Figure 4a,b show an example of bending of a grass blade. Figure 4a is the result when we
+apply our simple quadratic equation, whereas Figure 4b shows the case when we apply the
+Bezier curve. For comparison, we put two graphs together to check the similarity for both
+Figures 4a and 5a where the dotted curves are the Bezier curves and the green curves are
+our proposed methods. We also show the red dots for control points for the Bezier curves.
+As we can see from the picture, the bending result is quite similar for both cases, although
+our equation needs fewer computations. We also add numerical comparisons in Table 1.
+Appl. Sci. 2024, 1, 0
+7 of 14
+This calculation of a quadratic equation eliminates the computational overhead of using a
+Bezier curve in [6] and provides a similar translation result.
+P′ = (Px, Py −k1 · (Py)2, Pz + k2 · (Py)2)
+(11)
+where k1 and k2 are parameters to control the shape of the curve.
+For comparison,
+Figure 4a,b show an example of bending of a grass blade. Figure 4a is the result when we
+apply our simple quadratic equation, whereas Figure 4b shows the case when we apply
+the Bezier curve. For comparison, we put two graphs together to check the similarity for
+both Figures 4a and 5a where the dotted curves are the Bezier curves and the green curves
+are our proposed methods. We also show the red dots for control points for the Bezier
+curves. As we can see from the picture, the bending result is quite similar for both cases,
+although our equation needs fewer computations. We also add numerical comparisons in
+Table 1.
+(a)
+(b)
+Figure 4. Comparison of grass’s default state due to gravity. (a): Proposed deformation equa-
+tion (11) is shown as a green line, the Bezier curve is shown as a red dotted line superim-
+posed on our equation.
+(b): Bezier curve equation (P = (1 −t)3P1 + 3(1 −t)2tP2 + 3(1 −t)
+t2P3 + t3P4, 0 ≤t ≤1) proposed in [20].
+(a)
+(b)
+Figure 5. Comparison of grass’s swaying state due to external force. (a): Proposed deformation
+equations (11) and (12) applied are shown as a green line, the Bezier curve is shown as a red dotted
+line superimposed on our equation. (b): Bezier curve equation (P = (1 −t)3P1 + 3(1 −t)2tP2 + 3(1 −
+t)t2P3 + t3P4, 0 ≤t ≤1) proposed in [20].
+Figure 4. Comparison of grass’s default state due to gravity. (a): Proposed deformation Equation (11)
+is shown as a green line, the Bezier curve is shown as a red dotted line superimposed on our equation.
+(b): Bezier curve equation
+
+P = (1 −t)3P1 + 3(1 −t)2tP2 + 3(1 −t) t2P3 + t3P4 , 0 ≤t ≤1) proposed
+in [20].
+Appl. Sci. 2024, 1, 0
+7 of 14
+This calculation of a quadratic equation eliminates the computational overhead of using a
+Bezier curve in [6] and provides a similar translation result.
+P′ = (Px, Py −k1 · (Py)2, Pz + k2 · (Py)2)
+(11)
+where k1 and k2 are parameters to control the shape of the curve.
+For comparison,
+Figure 4a,b show an example of bending of a grass blade. Figure 4a is the result when we
+apply our simple quadratic equation, whereas Figure 4b shows the case when we apply
+the Bezier curve. For comparison, we put two graphs together to check the similarity for
+both Figures 4a and 5a where the dotted curves are the Bezier curves and the green curves
+are our proposed methods. We also show the red dots for control points for the Bezier
+curves. As we can see from the picture, the bending result is quite similar for both cases,
+although our equation needs fewer computations. We also add numerical comparisons in
+Table 1.
+(a)
+(b)
+Figure 4. Comparison of grass’s default state due to gravity. (a): Proposed deformation equa-
+tion (11) is shown as a green line, the Bezier curve is shown as a red dotted line superim-
+posed on our equation.
+(b): Bezier curve equation (P = (1 −t)3P1 + 3(1 −t)2tP2 + 3(1 −t)
+t2P3 + t3P4, 0 ≤t ≤1) proposed in [20].
+(a)
+(b)
+Figure 5. Comparison of grass’s swaying state due to external force. (a): Proposed deformation
+equations (11) and (12) applied are shown as a green line, the Bezier curve is shown as a red dotted
+line superimposed on our equation. (b): Bezier curve equation (P = (1 −t)3P1 + 3(1 −t)2tP2 + 3(1 −
+t)t2P3 + t3P4, 0 ≤t ≤1) proposed in [20].
+Figure 5.
+Comparison of grass’s swaying state due to external force.
+(a):
+Proposed de-
+formation Equations (11) and (12) applied are shown as a green line, the Bezier curve is
+shown as a red dotted line superimposed on our equation.
+(b):
+Bezier curve equation
+
+P = (1 −t)3P1 + 3(1 −t)2tP2 + 3(1 −t)t2P3 + t3P4, 0 ≤t ≤1
+
+proposed in [20].
+
+
+Appl. Sci. 2024, 14, 548
+8 of 14
+Table 1. Comparative analysis of algorithmic efficiency in processing vertex points.
+# of Vertex Points
+Computation Time of
+Equation (11) (ms)
+Computation Time of Bezier
+Curve (ms)
+1000
+1.9
+6.8
+5000
+5.9
+37.9
+10,000
+13.0
+75.8
+Table 1 shows the evaluation of up to 10,000 virtual vertex points. Our proposed
+algorithm (11) shows a speed faster than that of using the Bezier curve in terms of com-
+putation times, which is approximately 82.8% faster, with a time savings of 62.8 ms. This
+efficiency difference is quite important when we are dealing with a large set of vertex
+points such as grasses because it underscores the impact of computational complexity on
+processing speed and therefore highlights the importance of choosing the right algorithm
+for time-sensitive computational tasks.
+In the second step of our process, we take into account the impact of the wind force on
+the grass blades. We calculate the wind translation vector T from the wind direction vector
+W and its magnitude F. This vector T essentially quantifies how the wind force should alter
+the position of the grass blades. The elevation value of the deformed vertex P′
+y is again
+used to calculate the wind translation. Specifically, we calculate T, which encapsulates
+both the direction vector of the wind W and its magnitude F. The height of the deformed
+vertex, which we refer to as P′
+y, plays a critical role in this calculation. The effect of the
+wind changes depending on the height of the blade, and this is captured in the height value.
+For example, the wind may have a stronger impact on the top of the blade than on the
+lower base part. Therefore, we use P′
+y to adjust the strength of the wind translation vector
+T. Equation (12) describes how these computations are performed.
+T = F·
+
+V′′′
+x
+
+P′
+y
+2
+, −
+
+
+
+V′′′
+
+
+
+
+
+P′
+y
+2
+, −V′′′
+y
+
+P′
+y
+2
+(12)
+Figures 4 and 5 show another comparison between our equation proposed in (12) and
+the Bezier curve. As we can see, these two curves are almost identical, which proves that
+our equation can be used to bend the grass blade influenced by wind force. The final step
+involves updating the vertex positions by applying the wind translation T to the initial
+deformed positions P′. Transformation of the positions of the vertex positions is facilitated
+by the model matrix M. As shown in Equation (13), the final position of the vertex, P′′,
+is calculated.
+P′′ = M
+(1 −λ)T + λP′
+(13)
+where λ is the weighting parameter. The λ is a weighting parameter that represents the
+degree of effect that wind translation T and initial deformation P′ have on the final position
+P′′. When λ is closer to 0, the wind translation T has more influence on the final position,
+and when λ is closer to 1, the initial deformation P′ has more influence.
+3.4. Shadows between Grasses
+Without the shadows, realism is greatly reduced, and blade interaction is difficult
+to perceive. However, calculating the shadows between all blades of grass can be com-
+putationally expensive. In particular, if we use a conventional method such as shadow
+mapping, which requires multi-pass rendering, it would not be effective to generate the
+map considering a large number of geometry data to render.
+To solve this problem, we propose a simplified self-shadow calculation technique, as
+shown in Figure 6. We use a simplified equation to handle the shadows between all the
+grass blades. When a blade is in shadow, its color becomes dark. The brightness of the
+grass is adjusted based on the highest height of every group of grasses. The vertex of the
+highest position has the lightest color, while the color becomes dimmer as it goes down.
+This principle is based on the fact that when a blade of grass is pushed downward, it has a
+
+
+Appl. Sci. 2024, 14, 548
+9 of 14
+high chance of being obscured by other blades of grass. Equation (14) represents the color
+adjustment formula. Figure 3 shows the detailed bending effect of a grass blade due to the
+wind force. Note that the x axis is the x or z offset from the local origin, while the y axis
+indicates the y offset from the origin, which shows the amount of bending. The original
+upright grass blade is also shown for comparison. As we can see in the figure, there were
+no unnatural artifacts on the mesh. As shown in Figure 7, the difference in naturalness
+with and without shadows is significant.
+c f = ct· max(mmin, min(P′′
+y −|F|·c1 + c2, mmax))
+(14)
+where c f ∈R4 is the color of a vertex, ct ∈R3 is a diffuse color, mmin and mmax are the
+darkest and brightest values, c1 and c2 are control parameters and p′′
+y is the height of the
+blade. Through experimentation, we believe that this approach is sufficient for grasses in a
+large meadow where a large number of homogeneous grasses are packed. We have shown
+the comparison results in Section 4.
+Appl. Sci. 2024, 1, 0
+9 of 14
+high chance of being obscured by other blades of grass. Equation (14) represents the color
+adjustment formula. Figure 3 shows the detailed bending effect of a grass blade due to the
+wind force. Note that the x axis is the x or z offset from the local origin, while the y axis
+indicates the y offset from the origin, which shows the amount of bending. The original
+upright grass blade is also shown for comparison. As we can see in the figure, there were
+no unnatural artifacts on the mesh. As shown in Figure 7, the difference in naturalness
+with and without shadows is significant.
+c f = ct · max(mmin, min(P′′
+y −|F| · c1 + c2, mmax))
+(14)
+where c f ∈R4 is the color of a vertex, ct ∈R3 is a diffuse color, mmin and mmax are the
+darkest and brightest values, c1 and c2 are control parameters and p′′
+y is the height of the
+blade. Through experimentation, we believe that this approach is sufficient for grasses in a
+large meadow where a large number of homogeneous grasses are packed. We have shown
+the comparison results in Section 4.
+Figure 6. As the bending of the blade goes deeper due to the wind force, vertex colors become darker.
+(a)
+(b)
+Figure 7. (a): Without the shadow between grasses. (b): After applying the proposed shadow
+generation technique to grasses.
+3.5. Arrow-Guided Wind Flow Control
+One of the problems with using fluid for wind dynamics is how we can specify the
+wind the way the designer wants. Our algorithm gives designers the ability to control
+the wind flow in a scene using the so-called AGC (Arrow-Guided wind flow Control)
+interface. These arrow guides consist of a root point and multiple ending points, which
+can be added or removed as needed. The root point acts as the starting point for the wind
+flow. Clicking the points also opens the inspector window. In this window, the force
+strength can be adjusted by changing sliders or by entering a number. Setting an end point
+determines the direction of the flow from the root point, which automatically changes to an
+Figure 6. As the bending of the blade goes deeper due to the wind force, vertex colors become darker.
+Appl. Sci. 2024, 1, 0
+9 of 14
+high chance of being obscured by other blades of grass. Equation (14) represents the color
+adjustment formula. Figure 3 shows the detailed bending effect of a grass blade due to the
+wind force. Note that the x axis is the x or z offset from the local origin, while the y axis
+indicates the y offset from the origin, which shows the amount of bending. The original
+upright grass blade is also shown for comparison. As we can see in the figure, there were
+no unnatural artifacts on the mesh. As shown in Figure 7, the difference in naturalness
+with and without shadows is significant.
+c f = ct · max(mmin, min(P′′
+y −|F| · c1 + c2, mmax))
+(14)
+where c f ∈R4 is the color of a vertex, ct ∈R3 is a diffuse color, mmin and mmax are the
+darkest and brightest values, c1 and c2 are control parameters and p′′
+y is the height of the
+blade. Through experimentation, we believe that this approach is sufficient for grasses in a
+large meadow where a large number of homogeneous grasses are packed. We have shown
+the comparison results in Section 4.
+Figure 6. As the bending of the blade goes deeper due to the wind force, vertex colors become darker.
+(a)
+(b)
+Figure 7. (a): Without the shadow between grasses. (b): After applying the proposed shadow
+generation technique to grasses.
+3.5. Arrow-Guided Wind Flow Control
+One of the problems with using fluid for wind dynamics is how we can specify the
+wind the way the designer wants. Our algorithm gives designers the ability to control
+the wind flow in a scene using the so-called AGC (Arrow-Guided wind flow Control)
+interface. These arrow guides consist of a root point and multiple ending points, which
+can be added or removed as needed. The root point acts as the starting point for the wind
+flow. Clicking the points also opens the inspector window. In this window, the force
+strength can be adjusted by changing sliders or by entering a number. Setting an end point
+determines the direction of the flow from the root point, which automatically changes to an
+Figure 7. (a): Without the shadow between grasses. (b): After applying the proposed shadow
+generation technique to grasses.
+3.5. Arrow-Guided Wind Flow Control
+One of the problems with using fluid for wind dynamics is how we can specify the
+wind the way the designer wants. Our algorithm gives designers the ability to control the
+wind flow in a scene using the so-called AGC (Arrow-Guided wind flow Control) interface.
+These arrow guides consist of a root point and multiple ending points, which can be added
+or removed as needed. The root point acts as the starting point for the wind flow. Clicking
+the points also opens the inspector window. In this window, the force strength can be
+adjusted by changing sliders or by entering a number. Setting an end point determines the
+
+
+Appl. Sci. 2024, 14, 548
+10 of 14
+direction of the flow from the root point, which automatically changes to an arrow. Because
+all points can be added or removed directly anywhere in the environment, the designer has
+complete control over editing the wind forces, as shown in Figure 8.
+Appl. Sci. 2024, 1, 0
+10 of 14
+arrow. Because all points can be added or removed directly anywhere in the environment,
+the designer has complete control over editing the wind forces, as shown in Figure 8.
+(a)
+(b)
+Figure 8. Starting with the state of (a) and adding as shown in (b) using the controllable arrow guide
+wind editing tool.
+One of advantages of our proposed AGC interface is that multiple arrows can be
+connected to build more complicated wind dynamics. Thus, the wind flow can be a simple
+line or can be designed to resemble a tree structure or other complex patterns. By changing
+the position and length of the arrows, designers can adjust the direction of the wind flow.
+Once the design is complete, the wind forces are generated from the root to the end point
+along the series of arrows. Each point, which is the end point of the arrow, applies a force
+to the fluid simulation in the direction of the arrow from the start point. In the case of a tree
+structure, the forces are applied in a sequence based on the direction of the arrow’s flow to
+make it appear continuous.
+4. Experiments
+To verify our algorithms, we built a system and performed a set of experiments.
+Hardware specifications include an E3-1230 v2 CPU and GTX 660 2GB GPU. For 3D
+rendering, we used the OpenGL and GLSL version 4.5. The grass model that we used in
+the experiments was in Autodesk’s FBX format. Please see the accompanying video clip
+that we submitted (Supplementary Materials) and the Youtube video (https://youtu.be/
+uV0CFSqszJE (accessed on 5 January 2024)).
+For fluid simulation, we used a 2D texture grid size of 1000 × 1000 to simulate fluid dy-
+namics, applying Equations (4)–(10). In Equation (5), we set the vorticity confinement factor
+λ to 50. Regarding grass deformation, in Equation (11), we set the deformation parameters
+k1 to 0.05 and k2 to 0.1. These values were used to control the initial shape of the grass,
+which represented the weight of a grass blade due to gravity. Furthermore, in Equation (13),
+we set 0.2 for λ to control the flexibility of the grass blade under external force.
+In the first experiment, we checked the performance of our algorithm. As we increase
+the number of grass blades, we checked its fps. Note that all computations and rendering are
+performed on the GPU side. The result is shown in Figure 9. As we can see in the figure, our
+algorithm maintained the real-time performance even if we increased the number of grasses
+up to 1,200,000. For comparison with other algorithms, we picked [6], which we believe to
+be one of the complete solutions for grass rendering and animation. Figure 9 shows the
+performance comparison between our algorithm and [6]. Note that the narrow blue and
+orange bands represent the trends of the graph. For this test, we used the same GPU to
+obtain an unbiased result. From this test, we knew that our algorithm did not significantly
+reduce performance as we increase the number of grasses. On the contrary, the algorithm
+proposed in [6] had a substantial decrease in fps. It turned out that our simulation can
+achieve speeds 10× to 50× faster than [6] in a similar hardware environment.
+Figure 8. Starting with the state of (a) and adding as shown in (b) using the controllable arrow guide
+wind editing tool.
+One of advantages of our proposed AGC interface is that multiple arrows can be
+connected to build more complicated wind dynamics. Thus, the wind flow can be a simple
+line or can be designed to resemble a tree structure or other complex patterns. By changing
+the position and length of the arrows, designers can adjust the direction of the wind flow.
+Once the design is complete, the wind forces are generated from the root to the end point
+along the series of arrows. Each point, which is the end point of the arrow, applies a force
+to the fluid simulation in the direction of the arrow from the start point. In the case of a tree
+structure, the forces are applied in a sequence based on the direction of the arrow’s flow to
+make it appear continuous.
+4. Experiments
+To verify our algorithms, we built a system and performed a set of experiments.
+Hardware specifications include an E3-1230 v2 CPU and GTX 660 2GB GPU. For 3D
+rendering, we used the OpenGL and GLSL version 4.5. The grass model that we used in
+the experiments was in Autodesk’s FBX format. Please see the accompanying video clip
+that we submitted (Supplementary Materials) and the Youtube video (https://youtu.be/
+uV0CFSqszJE (accessed on 5 January 2024)).
+For fluid simulation, we used a 2D texture grid size of 1000 × 1000 to simulate fluid dy-
+namics, applying Equations (4)–(10). In Equation (5), we set the vorticity confinement factor
+λ to 50. Regarding grass deformation, in Equation (11), we set the deformation parameters
+k1 to 0.05 and k2 to 0.1. These values were used to control the initial shape of the grass,
+which represented the weight of a grass blade due to gravity. Furthermore, in Equation (13),
+we set 0.2 for λ to control the flexibility of the grass blade under external force.
+In the first experiment, we checked the performance of our algorithm. As we increase
+the number of grass blades, we checked its fps. Note that all computations and rendering
+are performed on the GPU side. The result is shown in Figure 9. As we can see in the figure,
+our algorithm maintained the real-time performance even if we increased the number of
+grasses up to 1,200,000. For comparison with other algorithms, we picked [6], which we
+believe to be one of the complete solutions for grass rendering and animation. Figure 9
+shows the performance comparison between our algorithm and [6]. Note that the narrow
+blue and orange bands represent the trends of the graph. For this test, we used the same
+GPU to obtain an unbiased result. From this test, we knew that our algorithm did not
+significantly reduce performance as we increase the number of grasses. On the contrary, the
+algorithm proposed in [6] had a substantial decrease in fps. It turned out that our simulation
+can achieve speeds 10× to 50× faster than [6] in a similar hardware environment.
+
+
+Appl. Sci. 2024, 14, 548
+11 of 14
+Appl. Sci. 2024, 1, 0
+11 of 14
+Figure 9. Performance comparison between our algorithms and the method proposed in [6].
+In the second experiment, we tested how efficient our algorithms are in designing
+complicated wind dynamics. Figure 1 shows the case where winds coming from multiple
+sources must interact with static obstacles. Our method could generate a realistic bump
+and churn in a very realistic way between wind and obstacles. Figure 10 shows two winds
+colliding in the middle of the environment. You can see that the two winds are deflecting
+and changing direction smoothly as shown in Figure 11. Please refer to the accompanying
+video of the result for more details. Figure 7 compared two cases in which we applied
+the shadow generation technique proposed in Section 3.5 and not. We can easily tell that
+shadowing between grasses improves visual quality. Finally, Figure 8 shows the wind-
+editing process with the proposed AGC interface. Root points and end points are added
+directly to the environment to form the arrow guides, and those guides are connected to
+each other to create complicate tree-like wind forces, which improves controllability.
+(a)
+(b)
+Figure 10. The two winds interact in the middle and then turn from the other direction (a) to (b).
+Figure 9. Performance comparison between our algorithms and the method proposed in [6].
+In the second experiment, we tested how efficient our algorithms are in designing
+complicated wind dynamics. Figure 1 shows the case where winds coming from multiple
+sources must interact with static obstacles. Our method could generate a realistic bump
+and churn in a very realistic way between wind and obstacles. Figure 10 shows two winds
+colliding in the middle of the environment. You can see that the two winds are deflecting
+and changing direction smoothly as shown in Figure 11. Please refer to the accompanying
+video of the result for more details. Figure 7 compared two cases in which we applied
+the shadow generation technique proposed in Section 3.5 and not. We can easily tell that
+shadowing between grasses improves visual quality. Finally, Figure 8 shows the wind-
+editing process with the proposed AGC interface. Root points and end points are added
+directly to the environment to form the arrow guides, and those guides are connected to
+each other to create complicate tree-like wind forces, which improves controllability.
+Appl. Sci. 2024, 1, 0
+11 of 14
+Figure 9. Performance comparison between our algorithms and the method proposed in [6].
+In the second experiment, we tested how efficient our algorithms are in designing
+complicated wind dynamics. Figure 1 shows the case where winds coming from multiple
+sources must interact with static obstacles. Our method could generate a realistic bump
+and churn in a very realistic way between wind and obstacles. Figure 10 shows two winds
+colliding in the middle of the environment. You can see that the two winds are deflecting
+and changing direction smoothly as shown in Figure 11. Please refer to the accompanying
+video of the result for more details. Figure 7 compared two cases in which we applied
+the shadow generation technique proposed in Section 3.5 and not. We can easily tell that
+shadowing between grasses improves visual quality. Finally, Figure 8 shows the wind-
+editing process with the proposed AGC interface. Root points and end points are added
+directly to the environment to form the arrow guides, and those guides are connected to
+each other to create complicate tree-like wind forces, which improves controllability.
+(a)
+(b)
+Figure 10. The two winds interact in the middle and then turn from the other direction (a) to (b).
+Figure 10. The two winds interact in the middle and then turn from the other direction (a) to (b).
+The data in Table 2 present additional performance metrics obtained using an Intel
+Core i7-10700KF CPU and an NVIDIA RTX 2080 8 GB GPU. The simulations were conducted
+with a varying number of grass blades, up to a maximum of 7,000,000, to evaluate real-time
+performance. The optimal frame rate achieved under these conditions was 29 fps. The
+grid size for wind simulation was 1000 × 1000. The whole simulation time includes the
+processes time described in Equations (11)–(13). The time for the grass shadow indicates
+the performance of the shading algorithm, as illustrated in Figure 7b. The grass rendering
+time includes both the grass simulation and shadow rendering step.
+
+
+Appl. Sci. 2024, 14, 548
+12 of 14
+Appl. Sci. 2024, 1, 0
+12 of 14
+(a)
+(b)
+Figure 11. Two winds are changing direction over time after bending. (a) has been changed to (b).
+The data in Table 2 present additional performance metrics obtained using an Intel
+Core i7-10700KF CPU and an NVIDIA RTX 2080 8 GB GPU. The simulations were conducted
+with a varying number of grass blades, up to a maximum of 7,000,000, to evaluate real-
+time performance. The optimal frame rate achieved under these conditions was 29 fps.
+The grid size for wind simulation was 1000 × 1000. The whole simulation time includes the
+processes time described in Equations (11)–(13). The time for the grass shadow indicates
+the performance of the shading algorithm, as illustrated in Figure 7b. The grass rendering
+time includes both the grass simulation and shadow rendering step.
+Table 2. Performance metrics of grass simulation.
+Grass Count
+Wind
+Simulation
+(ms)
+Grass
+Simulation
+(ms)
+Grass
+Shadow (ms)
+Grass
+Rendering
+(ms)
+FPS
+1,000,000
+5.9
+0.1
+0.1
+3.3
+87
+2,000,000
+5.9
+0.1
+0.1
+7.5
+69
+3,000,000
+5.9
+0.1
+0.1
+11.4
+51
+4,000,000
+5.9
+0.3
+0.2
+15.6
+42
+5,000,000
+5.9
+0.6
+0.4
+19.4
+36
+6,000,000
+5.9
+0.7
+0.5
+23.2
+32
+7,000,000
+5.9
+0.7
+0.5
+27.4
+29
+5. Conclusions
+In this paper, we presented CWD-Sim, a real-time simulation algorithm for grass
+deformation and wind dynamic control in complex scenes. Our algorithm is capable of
+naturally simulating the effects of wind on grasses while allowing designers to have control
+over the wind flow in complex scenes with obstacles or other structures. By grouping
+grass blades and simplifying the force calculation, our algorithm significantly reduces
+computational load and achieves faster and more efficient simulations. Our method also
+allows for grass-model variation and efficient shadowing, which further enhances the
+realism of the simulation.
+However, we acknowledge some limitations of our method. While our algorithm is
+well suited for animating large numbers of homogeneous grass blades, it focuses on the
+aggregate behaviors, such as wind-induced swaying, and therefore may not be appropriate
+for real-world physics-based animation, which would require a physics-based simulation
+technique. Another drawback of our method is 2D wind dynamics. Our proposed grass
+deformation is based on a 2D fluid simulation. Therefore, it is impossible to reproduce
+certain 3D fluid behaviors, such as the three-dimensional vortex observed in the real world.
+However, we believe that the 3D deformation can be approximated with the 2D simulation
+with simple quadratic equations that we proposed.
+Also, our method did not take into account collisions between grass blades. To solve
+this problem, a more complex calculation method is needed. If our quadratic equation
+is to reflect the deformation of the adjacent grass blades, the collision information can be
+Figure 11. Two winds are changing direction over time after bending. (a) has been changed to (b).
+Table 2. Performance metrics of grass simulation.
+Grass Count
+Wind
+Simulation (ms)
+Grass
+Simulation (ms)
+Grass Shadow (ms)
+Grass Rendering (ms)
+FPS
+1,000,000
+5.9
+0.1
+0.1
+3.3
+87
+2,000,000
+5.9
+0.1
+0.1
+7.5
+69
+3,000,000
+5.9
+0.1
+0.1
+11.4
+51
+4,000,000
+5.9
+0.3
+0.2
+15.6
+42
+5,000,000
+5.9
+0.6
+0.4
+19.4
+36
+6,000,000
+5.9
+0.7
+0.5
+23.2
+32
+7,000,000
+5.9
+0.7
+0.5
+27.4
+29
+5. Conclusions
+In this paper, we presented CWD-Sim, a real-time simulation algorithm for grass
+deformation and wind dynamic control in complex scenes. Our algorithm is capable of
+naturally simulating the effects of wind on grasses while allowing designers to have control
+over the wind flow in complex scenes with obstacles or other structures. By grouping
+grass blades and simplifying the force calculation, our algorithm significantly reduces
+computational load and achieves faster and more efficient simulations. Our method also
+allows for grass-model variation and efficient shadowing, which further enhances the
+realism of the simulation.
+However, we acknowledge some limitations of our method. While our algorithm is
+well suited for animating large numbers of homogeneous grass blades, it focuses on the
+aggregate behaviors, such as wind-induced swaying, and therefore may not be appropriate
+for real-world physics-based animation, which would require a physics-based simulation
+technique. Another drawback of our method is 2D wind dynamics. Our proposed grass
+deformation is based on a 2D fluid simulation. Therefore, it is impossible to reproduce
+certain 3D fluid behaviors, such as the three-dimensional vortex observed in the real world.
+However, we believe that the 3D deformation can be approximated with the 2D simulation
+with simple quadratic equations that we proposed.
+Also, our method did not take into account collisions between grass blades. To solve
+this problem, a more complex calculation method is needed. If our quadratic equation
+is to reflect the deformation of the adjacent grass blades, the collision information can be
+extracted and used. We will need to discuss this further in the future to incorporate the
+collision of many grasses into our processing simulations.
+According to experiments, our methods appeared a little slower than certain prior
+methods such as [6] in performance, which had 43.5 fps for 50,000 grass blades compared to
+our 35 fps. However, our method did not downgrade much in performance as the number
+of blades increased. For example, while the [6] drops to 15.9 fps at 200,000 blades, our
+method maintains a frame rate of 28 fps even with 500,000 blades as shown in Figure 9,
+showing its advantage in large-scale simulations.
+Additionally, we have also conducted experiments on the latest hardware specification
+and can see that it shows excellent real-time performance at 29 fps at 7,000,000 of grass
+count as shown in Table 2.
+
+
+Appl. Sci. 2024, 14, 548
+13 of 14
+In future research, we would like to incorporate level of detail (LOD) and culling
+techniques for optimization and complement them with different types of models, such as
+flowers, and different types of grasses.
+In the course of our current experiments, we have encountered a challenge in simulat-
+ing the effects of strong winds on grass blades. We found that too much wind can cause
+grass blades to become too dark and flat. Although allowing the user to adjust the wind
+strength could potentially mitigate this problem, it could also lead to tedious control by the
+user. An alternative approach was considered instead, such as limiting the maximum wind
+strength, but this may cause the grass blades to appear unnaturally rigid. We also carried
+out an experiment with interpolation methods to smoothly limit the wind intensity, but
+this did not effectively solve the problem in the cases of very strong winds. Furthermore,
+our attempts to use periodic functions such as cosine and sine to maintain constant motion
+in grass blades were not successful, either. Identifying and solving this problem represents
+a significant opportunity for future research, as it is critical to achieving more realistic and
+dynamic simulations of natural environments.
+Supplementary Materials: The following supporting information can be downloaded at: https:
+//www.mdpi.com/article/10.3390/app14020548/s1.
+Author Contributions: Conceptualization and methodology, N.C. and M.S.; software, N.C.; valida-
+tion, N.C. and M.S.; formal analysis, N.C. and M.S.; investigation, N.C.; resources, N.C. and M.S.;
+data curation, N.C.; writing—original draft preparation, N.C. and M.S.; writing—review and editing,
+N.C. and M.S.; visualization, N.C.; supervision, M.S.; project administration, M.S. All authors have
+read and agreed to the published version of the manuscript.
+Funding: This work was supported by the National Research Foundation of Korea (NRF) grant
+funded by the Korea government (MSIT) (No. 2021R1A2C1012316) and was supported 2023 Cultural
+Heritage Smart Preservation & Utilization R&D Program by Cultural Heritage Administration,
+National Research Institute of Cultural Heritage (Project Name: A smart H-BIM modeling technology
+of wooden architecture for the conservation of Historical and Cultural Environment, Project Number:
+2023A02P01-001, Contribution Rate: 50%).
+Institutional Review Board Statement: Not applicable.
+Informed Consent Statement: Not applicable.
+Data Availability Statement: Data is contained within the article or Supplementary Materials.
+Conflicts of Interest: The authors declare no conflicts of interest.
+References
+1.
+Stam, J. Stable fluids. In Proceedings of the 26th Annual Conference on Computer Graphics and Interactive Techniques,
+Los Angeles, CA, USA, 8–13 August 1999; pp. 121–128.
+2.
+Harris, M.J. Fast Fluid Dynamics Simulation on the GPU. GPU Gems. 2005; Chapter 38. Available online: https://developer.
+nvidia.com/sites/all/modules/custom/gpugems/books/GPUGems/gpugems_ch38.html (accessed on 12 April 2023).
+3.
+Dobryakov, P. WebGL Fluid Simulation.
+Available online: https://github.com/PavelDoGreat/WebGL-Fluid-Simulation
+(accessed on 12 April 2023).
+4.
+haxiomic. Cross-Platform GPU Fluid Simulation. Available online: https://github.com/haxiomic/GPU-Fluid-Experiments
+(accessed on 12 April 2023).
+5.
+angeluriot.
+2D Fluid Simulation.
+Available online: https://github.com/angeluriot/2D_fluid_simulation (accessed on
+12 April 2023).
+6.
+Lo, Y.; Chu, H.K.; Lee, R.R.; Chang, C.F. A simulation on grass swaying with dynamic wind force. In Proceedings of the 20th
+ACM SIGGRAPH Symposium on Interactive 3D Graphics and Games, Redmond, DC, USA, 27–28 February 2016; p. 181.
+7.
+Boulanger, K.; Pattanaik, S.N.; Bouatouch, K. Rendering Grass in Real Time with Dynamic Lighting. IEEE Comput. Graph. Appl.
+2009, 29, 32–41. [CrossRef] [PubMed]
+8.
+Deussen, O.; Hanrahan, P.; Lintermann, B.; Mˇ
+ech, R.; Pharr, M.; Prusinkiewicz, P. Realistic modeling and rendering of plant
+ecosystems. In Proceedings of the 25th Annual Conference on Computer Graphics and Interactive Techniques, Orlando, FL, USA,
+19–24 July 1998; pp. 275–286.
+9.
+Habel, R. Real-Time Rendering and Animation of Vegetation. Ph.D. Thesis, Technischen Universität Wien, Vienna, Austria, 2010.
+
+
+Appl. Sci. 2024, 14, 548
+14 of 14
+10.
+Chen, K.; Johan, H. Animating 3D vegetation in real-time using a 2D approach. In Proceedings of the 19th Symposium on
+Interactive 3D Graphics and Games, San Francisco, CA, USA, 27 February–1 March 2015; pp. 69–76.
+11.
+Qiu, H.; Chen, L. Rendering System for Large-Scale Grass. In Proceedings of the 2009 International Conference on Computational
+Intelligence and Software Engineering, Wuhan, China, 11–13 December 2009; pp. 1–4. [CrossRef]
+12.
+Max, N.; Saito, S.; Watanabe, K.; Nakajima, M. Rendering grass blowing in the wind with global illumination. Tsinghua Sci.
+Technol. 2010, 15, 133–137. [CrossRef]
+13.
+Fan, Z.; Li, H.; Hillesland, K.; Sheng, B. Simulation and Rendering for Millions of Grass Blades. In Proceedings of the 19th
+Symposium on Interactive 3D Graphics and Games, i3D ’15, San Francisco, CA, USA, 27 February–1 March 2015; pp. 55–60.
+[CrossRef]
+14.
+Wang, S.; Ali, S.G.; Lu, P.; Li, Z.; Yang, P.; Sheng, B.; Mao, L. GPU-based Grass Simulation with Accurate Blade Reconstruc-
+tion. In Proceedings of the Advances in Computer Graphics: 37th Computer Graphics International Conference, CGI 2020,
+Geneva, Switzerland, 20–23 October 2020; pp. 288–300.
+15.
+Jahrmann, K.; Wimmer, M. Interactive Grass Rendering Using Real-Time Tessellation. In WSCG 2013 Full Paper Proceedings;
+TU Wien: Vienna, Austria, 2013.
+16.
+Bakay, B.; Lalonde, P.; Heidrich, W. Real-Time Animated Grass. In Eurographics (Short Presentations); TU Wien: Vienna, Austria,
+2002.
+17.
+Jens, O.; Salama, C.R.; Kolb, A. GPU-based responsive grass. J. WSCG 2009, 17, 65–72.
+18.
+Belyaev, S.Y.; Laevsky, I.; Chukanov, V.V. Real-Time Animation, Collision and Rendering of Grassland. In Proceedings of the
+GraphiCon2011, Moscow, Russia, 26–30 September 2011.
+19.
+JoeyDeVries. LearnOpenGL-Instancing. Available online: https://github.com/JoeyDeVries/LearnOpenGL/tree/master/src/
+4.advanced_opengl/10.1.instancing_quads (accessed on 12 April 2023).
+20.
+Dobryakov, P. NURBS Demo-Evaluator for Non Uniform Rational B-Splines. Available online: http://nurbscalculator.in (accessed
+on 12 April 2023).
+Disclaimer/Publisher’s Note: The statements, opinions and data contained in all publications are solely those of the individual
+author(s) and contributor(s) and not of MDPI and/or the editor(s). MDPI and/or the editor(s) disclaim responsibility for any injury to
+people or property resulting from any ideas, methods, instructions or products referred to in the content.

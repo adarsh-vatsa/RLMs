@@ -1,0 +1,2471 @@
+Defense-Prefix for Preventing Typographic Attacks on CLIP
+
+Abstract
+Vision-language pre-training models (VLPs) have exhib-
+ited revolutionary improvements in various vision-language
+tasks. In VLP, some adversarial attacks fool a model into
+false or absurd classifications. Previous studies addressed
+these attacks by fine-tuning the model or changing its ar-
+chitecture. However, these methods risk losing the origi-
+nal model’s performance and are difficult to apply to down-
+stream tasks. In particular, their applicability to other tasks
+has not been considered. In this study, we addressed the re-
+duction of the impact of typographic attacks on CLIP with-
+out changing the model parameters. To achieve this, we ex-
+pand the idea of “class-prefix learning” and introduce our
+simple yet effective method: Defense-Prefix (DP), which in-
+serts the DP token before a class name to make words “ro-
+bust” against typographic attacks. Our method can be eas-
+ily applied to downstream tasks, such as object detection,
+because the proposed method is independent of the model
+parameters. Our method significantly improves the accu-
+racy of classification tasks for typographic attack datasets,
+while maintaining the zero-shot capabilities of the model.
+In addition, we leverage our proposed method for object
+detection, demonstrating its high applicability and effec-
+tiveness. The codes and datasets are available at https:
+//github.com/azuma164/Defense-Prefix.
+1. Introduction
+In recent years, vision-language pre-training models
+(VLPs) such as CLIP [34] and ALIGN [20] have revolu-
+tionized downstream vision-language tasks such as classi-
+fication [5, 47, 13], object detection [48, 12], segmenta-
+tion [50, 51], and image generation [35, 38, 6]. Such models
+are trained on web-scale data, for example, 400 million text-
+image pairs in the case of CLIP. The rich supervision pro-
+vided by natural language enabled these pre-trained models
+to achieve impressive results on various downstream tasks
+with little or no additional training data.
+However, some adversarial attacks [21, 14] can fool such
+models into making false or absurd classifications. Goh et
+dog
+mouse
+CLIP + Ours
+CLIP
+Accuracy (%)
+90.9
+73.1
+26.9
+9.1
+(a)
+(b)
+Figure 1. (a): Image of a dog with a yellow tag that states
+“mouse”. (b): Misclassification in CLIP against the image.
+al. [14] found that CLIP is vulnerable to typographic at-
+tacks, in which the text in an image results in misclassifi-
+cation. In Fig. 1, the yellow tag that states “mouse” causes
+CLIP to misclassify the dog as a mouse.
+As described below, we found that downstream classi-
+fiers built based on CLIP for different tasks are also sus-
+ceptible to typographic attacks. Therefore, defense meth-
+ods against such attacks should be readily applied to other
+downstream tasks. However, previous studies [19, 31] have
+mainly focused on typographic attacks on classification and
+ignored their applicability. Materzynska et al. [31] learned
+a transformation module on top of the CLIP output and
+PAINT [19] fine-tuned the model.
+Since these methods
+change the model parameters, they risk losing the origi-
+nal model’s performance and are difficult to apply to down-
+stream tasks. Additionally, if you calculate the image fea-
+tures of CLIP beforehand, these approaches require updat-
+ing those features.
+To solve these problems, we propose a simple yet ef-
+fective defense method: Defense-Prefix (DP), which inserts
+the DP token before a class name. The DP token is a unique
+token followed by a class name (e.g., “a photo of a [DP]
+dog”). An image feature from Fig. 1(a) would resemble a
+text feature from “a photo of a mouse”, but would not be
+similar to a feature from “a photo of a [DP] mouse”. In
+other words, DP makes the class name “robust” against the
+arXiv:2304.04512v3  [cs.CV]  6 Sep 2023
+
+
+attacks. Learning a unique token followed by a class name
+has been primarily conducted in subject-driven image gen-
+eration [37, 25, 26]. We define this approach as class-prefix
+learning and apply the concept of class-prefix learning to
+prevent typographic attacks.
+Our approach learns only the word embedding vector for
+the DP token. Therefore, we do not update the original
+CLIP. After the DP vector is obtained, it can be used for any
+task. This simplicity is a significant advantage over existing
+works because all other works require training the model.
+We experimentally demonstrate the effectiveness of the
+proposed method.
+(1) We first conduct experiments on
+classification using ten synthetic and three real-world typo-
+graphic attack datasets. Here, due to the insufficient number
+of datasets, we create the biggest Real-world Typographic
+Attack dataset “RTA-100”, which contains 100 categories
+and 1000 images. Compared with CLIP, our method effec-
+tively prevents typographic attacks (e.g., +9.61% on syn-
+thetic and +17.70% on real-world datasets), while losing
+only 0.64% on average for original datasets. (2) We also
+evaluate our method on object detection by using Region-
+CLIP [48]. The proposed method does not require addi-
+tional training because only the input of the text encoder
+is modified. Our results indicate that the downstream clas-
+sifiers based on CLIP are also susceptible to typographic
+attacks. Our method reduces the impact of the attacks (e.g.,
++16.0 AP50 on COCO, +6.2 mAP on LVIS), while keeping
+the original accuracy (e.g., +0.1 AP50 on COCO, -0.3 mAP
+on LVIS).
+In summary:
+• We expand class-prefix learning and propose DP, a
+novel method for preventing typographic attacks on
+CLIP without changing the model parameters.
+• We find downstream classifiers built based on CLIP are
+also vulnerable to typographic attacks.
+• Our method effectively prevents typographic attacks,
+while keeping the original model’s performance. In
+addition, we demonstrate the easy application of our
+approach to downstream tasks.
+• We creat the biggest real-world typographic attack
+dataset RTA-100, which will be publicly available.
+2. Related work
+2.1. Vision-language pre-training (VLP)
+Learning the joint vision-language representation space
+has been of great interest in the field of computer vi-
+sion.
+Recently, CLIP [34] and ALIGN [20] collected
+million/billion-scale image-caption pairs from the Inter-
+net and learned to match images with image descriptions.
+These models obtain a strong vision-language representa-
+tion space, which has been extremely effective for down-
+stream tasks.
+Recent studies have transferred the knowledge of these
+models to downstream recognition tasks, such as classifica-
+tion [5, 47, 13], object detection [48, 12], semantic segmen-
+tation [51, 50], panoptic segmentation [8], and multi-label
+recognition [44]. Typically, these methods freeze a VLP
+text encoder and then use it directly. Therefore, the pro-
+posed method can be applied without additional training.
+2.2. Typographic attacks
+CLIP is known to be weak against typographic at-
+tacks [14, 1]. Goh et al. [14] found that the text in an image
+results in misclassification of CLIP as shown in Fig. 1.
+Materzynska et al. [31] applied the learned linear trans-
+formation to the CLIP output to disentangle the visual
+concept from the spelling capabilities of CLIP. Ilhalco et
+al. [19] interpolated the weights of the parameters between
+the fine-tuned and the original CLIP models to prevent ty-
+pographic attacks. These methods risk losing the original
+model’s performance and are difficult to apply to down-
+stream tasks. Also, they need to update the image features.
+Unlike these methods, our method does not modify the
+architecture or model parameters. In addition, our method
+does not update the image features.
+2.3. Prompt learning in VLP
+Inspired by the success in NLP [43, 22, 49], to adapt
+VLP to downstream tasks, several studies have learned
+prompt tokens in end-to-end training.
+CoOp [53] first
+utilized prompt learning in VLP to improve the accuracy
+of classification tasks. This was followed by other stud-
+ies [52, 30, 23]. Recently, some studies [44, 50, 12, 51, 10]
+have focused on using prompt learning to improve other
+downstream recognition tasks apart from classification.
+Prompt learning trains tokens of the whole sentence ex-
+cept for a class name, whereas our class-prefix learning
+trains one token before a class name.
+Tokens obtained
+by class-prefix learning can be used for any task that uses
+prompts to input text, whereas prompt learning must be
+trained only for the specific recognition task and cannot be
+used for any other task.
+2.4. Class-prefix learning
+We define the approach for learning a unique token fol-
+lowed by a class name as class-prefix learning. Class-prefix
+learning has been mainly conducted in the research of im-
+age generation [37, 25, 26, 40]. Ruiz et al. [37] addressed
+a new problem: subject-driven generation. They learned a
+unique identifier followed by the class name of the subject
+(e.g., “A [V] dog”). They aimed to synthesize novel scenes
+
+
+of the subject in different contexts while keeping its key vi-
+sual features.
+Apart from image generation, class-prefix learning has
+rarely been investigated. Because class-prefix learning re-
+tains the original input texts, it can be incorporated into vari-
+ous vision-language tasks. In this study, we propose a novel
+method for learning a prefix to prevent typographic attacks.
+3. Method
+3.1. Preliminaries: CLIP
+We first introduce CLIP [34] as the basis for our ap-
+proach.
+It consists of two encoders: an image encoder
+and a text encoder. CLIP encodes the images and text in
+the same embedding space. The image encoder can be ei-
+ther ResNet [17] or Vision-Transformer [9]. The text en-
+coder is Transformer [45]. To encode an input text, such
+as “a photo of a dog”, CLIP first converts each word to a
+d-dimensional word embedding vector (d represents the di-
+mension of a word embedding vector), using a learned vo-
+cabulary. Subsequently, the word embedding vectors are
+fed into the transformer to obtain the final text feature.
+The CLIP can be used for zero-shot image recognition.
+Let us consider n-class image recognition problem. Let x ∈
+Rm be an image feature generated by the image encoder (m
+represents the dimension of a feature vector) and {wi}n
+i=1
+be a set of text features produced by the text encoder. Here,
+wi ∈Rm represents the i-th category. In particular, each
+wi is derived from a text prompt based on a template such
+as “a photo of a <CLS>.”, where <CLS> can be replaced
+with the i-th class name. The prediction probability that the
+output label y is of class i is then
+p(y = i | x, {wj}n
+j=1) =
+exp (cos (wi, x)/τ)
+Pn
+j=1 exp (cos (wj, x)/τ),
+(1)
+where cos (·, ·) calculates the cosine similarity and τ is a
+temperature parameter learned by CLIP.
+3.2. Defense-Prefix
+In this section, we present the proposed approach. Our
+goal is to train the word embedding vector for the DP token,
+i.e., a single d-dimensional vector. We define this word em-
+bedding vector as the DP vector. Here, none of the model
+parameters are modified. Given the i-th class name, we de-
+fine the input sequence of words (text prompts) as ti. We
+also prepare tDP
+i
+, which contains the DP token.
+ti
+=
+(P1, P2, ..., CLSi, ..., Pl) .
+(2)
+tDP
+i
+=
+(P1, P2, ..., [DP] , CLSi, ..., Pl) .
+(3)
+Here, [DP] and CLSi represent the DP token and i-th class
+name, respectively, while P1, P2, . . . form a template of l
+words. For example, in the case “a photo of a <CLS>.”, P1
+is “a” and P2 is “photo”. As aforementioned, CLIP converts
+each word into a d-dimensional word embedding vector us-
+ing the learned vocabulary as follows:
+bi
+=
+(BP1, BP2, ..., BCLSi, ..., BPl) .
+(4)
+bDP
+i
+=
+BP1, BP2, ..., B[DP ], BCLSi, ..., BPl
+
+, (5)
+where BP1, BP2, . . . , BCLSi ∈Rd denote the learned word
+embedding vectors. The vectors are pre-trained and fixed.
+Here, we aim to learn the DP vector (B[DP ] ∈Rd), which
+is a word embedding vector for the DP token.
+Then, we enter {bi}n
+i=1 and {bDP
+i
+}n
+i=1 into the text en-
+coder and obtain the original and “robust” class features
+{wi}n
+i=1 and {wDP
+i
+}n
+i=1, respectively. Here, n represents
+the number of classes and all wi, wDP
+i
+∈Rm. We can now
+recognize an image using Eq. 1 with the original ({wi}n
+i=1)
+or the robust ({wDP
+i
+}n
+i=1) class features. Robust class fea-
+tures reduce the impact of typographic attacks.
+The goal is to train the DP vector so that the word next
+to the DP token is robust against typographic attacks. To
+achieve this, we propose using defense loss and identity loss
+(Fig. 2). Defense loss enables the DP token to prevent typo-
+graphic attacks, and identity loss helps it maintain the orig-
+inal meanings of the class names. For the training, we as-
+sume that a set of image pairs, comprising original and “at-
+tack” images, is available. The attack image is obtained by
+synthesizing the incorrect label text on the original image.
+We calculate defense loss and identity loss for each pair.
+Defense loss:
+The defense loss aims to prevent typo-
+graphic attacks. To achieve this, we adopt the cross-entropy
+loss in the same manner as for ordinary classification tasks.
+Let I and ¯
+I represent the original and attack images, re-
+spectively. For example, I and ¯
+I show an image of a dog
+and the same image of the same dog but with a synthe-
+sized text “bird”, respectively. We then obtain the image
+feature ¯
+x by applying ¯
+I to the image encoder. We classify
+the typographic attack image ¯
+I using robust class features
+{wDP
+i
+}n
+i=1 as follows:
+p0(y = i | ¯
+x, {wDP
+j
+}n
+j=1)) =
+exp (cos (wDP
+i
+, ¯
+x)/τ)
+Pn
+j=1 exp (cos (wDP
+j
+, ¯
+x)/τ).
+(6)
+We minimize the standard classification loss based on the
+cross-entropy to train the DP vector. The defense loss for ¯
+I
+is computed as follows:
+L0 = −
+n
+X
+j=1
+lj log p0(y = j),
+(7)
+where l is a one-hot vector representing the ground truth.
+Identity loss:
+The identity loss function aims to help the
+learned token maintain the original meanings of the words.
+
+
+Text
+Encoder
+Image
+Encoder
+Text
+Encoder
+Image
+Encoder
+CE(p0, l)
+a photo of a
+[DP] {class}.
+Prediction
+Ground truth
+KL(p1|p2)
+a photo of a
+[DP] {class}.
+a photo of
+a {class}.
+snake
+pelican
+gold finch
+snake
+pelican
+gold finch
+Prediction1
+Prediction2
+(a) Defense Loss
+(b) Identity Loss
+Freeze
+P0
+l
+P1
+P2
+Figure 2. Method overview. We keep the image encoder and text encoder of CLIP frozen. Our method trains only the DP vector, which is
+a word embedding for [DP]. We propose to learn the DP vector by using Defense loss and Identity loss. (a) Defense loss calculates cross-
+entropy loss against typographic attack images. (b) Identity loss calculates KL-divergence loss between two probability distributions.
+To achieve this goal, we ensure a consistent output with and
+without DP tokens. To distill the knowledge of CLIP, some
+studies [15, 28] have used the output features of CLIP. How-
+ever, how to use text features for distillation in our method
+is unclear. Then, we utilize classification results. First, we
+classify the original image I using the original ({wi}n
+i=1)
+and robust ({wDP
+i
+}n
+i=1) class features as follows:
+p1(y = i | x, {wj}n
+j=1) =
+exp (cos (wi, x)/τ)
+Pn
+j=1 exp (cos (wj, x)/τ).
+(8)
+p2(y = i | x, {wDP
+j
+}n
+j=1) =
+exp (cos (wDP
+i
+, x)/τ)
+Pn
+j=1 exp (cos (wDP
+j
+, x)/τ),
+(9)
+where x denotes the image feature from I. Here, we make
+the probability distribution of {p2}n
+i=1 approach that of
+{p1}n
+i=1 using KL-divergence. Formally, the identity loss
+for I is defined as:
+L1 = DKL
+
+
+n
+X
+j=1
+p1(y = j)ej ∥
+n
+X
+j=1
+p2(y = j)ej
+
+, (10)
+where ej is a one-hot vector (j-th element is one). DP main-
+tains the performance of the original model by mimicking
+the original classification results.
+Finally, the loss for the image pair {I, ¯
+I} is computed as:
+L = L0 + λL1,
+(11)
+where λ is a hyperparameter that balances the losses. Em-
+pirically, we set λ = 3.0.
+It is worth noting that our method does not modify any
+parameters of the image and text encoders of CLIP but
+trains only the DP vector. Originally, CLIP recognizes im-
+ages using Eq. 8. In our method, after training the DP vec-
+tor, we use it to apply various recognition tasks using Eq. 9.
+4. Experiments
+4.1. Training Defense-Prefix
+First, we train the DP vector. After obtaining the learned
+DP vector, we apply it to the experiments of recognition
+tasks in Sec. 4.2 and 4.3. We train the DP vector only in
+Sec. 4.1.
+Datasets:
+We use ImageNet-100 [42], a random 100-class
+subset of ImageNet [7], to train the DP vector. We gener-
+ate typographic attack images by adding text with incorrect
+labels to the original images.
+Implementation details:
+We initialize the image and text
+encoders from the CLIP [34] pre-trained model and keep
+them frozen during training. For the image encoder, ViT-
+B/32 and RN50x4 are applied for classification and object
+detection, respectively. We train only one vector for DP,
+which is the only learnable part of our method. The DP
+vector is randomly initialized by drawing from a zero-mean
+Gaussian distribution with a standard deviation of 0.02. We
+use SGD optimizer with an initial learning rate of 0.002,
+which is decayed using the cosine annealing rule. We train
+the DP vector for 10 epochs with a batch size of 512, using
+one NVIDIA V100.
+4.2. Classification
+In this section, we evaluate the performance of the pro-
+posed method based on the classification tasks. We com-
+
+
+Figure 3. Typographic attack datasets. (Left: a sample from
+synthetic typographic attack datasets, Right: a sample from our
+real-world typographic attack dataset.)
+pare our method to CLIP [34], Materzynska et al. [31], and
+PAINT [19].
+Datasets:
+We employ ten publicly available image clas-
+sification datasets used in CLIP: ImageNet [7], Cal-
+tech101 [11], OxfordPets [33], StanfordCars [24], Flow-
+ers102 [32], Food101 [2], FGVCAircraft [29], DTD [4],
+SUN397 [46], EuroSAT [18]. To evaluate the classification
+of typographic attack datasets, we create synthetic typo-
+graphic attack datasets using those ten datasets (Fig. 3: left).
+Also, we use two publicly available real-world typographic
+attack datasets from Materzynska et al. [31] and PAINT. In
+addition, due to the insufficient number of datasets, we gen-
+erate our real-world attack dataset RTA-100 (Fig. 3: right).
+For real-world attack datasets, we use class labels of objects
+and labels of tags as the candidate categories.
+RTA-100:
+As described before, we create the biggest
+real-world typographic attack dataset RTA-100, which con-
+tains 100 categories and 1000 images. The dataset from
+Materzynska et al. [31] comprises 19 categories and 171
+images, and that from PAINT [19] has 89 categories and
+110 images. Combining those datasets is not sufficient to
+verify the diversity. To increase the test data, we created
+RTA-100 (see Appendix for more details).
+Implementation details:
+We use ViT-B/32 for the image
+encoder. When we evaluate our method on classification,
+we place the DP token before the class names.
+Baselines:
+To evaluate the effectiveness of the proposed
+method, we compare it with the following baselines:
+CLIP [34], Materzynska et al. [31], and PAINT [19].
+Materzynska et al. [31] apply the learned linear layer to the
+CLIP output. For Materzynska et al. [31], we use a pub-
+licly available pre-trained linear layer for ViT-B/32. This
+linear layer was trained using ImageNet-1K and 182,329
+Table 1. Summary of classification results. The best results out
+of Materzynska +, PAINT, and ours are bolded.
+Retain
+Typographic attack
+Method
+Models
+Original
+Synth.
+Real
+Avg.
+CLIP
+-
+61.55
+34.59
+46.82
+40.71
+Materzynska+ [31]
+×
+49.50
+37.44
+63.61
+50.53
+PAINT [19]
+×
+59.63
+49.93
+55.00
+52.47
+Ours
+✓
+60.91
+44.20
+64.52
+54.36
+English words.
+We apply the linear layer to the output
+of both the image and text encoders of CLIP. For PAINT,
+we fine-tune the image encoder of CLIP using typographic
+attack images from ImageNet-100, which is used to train
+the DP vector. We then interpolate the weights between
+the fine-tuned image encoder θft and the original image
+encoder θzs with α = 0.35, where α is the mixing co-
+efficient (α ∈[0, 1]). We get patched model as follows:
+θpatch = (1 −α)θzs + αθft.
+Results:
+Table 1 summarizes the performance of our
+method on classification.
+As previous research [14] has
+shown, our results demonstrate that text in images harms the
+original performance of CLIP (e.g., from 61.55% to 34.59%
+on average). Compared with CLIP, our method improves
+the performance on all typographic attack datasets (e.g.,
+from 34.59% to 44.20% on synthetic and from 46.82% to
+64.52% on real-world datasets), losing little average accu-
+racy on the original datasets (e.g., from 61.55% to 60.91%).
+Compared to Materzynska et al., our method exhibits im-
+proved performance on both synthetic and real-world ty-
+pographic attack datasets (e.g., from 37.44% to 44.20%
+on synthetic and from 63.61% to 64.52% on real-world
+datasets). When compared with PAINT, our method loses
+on synthetic attack datasets (e.g., from 49.93% to 44.20%
+on average), while it significantly improves the performance
+on real-world attack datasets (e.g., from 55.00 to 64.52 on
+average). The result indicates that our method is more ro-
+bust against changes in the appearance of text.
+Tables B and 3 present the specific performance in clas-
+sifying original datasets, and typographic attack datasets,
+respectively.
+Overall, our simple method effectively prevents typo-
+graphic attacks (e.g., +9.61% on synthetic and +17.70%
+on real-world typographic attack datasets), while losing the
+least original accuracy (e.g., -0.64% on average). Although
+our method does not update CLIP, our simple method of
+putting the learned prefix before the class names works ef-
+fectively, even when compared to previous studies. Here, it
+is worth noting that PAINT must retrain the CLIP encoder
+and recompute the CLIP features for all images to achieve
+
+
+Table 2. Classification results on original datasets. Individual results for all 10 datasets are available in the Appendix. ∗Average reported
+across 10 datasets.
+Method
+Retain models
+ImageNet
+Caltech
+Pets
+Cars
+∗Avg.
+CLIP
+-
+62.02
+88.64
+87.35
+58.72
+61.55
+Materzynska+ [31]
+×
+54.38
+80.53
+75.01
+40.33
+49.50
+PAINT [19]
+×
+61.82
+88.48
+85.23
+55.30
+59.63
+Ours
+✓
+62.48
+89.28
+87.22
+57.47
+60.91
+Table 3. Classification results on typographic attack datasets. ∗Average reported across 10 datasets.
+Synth.
+Real
+Method
+Retain models
+ImageNet
+Caltech
+Pets
+Cars
+∗Avg.
+from [31]
+from [19]
+RTA-100
+Avg.
+CLIP
+-
+39.10
+63.97
+58.95
+21.02
+34.59
+43.27
+50.00
+47.20
+46.82
+Materzynska+ [31]
+×
+44.91
+74.73
+63.61
+15.79
+37.44
+77.78
+55.45
+57.60
+63.61
+PAINT [19]
+×
+55.9
+83.57
+76.53
+33.44
+49.93
+53.22
+58.18
+53.60
+55.00
+Ours
+✓
+49.83
+79.54
+72.88
+28.64
+44.20
+71.93
+63.64
+58.00
+64.52
+typographic defense. In contrast, our approach does not
+need to modify the encoder or existing features. This prop-
+erty is a clear advantage; we can apply our method to any
+CLIP-based application without modification. Therefore,
+our method is much better than PAINT if the performance
+is comparable to PAINT.
+4.3. Object detection
+In this section, we evaluate the applicability of the pro-
+posed method to downstream tasks. In particular, we apply
+our method to RegionCLIP [48], a zero-shot object detec-
+tion model. In RegionCLIP, the image encoder is fine-tuned
+from the CLIP image encoder. Therefore, we cannot apply
+previous methods [31, 19] directly to RegionCLIP because
+they need to update the model. On the other hand, we can
+use DP directly, which we train in Sec. 4.1, because it is
+independent of the parameters of the image encoder.
+Datasets:
+We evaluate our method through object detec-
+tion experiments in COCO [27] and LVIS [16] for zero-
+shot inference. We use the standard object detection met-
+rics (AP50 for COCO and mAP for LVIS). We create typo-
+graphic attack datasets using COCO and LVIS by synthe-
+sizing text in each bounding box.
+Implementation details:
+We use a pre-trained Region-
+CLIP model for RN50x4. We keep the model frozen during
+the inference and only modify the input of the text encoder
+by placing the DP token before the class names.
+Following RegionCLIP, we evaluate two settings: (1)
+Ground-truth (GT) bounding boxes used as region propos-
+als. (2) Region proposals obtained from RPN [36].
+Table 4. Zero-shot object detection on original datasets
+Region
+COCO
+LVIS
+Method
+Proposals
+AP50
+mAP
+RegionCLIP
+GT
+65.5
+50.2
+RegionCLIP+Ours
+GT
+65.6
+49.9
+RegionCLIP
+RPN
+29.6
+11.1
+RegionCLIP+Ours
+RPN
+29.6
+11.3
+Table 5. Zero-shot object detection on typographic attack
+datasets
+Region
+COCO
+LVIS
+Method
+Proposals
+AP50
+mAP
+RegionCLIP
+GT
+25.0
+31.9
+RegionCLIP+Ours
+GT
+41.0
+38.1
+RegionCLIP
+RPN
+11.0
+5.17
+RegionCLIP+Ours
+RPN
+14.4
+6.25
+Baselines:
+We use RegionCLIP for zero-shot object de-
+tection. The model was pre-trained on Conceptual Caption
+dataset (CC3M) [41] using the concepts parsed from COCO
+Caption (COCO cap) [3]. RegionCLIP comprises an RPN
+and an image encoder. First, possible image regions are
+proposed by RPN. The model then calculates the similarity
+between the image features of the proposed regions and the
+text features of the target categories, recognizing the cate-
+gories within the local image regions.
+Results:
+Fig. 4 visualizes the results of zero-shot infer-
+ence of RegionCLIP and RegionCLIP+Ours with GT boxes
+on the typographic attack COCO dataset. This shows Re-
+gionCLIP is also adversely influenced by typographic at-
+
+
+mouse 93%
+handbag 98%
+microwave 64%
+RegionCLIP
+RegionCLIP
++ Ours
+car 36%
+dog 53%
+banana 26%
+zebra 60%
+dog 47%
+kite 43%
+person 19 %
+pizza 71%
+horse 38%
+car 35%
+truck 30%
+Figure 4. Visualization of RegionCLIP and RegionCLIP+Ours zero-shot inference on the typographic attack COCO dataset with
+ground-truth boxes (top: RegionCLIP, bottom: RegionCLIP+Ours). The pre-trained models are adversely affected by texts in images.
+Our proposed method reduces the impact of typographic attacks. (Image IDs: 1532, 13004, 17029, 23126)
+tacks, although the image encoder is fine-tuned. For exam-
+ple, the car is misclassified as a handbag (Fig. 4: top left).
+However, RegionCLIP+Ours correctly recognizes the car.
+Tables 4 and 5 present the performance of RegionCLIP
+and RegionCLIP+Ours. When using GT boxes, compared
+with the original RegionCLIP, our method shows improved
+performance on COCO and LVIS for the typographic attack
+datasets (e.g., 41.0 vs. 25.0 on COCO, 38.1 vs. 31.9 on
+LVIS), keeping the accuracy on the original datasets (e.g.,
+65.6 vs 65.5 on COCO, 49.9 vs. 50.2 on LVIS). With RPN
+proposals, our method also improves on the typographic at-
+tack datasets (e.g., 14.4 vs. 11.0 on COCO, 6.25 vs. 5.17
+on LVIS) without losing the original performance (e.g., 29.6
+vs. 29.6 on COCO, 11.3 vs. 11.1 on LVIS).
+4.4. Ablation Studies
+Effectiveness of our identity loss:
+Table 6 lists the ef-
+fects of the identity loss. We observe that the performance
+of DP trained without identity loss drops drastically on the
+original datasets (e.g., from 60.91% to 55.43% on average).
+Identity loss effectively helps the learned token maintain
+the original meanings of the words. Although categorical
+knowledge distillation has not been commonly used in VLP,
+the distillation works effectively as a regularization term.
+Position of the DP token:
+There are many possible po-
+sitions for the placement of the DP token.
+These in-
+clude: at the beginning of a sentence [39], before a class
+name [37, 25], and at the end of a sentence.
+Table 7 shows the effect of the position of DP. We ob-
+serve that the performance of DP at the beginning and end
+of the sentence decreases on synthetic and real-world typo-
+graphic attack datasets. The result indicates that DP works
+most effectively before a class name.
+The number of DP tokens:
+Table 8 shows the effect of
+the number of DP tokens. When we increase the number
+of DP tokens, the overall classification accuracy drops. The
+result indicates that the best number of tokens is one for our
+DP.
+Hyperparameters:
+In Sec. 3.2, we use hyperparameters
+λ. About the value of λ, we conduct an ablation study. As
+Table 9 shows, there is no optimal λ, and we used λ = 3.0.
+Also, when we train defense-prefix with only identity loss,
+the performance is similar to original CLIP’s score.
+5. Conclusion
+In this study, we tackled reducing the impact of ty-
+pographic attacks on CLIP. To achieve this, we proposed
+Defense-Prefix, a novel method for preventing typographic
+attacks on CLIP. We explored the application of class-prefix
+learning, which is primarily conducted in subject-driven
+image generation. To maintain the generalization ability
+of CLIP, we used categorical knowledge distillation as a
+regularization loss. This helped the learned prefix maintain
+the original meanings of the words. Although our method
+did not require updating CLIP, it effectively prevented ty-
+pographic attacks on CLIP, while keeping the model’s orig-
+inal performance. In addition, we demonstrated that our
+approach could be easily applied to downstream tasks such
+
+
+Table 6. Ablation studies on the effect of identity loss on original datasets
+Method
+ImageNet
+Caltech
+Pets
+Cars
+Flowers
+Food
+Aircraft
+DTD
+SUN
+SAT
+Avg.
+CLIP
+62.02
+88.64
+87.35
+58.72
+66.32
+84.14
+18.99
+44.57
+61.74
+42.98
+61.55
+Ours w/o identity loss
+55.81
+85.01
+86.67
+52.77
+58.79
+77.89
+15.48
+30.8
+52.2
+38.86
+55.43
+Ours w/ identity loss
+62.48
+89.28
+87.22
+57.47
+63.82
+83.65
+19.26
+40.64
+61.41
+43.85
+60.91
+Table 7. Ablation studies on the position of the DP token
+Typographic attack
+The position
+Original
+Synth.
+Real
+the beginning
+60.50
+44.13
+63.11
+the end
+61.09
+37.82
+55.69
+before class names
+60.91
+44.20
+64.52
+Table 8. Ablation studies on the number of DP tokens
+Typographic attack
+Number of tokens
+Original
+Synth.
+Real
+one token
+60.91
+44.20
+64.52
+two tokens
+59.57
+43.41
+60.41
+three tokens
+47.3
+34.23
+48.07
+Table 9. Ablation study about hyper-parameters
+Method
+Original
+Synth.
+Real
+CLIP
+61.55
+34.59
+46.82
+w/o defense loss
+61.72
+35.19
+51.16
+λ = 2.0
+60.93
+45.31
+63.21
+λ = 2.5
+61.75
+44.73
+62.73
+λ = 3.0
+60.91
+44.20
+64.52
+λ = 3.5
+61.21
+44.72
+64.16
+λ = 4.0
+61.37
+44.82
+64.71
+as object detection. This is a significant advantage over the
+existing studies, which require a modification of the model.
+Future work & limitation
+Our method loses to the previous study on synthetic ty-
+pographic attack datasets. In addition, we only addressed
+the problem of typographic attacks. We believe that the pro-
+posed method can be applied to other adversarial attacks on
+VLP. We hope that this work will shed light on research on
+the utilization of VLP.
+References
+[1] Omri Avrahami, Dani Lischinski, and Ohad Fried. Blended
+diffusion for text-driven editing of natural images. CVPR,
+2022.
+[2] Lukas Bossard, Matthieu Guillaumin, and Luc Gool. Food-
+101 – mining discriminative components with random
+forests. ECCV, 2014.
+[3] Xinlei Chen, Hao Fang, Tsung-Yi Lin, Ramakrishna Vedan-
+tam, Saurabh Gupta, Piotr Dollar, and C. Lawrence Zit-
+nick. Microsoft coco captions: Data collection and evalu-
+ation server. arXiv preprint arXiv: 1504.00325, 2015.
+[4] Mircea Cimpoi, Subhransu Maji, Iasonas Kokkinos, Sammy
+Mohamed, and Andrea Vedaldi. Describing textures in the
+wild. CVPR, 2014.
+[5] Conde and Turgutlu. CLIP-Art: contrastive pre-training for
+fine-grained art classification. CVPRW, 2021.
+[6] Katherine Crowson,
+Stella
+Biderman,
+Daniel Kornis,
+Dashiell Stander, Eric Hallahan, Louis Castricato, and Ed-
+ward Raff. Vqgan-clip: Open domain image generation and
+editing with natural language guidance. ECCV, 2022.
+[7] Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li,
+and Li Fei-Fei. ImageNet: A large-scale hierarchical image
+database. CVPR, 2009.
+[8] Zheng Ding, Jieke Wang, and Zhuowen Tu.
+Open-
+vocabulary panoptic segmentation with maskclip.
+arXiv
+preprint arXiv: 2208.08984, 2022.
+[9] Alexey Dosovitskiy, Lucas Beyer, Alexander Kolesnikov,
+Dirk Weissenborn, Xiaohua Zhai, Thomas Unterthiner,
+Mostafa Dehghani, Matthias Minderer, Georg Heigold, Syl-
+vain Gelly, Jakob Uszkoreit, and Neil Houlsby. An image is
+worth 16x16 words: Transformers for image recognition at
+scale. ICLR, 2021.
+[10] Yu Du, Fangyun Wei, Zihe Zhang, Miaojing Shi, Yue Gao,
+and Guoqi Li. Learning to prompt for open-vocabulary ob-
+ject detection with vision-language model. CVPR, 2022.
+[11] Li Fei-Fei, Rob Fergus, and Pietro Perona. Learning gener-
+ative visual models from few training examples: An incre-
+mental bayesian approach tested on 101 object categories.
+CVPR, 2004.
+[12] Chengjian Feng, Yujie Zhong, Zequn Jie, Xiangxiang Chu,
+Haibing Ren, Xiaolin Wei, Weidi Xie, and Lin Ma. Prompt-
+det: Towards open-vocabulary detection using uncurated im-
+ages. ECCV, 2022.
+[13] Peng Gao, Shijie Geng, Renrui Zhang, Teli Ma, Rongyao
+Fang, Yongfeng Zhang, Hongsheng Li, and Yu Qiao.
+CLIP-Adapter: Better Vision-Language models with feature
+adapters. arXiv preprint arXiv: 2110.04544, 2021.
+
+
+[14] Gabriel Goh, Nick Cammarata, Chelsea Voss, Shan Carter,
+Michael Petrov, Ludwig Schubert, Alec Radford, and Chris
+Olah. Multimodal neurons in artificial neural networks. Dis-
+till, 6(3), 2021.
+[15] Xiuye Gu, Tsung-Yi Lin, Weicheng Kuo, and Yin Cui.
+Open-vocabulary object detection via vision and language
+knowledge distillation. ICLR, 2022.
+[16] Agrim Gupta, Piotr Doll´
+ar, and Ross Girshick.
+Lvis: A
+dataset for large vocabulary instance segmentation. CVPR,
+2019.
+[17] He, Zhang, Ren, and Sun. Deep residual learning for image
+recognition. CVPR, 2016.
+[18] Patrick Helber, Benjamin Bischke, Andreas Dengel, and
+Damian Borth. Eurosat: A novel dataset and deep learning
+benchmark for land use and land cover classification. IEEE
+GRSS, 2019.
+[19] Gabriel Ilharco, Mitchell Wortsman, Samir Yitzhak Gadre,
+Shuran Song, Hannaneh Hajishirzi, Simon Kornblith, Ali
+Farhadi, and Ludwig Schmidt.
+Patching open-vocabulary
+models by interpolating weights. NeurIPS, 2022.
+[20] Chao Jia, Yinfei Yang, Ye Xia, Yi-Ting Chen, Zarana Parekh,
+Hieu Pham, Quoc V. Le, Yunhsuan Sung, Zhen Li, and Tom
+Duerig. Scaling up visual and vision-language representation
+learning with noisy text supervision. ICML, 2021.
+[21] Jinyuan Jia, Yupei Liu, and Neil Zhenqiang Gong. BadEn-
+coder: Backdoor attacks to pre-trained encoders in self-
+supervised learning. IEEE S&P, 2022.
+[22] Zhengbao Jiang, Frank F. Xu, Jun Araki, and Graham Neu-
+big. How can we know what language models know? TACL,
+2020.
+[23] Muhammad Uzair Khattak, Hanoona Rasheed, Muhammad
+Maaz, Salman Khan, and Fahad Shahbaz Khan.
+Maple:
+Multi-modal prompt learning. CVPR, 2023.
+[24] Jonathan Krause, Michael Stark, Jia Deng, and Li Fei-
+Fei. 3d object representations for fine-grained categorization.
+CVPR, 2013.
+[25] Nupur Kumari, Bingliang Zhang, Richard Zhang, Eli
+Shechtman, and Jun-Yan Zhu. Multi-concept customization
+of text-to-image diffusion. CVPR, 2023.
+[26] Chen-Hsuan Lin, Jun Gao, Luming Tang, Towaki Takikawa,
+Xiaohui Zeng, Xun Huang, Karsten Kreis, Sanja Fidler,
+Ming-Yu Liu, and Tsung-Yi Lin. Magic3d: High-resolution
+text-to-3d content creation. CVPR, 2023.
+[27] Tsung-Yi Lin, Michael Maire, Serge Belongie, Lubomir
+Bourdev, Ross Girshick, James Hays, Pietro Perona, Deva
+Ramanan, C. Lawrence Zitnick, and Piotr Doll´
+ar. Microsoft
+coco: Common objects in context. ECCV, 2014.
+[28] Zongyang Ma, Guan Luo, Jin Gao, Liang Li, Yuxin Chen,
+Shaoru Wang, Congxuan Zhang, and Weiming Hu. Open-
+vocabulary one-stage detection with hierarchical visual-
+language knowledge distillation. CVPR, 2022.
+[29] Subhransu Maji,
+Esa Rahtu,
+Juho Kannala,
+Matthew
+Blaschko, and Andrea Vedaldi. Fine-grained visual classi-
+fication of aircraft. arXiv preprint arXiv: 1306.5151, 2013.
+[30] Shu Manli, Nie Weili, Huang De-An, Yu Zhiding, Gold-
+stein Tom, Anandkumar Anima, and Xiao Chaowei. Test-
+time prompt tuning for zero-shot generalization in vision-
+language models. NeurIPS, 2022.
+[31] Joanna Materzy´
+nska, Antonio Torralba, and David Bau. Dis-
+entangling visual and written concepts in CLIP.
+CVPR,
+2022.
+[32] Maria-Elena Nilsback and Andrew Zisserman. Automated
+flower classification over a large number of classes. ICVGIP,
+2008.
+[33] Omkar M Parkhi, Andrea Vedaldi, Andrew Zisserman, and
+C. V. Jawahar. Cats and dogs. CVPR, 2012.
+[34] Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya
+Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry,
+Amanda Askell, Pamela Mishkin, Jack Clark, Gretchen
+Krueger, and Ilya Sutskever.
+Learning transferable visual
+models from natural language supervision. ICML, 2021.
+[35] Aditya Ramesh, Prafulla Dhariwal, Alex Nichol, Casey Chu,
+and Mark Chen. Hierarchical Text-Conditional image gener-
+ation with CLIP latents. arXiv preprint arXiv: 2204.06125,
+2022.
+[36] Shaoqing Ren, Kaiming He, Ross Girshick, and Jian Sun.
+Faster r-cnn: Towards real-time object detection with region
+proposal networks. NeurIPS, 2015.
+[37] Nataniel Ruiz, Yuanzhen Li, Varun Jampani, Yael Pritch,
+Michael Rubinstein, and Kfir Aberman. DreamBooth: Fine
+tuning Text-to-Image diffusion models for Subject-Driven
+generation. CVPR, 2023.
+[38] Chitwan Saharia, William Chan, Saurabh Saxena, Lala
+Li, Jay Whang, Emily Denton, Seyed Kamyar Seyed
+Ghasemipour,
+Burcu Karagol Ayan,
+S Sara Mahdavi,
+Rapha Gontijo Lopes, Tim Salimans, Jonathan Ho, David J
+Fleet, and Mohammad Norouzi.
+Photorealistic Text-to-
+Image diffusion models with deep language understanding.
+NeurIPS, 2022.
+[39] Kuniaki Saito, Kihyuk Sohn, Xiang Zhang, Chun-Liang Li,
+Chen-Yu Lee, Kate Saenko, and Tomas Pfister. Prefix condi-
+tioning unifies language and label supervision. CVPR, 2023.
+[40] Idan Schwartz, V´
+esteinn Snæbjarnarson, Sagie Benaim, Hila
+Chefer, Ryan Cotterell, Lior Wolf, and Serge Belongie. Dis-
+criminative class tokens for text-to-image diffusion models.
+arXiv preprint arXiv: 2303.17155, 2023.
+[41] Piyush Sharma, Nan Ding, Sebastian Goodman, and Radu
+Soricut. Conceptual captions: A cleaned, hypernymed, im-
+age alt-text dataset for automatic image captioning. ACL,
+2018.
+[42] Ambesh
+Shekhar.
+ImageNet100.
+https:
+//www.kaggle.com/datasets/ambityga/
+imagenet100. Accessed: 2023-01-10.
+[43] Taylor Shin, Yasaman Razeghi, Robert L. Logan IV, Eric
+Wallace, and Sameer Singh. AutoPrompt: Eliciting knowl-
+edge from language models with automatically generated
+prompts. EMNLP, 2020.
+[44] Ximeng Sun, Ping Hu, and Kate Saenko. Dualcoop: Fast
+adaptation to multi-label recognition with limited annota-
+tions. NeurIPS, 2022.
+[45] Vaswani, Shazeer, Parmar, and others. Attention is all you
+need. NeurIPS, 2017.
+[46] Jianxiong Xiao, Krista A Ehinger, James Hays, Antonio Tor-
+ralba, and Aude Oliva. Sun database: Exploring a large col-
+lection of scene categories. IJCV, 2016.
+
+
+[47] Renrui Zhang, Rongyao Fang, Peng Gao, Wei Zhang, Kun-
+chang Li, Jifeng Dai, Yu Qiao, and Hongsheng Li.
+Tip-
+adapter: Training-free adaption of clip for few-shot classi-
+fication. ECCV, 2022.
+[48] Yiwu Zhong, Jianwei Yang, Pengchuan Zhang, Chunyuan
+Li, Noel Codella, Liunian Harold Li, Luowei Zhou, Xiyang
+Dai, Lu Yuan, Yin Li, et al.
+Regionclip: Region-based
+language-image pretraining. CVPR, 2022.
+[49] Zexuan Zhong, Dan Friedman, and Danqi Chen.
+Factual
+probing is [mask]: Learning vs. learning to recall. NAACL,
+2021.
+[50] Chong Zhou, Chen Change Loy, and Bo Dai.
+Dense-
+clip: Language-guided dense prediction with context-aware
+prompting. CVPR, 2022.
+[51] Chong Zhou, Chen Change Loy, and Bo Dai. Extract free
+dense labels from clip. ECCV, 2022.
+[52] K Zhou, J Yang, C C Loy, and Z Liu. Conditional prompt
+learning for vision-language models. CVPR, 2022.
+[53] Kaiyang Zhou, Jingkang Yang, Chen Change Loy, and Ziwei
+Liu. Learning to prompt for Vision-Language models. IJCV,
+2022.
+
+
+Table A. Prompts used for inference
+Dataset
+Prompt
+ImageNet
+“a photo of a <CLS>.”
+Caltech101
+“a photo of a <CLS>.”
+OxfordPets
+“a photo of a <CLS>, a type of pet.”
+StanfordCars
+“a photo of a <CLS>.”
+Flowers102
+“a photo of a <CLS>, a type of flower.”
+Food101
+“a photo of a <CLS>, a type of food.”
+FGVCAircraft
+“a photo of a <CLS>, a type of aircraft.”
+DTD
+“<CLS> texture.”
+SUN397
+“a photo of a <CLS>.”
+EuroSAT
+“a centered satellite photo of a <CLS>.”
+Real-world typographic attack datasets
+“a photo of a <CLS>.”
+A. Prompts
+In Sec. 3.2, we use templates to prepare input text ti and tDP
+i
+. For training, we randomly choose a template from hand-
+crafted prompts in each iteration. For hand-crafted, we use 81 prompts: ( ‘<CLS>.’, ‘a photo of a <CLS>.’, ‘a bad photo
+of a <CLS>.’, ‘a photo of many <CLS>.’, ‘a sculpture of a <CLS>.’, ‘a photo of the hard to see <CLS>.’, ‘a low resolution
+photo of the <CLS>.’, ‘a rendering of a <CLS>.’, ‘graffiti of a <CLS>.’, ‘a bad photo of the <CLS>.’, ‘a cropped photo of the
+<CLS>.’, ‘a tattoo of a <CLS>.’, ‘the embroidered <CLS>.’, ‘a photo of a hard to see <CLS>.’, ‘a bright photo of a <CLS>.’,
+‘a photo of a clean <CLS>.’, ‘a photo of a dirty <CLS>.’, ‘a dark photo of the <CLS>.’, ‘a drawing of a <CLS>.’, ‘a photo
+of my <CLS>.’, ‘the plastic <CLS>.’, ‘a photo of the cool <CLS>.’, ‘a close-up photo of a <CLS>.’, ‘a black and white
+photo of the <CLS>.’, ‘a painting of the <CLS>.’, ‘a painting of a <CLS>.’, ‘a pixelated photo of the <CLS>.’, ‘a sculpture
+of the <CLS>.’, ‘a bright photo of the <CLS>.’, ‘a cropped photo of a <CLS>.’, ‘a plastic <CLS>.’, ‘a photo of the dirty
+<CLS>.’, ‘a jpeg corrupted photo of a <CLS>.’, ‘a blurry photo of the <CLS>.’, ‘a photo of the <CLS>.’, ‘a good photo of
+the <CLS>.’, ‘a rendering of the <CLS>.’, ‘a <CLS> in a video game.’, ‘a photo of one <CLS>.’, ‘a doodle of a <CLS>.’, ‘a
+close-up photo of the <CLS>.’, ‘the origami <CLS>.’, ‘the <CLS> in a video game.’, ‘a sketch of a <CLS>.’, ‘a doodle of the
+<CLS>.’, ‘a origami <CLS>.’, ‘a low resolution photo of a <CLS>.’, ‘the toy <CLS>.’, ‘a rendition of the <CLS>.’, ‘a photo
+of the clean <CLS>.’, ‘a photo of a large <CLS>.’, ‘a rendition of a <CLS>.’, ‘a photo of a nice <CLS>.’, ‘a photo of a weird
+<CLS>.’, ‘a blurry photo of a <CLS>.’, ‘a cartoon <CLS>.’, ‘art of a <CLS>.’, ‘a sketch of the <CLS>.’, ‘a embroidered
+<CLS>.’, ‘a pixelated photo of a <CLS>.’, ‘itap of the <CLS>.’, ‘a jpeg corrupted photo of the <CLS>.’, ‘a good photo of a
+<CLS>.’, ‘a plushie <CLS>.’, ‘a photo of the nice <CLS>.’, ‘a photo of the small <CLS>.’, ‘a photo of the weird <CLS>.’,
+‘the cartoon <CLS>.’, ‘art of the <CLS>.’, ‘a drawing of the <CLS>.’, ‘a photo of the large <CLS>.’, ‘a black and white
+photo of a <CLS>.’, ‘the plushie <CLS>.’, ‘a dark photo of a <CLS>.’, ‘itap of a <CLS>.’, ‘graffiti of the <CLS>.’, ‘a toy
+<CLS>.’, ‘itap of my <CLS>.’, ‘a photo of a cool <CLS>.’, ‘a photo of a small <CLS>.’, ‘a tattoo of the <CLS>.’, )
+In Sec. 4.2, we evaluate our method through classification. For classification, we use hand-crafted prompts (Table A).
+B. Synthetic typographic attack datasets
+In this Sec., we will explain the details of the training data in Sec. 3.2 and test data in Sec. 4.2. When we train the
+DP vector (Sec. 3.2) and conduct experiments on classification (Sec. 4.2), we use synthetic typographic attack datasets.
+For training data, we add text to images from ImageNet-100 (Figure A). For test data, we add text to images from ten
+classification datasets (Figure B): ImageNet [7], Caltech101 [11], OxfordPets [33], StanfordCars [24], Flowers102 [32],
+Food101 [2], FGVCAircraft [29], DTD [4], SUN397 [46], EuroSAT [18]. To make typographic attack datasets, we followed
+the way of PAINT [19]. We resize the short dimension to 224 pixels using bicubic interpolation and crop 224 pixels by 224
+pixels in the center, which is the standard CLIP [34] resize and crop augmentation. For fonts, we randomly choose from three
+fonts: Roman, Courier, Times. For font size, we randomly sample between 20 and 40 points. Also, we randomize over eight
+colors: red, green, blue, cyan, magenta, yellow, white, and black. We outline text with a 1-point shadow that is a different
+color from the main font color. The text is randomly placed in the image such that whole words are visible. Text is chosen
+from the class labels of the dataset except for the correct image labels.
+For object detection, we also make synthetic typographic attack datasets using COCO [27] and LVIS [16] (Figure C). We
+use AdobeVFPrototype as a font. We randomize over eight colors: red, green, blue, cyan, magenta, yellow, white, and black.
+
+
+Figure A. Images sampled from our training dataset. The dataset consists of images from ImageNet-100 with synthesized text.
+We outline text with a 1-point shadow that is a different color from the main font color. The text is randomly placed in each
+bounding box such that the whole words are visible. We adjust the font size so that the width of the text is less than 0.8 times
+the width of the bounding box.
+C. RTA-100
+In Sec. 4.2, we use real-world typographic attack datasets. To increase the test data, we take pictures and make RTA-100,
+which is the biggest real-world typographic attack dataset (Figure D). We put tags that are labeled incorrect classes to objects.
+We choose the incorrect labels of the tags from the objects in our dataset. We take pictures from 10cm to 2m from the objects
+such that whole words are visible. For example, we write “pen” on the tag and put it on a frisbee. Then, we take a photo of the
+object. For fonts, we randomly choose from three fonts, as seen in Figure E. For the color of the tags, we randomly choose
+from 4 colors: yellow, green, blue, and pink. Also, we randomize over 4 colors for the color of the pen: black, red, purple,
+and brown. We randomly choose these elements in advance. The dataset contains 100 categories and 1000 images. We use
+iPhoneX’s camera, and the size of images is 3024 pixels by 3024 pixels. The code and dataset will be publicly available.
+D. PAINT
+In Sec. 4.2, we compare our method with PAINT [19]. For training for PAINT, we train the model for 3 epochs (2400
+iterations) with batch size 16 using learning rate 1e-5 with 200 warm-up steps with a cosine annealing learning rate schedule
+and the AdamW optimizer (weight decay 0.1), following the paper.
+
+
+Figure B. Images sampled from our test datasets. We use ten datasets to make test data for synthetic typographic attack datasets.
+Table B. Classification results on all original datasets
+Method
+ImageNet
+Caltech
+Pets
+Cars
+Flowers
+Food
+Aircraft
+DTD
+SUN
+SAT
+Avg.
+CLIP
+62.02
+88.64
+87.35
+58.72
+66.32
+84.14
+18.99
+44.57
+61.74
+42.98
+61.55
+Materzynska+ [31]
+54.38
+80.53
+75.01
+40.33
+51.86
+55.01
+13.23
+36.28
+51.06
+37.32
+49.50
+PAINT [19]
+61.82
+88.48
+85.23
+55.30
+64.73
+80.51
+17.73
+42.61
+61.69
+38.20
+59.63
+Ours
+62.48
+89.28
+87.22
+57.47
+63.82
+83.65
+19.26
+40.64
+61.41
+43.85
+60.91
+Table C. Classification results on all synthetic typographic attack datasets
+Method
+ImageNet
+Caltech
+Pets
+Cars
+Flowers
+Food
+Aircraft
+DTD
+SUN
+SAT
+Avg.
+CLIP
+39.10
+63.97
+58.95
+21.02
+31.32
+56.27
+10.83
+25.53
+34.02
+4.86
+34.59
+Materzynska+ [31]
+44.91
+74.73
+63.61
+15.79
+34.95
+43.41
+8.28
+33.03
+39.52
+16.22
+37.44
+PAINT [19]
+55.9
+83.57
+76.53
+33.44
+54.92
+72.94
+14.46
+36.60
+53.62
+17.31
+49.93
+Ours
+49.83
+79.54
+72.88
+28.64
+44.12
+67.79
+14.49
+31.6
+43.50
+9.65
+44.20
+E. Extended results on all datasets.
+In tables B and C, we report the accuracy obtained on each of the 10 individual datasets for original and synthetic
+typographic attacks respectively.
+
+
+Figure C. Images sampled from our typographic attack COCO dataset. The dataset consists of images from COCO with synthesized
+text.
+Figure D. Sample images from our real-world typographic attack dataset RTA-100. The dataset contains 1000 images composed of
+100 categories.
+F. Visualization
+To visualize the changes in word information, we generate images conditioned on text prompts using VQGAN+CLIP [6].
+Fig. F presents samples of generated images: the first row shows images generated with original VQGAN+CLIP, capturing
+
+
+Figure E. Sample images of fonts we used. We use three fonts to write text: bold, normal, and italic.
+CLIP
+Ours
+"peas"
+"cupcakes"
+"corn"
+"dune"
+"flower"
+Figure F. Generated images conditioned on text prompts using VQGAN+CLIP. Originally, CLIP often generates text of prompts as it
+is (top row) (e.g., “peas”, “corn”, “flower”). CLIP+Ours does not generate prompt texts in images, showing nonsense strings (bottom row).
+the visual concepts of the prompt texts. In cases of “peas”, “corn”, and “flower”, the images show the words of the prompts.
+The images generated with VQGAN+CLIP+Ours can also capture the visual concepts and do not show prompt text; instead,
+they show nonsense strings. The experiment demonstrates words with DP lose little original meanings, ruining the text
+information.
+
+
+Disentangling visual and written concepts in CLIP
+Joanna Materzy´
+nska
+MIT
+jomat@mit.edu
+Antonio Torralba
+MIT
+torralba@mit.edu
+David Bau
+Harvard
+davidbau@seas.harvard.edu
+Figure 1. Generated images conditioned on text prompts (top row) disclose the entanglement of written words and their visual concepts.
+Our proposed orthogonal projections of the vector space disentangle the space into one corresponding to visual concepts (middle row), and
+written words (bottom row).
+Abstract
+The CLIP network measures the similarity between nat-
+ural text and images; in this work, we investigate the entan-
+glement of the representation of word images and natural
+images in its image encoder. First, we ﬁnd that the image
+encoder has an ability to match word images with natural
+images of scenes described by those words. This is consis-
+tent with previous research that suggests that the meaning
+and the spelling of a word might be entangled deep within
+the network. On the other hand, we also ﬁnd that CLIP has
+a strong ability to match nonsense words, suggesting that
+processing of letters is separated from processing of their
+meaning. To explicitly determine whether the spelling ca-
+pability of CLIP is separable, we devise a procedure for
+identifying representation subspaces that selectively isolate
+or eliminate spelling capabilities. We benchmark our meth-
+ods against a range of retrieval tasks, and we also test them
+by measuring the appearance of text in CLIP-guided gener-
+ated images. We ﬁnd that our methods are able to cleanly
+separate spelling capabilities of CLIP from the visual pro-
+cessing of natural images.,1
+1. Introduction
+The distinction between written words and visual objects
+is crystal clear for us: we would never confuse an object
+with a written word describing that object. However, it has
+been shown [9] that attaching a white sheet of paper with
+“iPad” written on it to an apple, will cause a neural net-
+work to shift its prediction to lean towards what is written
+instead of recognizing the fruit. We hypothesize that the
+network learns to confuse text with objects because of the
+prevalence of text in real-world training data: text on prod-
+ucts, signs, and labels is often visible next to the thing it
+represents (Figure 2), which is perhaps why a neural net-
+1The project website, source code and dataset are available at
+https://joaanna.github.io/disentangling_spelling_in_clip/.
+1
+arXiv:2206.07835v1  [cs.CV]  15 Jun 2022
+
+
+Figure 2. Top row: examples of written text in natural images, bot-
+tom row: generated images conditioned on words ("peas", "stop
+sign", "hall", "bar", "snickers").
+work would struggle to distinguish an object from its writ-
+ten name. Beginning with a pretrained network that exhibits
+this text/object confusion, we ask if the perception of text by
+a network can be separated from the perception of objects.
+We study the representations of the CLIP [20] network,
+which is trained to measure the similarity between natu-
+ral text and images, and which has been shown to be vul-
+nerable to confusion between written text and visual con-
+cepts [9,16]. In [9], feature visualizations of neurons within
+CLIP revealed the presence of “multi-modal neurons” that
+activate when presented with different forms of the same
+concept; for example, the same neuron will activate on an
+image of a written word and an image of the object de-
+scribed by that word. In addition to this, we have found that
+text-to-image generation methods that use CLIP will spell
+out the word they have been conditioned on (Figure 1). To-
+gether, these ﬁndings indicate a deeply rooted correlation
+between written words and their visual concepts in the im-
+age encoder of CLIP.
+In this paper, we investigate how CLIP makes sense
+of written words, and whether CLIP distinguishes its un-
+derstanding of written words from their visual meaning.
+Speciﬁcally, we investigate whether the image encoding
+permits separation of information about written words from
+the visual concepts described by those words. We ﬁnd that
+a simple setup and an orthogonal projection can in fact sep-
+arate the two capabilities. We demonstrate applications of
+this disentanglement by removing text artifacts in text-to-
+image generation, and by defending against typographic at-
+tacks. We collect a dataset of 180 images of 20 objects and
+8 attacks and measure the confusion between the true object
+labels and typographic attacks between the CLIP model and
+our disentangled representation. We ﬁnd that in both dis-
+tinct applications, the effect of text is greatly reduced.
+2. Related Works
+Understanding Representations Our work follows the
+tradition of a line of approaches for understanding the in-
+ternal representations of a model by training a small model
+on the representation: [1] proposed training simple classi-
+ﬁer probes for testing the presence of information in a net-
+work; [26] observes that such linear probes can be used to
+create explanations of a decision and [7] uses such probing
+models to map a dictionary of concepts through a network.
+Conversely, [15] proposes using gradients of a simple clas-
+siﬁer to estimate the sensitivity of a network to a classiﬁed
+concept, and to distinguish between causal and correlative
+effects. Our work to identify the text processing subspace
+within CLIP differs from previous methods because we use
+a contrastive loss to identify a large representation subspace
+for information about visual words. Rather than measuring
+classiﬁcation accuracy, we verify our ﬁndings by applying
+the probed model to generate images. Concurrent work [16]
+applies cognitive science tools and ﬁnds evidence that the
+vision and language do not share semantic representation in
+CLIP network, consistent with our ﬁndings.
+Controllable GAN Generation Increasingly powerful
+image GAN models have sparked interest in steerable im-
+age generation methods that synthesize an image by guid-
+ing the generator towards some objective: GAN output can
+be steered by directly guiding generation towards target im-
+ages [12]; or by optimizing loss of a classiﬁer [8, 23]; or
+PCA, clustering or other methods can also be used to di-
+rectly identify meaningful representation subspaces for ma-
+nipulating a GAN [3, 11, 24]. The release of CLIP [20],
+a large-scale model to score text-and-image similarity has
+unleashed a wave of creativity, because it enables any gen-
+erative model to be guided by open text. The state-of-the-
+art DALL-E [21] uses CLIP; and CLIP has also been com-
+bined with StyleGAN [2, 14, 19], BigGAN [18], and VQ-
+GAN [4–6]. Like these methods, we investigate the ability
+of CLIP to steer VQGAN, however instead of generating in-
+dividual images, we ask whether the broad ability of CLIP
+to read and draw visual words can be controlled.
+3. Terminology
+To avoid confusion while discussing words within im-
+ages, we begin by deﬁning some terminology.
+Kinds of images:
+• image text:
+– synthetic image text : an image of text rendered on a
+white background
+– image text in the wild: text on a signboard found in a
+photograph of a real scene
+• natural images: images depicting the real world
+• natural image with text: natural image is modiﬁed by adding
+rendered text
+• natural image with word class label: natural image with text,
+where the text is a class name
+Kinds of text:
+2
+
+
+Figure 3. Visual comprehension tasks, 1) associating natural im-
+ages with word class label images, 2) word image and language
+word retrieval.
+Model
+Top-1 Accuracy
+Places 365
+ImageNet
+CLIP ViT-B/32 ZS with PE
+39.47
+63.36
+CLIP ViT-B/32 ZS without PE
+37.25
+56.72
+CLIP image to image class
+15.58
+10.58
+Random baseline
+0.1
+0.27
+Table 1. Image classiﬁcation as visual comprehension task, ZS
+denotes zero-shot and PE prompt engineering.
+• text class label: the text name of a class category, composed by
+prepending a string “an image of a” to the name
+• text string: a word as processed by a text encoder; this could be
+either a real English word or a fake nonsense string, composed
+of random letters
+4. Visual comprehension
+Does the image encoder of CLIP encode image text dif-
+ferently from the way it encodes the visual concept de-
+scribed by that same text?
+We investigate this question by measuring the ability of
+CLIP to solve a task that it was not originally trained to
+do: rather than matching natural images with text strings
+as encoded by the text encoder, we test the ability of CLIP
+to match natural images with image text as encoded by the
+CLIP image encoder, discarding the text encoder entirely.
+For example, we ask whether the CLIP image encoder will
+match visual image text of the word “playground” with a
+natural image of a playground scene. (Figure 3)
+We consider two datasets, Places 365 [25] and Ima-
+geNet [22], and report the top-1 validation accuracy of our
+task in Table 1. This visual comprehension task achieves
+15.58% top-1 accuracy on Places 365 and 10.58% top-1 ac-
+curacy on ImageNet. While accuracy is lower than zero-
+shot image-to-text classiﬁcation, our result is far better than
+random, and it conﬁrms our hypothesis that the CLIP image
+encoder correlates written words with their visual meaning.
+Next we investigate if CLIP relies on understanding the
+meaning of a word to read a word. In particular, we ask
+how well CLIP can associate any string, including both real
+English words, and fake word nonsense strings, created by
+uniformly sampling letters from the Latin alphabet of length
+# image text and text string
+Retrieval score
+Img2Txt
+Txt2Img
+All strings
+40 000
+60.66
+75.97
+Real words
+20 000
+76.38
+91.46
+Nonsense strings
+20 000
+61.77
+79.19
+Table 2.
+Text to image retrieval on real words and nonsense
+strings.
+ranging from 3 to 8. We form image text with these strings,
+and we compute the retrieval score (1 out of 20k) on the
+set of real, fake and all strings and report the results in Ta-
+ble 2. Strikingly, we observe that CLIP is able to retrieve
+both real words and nonsense strings, despite (most likely)
+never having seen those nonsense strings in natural images.
+This leads us to the question: how does the image en-
+coder of CLIP read?
+Is its reading capability separated
+from its other visual processing, for example as a distinct
+capability to recognize and spell out individual letters? Or
+is its OCR deeply entangled with its understanding of real
+words, inseparable from the perception of natural images
+described by that word? To resolve that question, we design
+and benchmark a method to disentangle text and natural im-
+age processing.
+5. Disentangling Text and Vision with Linear
+Projections
+Motivated by the deeply rooted confusion between writ-
+ten text and visual concepts, we aim to disentangle the CLIP
+vector space’s visual space from the written one. Our ap-
+proach is to identify an orthogonal, lower-dimensional pro-
+jection of the learned representations to achieve this goal.
+To this end, we collect a dataset consisting of tuples with
+ﬁve elements (xi, yi, xt, yt, xit).
+The ﬁrst two elements
+(xi, yi) are natural images and their text class labels. Im-
+age texts and text strings (xt, yt), and xit being the natural
+image xi with the string from the synthetic image text xt
+rendered on it.
+We precompute the CLIP embeddings of the images and
+text prompts using CLIP vision and text encoders, and train
+an orthogonal matrix W for each of the tasks. During train-
+ing, depending on the task, we apply a symmetric cross en-
+tropy Li on the given pair of embeddings, following the
+CLIP training procedure. We also introduce a regularizer
+term to the loss R(W) = ∥I −WW T ∥that encourages W
+to be orthogonal.
+We call the projection that captures the written concepts
+in the network: “learn to spell” model. This model should
+be able to respond well to the text and images of text hence,
+the embeddings of the image texts xt and the embedding
+of the text strings yt should be close in space, similarly a
+natural image with text xit should be close to either the im-
+age text and text strings (xt, yt). Those losses are shown in
+blue in Figure 4. The losses shown in red correspond to the
+3
+
+
+Figure 4.
+In our method, different pairs from the tuple
+(xi, yi, xt, yt, xit) are trained to minimize their distance in the
+projection space. The losses in red correspond to the task of visual
+concepts, and the losses in blue to the distilling written words.
+opposite task, learning to ignore the written text in natural
+images. Thus, during training the “learn to spell” model,
+we maximize the red objectives and minimize the blue ob-
+jectives. The overall loss can be written as:
+Lspell = −L1 −L2 −L6 + L3 + L4 + L5 + γR(W)
+(1)
+The “forget to spell” model, that focuses on the visual parts
+in images, will conversely aim to minimize the red and max-
+imize the blue objectives.
+Lforget = L1 + L2 + L6 −L3 −L4 −L5 + γR(W)
+(2)
+We empirically test the effects of the contributing loss terms
+and present results in section 6.1.
+6. Experiments
+For training the projection matrices, we take the Ima-
+geNet dataset, for each natural image and text class label
+xi, yi we sample a string and generate a pair of a word im-
+age and a text string xt, yt, and a natural image with text
+xit. The string yi is written as a text “an image of class
+label”. We use a corpus of 202587 English words, we use
+182329 words in the training set and 20258 in the valida-
+tion set, the words are all lower case, between 3 and 10
+letters. For half of the tuples in our dataset we use non-
+sense strings, which are generated by uniformly sampling a
+length of the string (between 3 and 10), and sampling letters
+from the Latin alphabet. We are not using any prompts for
+Figure 5. Varying bottleneck dimension of the learned projection
+matrix versus retrieval score on the text retrieval task.
+the language embeddings and follow the image processing
+pipeline from [20].
+We train each projection matrix for 1 epoch, with learn-
+ing rate 0.0001, step learning rate decay of factor 0.5 every
+4000 steps with Adam optimizer. We use batch size 128.
+The size of the matrix W is tuned for each task. For the
+“learn to spell” task, we test bottleneck dimensions between
+32 and 512 with increment of 32, using only loss L4 and
+γ = 0.5, the retrieval accuracy image to text on fake images
+is shown in Fig. 5. The matrix with 512x512 dimensions
+achieves comparable performance to the original CLIP net-
+work, this is because the regularizer term forces the matrix
+W to be orthogonal, hence at the original dimension, we
+simply learn a rotation in the space, and the accuracy score
+remains (nearly) the same. We observe that the highest ac-
+curacy is reached at 64 dimensions, and steadily decreases
+when choosing a larger or smaller number. Intuitively, this
+suggests that the ability to recognize written text can be en-
+coded in 64 dimensions. Our next ablations for this model
+are concerning a matrix 512x64 dimensions.
+We ablate different terms in of the Lspell loss and re-
+port the results in Table 3, for the tasks involving image
+classiﬁcation we report top-1 accuracy, for the other tasks
+we report the retrieval score on the set of 20258 real words
+images and text and the same number of fake words for a
+fair comparison. We choose to report the score separately
+for the set and real and fake images, because the network
+has a prior knowledge about real words, and we want to
+test its generalization ability to any strings. The tasks that
+should improve are noted with ↑, and conversely the task
+that should impair are denoted with ↓. The columns marked
+blue are the ones corresponding to “learn to spell task”, we
+expect the performance of on those tasks to improve, and
+conversely the performance on the tasks marked with red to
+deteriorate. We can observe that the positive terms in the
+4
+
+
+Figure 6. Images generated with text-conditioning using CLIP, "learn to spell" model, and "forget to spell" model. Text prompts used
+for nonsense strings (from left to right, starting from top left: ’vfnpcd’, ’ebnr’, ’hcioo’, ’vhhh’, ’feayv’, ’jqtibdy’, ’jlsbmg’, ’wcpinc’,
+’fysllqb’, ’duxwf’, ’ipaut’, ’vjcxc’, ’ipcui’, ’froyl’, ’imcqvg’, ’irmin’, ’qzdyf’, ’qhyx’, ’yfeseni’, ’xdegiw’. Text prompts used for real
+words: ’long’, ’quiet’, ’white’, ’economics’, ’physics’, ’internet’, ’private’, ’ordinary’, ’special’, ’equal’, ’soft’, ’drawing’, ’negative’,
+’feeling’, ’homework’, ’wing’, ’western’, ’exam’, ’politics’, ’formal’.
+5
+
+
+Top-1 Accuracy
+Retrieval Accuracy [img2txt]
+Loss
+↓(xi, yi)
+↓(xit, yi)
+↑(xt, yt)
+↑(xit, xt)
+↓(xit, xi)
+↑(xit, yt)
+real
+fake
+real
+fake
+real
+fake
+real
+fake
+L1
+L2
+L3
+L4
+L5
+L6
+R(W)
+56.72
+33.04
+76.27
+61.88
+98.87
+95.64
+89.97
+89.53
+62.57
+48.52
+✓
+0.5
+0.99
+0.16
+89.62
+87.58
+99.00
+98.13
+4.29
+2.36
+84.01
+79.69
+✓
+✓
+0.5
+0.52
+0.12
+90.88
+87.59
+99.46
+98.93
+1.29
+1.06
+88.81
+83.81
+✓
+✓
+✓
+0.5
+0.2
+0.13
+90.86
+87.49
+99.43
+98.94
+1.19
+0.94
+88.58
+83.96
+✓
+✓
+✓
+0.5
+0.51
+0.11
+91.86
+88.06
+99.54
+99.06
+1.22
+1.05
+90.28
+84.75
+✓
+✓
+✓
+✓
+0.5
+0.19
+0.13
+91.89
+88.15
+99.55
+99.1
+1.21
+0.98
+90.3
+84.77
+✓
+✓
+✓
+✓
+✓
+0.5
+0.17
+0.06
+89.81
+87.49
+99.29
+99.00
+1.22
+1.02
+87.43
+83.51
+✓
+✓
+✓
+✓
+✓
+✓
+0.5
+0.01
+0.05
+84.11
+85.0
+99.25
+98.9
+1.56
+1.06
+81.13
+80.32
+✓
+✓
+✓
+✓
+0.5
+0.19
+0.13
+91.89
+88.15
+99.55
+99.1
+1.21
+0.98
+90.3
+84.77
+✓
+✓
+✓
+✓
+0.0
+0.08
+0.08
+82.07
+79.86
+98.19
+97.88
+0.6
+0.23
+76.78
+74.38
+Table 3. The ablation of the effects of different loss terms across classiﬁcation and retrieval tasks of the tuples on the validation set for the
+"learn to spell" model.
+Top-1 Accuracy
+Retrieval Accuracy [img2txt]
+Loss
+↓(xi, yi)
+↓(xit, yi)
+↑(xt, yt)
+↑(xit, xt)
+↓(xit, xi)
+↑(xit, yt)
+real
+fake
+real
+fake
+real
+fake
+real
+fake
+L1
+L2
+L3
+L4
+L5
+L6
+R(W)
+56.72
+33.04
+76.27
+61.88
+98.87
+95.64
+89.97
+89.53
+62.57
+48.52
+✓
+0.5
+41.30
+34.01
+2.11
+0.08
+7.78
+1.46
+99.02
+99.19
+0.15
+0.03
+✓
+✓
+0.5
+49.92
+40.96
+5.87
+0.3
+13.51
+2.81
+98.34
+98.88
+0.38
+0.04
+✓
+✓
+✓
+0.5
+51.52
+41.39
+8.47
+0.5
+21.21
+4.96
+97.57
+98.28
+0.57
+0.04
+✓
+✓
+✓
+✓
+0.5
+50.37
+40.62
+1.39
+0.09
+9.14
+1.98
+97.84
+98.42
+0.18
+0.05
+✓
+✓
+✓
+✓
+✓
+0.5
+49.68
+40.05
+0.08
+0.00
+10.67
+2.8
+98.01
+98.56
+0.13
+0.04
+✓
+✓
+✓
+✓
+✓
+✓
+0.5
+49.60
+40.05
+0.07
+0.01
+10.45
+2.78
+97.99
+98.58
+0.15
+0.03
+✓
+✓
+✓
+✓
+0.5
+50.37
+40.62
+1.39
+0.09
+9.14
+1.98
+97.84
+98.42
+0.18
+0.05
+✓
+✓
+✓
+✓
+0.0
+12.89
+9.40
+0.01
+0.01
+0.09
+0.02
+23.48
+31.88
+0.01
+0.01
+Table 4. The ablation of the effects of different loss terms across classiﬁcation and retrieval tasks of the tuples on the validation set for the
+"forget to spell" model.
+loss generally improve the performance of the model, albeit
+the full loss as show in 5 is not the best performing, as our ﬁ-
+nal model we choose the model trained with L1, L3, L4, L5.
+We compare our best model with a model trained without
+the regularization term, we can see that it achieves lower
+performance by 10% on the most important tasks involv-
+ing correlating word images with text strings, and natural
+images with text with text strings ((xt, yt), (xit, yt)).
+Similarly, for the “forget to spell” model, we empirically
+ﬁnd that the model performs the best at task 1 (xit, xi) with
+256 dimensions. We present the ablations with different loss
+terms in Table 4. We choose our ﬁnal model as the model
+trained with combination of loss terms, L1, L2, L5, L6. In
+this case, we expect the performance of the tasks marked
+red to improve and the performance of the columns marked
+with blue to drop.
+Again, for this task, the orthogonal-
+ity constraint is crucial. We observe that the performance
+of the model trained without the orthogonal regularization
+term drops drastically for all the tasks.
+Figure 7. Text detection evaluation in images generated with dif-
+ferent models.
+7. Evaluation
+7.1. Text Generation
+To visualize the written text (dis-)entanglement, we gen-
+erate images conditioned on text prompts. We use an open-
+6
+
+
+Figure 8. Qualitative examples of the OCR detection in the images
+generated using the CLIP model and our learned projections.
+source implementation from [5] of a VQGAN generation
+model [6] which steers the image generation based on a text
+prompt. A discrete latent code is randomly sampled, and
+then optimized such that the cosine similarity between the
+CLIP embedding of a generated image and the CLIP em-
+bedding of the target text prompt is maximized.
+To inspect our learned projections, we follow the same
+scheme, but compute the loss on the W-projections of the
+synthesized image and text CLIP embeddings. It is impor-
+tant to highlight that our goal is not a novel font synthe-
+sis or improving the quality of the text-to-image generation,
+but rather using this task as a lens into our learned projec-
+tions. We generate 1000 images conditioned on real English
+words from our validation set, and 1000 images conditioned
+on nonsense strings from the validation text string set using
+VQGAN+CLIP and both of our projection models. Figure 1
+presents samples of generated images: the ﬁrst row shows
+images generated with the original VQGAN+CLIP setting,
+capturing the visual concepts of the target prompts, and in
+cases of “peas”, “time”, “focus”, and “police” also show-
+ing the letters of the words. The “forget to spell” model
+is able to capture the visual concepts of the words without
+the letters, and the “learn to spell” model shows imperfect,
+but legible letters corresponding to the text prompt. Fig-
+ure 6 shows more qualitative results, using both real and
+fake words as text prompts. In case of nonsense strings,
+the VQGAN+CLIP method is more likely to produce im-
+age text, possibly because nonsense string text prompts do
+not have a visual meaning associated with them. The im-
+ages generated with the “forget to spell” model still contain
+text-like texture, but with less resemblance to the Latin al-
+phabet than to Asian text forms.
+To quantify the appearance of text, we detect words in
+images using an open-source OCR tool [13]. State-of-the
+art OCR recognition models are typically trained on either
+Figure 9. Word detection rates in "learn to spell" models trained
+with and without orthogonality constraint.
+Figure 10. Images generated conditioned on regularized and un-
+regularized "forget to spell" model.
+natural images with text [10] or synthetic datasets of nat-
+ural images with rendered text [10]. While our generated
+images are much different from those training datasets, we
+qualitatively inspect the predictions and ﬁnd them accurate
+(Figure 8). A text detection in an image is recognized if
+the area of the detected word is larger than 10% of the area
+of the image and there are at least 2 letters in the predicted
+word that are the same as the target text prompt.
+Results of OCR text detection are shown in Figure 7.
+The difference in all detections across all words between the
+original model and the “learn to spell” projection is 25.43%,
+and between the “learn to spell” model and the “forget to
+spell” model is 54.92%. The gap is more prominent when
+looking at real-word-conditioned generations, which con-
+ﬁrms the qualitative analysis. The difference between the
+prevalence of detections is less signiﬁcant in fake-word-
+conditioned generations, which we attribute to the fact that
+those words lack visual meaning.
+Non-orthogonal projections We compare the image
+generation experiments between the projections trained
+with and without orthogonal constraints. The orthogonal
+“learn to spell” model shows 17.5% more text detections
+than its non-orthogonal comparison (Figure 9). Similarly,
+we test the importance of orthogonality in the “forget to
+7
+
+
+a)
+b)
+Matches for 
+true label are 
+preserved
+Typographic
+attack labels
+True object 
+labels
+. . .
+Matches for 
+attack text 
+are reduced
+c)
+b)
+A typographic attack image
+Figure 11. A test on a data set of 200 text attack images, a) shows a similarity matrix between the embeddings images with typographic
+attacks and the the text embeddings of typographic attack labels and true object labels obtained by the CLIP model, b) shows the same
+similarity matrix obtained by the Forget-to-Spell model.
+spell” model. While the detection rate in those images is
+close to 0%, the images generated using non-orthogonal
+model have collapsed to a single pattern of red background
+(Figure 10). Without the orthogonality constraint, the pro-
+jection is no longer able to preserve the original CLIP model
+representations, and loses any meaning.
+7.2. Robustness
+Our second evaluation task is OCR. We consider the
+IIIT5K dataset [17], a dataset of natural images of cropped
+words. We compute a retrieval score on the lexicon clas-
+siﬁcation task (1 out of 1000), and a retrieval amongst all
+the unique words in the dataset (1 out of 1772).
+In the
+ﬁrst task, our projection with 128 dimensions is able to
+achieve a performance only 1.76% lower than the original
+512-dimensional embedding, despite the testing task being
+out-of-domain. When testing on the full dataset, we see a
+0.2% improvement over the original CLIP model. When
+testing on a 64-dimensional projection, the orthogonal pro-
+jection obtains a 4.87% drop in performance, whereas the
+non-orthogonal projection suffers a 24.63% drop (Table 5).
+To test the typographic attack setting, we collect a dataset
+of 180 images of 20 objects and 8 typographic attacks.
+The accuracy of CLIP on true object labels is only 49.4%,
+whereas the “forget- to-spell” model obtains 77.2%. Fig-
+ure 11 shows the full similarity matrices, in Figure 11a, the
+diagonal pattern for each object on all typographic attack
+labels shows that CLIP responds strongly to the text label,
+while in Figure 11b, this sensitivity to text is reduced. Sen-
+sitivity to the true object label is preserved. Note, that the
+projection matrices were trained to disentangle text in im-
+ages only with synthetic text images, and the testing data
+shows natural images with text, which demonstrates the out-
+Model
+Dimension
+Regularized
+Accuracy
+IIIT5K 1K
+IIIT5K
+CLIP
+512
+69.43
+63.00
+Learn to spell
+128
+✓
+67.67
+63.20
+Learn to spell
+128
+45.56
+39.23
+Learn to spell
+64
+✓
+64.56
+61.17
+Learn to spell
+64
+44.80
+39.00
+Table 5. Out-of-domain generalization evaluation on the IIIT5K
+dataset.
+of-domain generalization of the Forget-to-spell model.
+8. Limitations
+Our method delivers orthogonal subspaces of the CLIP
+vector space that can generate images with more and fewer
+visual words in synthesized images. However, we can not
+perfectly avoid text all together when using the “forget to
+spell” projection, nor can we guarantee perfectly written
+text using the “learn to spell” projection. As seen in our
+qualitative (Figure 6) and quantitative (Figure 9) results,
+some target text prompts remain in generated images, and
+in others we can observe some letters from the target word.
+9. Conclusion
+We have studied the relationship between rendered text
+and its visual meaning as represented by the CLIP network,
+motivating the problem with examples of text confusion
+when generating an image. We have found that a learned
+orthogonal projection is able to disentangle the written and
+visual comprehension in the CLIP image encoding; orthog-
+onality is crucial for our method. We have explored two
+8
+
+
+distinct applications: reducing text artifacts in text-to-image
+generation, and defense against typographic attacks, col-
+lecting an evaluation dataset of typographic attack images
+to measure the latter. We ﬁnd that our method is effective in
+both applications, controlling generation of text in images,
+and reducing text confusion in zero-shot classiﬁcation.
+Acknowledgement
+We are grateful to Manel Baradad for early feedback and
+valuable discussions. JM was partially funded by the MIT-
+IBM Watson AI Lab, and DB was supported by DARPA
+SAIL-ON HR0011-20-C-0022.
+References
+[1] Guillaume Alain and Yoshua Bengio. Understanding
+intermediate layers using linear classiﬁer probes. In
+ICLR Workshop, 2016. 2
+[2] David Bau, Alex Andonian, Audrey Cui, YeonHwan
+Park, Ali Jahanian, Aude Oliva, and Antonio Torralba.
+Paint by word.
+arXiv preprint arXiv:2103.10951,
+2021. 2
+[3] Edo Collins, Raja Bala, Bob Price, and Sabine
+Susstrunk. Editing in style: Uncovering the local se-
+mantics of gans.
+In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recog-
+nition, pages 5771–5780, 2020. 2
+[4] Katherine Crowson.
+VQGAN+CLIP.
+https:
+//colab.research.google.com/drive/
+15UwYDsnNeldJFHJ9NdgYBYeo6xPmSelP,
+Jan. 2021. 2
+[5] Katherine Crowson.
+VQGAN+pooling.
+https:
+//colab.research.google.com/drive/
+1ZAus _ gn2RhTZWzOWUpPERNC0Q8OhZRTZ,
+Jan. 2021. 2, 7
+[6] Patrick Esser, Robin Rombach, and Bjorn Ommer.
+Taming transformers for high-resolution image syn-
+thesis. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition, pages
+12873–12883, 2021. 2, 7
+[7] Ruth Fong and Andrea Vedaldi. Net2vec: Quantify-
+ing and explaining how concepts are encoded by ﬁlters
+in deep neural networks. In Proceedings of the IEEE
+conference on computer vision and pattern recogni-
+tion, pages 8730–8738, 2018. 2
+[8] Lore Goetschalckx, Alex Andonian, Aude Oliva, and
+Phillip Isola. Ganalyze: Toward visual deﬁnitions of
+cognitive image properties.
+In CVPR, pages 5744–
+5753, 2019. 2
+[9] Gabriel Goh, Nick Cammarata, Chelsea Voss, Shan
+Carter, Michael Petrov, Ludwig Schubert, Alec Rad-
+ford, and Chris Olah. Multimodal neurons in artiﬁcial
+neural networks. Distill, 6(3):e30, 2021. 1, 2
+[10] Ankush Gupta, Andrea Vedaldi, and Andrew Zisser-
+man.
+Synthetic data for text localisation in natural
+images.
+In Proceedings of the IEEE conference on
+computer vision and pattern recognition, pages 2315–
+2324, 2016. 7
+[11] Erik Härkönen, Aaron Hertzmann, Jaakko Lehti-
+nen, and Sylvain Paris.
+Ganspace:
+Discover-
+ing interpretable gan controls.
+arXiv preprint
+arXiv:2004.02546, 2020. 2
+[12] Ali Jahanian, Lucy Chai, and Phillip Isola.
+On the
+"steerability" of generative adversarial networks. In
+ICLR, 2020. 2
+[13] JaidedAI.
+EasyOCR.
+https://github.com/
+JaidedAI/EasyOCR„ 2021. 7
+[14] Tero Karras, Samuli Laine, Miika Aittala, Janne Hell-
+sten, Jaakko Lehtinen, and Timo Aila. Analyzing and
+improving the image quality of stylegan. In Proceed-
+ings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition, pages 8110–8119, 2020. 2
+[15] Been Kim, Martin Wattenberg, Justin Gilmer, Car-
+rie Cai, James Wexler, Fernanda Viegas, et al.
+In-
+terpretability beyond feature attribution: Quantitative
+testing with concept activation vectors (tcav). In In-
+ternational conference on machine learning, pages
+2668–2677. PMLR, 2018. 2
+[16] Yoann Lemesle, Masataka Sawayama, Guillermo
+Valle-Perez, Maxime Adolphe, Hélène Sauzéon, and
+Pierre-Yves Oudeyer. Language-biased image classi-
+ﬁcation: Evaluation based on semantic composition-
+ality. In International Conference on Learning Repre-
+sentations, 2022. 2
+[17] Anand Mishra, Karteek Alahari, and CV Jawahar.
+Scene text recognition using higher order language
+priors. In BMVC-British Machine Vision Conference.
+BMVA, 2012. 8
+[18] Ryan Murdock.
+The Big Sleep.
+https :
+//colab.research.google.com/drive/
+1NCceX2mbiKOSlAd _ o7IU7nA9UskKN5WR,
+Jan. 2021. 2
+[19] Or Patashnik, Zongze Wu, Eli Shechtman, Daniel
+Cohen-Or, and Dani Lischinski. Styleclip: Text-driven
+manipulation of stylegan imagery. In Proceedings of
+the IEEE/CVF International Conference on Computer
+Vision, pages 2085–2094, 2021. 2
+[20] Alec Radford,
+Jong Wook Kim,
+Chris Hallacy,
+Aditya Ramesh, Gabriel Goh, Sandhini Agarwal,
+Girish Sastry, Amanda Askell, Pamela Mishkin, Jack
+Clark, et al.
+Learning transferable visual models
+9
+
+
+from natural language supervision.
+arXiv preprint
+arXiv:2103.00020, 2021. 2, 4
+[21] Aditya Ramesh, Mikhail Pavlov, Gabriel Goh, Scott
+Gray, Chelsea Voss, Alec Radford, Mark Chen, and
+Ilya Sutskever.
+Zero-shot text-to-image generation.
+arXiv preprint arXiv:2102.12092, 2021. 2
+[22] Olga Russakovsky, Jia Deng, Hao Su, Jonathan
+Krause, Sanjeev Satheesh, Sean Ma, Zhiheng Huang,
+Andrej Karpathy, Aditya Khosla, Michael Bernstein,
+et al.
+Imagenet large scale visual recognition chal-
+lenge.
+International journal of computer vision,
+115(3):211–252, 2015. 3
+[23] Yujun Shen, Ceyuan Yang, Xiaoou Tang, and Bolei
+Zhou. Interfacegan: Interpreting the disentangled face
+representation learned by gans. IEEE transactions on
+pattern analysis and machine intelligence, 2020. 2
+[24] Zongze Wu, Dani Lischinski, and Eli Shechtman.
+Stylespace analysis: Disentangled controls for style-
+gan image generation.
+In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pat-
+tern Recognition, pages 12863–12872, 2021. 2
+[25] Bolei Zhou, Agata Lapedriza, Aditya Khosla, Aude
+Oliva, and Antonio Torralba. Places: A 10 million im-
+age database for scene recognition. IEEE Transactions
+on Pattern Analysis and Machine Intelligence, 2017. 3
+[26] Bolei Zhou, Yiyou Sun, David Bau, and Antonio Tor-
+ralba. Interpretable basis decomposition for visual ex-
+planation. In Proceedings of the European Conference
+on Computer Vision (ECCV), pages 119–134, 2018. 2
+10

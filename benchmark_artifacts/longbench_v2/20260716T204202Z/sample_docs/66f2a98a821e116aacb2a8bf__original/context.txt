@@ -1,0 +1,5108 @@
+Abstract
+We introduce DS-1000, a code generation bench-
+mark with a thousand data science problems
+spanning seven Python libraries, such as NumPy
+and Pandas.
+Compared to prior works, DS-
+1000 incorporates three core features. First, our
+problems reﬂect diverse, realistic, and practical
+use cases since we collected them from Stack-
+Overﬂow. Second, our automatic evaluation is
+highly speciﬁc (reliable) – across all Codex-002-
+predicted solutions that our evaluation accept,
+only 1.8% of them are incorrect; we achieve
+this with multi-criteria metrics, checking both
+functional correctness by running test cases and
+surface-form constraints by restricting API us-
+ages or keywords. Finally, we proactively defend
+against memorization by slightly modifying our
+problems to be different from the original Stack-
+Overﬂow source; consequently, models cannot
+answer them correctly by memorizing the solu-
+tions from pre-training. The current best pub-
+lic system (Codex-002) achieves 43.3% accuracy,
+leaving ample room for improvement. We release
+our benchmark at https://ds1000-code-gen.
+github.io.
+1. Introduction
+Data science is important in many areas (Romero & Ventura,
+2013; Bolyen et al., 2019; Faghmous & Kumar, 2014), but
+requires programming proﬁciency in specialized libraries,
+thus posing substantial barriers to lay users. Fortunately,
+these barriers could potentially be reduced by pre-trained
+code generation models: for example, Codex (Chen et al.,
+2021a) can complete small Python snippets with non-trivial
+*Equal contribution. Author ordering determined by alphabet-
+ical order.
+1The University of Hong Kong 2Peking University
+3Stanford University 4UC Berkeley 5University of Washington
+6Meta AI 7Carnegie Mellon University. Correspondence to: Tao
+Yu <tyu@cs.hku.hk>.
+accuracy and AlphaCode (Li et al., 2022) can tackle difﬁcult
+competitive programming problems. We anticipate that
+these barriers will diminish if the community can make solid
+progress in applying these models to data science problems.
+However, we currently lack a benchmark that 1) focuses on
+everyday data science applications, 2) includes naturalistic
+intents and contexts, and 3) has a reliable execution-based
+evaluation metric. Most of the existing datasets with reliable
+test cases (Hendrycks et al., 2021; Chen et al., 2021a) focus
+on competition or interview-style programming problems;
+they measure algorithmic understanding but do not target
+real-world usage. Also, as represented by e.g., user prob-
+lems on StackOverﬂow, users’ data science coding problems
+usually have diverse contexts including their incorrect code,
+error messages, and input-output examples, which cannot
+be found in most prior data science relevant code generation
+benchmarks (Yin et al., 2018; Hendrycks et al., 2021; Chan-
+del et al., 2022b; Chen et al., 2021a). Moreover, most of
+these benchmarks solely rely on surface-form metrics such
+as BLEU or CodeBLEU (Yin et al., 2018; Agashe et al.,
+2019; Chen et al., 2021b). These metrics diverge from the
+programmer’s intent, increasingly so as model capability
+improves (Zhong et al., 2020). To our knowledge, no exist-
+ing benchmarks contain both naturally occurring problems
+with diverse contexts and reliable evaluation metrics.
+To ﬁll this gap, we introduce DS-1000, a benchmark with a
+thousand problems covering seven widely-used Python data
+science libraries: NumPy, Pandas, TensorFlow, PyTorch,
+SciPy, Scikit-learn, and Matplotlib.
+We highlight
+three core features of DS-1000: 1) it contains realistic
+problems with diverse contexts, 2) it implements reliable
+multi-criteria execution-based evaluation metrics, and 3) it
+proactively defends against memorization. We outline how
+we achieved each of them below.
+First, we collected naturally occurring problems from Stack-
+Overﬂow, manually scored their representativeness and use-
+fulness, and curated a subset of them to create our bench-
+mark. While inputs in existing code generation datasets
+are either highly structured (problems or code context) or
+restricted in scope, our natural problems are diverse in con-
+tent and format. For example, users might search for more
+arXiv:2211.11501v1  [cs.SE]  18 Nov 2022
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+result = df.div(1).add_prefix("inv_")
+Prompt
+Reference Solution
+result = df.join(df.apply(lambda x: 1/x).add_prefix(“inv_"))
+Test case 1
+ df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+ans = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6],
+            "inv_A": [1/1, 1/2, 1/3], 
+             "inv_B": [1/4, 1/5, 1/6]})
+Test case 2
+ df,ans = ...[omit for brevity]
+ pd.testing.assert_frame_equal(result, ans)
+Surface-form constraints
+for and while should not appear in Syntax Tree
+A:
+<code>
+import pandas as pd
+df = pd.DataFrame({"A": [1, 2, 3],"B": [4, 5, 6]})
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(result)
+</code>
+Here is a sample dataframe:
+df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+I'd like to add inverses of each existing column to the dataframe and name 
+them based on existing column names with a prefix, e.g. inv_A is an inverse of 
+column A and so on.
+The resulting dataframe should look like so:
+result = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6], "inv_A": [1/1, 
+1/2, 1/3], "inv_B": [1/4, 1/5, 1/6]})
+Obviously there are redundant methods like doing this in a loop, but there 
+should exist much more pythonic ways of doing it … [omitted for brevity]
+Predict
+Correct/wrong?
+Language Models (GPT-3 Codex)
+Replace [insert] in the code context with 
+following predicted code snippets
+Problem
+Code Context
+Execute to evaluate
+Multi-criteria Execution-based Evaluation
+Figure 1: An example problem in DS-1000. The model needs to ﬁll in the code into “[insert]” in the prompt on the left; the
+code will then be executed to pass the multi-criteria automatic evaluation, which includes the test cases and the surface-form
+constraints; a reference solution is provided at the bottom left.
+efﬁcient code implementations (Figure 1), provide incorrect
+code with an error message and ask for bug ﬁxes (Figure 13),
+inquire about speciﬁc API usage (Figure 14), or ask for code
+that implements functionality they specify with input-output
+examples (Figure 1). These problems better reﬂect real-
+world applications and open up new modeling challenges,
+which have been understudied in existing code generation
+benchmarks.
+Second, it is challenging to evaluate program solutions to
+natural and diverse problems reliably. Unlike competition-
+style problems, natural problems might lack executable con-
+texts and test cases, allow multiple solutions, depend on
+external libraries, etc. To address these challenges, ﬁve of
+the authors of this paper, all proﬁcient in data science and
+experts in Python, hand-adapted the original problems by
+writing executable code contexts, rewriting problems to be
+speciﬁc enough to be testable, and implementing automatic
+multi-criteria execution-based evaluation using carefully
+written and reviewed test cases and constraints that check
+functional correctness and surface-form constraints. On
+program solutions predicted by Codex-002, we ﬁnd that
+only 1.8% of the predicted programs passing our evalua-
+tion are incorrect (false discovery rate), indicating that our
+evaluation is reliable.
+Third, one potential concern for adapting public problems
+is that the models might simply memorize the correspond-
+ing solution during pre-training time (Carlini et al., 2021a).
+We show in Section 2.4 that this can indeed happen: while
+Codex achieves 72.5% accuracy on the popular numpy-100
+dataset, the accuracy drastically drops to 23.6% after per-
+turbing them without increasing their difﬁculty. Therefore,
+while building DS-1000, we proactively took measures
+against memorization by perturbing each problem.
+Figure 1 shows an example DS-1000 problem, its reference
+solution, and an expert-written automatic multi-criteria eval-
+uation. To answer the problem, the model needs to ﬁll in
+the solution; to pass our automatic evaluation, it needs to 1)
+return the correct output and 2) avoid inefﬁcient implemen-
+tations that use for-loops.
+We use DS-1000 to evaluate several popular code generation
+models, including Codex (Chen et al., 2021a), CodeGen
+(Nijkamp et al., 2022), and InCoder (Fried et al., 2022).
+We found model performance ranges from 7.4% to 43.3%,
+with Codex-002 model being the best. This implies that
+these models have the potential to reduce the barrier for data
+analysis, yet still have large room for improvement.
+2. Benchmark Construction
+Our pipeline for building DS-1000 contains ﬁve stages, il-
+lustrated in Figure 2 and described below. 1) We scraped
+and selected high-quality problems from StackOverﬂow
+(Section 2.1). 2) We rewrote the problem and the refer-
+ence solution so that the problem is unambiguous and the
+reference solution is executable.(Section 2.2) 3) We im-
+plemented a multi-criteria automatic evaluation for each
+problem, which includes test cases and surface-form con-
+straints (Section 2.3). 4) We performed a pilot study which
+shows that Codex can answer problems by memorizing the
+pre-training corpus, and proactively took measures to pre-
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+ inv_df = df.join(df.apply(lambda x: 1/x).add_prefix("inv_"))
+df = pd.DataFrame({"A": [1, 2, 3], 
+  "B": [4, 5, 6]})
+### BEGIN SOLUTION
+# A known WRONG SOLUTION
+result = df.join(df.apply(lambda 
+x:math.e**x).add_prefix('exp_'))
+### END SOLUTION
+print(result)
+… I'd like to apply the exponential function to each 
+existing column … The resulting dataframe should 
+look like so:
+result = pd.DataFrame({"A": [1, 2, 3], 
+"B": [4, 5, 6],
+"exp_A": [e^1, e^2, e^3], 
+"exp_B": [e^4, e^5, e^6]})
+ … [omitted for brevity]
+❷ Adding Code Context
+import pandas as pd
+df = pd.DataFrame({"A": [1, 2, 3],     
+ "B": [4, 5, 6]})
+### BEGIN SOLUTION
+[insert]
+### END SOLUTION
+print(result)
+Test cases
+…[omit for brevity]
+pd.testing.assert_frame_equal(result, 
+ans)
+Surface-form constraints
+for and while should not appear in Syntax 
+Tree
+❸ Implementing Automatic Tests
+❺ Red Teaming
+❹ Perturbing Original Problem 
+❶ Manually Selecting and Modifying StackOverflow Problems
+ df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+Here is a sample dataframe:
+I'd like to add inverses of each existing column to the dataframe 
+and … [omitted for brevity]
+try:
+ High vote
+ Testable
+Representative
+ Useful
+Figure 2: The pipeline for building DS-1000. See the start of Section 2 for a detailed description.
+vent this by perturbing the problems and their reference
+solutions in DS-1000 (Section 2.4). 5) We improved our
+multi-criteria evaluation by requiring it to reject a small
+set of sample predictions that we considered incorrect via
+manual review (Section 2.5), and then calculated the false
+discovery rate of our metric on a larger set of sample predic-
+tions. To reliably carry out this data collection procedure,
+ﬁve authors who are computer science students and familiar
+with data science spent a total of about 1200 hours con-
+structing DS-1000 (including steps from problem selection
+to quality review).
+2.1. Problem Selection
+Sourcing Popular StackOverﬂow Problems.
+To obtain
+natural and high-quality problems, we scraped data from
+StackOverﬂow under each library tag (e.g., “NumPy”). To
+select popular problems, we ﬁrst removed duplicates and se-
+lected problems with at least 1 vote, 1000 views, that had an
+accepted answer. Next, we ranked problems based on votes
+and views and calibrated these statistics based on the time
+a problem was created since older problems naturally have
+more views and votes. We refer readers to Appendix A.1 for
+more details. Among the ﬁltered problems, we randomly
+sampled an initial pool containing 4500 problems (1000 for
+NumPy, Pandas, and Matplotlib, 500 for Scikit-learn
+and SciPy, 250 for TensorFlow, and 250 for PyTorch).
+Filtering Suitable Problems.
+To select problems from
+the above pool for our benchmark, our annotators scored
+each problem according to the following rubric: whether a
+problem a) contains input-output examples in the problem,
+b) is difﬁcult to predict the solution for models according
+to the annotators’ judgment, c) is practically useful, d) has
+a clear description, and e) is feasible to evaluate the solu-
+tion. We aggregated these scores, reranked the candidate
+problems, and incorporated the top-ranked ones to create
+DS-1000. We ended up with 451 unique StackOverﬂow
+problems. More than half of the original StackOverﬂow
+problems were ﬁltered out because they ask for an explana-
+tion for an algorithm or general content (see Appendix A.1).
+Controlling Library Version.
+Data science libraries
+are continuously evolving.
+As a result, the semantics
+of the problem is determined not only by the language
+description but also by the software environment (e.g.,
+library version).
+For example, the same code snippet,
+tf.math.reciprocal(A), is only valid in the newer ver-
+sion of TensorFlow. We ﬁxed the evaluation environment
+to include the latest versions of libraries that can be installed
+with Python 3.7.10 and present the detailed documentation
+in Appendix A.1.
+2.2. Rewriting Problems and Reference Solutions
+Creating Executable Context.
+To implement an
+execution-based evaluation for each natural language prob-
+lem, we needed to write an executable context. We ﬁrst
+added package imports and deﬁned the variables described
+in the problem. For example, in Figure 2, we imported the
+Pandas package and created the dataframe described in the
+problem as part of the context. Second, we needed to specify
+the desired behavior of the target program to be predicted.
+For example, in Figure 2, a code generation model can in-
+fer from the context that the resulting dataframe should be
+named as result, rather than output.
+Rewriting Matplotlib Problems.
+Many Matplotlib
+problems on StackOverﬂow clarify their problems with
+example ﬁgures, which, however, cannot be encoded by
+current pre-trained code models. Therefore, we rewrote the
+StackOverﬂow problems in symbols (i.e., code and text)
+and adopted a different format from other libraries (see
+Figure 15).
+Collecting Reference Solutions. Finally, we obtained the
+reference solution for each problem from multiple high-
+vote replies, edited all reference solutions to be executable
+given the context we provided, and ﬁxed errors whenever
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Perturbation
+Categories
+Example
+Surface
+Convert to completing function
+Figure 16, change format of code context
+Paraphrase the description of the problem
+Figure 17, express the same problem in different words
+Change the example input and output
+Figure 18, replace this example with a longer one
+Semantic
+Replace keywords with analogy words
+Figure 19, replace “inv” with “exp”
+Change the required index
+Figure 20, need the speciﬁed rows and columns
+Reverse the order of the list, string or dataframe
+Figure 21, reverse the needed string
+Change the type of the required result
+Figure 22, change the DataFrame to a Series
+Difﬁcult Rewrite
+Combining several surface and semantic perturbations
+Figure 23, change examples and replace “highest” with “lowest”
+Digging more perturbations that increase the difﬁculty
+Figure 24, hypothesis testing
+Table 1: The perturbation categories along with examples. “Surface” perturbations do not change the reference solution,
+while “Semantic” perturbations do.
+we noticed them (e.g., Figure 11). Even though we did not
+use the reference solution in DS-1000 for evaluation, we
+provided them in DS-1000 to facilitate future research.
+2.3. Implementing Multi-Criteria Evaluations
+Our automatic evaluation is multi-criteria, checking both
+functional correctness and surface-form constraints.
+Functional Correctness.
+To evaluate functional correct-
+ness, we constructed test cases by converting the input-
+output examples provided in the StackOverﬂow problem;
+then the expert annotators manually wrote additional test
+cases to improve the evaluation. To evaluate a predicted
+program, we execute it on the test inputs and compare the
+outputs with the ground truth.
+However, checking the exact equivalence of outputs can in-
+advertently reject correct programs. Many problems involve
+ﬂoating point arithmetic, and many return values are accept-
+able since they are close to the ground truth answer, but
+they are not exactly equal. Some problems require random
+outputs, e.g., generating 100 samples from a distribution,
+and even executing the reference solution twice can lead to
+different results. Many problems do not fully specify all the
+parameters, e.g., the color scheme for the output ﬁgure in
+the Matplotlib library, or the hyper-parameters of a learn-
+ing algorithm in Scikit-learn; therefore, programs with
+different parameters can satisfy the requirement, returning
+values that are different. In all these cases, we relied on the
+best judgment of our expert annotators to implement the
+metric for each problem, which sometimes involves com-
+plicated techniques, such as using statistical tests to handle
+randomness. See more examples in Appendix A.2.
+Surface-Form Constraints. Functional correctness alone
+is insufﬁcient. For example, vectorized operations can be
+expanded using for-loops, which, however, are inefﬁcient
+and do not meet the requirement of the problem. Therefore,
+we introduced additional surface-form constraints that re-
+quire the presence/absence of speciﬁc APIs for keywords.
+Notably, such a check is different from the standard surface-
+form metrics such as CodeBLEU (Ren et al., 2020), which
+requires the whole model prediction to be uniformly similar
+to a reference solution; instead, DS-1000 precisely targets
+small but important parts of surface form.
+2.4. Perturbation to Defend Against Memorization
+Many models are pre-trained on web text and hence memo-
+rize its content (Elangovan et al., 2021; Carlini et al., 2021b);
+therefore, they might answer our problems correctly by
+simply recalling the solutions seen during pre-training if
+they were trained on StackOverﬂow or derivative sites. We
+demonstrate this effect on numpy-100, 1 a problem set of
+100 NumPy problems with solutions that are copied several
+thousand times on GitHub. When prompted to answer a
+selected subset of 20 problems, Codex-002 achieves 72.5%
+pass@1 accuracy.2
+However, if the model truly knows how to solve those prob-
+lems, it should be able to solve similar problems at the
+same level of difﬁculty. This motivates us to perturb the
+problems in two ways: surface perturbations and semantic
+perturbations. For surface perturbations, we paraphrased
+the problem or modiﬁed the code context in the problem,
+but the reference solution should stay the same after the
+perturbation; for example, changing from “Create a 5x5
+matrix . . . ” to “I need a matrix sized 5x5 . . . ”. For semantic
+perturbations, we changed the semantics of the reference
+solution without changing its difﬁculty ; for example, ask-
+ing for “min” instead of “max” in the problem. We provide
+more detailed categories in Table 1. In all of these cases, the
+difﬁculty of the problem does not change for humans.
+Origin
+Surface
+Semantic
+Avg. Perturbation
+72.5
+50.8
+23.6
+40.6
+Table 2: The performance of Codex-002 on numpy-100.
+1https://github.com/rougier/numpy-100
+2The fraction of Codex-002 samples that are correct.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Pandas
+NumPy
+Matplotlib
+Scikit-learn
+SciPy
+TensorFlow
+PyTorch
+Total/Avg.
+Problem
+291
+220
+155
+115
+106
+45
+68
+1000
+Origin
+100
+97
+111
+46
+58
+17
+22
+451
+Surface Perturbation
+24
+22
+0
+57
+11
+11
+27
+152
+Semantic Perturbation
+88
+51
+44
+9
+20
+12
+11
+235
+Difﬁcult Rewrite
+79
+50
+0
+3
+17
+5
+8
+162
+% Surface-Form Constraints
+12.0
+36.4
+0
+27.8
+17.9
+20.0
+27.9
+19.4
+Avg. Test Cases
+1.7
+2.0
+1.0
+1.5
+1.6
+1.6
+1.7
+1.6
+Avg. Problem Words
+184.8
+137.5
+21.1
+147.3
+192.4
+133.3
+133.4
+140.0
+Avg. Lines of Code Context
+9.0
+8.3
+6.9
+11.0
+10.2
+9.2
+9.0
+8.9
+Avg. Lines of Code Solution
+5.4
+2.5
+3.0
+3.3
+3.1
+4.1
+2.1
+3.6
+Table 3: Detailed statistics of DS-1000.
+We manually applied these perturbations to numpy-100 and
+show the result on Table 2. Although the difﬁculty level
+remains the same to human users, the performance of Codex-
+002 drops to 40.6% after perturbation (50.8% on surface per-
+turbations and 23.6% on semantic perturbations). Further-
+more, in 36% of the cases, the model still predicted the orig-
+inal answer of the problem after the semantic perturbation,
+implying that the model is solving the original problems by
+memorizing their corresponding solutions. Therefore, we
+could signiﬁcantly overestimate model performance if we
+test them on problems directly taken from the web. (See
+Appendix B for more details)
+Therefore, to proactively prevent memorization, we applied
+the above two perturbations to DS-1000 problems. Per-
+turbation is a labor-intensive process. Even for a simple
+perturbation from min to max, our annotators needed to edit
+all mentions of min, smallest, minimum to make the problem
+coherent, and updated the code context, reference solution,
+and our evaluation metric accordingly.
+Finally, to make DS-1000 more challenging, we additionally
+introduced several semantic perturbations that increase the
+difﬁculty on purpose (“Difﬁcult Rewrite” in Table 1).
+2.5. Quality Assurance
+To ensure the quality of our benchmark, each problem, refer-
+ence solution, and automatic multi-criteria evaluation were
+reviewed by at least three expert annotators familiar with the
+library. Additionally, we “red teamed” our automatic evalua-
+tion by requiring it to reject all programs known to be incor-
+rect, e.g., solutions to semantically perturbed problems (see
+Figure 2). After the quality review, we also quantitatively
+measured the evaluation quality by examining whether our
+multi-criteria automatic metric can reject incorrect Codex-
+002 predictions (more details in Section 3).
+3. Dataset Statistics
+We provide detailed dataset statistics in Table 3. DS-1000
+contains 1000 problems originating from 451 unique Stack-
+Overﬂow problems. To defend against potential memoriza-
+tion, more than half of the DS-1000 problems are modiﬁed
+from the original StackOverﬂow problems (Section 2.4);
+they include 152 surface perturbations, 235 semantic pertur-
+bations, and 162 difﬁcult rewrites.
+DS-1000 has carefully designed testing methods, checking
+both execution semantics and surface-form constraints. For
+each problem, there are 1.6 test cases (manually annotated
+corner test cases) on average, and 19.4% of them are accom-
+panied by surface-form constraints. The average of problem
+words in DS-1000 is 140. On average, the reference solution
+contains 3.6 lines of code. Table 3 shows the library break-
+down statistics: Most libraries have a similar distribution
+except Matplotlib because we adopted a different problem
+format due to its multimodal nature.
+Table 4 compares DS-1000 to other datasets.
+Notably,
+the average number of words per problem in DS-1000 is
+much larger than other data science related datasets (e.g.,
+DSP, Chandel et al. 2022a and CoNaLa, Yin et al. 2018).
+More importantly, the problems in DS-1000 represent more
+diverse and naturalistic intent and context formats that can-
+not be seen in any other datasets. Unlike generic Python
+code generation benchmarks (MBPP, Austin et al. 2021 and
+HumanEval, Chen et al. 2021a), we note that data science
+code generation benchmarks have fewer test cases since
+the annotators need to deﬁne program inputs with complex
+objects such as square matrices, classiﬁers, or dataframes
+rather than simple primitives, such as ﬂoats or lists. Never-
+theless, as we will show next, even a few test cases sufﬁce
+for DS-1000.
+We evaluate our multi-criteria automatic metric by check-
+ing whether it can reject incorrect solutions. We randomly
+sampled 10 problems from each library and sampled 40 pre-
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Dataset
+Problems
+Evaluation
+Avg. Test Cases
+Avg. P Words
+Avg. Lines of Code Solution
+Data Source
+HumanEval
+164
+Test Cases
+7.7
+23.0
+6.3
+Hand-Written
+MBPP
+974
+Test Cases
+3.0
+15.7
+6.7
+Hand-Written
+APPS
+10000
+Test Cases
+13.2
+293.2
+18.0
+Competitions
+JuICe
+1981
+Exact Match + BLEU
+-
+57.2
+3.3
+Notebooks
+DSP
+1119
+Test Cases
+2.1
+71.9
+4.5
+Notebooks
+CoNaLa
+2879
+BLEU
+-
+13.8
+1.1
+StackOverﬂow
+DS-1000
+1000
+Test Cases +
+Surface-Form Constraints
+1.6
+140.0
+3.6
+StackOverﬂow
+Table 4: Comparison of DS-1000 to other benchmarks. The ﬁrst three benchmarks target general Python usage and the
+next three involve data science code generation. DS-1000 adapts realistic problems from StackOverﬂow and checks both
+execution semantics and surface-form constraints.
+dictions from Codex-002 for each problem (2800 problem-
+code examples in total).3 We run our automatic metric on
+all the sample predictions, review the predictions manually,
+calculate how often they disagree, and report the following
+four quantities:
+• Sample Level False Discovery Rate: among all pre-
+dicted samples that pass our automatic evaluation,
+1.8% of them are incorrect according to our annotator.
+• Sample Level False Omission Rate: among all pre-
+dicted samples that do not pass our automatic eval-
+uation, 0.5% of them are correct according to our
+annotator.
+• Problem Level False Positive Percentage: among all
+problems, 5.7% of the problems contain at least one
+incorrect sample prediction that pass our automatic
+metric.
+• Problem Level False Negative Percentage: among all
+problems, 5.7% (it happens to be the same as the above)
+problems contain at least one correct sample prediction
+that fails to pass our automatic metric.
+Generally, problem-level measures are especially stringent
+since they require correctly judging all predictions among
+the 40 sample predictions. While an apple-to-apple com-
+parison with other datasets is not possible due to the dif-
+ference in the underlying model and benchmark construc-
+tion method (as a point of reference, Li et al. (2022) ﬁnd
+the problem Level False Positive Percentage to be 60% on
+APPS (Hendrycks et al., 2021)), these measures reﬂect that
+DS-1000 is reliable.4
+3We use a higher temperature of 0.7 compared with 0.2 in
+Section 4.2 to get more diverse predictions.
+4Some problems in APPS might apply quite similar tests, and
+some problems may have even as few as 2 or 3 test cases in the
+test split. Thus, insufﬁcient test coverage probably happens though
+there are more test cases in average (Li et al., 2022).
+4. Benchmarking State-of-the-Art Models
+We used DS-1000 to benchmark ﬁve pre-trained code mod-
+els from three different families. The best model Codex-002
+Insertion achieves 43.3% accuracy, indicating room for im-
+provement. We also show the results on the perturbed and
+unperturbed examples in Section 4.4.
+4.1. Prompt Format
+We provide an ofﬁcial prompt format in DS-1000 because
+it signiﬁcantly impacts the performance of pre-trained lan-
+guage models (Zhao et al., 2021). Figure 1 shows an exam-
+ple: each prompt starts with a natural language description
+and then provides a code context; the code context uses
+HTML-like markers to indicate the location of missing code
+that a model needs to ﬁll in and provides both left and the
+right context to the missing code pieces.
+We decide to use inﬁlling as our ofﬁcial format because
+the right context is important to specify the behavior of
+the program predictions (e.g., the variable name for the re-
+sult). More broadly, given that 1) inﬁlling is an important
+functionality for real-world programming and 2) there is a
+growing trend in pre-training with the right context (Agha-
+janyan et al., 2022; Fried et al., 2022; Bavarian et al., 2022;
+Tay et al., 2022), we expect more future pre-trained models
+to perform inﬁlling.
+On the other hand, given that many current language mod-
+els trained on code are not yet capable of inﬁlling, we also
+provide an ofﬁcial prompt that transfers the right context
+information into the left context (Figure 25 and 26). Nev-
+ertheless, despite our best effort to design the prompts for
+left-to-right models, they still lag behind models with inﬁll-
+ing capabilities (Section 4.3). We conjecture that inﬁlling
+models are inherently more effective at utilizing the right
+context information. Finally, we only have Completion
+format for Matplotlib problems because Matplotlib pro-
+vides global access to the current ﬁgure so the right context
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+is not necessary.
+From now on, we refer to the inﬁlling prompt format as
+Insertion format and the left-context-only format as Com-
+pletion format.
+4.2. Experimental Setup
+Models. We experiment with three families of pre-trained
+models: Codex, InCoder (Fried et al., 2022), and Code-
+Gen (Nijkamp et al., 2022). For the Codex models, we
+experiment with codex-davinci-002 (Codex-002), codex-
+davinci-001 (Codex-001), and codex-cushman-001 (Codex-
+Cushman). For InCoder and CodeGen, we experiment with
+the 6B parameters models. Among these models, Codex
+and CodeGen models are trained to predict the right context
+while InCoder models are trained for both left-to-right gen-
+eration and inﬁlling. In addition, Codex-002 also supports
+inﬁlling, although the exact model training details are not
+disclosed.
+Implementation Details. We generate 40 samples for each
+DS-1000 problem with temperature set to 0.2, top-p cutoff
+set to 0.95, and max generation length set to 1024. We set
+the stop sequence tokens to “</code>” and “# SOLUTION
+END”. These samples are used in the unbiased estimator of
+pass@1. For DS-1000, evaluating generated codes does not
+require special computational resources like GPUs.
+4.3. Main Results
+Table 5 displays the pass@1 accuracy on DS-1000. We ﬁnd
+that DS-1000 can differentiate models with different capa-
+bilities. The best model Codex-002 achieves a nontrivial
+but far-from-perfect average accuracy of 43.3%, indicating
+substantial room for improvement. In contrast, other models
+like CodeGen-6B or InCoder-6B have much worse overall
+performance, with accuracy lower than 5% on some libraries.
+Qualitatively, these smaller models often cannot correctly
+follow the prompt instruction, generating additional com-
+ments instead of the required code. Future ablation is needed
+to understand the underlying cause for this performance gap,
+which could be the difference in model size, lack of instruc-
+tion tuning, or the difference in pre-training data.
+In addition, we observe that model accuracy varies across
+different libraries. This speaks to the importance of a holis-
+tic evaluation of multiple data science libraries because
+performance in a speciﬁc library may not directly generalize
+to other libraries.
+Moreover, we ﬁnd that Insertion format often leads to bet-
+ter performance. The same Codex-002 model has a 4.1%
+average accuracy improvement when used with Insertion
+format than used with Completion format. This shows the
+importance of the inﬁlling capability for data science code
+completion.
+4.4. Results by Perturbation
+In Section 2.4, we demonstrated the risk of memorizing
+the solutions on the numpy-100 problem set; do we observe
+the same effect on DS-1000? To investigate this, we ap-
+plied surface perturbations (i.e., the problem changes but
+the reference solution does not change) and semantic pertur-
+bations (the reference solution will change) to the problems
+in DS-1000.
+Table 6 shows the results.5 The performance of Codex-002
+drops after perturbation (3.4% on surface perturbations and
+9.0% on semantic perturbations) but the drop is much less
+severe than what we observed on numpy-100. This indi-
+rectly suggests that Codex-002 might have memorized the
+solution for some StackOverﬂow problems, but the effect is
+less severe because they have not been repeated as often as
+numpy-100 on the internet. Still, we believe problem pertur-
+bation to be a useful strategy to defend against memorization
+by future models proactively.
+Additionally, we rewrote some problems to create more DS-
+1000 problems by intentionally making them more difﬁcult
+even for human programmers. As expected, Codex-002
+performs much worse after the rewrite, and we plan to use
+these problems as a challenge for future models.
+We give a preliminary error analysis in Appendix C.
+5. Related Work
+Natural Language to Code. Research on translating natu-
+ral language to executable forms dates back several decades.
+The models have become increasingly capable of producing
+complex and general programs while requiring fewer human
+annotations. Zelle & Mooney (1996) and Zettlemoyer &
+Collins (2007) translate natural language queries to domain-
+speciﬁc database queries. Liang et al. (2013) and Berant
+et al. (2013) parse natural language into ﬁrst-order logic to
+answer generic knowledge-based questions. Yu et al. (2018);
+Scholak et al. (2021) translate natural language problems to
+general SQL programs and develop models that can general-
+ize across domains. While all the works above still need to
+train their models on the task they evaluate, recently Li et al.
+(2022); Chen et al. (2021a) show that generative models pre-
+trained on code can produce Python snippets to tackle com-
+petitive programming challenges, without any additional
+human annotations. Many other recent works corroborated
+this ﬁnding (Nijkamp et al., 2022; Fried et al., 2022; Xu
+et al., 2022; Black et al., 2022), and additional techniques
+at inference time further improve the performance (Poesia
+et al., 2022; Shi et al., 2022).
+5Note that the results are not comparable to Table 5 since for
+each kind of perturbation, we only selected a subset of problems
+to perturb.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Format
+Model
+Pandas NumPy Matplotlib Scikit-learn SciPy TensorFlow PyTorch
+Overall
+Left-to-right
+Completion
+Codex-002
+26.5
+43.1
+57.0
+44.8
+31.8
+39.3
+41.8
+39.2
+Codex-001
+9.4
+26.6
+41.8
+18.5
+15.0
+17.2
+9.7
+20.2
+Codex-Cushman
+7.9
+21.8
+40.7
+18.0
+11.3
+12.2
+12.4
+18.1
+CodeGen-6B
+1.9
+12.1
+18.6
+5.8
+7.4
+12.8
+3.4
+8.4
+InCoder-6B
+3.1
+4.4
+28.3
+2.8
+2.8
+3.8
+4.4
+7.4
+Insertion
+Codex-002
+30.1
+46.5
+57.0*
+53.7
+34.8
+53.4
+47.7
+43.3
+InCoder-6B
+2.9
+4.6
+28.3*
+3.1
+3.1
+7.8
+3.2
+7.5
+Table 5: pass@1 accuracy with 40 samples generated for each problem. The upper part shows accuracy on the left-to-right
+Completion format, while the lower part shows the results of Insertion format. The rightmost “Overall” columns show the
+average accuracy on 1000 problems from all libraries. DS-1000 is able to differentiate the capabilities of different models
+and there is substantial room for improvement even for the best Codex-002 model. ∗: Matplotlib problems do not have the
+right context so Completion and Insertion formats are the same.
+Pandas
+NumPy
+Scikit-learn
+SciPy
+TensorFlow
+PyTorch
+Overall
+Originsurface
+37.3
+61.2
+52.6
+33.0
+64.9
+64.8
+53.2
+Surface
+31.9 −5.4
+58.4 −2.8
+55.7 +3.1
+32.1 −0.9
+58.0 −8.9
+50.0 −14.8
+49.8 −3.4
+Originsemantic
+36.8
+56.7
+60.6*
+40.3
+71.3
+65.1
+47.2
+Semantic
+33.2 −3.6
+49.0 −7.7
+38.9*−21.7
+34.3 −6.0
+42.5 −25.8
+30.5 −34.6
+38.2 −9.0
+Origindifﬁcult
+39.9
+52.7
+5.0*
+58.1
+73.0*
+53.8*
+46.8
+Difﬁcult Rewrite
+17.7 −22.2
+27.1 −25.6
+0.0*−5.0
+13.8 −44.3
+38.0*−35.0
+28.8*−25.0
+21.0 −25.8
+Table 6: Effect of three different types of problem perturbation. In each subsection, we compare the accuracy of the
+perturbed problems to that of the original problems. We observe that although Surface and Semantic perturbations also
+cause a performance drop on DS-1000 the performance drop is much smaller compared to that on numpy-100. ∗: Numbers
+are averaged from less than 10 problems.
+Code Generation Benchmarks.
+As models become in-
+creasingly capable, researchers start to build increasingly
+difﬁcult and general code generation benchmarks. While
+Zelle & Mooney (1996) focused only on domain-speciﬁc
+languages, Yu et al. (2018) builds a Text-to-SQL benchmark
+that evaluates the capability to write broad-domain SQL
+programs. Yin et al. (2018) evaluates the capability to write
+short but general Python snippets, while more recent papers
+Hendrycks et al. (2021); Li et al. (2022) evaluate models’
+capability to solve competitive programming problems in
+Python. If code generation models continue to improve, we
+expect future researchers to focus on more complex tasks.
+At the same time, however, it becomes more difﬁcult to build
+reliable benchmarks aligned with real-world applications.
+Programs are most useful when they are executed; therefore,
+we need to evaluate their execution semantics, and the best
+general method so far is still to ask experts to manually write
+test cases. Consequently, most benchmarks with test cases
+focus on competition/interview/ programming challenges
+(Hendrycks et al., 2021; Li et al., 2022), because these are
+the only applications where a lot of test cases are already
+available. Therefore, most recent papers that evaluate on
+real-world programs have to rely on unreliable surface-form
+metrics (Ren et al., 2020; Chen et al., 2021b; Xu et al., 2022).
+This streetlight effect might incentivize the community to
+work on problems that are easy to evaluate but not useful
+in practice. In response to this challenge, our paper man-
+ually implements a reliable metric for naturally occurring
+problems. Future works can consider using models to help
+humans write useful tests (Tufano et al., 2020), or formally
+verify the correctness of a predicted solution (Chu et al.,
+2017).
+6. Conclusion
+We propose DS-1000, a benchmark for generating code for
+data analysis. Our benchmark 1) contains realistic problems,
+2) implements reliable automatic metrics, and 3) proactively
+defends against memorization strategies. We hope DS-1000
+can track the progress of this research area and facilitate fair
+comparisons between models, and our methods to construct
+it can inspire other areas where the task is complicated and
+the ground truth is challenging to evaluate.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Acknowledgements
+We thank Noah A. Smith, Tianbao Xie, Shuyang Jiang for
+their helpful feedback on this work.
+References
+Agashe, R., Iyer, S., and Zettlemoyer, L.
+JuICe: A
+large scale distantly supervised dataset for open domain
+context-based code generation. In Empirical Methods in
+Natural Language Processing (EMNLP), 2019.
+Aghajanyan, A., Huang, B., Ross, C., Karpukhin, V., Xu,
+H., Goyal, N., Okhonko, D., Joshi, M., Ghosh, G., Lewis,
+M., et al. Cm3: A causal masked multimodal model of
+the internet. arXiv preprint arXiv:2201.07520, 2022.
+Austin, J., Odena, A., Nye, M., Bosma, M., Michalewski,
+H., Dohan, D., Jiang, E., Cai, C., Terry, M., Le, Q., et al.
+Program synthesis with large language models. arXiv
+preprint arXiv:2108.07732, 2021.
+Bavarian, M., Jun, H., Tezak, N., Schulman, J., McLeavey,
+C., Tworek, J., and Chen, M.
+Efﬁcient training of
+language models to ﬁll in the middle. arXiv preprint
+arXiv:2207.14255, 2022.
+Berant, J., Chou, A., Frostig, R., and Liang, P. Semantic
+parsing on freebase from question-answer pairs. In Pro-
+ceedings of the 2013 conference on empirical methods in
+natural language processing, pp. 1533–1544, 2013.
+Black, S., Biderman, S., Hallahan, E., Anthony, Q., Gao,
+L., Golding, L., He, H., Leahy, C., McDonell, K., Phang,
+J., Pieler, M., Prashanth, U. S., Purohit, S., Reynolds, L.,
+Tow, J., Wang, B., and Weinbach, S. GPT-NeoX-20B: An
+open-source autoregressive language model. In Proceed-
+ings of BigScience Episode #5 – Workshop on Challenges
+& Perspectives in Creating Large Language Models, vir-
+tual+Dublin, May 2022. Association for Computational
+Linguistics.
+Bolyen, E., Rideout, J. R., Dillon, M. R., Bokulich, N. A.,
+Abnet, C. C., Al-Ghalith, G. A., Alexander, H., Alm, E. J.,
+Arumugam, M., et al. Reproducible, interactive, scalable
+and extensible microbiome data science using qiime 2
+(vol 37, pg 852, 2019). Nature biotechnology, 2019.
+Carlini, N., Tramèr, F., Wallace, E., Jagielski, M.,
+Herbert-Voss, A., Lee, K., Roberts, A., Brown, T.,
+Song, D., Erlingsson, Ú., Oprea, A., and Raffel, C.
+Extracting training data from large language models. In
+30th USENIX Security Symposium (USENIX Security
+21), pp. 2633–2650. USENIX Association, August
+2021a.
+ISBN 978-1-939133-24-3.
+URL https:
+//www.usenix.org/conference/usenixsecurity21/
+presentation/carlini-extracting.
+Carlini, N., Tramèr, F., Wallace, E., Jagielski, M., Herbert-
+Voss, A., Lee, K., Roberts, A., Brown, T. B., Song, D.,
+Erlingsson, Ú., Oprea, A., and Raffel, C. Extracting
+training data from large language models. In Bailey, M.
+and Greenstadt, R. (eds.), 30th USENIX Security Sympo-
+sium, USENIX Security 2021, August 11-13, 2021, pp.
+2633–2650. USENIX Association, 2021b. URL https:
+//www.usenix.org/conference/usenixsecurity21/
+presentation/carlini-extracting.
+Chandel, S., Clement, C. B., Serrato, G., and Sundaresan, N.
+Training and evaluating a jupyter notebook data science
+assistant. CoRR, abs/2201.12901, 2022a. URL https:
+//arxiv.org/abs/2201.12901.
+Chandel, S., Clement, C. B., Serrato, G., and Sundaresan, N.
+Training and evaluating a jupyter notebook data science
+assistant. arXiv preprint arXiv:2201.12901, 2022b.
+Chen, M., Tworek, J., Jun, H., Yuan, Q., Pinto, H. P. d. O.,
+Kaplan, J., Edwards, H., Burda, Y., Joseph, N., Brockman,
+G., et al. Evaluating large language models trained on
+code. arXiv preprint arXiv:2107.03374, 2021a.
+Chen, X., Gong, L., Cheung, A., and Song, D. Plotcoder:
+Hierarchical decoding for synthesizing visualization code
+in programmatic context. In Association for Computa-
+tional Linguistics (ACL), 2021b.
+Chu, S., Wang, C., Weitz, K., and Cheung, A. Cosette: An
+automated prover for sql. In CIDR, 2017.
+Elangovan, A., He, J., and Verspoor, K. Memorization
+vs. generalization : Quantifying data leakage in NLP
+performance evaluation. In Merlo, P., Tiedemann, J.,
+and Tsarfaty, R. (eds.), Proceedings of the 16th Con-
+ference of the European Chapter of the Association
+for Computational Linguistics: Main Volume, EACL
+2021, Online, April 19 - 23, 2021, pp. 1325–1335. As-
+sociation for Computational Linguistics, 2021.
+doi:
+10.18653/v1/2021.eacl-main.113. URL https://doi.
+org/10.18653/v1/2021.eacl-main.113.
+Faghmous, J. H. and Kumar, V. A big data guide to under-
+standing climate change: The case for theory-guided data
+science. Big data, 2(3):155–163, 2014.
+Fried, D., Aghajanyan, A., Lin, J., Wang, S., Wallace, E.,
+Shi, F., Zhong, R., Yih, W., Zettlemoyer, L., and Lewis,
+M. Incoder: A generative model for code inﬁlling and
+synthesis. CoRR, abs/2204.05999, 2022.
+Hendrycks, D., Basart, S., Kadavath, S., Mazeika, M., Arora,
+A., Guo, E., Burns, C., Puranik, S., He, H., Song, D., and
+Steinhardt, J. Measuring coding challenge competence
+with apps. NeurIPS, 2021.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Li, Y., Choi, D. H., Chung, J., Kushman, N., Schrit-
+twieser, J., Leblond, R., Eccles, T., Keeling, J., Gi-
+meno, F., Lago, A. D., Hubert, T., Choy, P., de Mas-
+son d’Autume, C., Babuschkin, I., Chen, X., Huang,
+P., Welbl, J., Gowal, S., Cherepanov, A., Molloy, J.,
+Mankowitz, D. J., Robson, E. S., Kohli, P., de Freitas,
+N., Kavukcuoglu, K., and Vinyals, O. Competition-level
+code generation with alphacode. CoRR, abs/2203.07814,
+2022. doi: 10.48550/arXiv.2203.07814. URL https:
+//doi.org/10.48550/arXiv.2203.07814.
+Liang, P., Jordan, M. I., and Klein, D. Learning Dependency-
+Based Compositional Semantics. Computational Linguis-
+tics, 39(2):389–446, 06 2013. ISSN 0891-2017. doi:
+10.1162/COLI_a_00127. URL https://doi.org/10.
+1162/COLI_a_00127.
+Nijkamp, E., Pang, B., Hayashi, H., Tu, L., Wang, H., Zhou,
+Y., Savarese, S., and Xiong, C. A conversational paradigm
+for program synthesis. CoRR, abs/2203.13474, 2022.
+Poesia, G., Polozov, A., Le, V., Tiwari, A., Soares, G., Meek,
+C., and Gulwani, S. Synchromesh: Reliable code genera-
+tion from pre-trained language models. In International
+Conference on Learning Representations, 2022. URL
+https://openreview.net/forum?id=KmtVD97J43e.
+Ren, S., Guo, D., Lu, S., Zhou, L., Liu, S., Tang, D., Sun-
+daresan, N., Zhou, M., Blanco, A., and Ma, S. Code-
+bleu: a method for automatic evaluation of code syn-
+thesis.
+CoRR, abs/2009.10297, 2020.
+URL https:
+//arxiv.org/abs/2009.10297.
+Romero, C. and Ventura, S. Data mining in education. Wiley
+Interdisciplinary Reviews: Data Mining and Knowledge
+Discovery, 3(1):12–27, 2013.
+Scholak, T., Schucher, N., and Bahdanau, D. PICARD:
+Parsing incrementally for constrained auto-regressive de-
+coding from language models. In Proceedings of the 2021
+Conference on Empirical Methods in Natural Language
+Processing, pp. 9895–9901, Online and Punta Cana, Do-
+minican Republic, November 2021. Association for Com-
+putational Linguistics.
+Shi, F., Fried, D., Ghazvininejad, M., Zettlemoyer, L., and
+Wang, S. I. Natural language to code translation with
+execution. arXiv preprint arXiv:2204.11454, 2022.
+Tay, Y., Dehghani, M., Tran, V. Q., Garcia, X., Bahri, D.,
+Schuster, T., Zheng, H. S., Houlsby, N., and Metzler, D.
+Unifying language learning paradigms. arXiv preprint
+arXiv:2205.05131, 2022.
+Tufano, M., Drain, D., Svyatkovskiy, A., Deng, S. K., and
+Sundaresan, N. Unit test case generation with transform-
+ers and focal context. arXiv preprint arXiv:2009.05617,
+2020.
+Xu, F. F., Alon, U., Neubig, G., and Hellendoorn, V. J. A
+systematic evaluation of large language models of code.
+In Proceedings of the 6th ACM SIGPLAN International
+Symposium on Machine Programming, pp. 1–10, 2022.
+Yin, P., Deng, B., Chen, E., Vasilescu, B., and Neubig,
+G. Learning to mine aligned code and natural language
+pairs from stack overﬂow. In International Conference on
+Mining Software Repositories, MSR, pp. 476–486. ACM,
+2018. doi: https://doi.org/10.1145/3196398.3196408.
+Yu, T., Zhang, R., Yang, K., Yasunaga, M., Wang, D., Li, Z.,
+Ma, J., Li, I., Yao, Q., Roman, S., Zhang, Z., and Radev,
+D. R. Spider: A large-scale human-labeled dataset for
+complex and cross-domain semantic parsing and text-to-
+SQL task. In Empirical Methods in Natural Language
+Processing (EMNLP), 2018.
+Zelle, M. and Mooney, R. J. Learning to parse database
+queries using inductive logic programming. In Associa-
+tion for the Advancement of Artiﬁcial Intelligence (AAAI),
+pp. 1050–1055, 1996.
+Zettlemoyer, L. and Collins, M. Online learning of relaxed
+ccg grammars for parsing to logical form. In Proceedings
+of the 2007 Joint Conference on Empirical Methods in
+Natural Language Processing and Computational Natu-
+ral Language Learning (EMNLP-CoNLL), pp. 678–687,
+2007.
+Zhao, Z., Wallace, E., Feng, S., Klein, D., and Singh, S.
+Calibrate before use: Improving few-shot performance
+of language models.
+In International Conference on
+Machine Learning, pp. 12697–12706. PMLR, 2021.
+Zhong, R., Yu, T., and Klein, D. Semantic evaluation for
+text-to-SQL with distilled test suites. In Proceedings
+of the 2020 Conference on Empirical Methods in Natu-
+ral Language Processing (EMNLP), pp. 396–411, On-
+line, November 2020. Association for Computational Lin-
+guistics. doi: 10.18653/v1/2020.emnlp-main.29. URL
+https://aclanthology.org/2020.emnlp-main.29.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Appendices
+A. Details on Data Collection
+A.1. Problem Selection
+Sourcing Popular StackOverﬂow Problems.
+We lever-
+age StackOverﬂow to collect representative data science
+code generation problems on each library. To select popular
+problems, we ﬁrst removed duplicates and selected prob-
+lems with at least 1 vote, 1000 views, and accepted answers.
+After this initial ﬁltering, we obtain 15881 NumPy problems,
+26248 Pandas problems, 1965 PyTorch problems, 8258
+TensorFlow problems, 4141 SciPy problems, and 4499
+Scikit-learn problems. Next, we performed a stratiﬁed
+sampling on problems from each year to further subsample
+the problems from Pandas and TensorFlow. We designed a
+threshold for each year’s problems differently because older
+problems naturally have higher votes. Table 8 displays the
+criteria we used to ﬁlter each year’s problem on Pandas and
+TensorFlow.
+Filtering Suitable Problems.
+From the initial pool of
+popular problems, our annotators selected problems that
+are suitable for building DS-1000. Besides the considera-
+tions mentioned in Section 2, we discuss those problems
+that are not selected here. In general, we consider a prob-
+lem to be unsuitable if our multi-criteria evaluation is not
+applicable (untestable problems). For example, we leaved
+StackOverﬂow problems involving hardware problems (See
+Figure 29), software errors (See Figure 30), concrete exe-
+cution time analysis, etc. out of DS-1000. See Figure 31
+for a concrete example where the problem asks for a natural
+language explanation of a method in TensorFlow. We leave
+incorporating more unsuitable StackOverﬂow problems for
+future work.
+Controlling Library Version. Table 7 details the software
+versions that we build DS-1000 with.
+Package
+Version
+Seaborn
+0.11.2
+Matplotlib
+3.5.2
+NumPy
+1.21.6
+Pandas
+1.3.5
+Scikit-learn
+1.0.2
+SciPy
+1.7.3
+TensorFlow
+2.10.0
+PyTorch
+1.12.1
+Table 7: The versions of software in DS-1000
+A.2. Example Problems
+Here we present an example problem from each of the seven
+libraries in DS-1000 to illustrate the challenges we encoun-
+tered in creating DS-1000.
+Figure 9 shows a NumPy problem asking how to generate
+samples that suit log-uniform distribution. Since the result
+varies with different solutions and different settings, it’s
+unreasonable to test the equivalence. Instead, we apply the
+Kolmogorov-Smirnov test that judges whether two groups
+of samples suit the identical or rather similar population.
+Figure 10 gives a SciPy problem that describes some trou-
+ble with the number of stored elements in a sparse matrix
+and asks for a solution without repetitive type conversion.
+Since our self-made assertion that checks the equivalence
+of two matrices cannot distinguish the difference between
+stored numbers, we need a special design for this problem.
+For functional correctness, we check the type of b, match the
+elements, and check the number of non-zero elements(nnz),
+which is the core of the problem. For surface-form con-
+straints, we reject the use of .toarray(), .A, .todense(),
+and .array(), which might attempt to transform a sparse
+matrix into a dense one.
+Figure 11 shows a Pandas problem. We found that the
+solution with the highest votes ignores the requirement “but
+does not exactly match it” in the description of the problem,
+and thus we had to ﬁx the bug in our reference solution.
+Besides, we enhanced the test case to check the point.
+Figure 12 shows a TensorFlow problem. Since there is no
+built-in testing function deﬁned in TensorFlow 2.10.0, we
+had to design it by ourselves.
+Figure 13 demonstrates a PyTorch problem. Here we use
+load_data() to hide the input and let the models learn from
+the description. The correct solution is not a regular type
+conversion, as indicated in the error message.
+Figure 14 shows a Scikit-learn problem. It requires ap-
+plying the preprocessing method deﬁned in Scikit-learn
+to a Pandas dataframe, and it tests whether the models
+learn Scikit-learn, Pandas, and their interaction well.
+Actually, these data science libraries are not independent of
+others, and this problem exempliﬁes the interactions.
+Figure 15 shows a Matplotlib problem. Here the origi-
+nal problem on StackOverﬂow contains an example ﬁgure,
+which cannot be processed by current code models. We
+rewrite the original problem into a standalone problem, that
+is, “Plot y over x and show blue dashed grid lines”. The
+automatic evaluation comes in two parts. First, it compares
+the image produced by the generated program with the im-
+age produced by the reference program. If two images
+match exactly, then the generated program is considered
+correct. Otherwise, the automatic evaluation examines the
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Year
+2011
+2012
+2013
+2014
+2015
+2016
+2017
+2018
+2019
+2020
+2021
+2022
+Pandas
+vote
+50
+50
+14
+14
+14
+4
+4
+4
+2
+2
+1
+1
+view
+5k
+5k
+5k
+5k
+5k
+1k
+1k
+1k
+1.1k
+1.1k
+1k
+1k
+problems
+2
+8
+467
+494
+554
+2139
+2483
+1894
+1985
+809
+225
+8
+TensorFlow
+vote
+-
+-
+-
+-
+10
+5
+4
+2
+2
+1
+1
+1
+view
+-
+-
+-
+-
+3k
+2k
+1k
+1.6k
+1.2k
+1.3k
+1k
+1k
+problems
+-
+-
+-
+-
+100
+632
+1136
+1167
+1004
+776
+185
+6
+Table 8: The problem selection parameters and the number of result problems of Pandas and TensorFlow.
+Matplotlib axis object and asserts the conditions relevant
+to the problem speciﬁcation. In this example, the assertions
+are testing the existence of grid lines and the color of the
+grid lines.
+A.3. Problem Perturbation
+Here, we give an example for each type of perturbation,
+as shown in Table 1. We highlight the changes we made
+through perturbations.
+Figure 16, Figure 17 and Figure 18 give examples of surface
+perturbations, showing code context perturbation, paraphras-
+ing, and changes in example respectively. The original task
+hasn’t changed.
+Figure 19 shows how we replace keywords with analogy
+words in a Pandas problem. The perturbed problem asks
+for applying an exponential function to column A and B.
+The problem in Figure 20 concentrates on changing the re-
+quired index. Here we specify the target index on which
+to operate using ordinal numbers. Figure 21 gives an ex-
+ample of reversing the order. The desired output string is
+reversed(from “abc,def,ghi,jkl” to “jkl,ghi,def,abc”). We
+expect the models to capture the information and handle the
+perturbation. Figure 22 shows an example of changing the
+type of the required result. Here we change the type from
+pd.DataFrame to pd.Series.
+Figure 23 and Figure 24 demonstrate how we get difﬁcult
+rewrites. The example in Figure 23 replaces “highest” with
+“lowest” and changes the shape of the desired output (from n
+× 1 to 1 × n). The example in Figure 24, on the other hand,
+focuses on digging more perturbations that could increase
+the difﬁculty. The models should not only learn how to use a
+two-sample KS test but also learn how to interpret the result
+of the KS test.
+A.4. Prompt Format
+As we’ve mentioned in Section 4.1, we also provide a
+prompt of Completion format. Here are two examples (Fig-
+ure 25 and Figure 26) showing that we have to translate the
+code in the right context into natural language instructions
+as complementary information.
+B. Details of Experiments on numpy-100
+numpy-100 is a collection of 100 NumPy exercises from
+NumPy mailing list, StackOverﬂow, and NumPy documen-
+tation, which has been forked over 4.7k times on GitHub.
+As shown in Figure 3, in the numpy-100 problem set, each
+problem is given a short, one-sentence description with no
+code context, followed by a reference solution.
+#### 28. Consider a (6,7,8) shape array, what is the index (x,y,z) 
+of the 100th element?
+```python
+print(np.unravel_index(99, (6,7,8)))
+```
+Figure 3: A numpy-100 example.
+First, we wrote a code context for each problem and applied
+Insertion prompt, as shown in Figure 4.
+Problem:
+Consider a (6,7,8) shape array, what is the index (x,y,z) of the 100th element?
+<code>
+import numpy as np
+[insert]
+print(result)
+</code>
+Figure 4: A numpy-100 example prompt.
+Then we paraphrased the problems and modiﬁed the code
+contexts as surface perturbations, as shown in Figure 5 and
+Figure 6. We changed the description from “Consider a
+(6,7,8) shape array, what is the index (x,y,z) of the 100th
+element?” to “I have an array with shape (6,7,8). I need to
+ﬁnd the index of the 100th element.”. In another way, we
+changed the code context to require models to complete a
+given function.
+For semantic perturbation, we changed the requirements
+of the problems and also the semantics of the reference
+solutions without changing their difﬁculty. As shown in
+Figure 7, we changed “100” to “99”.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Problem:
+I have a array with shape (6,7,8). I need to find the index of the 100th element.
+<code>
+import numpy as np
+[insert]
+print(result)
+</code>
+Figure 5: A numpy-100 example of surface perturbation.
+We expressed the same description in different words.
+Problem:
+Consider a (6,7,8) shape array, what is the index (x,y,z) of the 100th element?
+<code>
+import numpy as np
+def f():
+    [insert]
+    return result
+</code>
+Figure 6: A numpy-100 example of surface perturbation.
+We changed the code context.
+At last, we equipped each problem and its perturbation with
+one test case and an automatic evaluation. Then we tested
+the performance of Codex-002 on them. We sampled 20
+problems from numpy-100 and generated 10 samples for
+each problem with temperature set to 0.7, and top-p cutoff
+set to 0.95.
+C. Error Analysis
+We provide a preliminary error analysis by showing an exam-
+ple model error in Figure 8 and provide additional examples
+in Figure 27 and 28. In this example, the problem asks for
+removing adjacent duplicated non-zero values in a given
+array, which cannot be satisﬁed by a single NumPy opera-
+tion. The reference implements this problem by creating a
+binary array representing the selection and performing two
+operations to meet the problem requirement. However, we
+see Codex-002 fails on the composite request and attempts
+to answer the problem with a single method, np.unique,
+pointed out as incorrect in the problem already.. This exam-
+ple error demonstrates the challenges in DS-1000 problems,
+Problem:
+Consider a (6,7,8) shape array, what is the index (x,y,z) of the 99th element?
+<code>
+import numpy as np
+[insert]
+print(result)
+</code>
+Figure 7: A numpy-100 example of semantic perturbation.
+We only changed the required index.
+which require both natural language understanding and code
+generation abilities.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Problem:
+Given a numpy array, I wish to remove the adjacent 
+(before removing) duplicate non-zero value and all the 
+zero value.
+For instance, for an array like that: 
+[0,0,1,1,1,2,2,0,1,3,3,3], I'd like to transform it to: 
+[1,2,1,3]. Do you know how to do it?
+I just know np.unique(arr) but it would remove all the 
+duplicate value and keep the zero value. Thank you in 
+advance!
+Reference Solution
+# a: 1-d np.array as input
+selection = np.ones(len(a), dtype = bool)
+selection[1:] = a[1:] != a[:-1]
+selection &= a != 0
+result = a[selection]
+Wrong Solution
+# Just mimic mentioned wrong solution
+result = np.unique(a)
+Figure 8: An example model mistake. The problem speciﬁes a composite requirement, removing adjacent non-zero
+duplicates, which cannot be solved by a single operation. The model mistakenly generates a single operation that removes
+all duplicates.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Reference Solution
+import spicy.stats
+result = scipy.stats.loguniform.rvs(a = min, b = max, size = n)
+Automatic Evaluation
+Test code
+ np.testing.assert_array_equal(result.shape, ans.shape)
+ from scipy.stats import ks_2samp
+ # Kolmogorov-Smirnov Test judges whether the two sampled   
+ # from similar distribution
+ assert ks_2samp(result, ans)[0] <= 0.1
+Surface-form constraints
+for and while should not appear in Syntax Tree
+Test case 1
+ min = 1
+ max = np.e
+ n = 10000
+ ans = ... # generated by Reference solution
+Problem:
+I could not find a built-in function in Python to generate a log uniform 
+distribution given a min and max value (the R equivalent is here), 
+something like: loguni[n, min, max, base] that returns n log uniformly 
+distributed in the range min and max.
+The closest I found though was numpy.random.uniform . 
+That is, given range of x, I want to get samples of given size (n) that suit log-
+uniform distribution. 
+Any help would be appreciated!
+A:
+<code>
+import numpy as np
+min = 1
+max = np.e
+n = 10000
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(result)
+</code>
+Figure 9: NumPy example problem involving randomness, requiring the use of a specialist knowledge test.
+Reference Solution
+  b.setdiag(0)
+  b.eliminate_zeros()
+Automatic Evaluation
+Test code
+assert type(b) == type(ans)
+# Matching elements
+assert len(sparse.find(b != ans)[0]) == 0
+# Checking number of nonzero elements
+assert b.nnz == ans.nnz
+Surface-form constraints
+.toarray(), .A, .todense(), .array() should 
+not appear in Syntax Tree
+Test case 1
+ a = np.ones((2, 2))
+Test case 2
+ a = []
+ ans = sparse.csr_matrix(a)
+ ans.setdiag(0)
+ ans.eliminate_zeros() 
+Problem:
+I want to remove diagonal elements from a sparse matrix. Since the matrix is sparse, 
+these elements shouldn't be stored once removed.
+Scipy provides a method to set diagonal elements values: setdiag
+…[omit for brevity]
+However with csr_matrix, it seems diagonal elements are not removed from storage:
+…[omit for brevity]
+>>> b.setdiag(0)
+>>> b
+<2x2 sparse matrix of type '<type 'numpy.float64'>'
+    with 4 stored elements in Compressed Sparse Row format>
+>>> b.toarray()
+array([[ 0.,  1.],
+       [ 1.,  0.]])
+Through a dense array, we have of course:
+>>> csr_matrix(b.toarray())
+<2x2 sparse matrix of type '<type 'numpy.float64'>'
+    with 2 stored elements in Compressed Sparse Row format>
+Is that intended? If so, is it due to the compressed format of csr matrices? Is there any 
+workaround else than going from sparse to dense to sparse again?
+A:
+<code>
+from scipy import sparse
+import numpy as np
+a = np.ones((2, 2))
+b = sparse.csr_matrix(a)
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(b)
+</code>
+Figure 10: An example problem of SciPy. Speciﬁc checking on conversion between dense matrix and sparse matrix.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Just iterate over  DataFrame.columns , now this is an example in 
+which you will end up with a list of column names that match: 
+spike_cols = [col for col in df.columns if 'spike' in col] 
+https://stackoverﬂow.com/questions/21285380/ﬁnd-column-whose-name-contains-a-speciﬁc-string
+df['name']
+df[name]
+DataFrame.columns
+ pandas 
+ pd 
+ 
+data = {
+: [ , , ], 
+: [ , , ], 
+: [ , , ], 
+: 
+[
+,
+,
+]} 
+df = pd.DataFrame(data) 
+ 
+spike_cols = [col 
+ col 
+ df.columns 
+ 
+ 
+ col] 
+(
+(df.columns)) 
+(spike_cols) 
+import
+as
+'spike-2'
+1 2 3
+'hey spke'
+4 5 6
+'spiked-in'
+7 8 9
+'no'
+10 11 12
+for
+in
+if 'spike' in
+print list
+print
+[
+, 
+, 
+, 
+] 
+[
+, 
+] 
+'hey spke'
+'no'
+'spike-2'
+'spiked-in'
+'spike-2'
+'spiked-in'
+df.columns
+[col for col in df.columns if 'spike' in col]
+df.columns
+col
+'spike'
+df2 = df.
+(regex=
+) 
+(df2) 
+filter
+'spike'
+print
+   spike-   spiked-
+ 
+                   
+                   
+                   
+2
+in
+0
+1
+7
+1
+2
+8
+2
+3
+9
+DataFrame.filter
+df[df.columns.drop(spike_cols)]
+DataFrame
+spike_cols
+df[[col for col in df.columns if "spike" in col]]
+[col for col in df.columns if any(s in col for s in ['spike', 'foo', 'bar'])]
+df.filter(regex='(spike)|(fo
+https://stackoverﬂow.com/questions/21285380/ﬁnd-column-whose-name-contains-a-speciﬁc-string
+DataFrame.columns
+ pandas 
+ pd 
+ 
+data = {
+: [ , , ], 
+: [ , , ], 
+: [ , , ], 
+: 
+[
+,
+,
+]} 
+df = pd.DataFrame(data) 
+ 
+spike_cols = [col 
+ col 
+ df.columns 
+ 
+ 
+ col] 
+(
+(df.columns)) 
+(spike_cols) 
+import
+as
+'spike-2'
+1 2 3
+'hey spke'
+4 5 6
+'spiked-in'
+7 8 9
+'no'
+10 11 12
+for
+in
+if 'spike' in
+print list
+print
+[
+, 
+, 
+, 
+] 
+[
+, 
+] 
+'hey spke'
+'no'
+'spike-2'
+'spiked-in'
+'spike-2'
+'spiked-in'
+df.columns
+[col for col in df.columns if 'spike' in col]
+df.columns
+col
+'spike'
+df2 = df.
+(regex=
+) 
+(df2) 
+filter
+'spike'
+print
+   spike-   spiked-
+ 
+                   
+                   
+                   
+2
+in
+0
+1
+7
+1
+2
+8
+2
+3
+9
+DataFrame.filter
+df[df.columns.drop(spike_cols)]
+DataFrame
+spike_cols
+df[[col for col in df.columns if "spike" in col]]
+[col for col in df.columns if any(s in col for s in ['spike', 'foo', 'bar'])]
+df.filter(regex='(spike)|(foo
+Reference Solution
+result = [col for col in df.columns 
+if s in col and col != s]
+Automatic Evaluation
+Test code
+ assert result == ans
+Test case 1
+ data = {'spike-2': [1,2,3], 'hey spke': [4,5,6], 
+  'spiked-in': [7,8,9], 'no': [10,11,12], 
+  'spike': [13,14,15]}
+ df = pd.DataFrame(data)
+ s = 'spike'
+ ans = [col for col in df.columns 
+if s in col and col != s]
+Problem:
+I have a dataframe with column names, and I want to find the one 
+that contains a certain string, but does not exactly match it. I'm 
+searching for 'spike' in column names like 'spike-2', 'hey spike', 
+'spiked-in' (the 'spike' part is always continuous).
+I want the column name to be returned as a string or a variable, so 
+I access the column later with df['name'] or df[name] as 
+normal. I want to get a list like['spike-2', 'spiked-in']. 
+I've tried to find ways to do this, to no avail. Any tips? 
+A:
+<code>
+import pandas as pd
+data = {'spike-2': [1,2,3], 'hey spke': [4,5,6], 
+ 'spiked-in': [7,8,9], 'no': [10,11,12]}
+df = pd.DataFrame(data)
+s = 'spike'
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(result)
+</code>
+Highest-vote Solution
+Figure 11: An example problem of Pandas. We need to write reference solutions by ourselves because high-vote replies
+from StackOverﬂow ignore the requirement “but does not exactly match it”.
+lengths_transposed = tf.expand_dims(lengths, 1)
+range = tf.range(0, 8, 1)
+range_row = tf.expand_dims(range, 0)
+mask = tf.less(range_row, lengths_transposed)
+result = tf.where(mask, tf.ones([4, 8]), tf.zeros([4, 8]))
+Reference Solution
+Test code
+def tensor_equal(a, b): # self-made test function
+    if type(a) != type(b):
+        return False
+    if isinstance(a, type(tf.constant([]))) is not True:
+        if isinstance(a, type(tf.Variable([]))) is not True:
+            return False
+    if a.shape != b.shape:
+        return False
+    if a.dtype != tf.float32:
+        a = tf.cast(a, tf.float32)
+    if b.dtype != tf.float32:
+        b = tf.cast(b, tf.float32)
+    if not tf.reduce_min(tf.cast(a == b, dtype=tf.int32)):
+        return False
+    return True
+assert tensor_equal(result, ans)
+Test case 1
+ lengths = [4, 3, 5, 2]
+ ans = ... # generated by Reference solution
+Test case 2
+ lengths, ans = ...[omitted for brevity]
+Problem:
+I'm using tensorflow 2.10.0.
+I have a tensor of lengths in tensorflow, let's say it looks like 
+this:
+[4, 3, 5, 2]
+I wish to create a mask of 1s and 0s whose number of 0s 
+correspond to the entries to this tensor, padded in front by 
+1s to a total length of 8. I.e. I want to create this tensor:
+[[1,1,1,1,0,0,0,0],
+ [1,1,1,0,0,0,0,0],
+ [1,1,1,1,1,0,0,0],
+ [1,1,0,0,0,0,0,0]
+]
+How might I do this?
+A:
+<code>
+import tensorflow as tf
+lengths = [4, 3, 5, 2]
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(result)
+</code>
+Figure 12: An example problem of TensorFlow. We implemented well-designed test function for tensor comparison.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Reference Solution
+tensor_of_tensors = torch.stack((list_of_tensors))
+Automatic Evaluation
+Test code
+ torch.testing.assert_close(tensor_of_tensors, ans, 
+           check_dtype = False)
+Test case 1
+ torch.random.manual_seed(42)
+ list_of_tensors = [torch.randn(3), torch.randn(3),   
+ torch.randn(3)]
+ ans = ... # generated by Reference solution
+Problem:
+I have this code:
+import torch
+list_of_tensors = [ torch.randn(3), torch.randn(3), 
+torch.randn(3)]
+tensor_of_tensors = torch.tensor(list_of_tensors)
+I am getting the error:
+ValueError: only one element tensors can be converted 
+to Python scalars
+How can I convert the list of tensors to a tensor of tensors in pytorch?
+A:
+<code>
+import numpy as np
+import pandas as pd
+import torch
+list_of_tensors = load_data()
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(tensor_of_tensors)
+</code>
+Figure 13: An example problem of PyTorch, with failed attempt and error message given in the description.
+Reference Solution
+df_out = pd.DataFrame(preprocessing.scale(data),  
+                 index=data.index, columns=data.columns)
+Automatic Evaluation
+Test code
+ # tolerate rounding error
+ pd.testing.assert_frame_equal(df_out, ans,   
+                     check_dtype=False, check_exact=False)
+Test case 1
+ np.random.seed(42)
+ data = pd.DataFrame(np.random.rand(3, 3),   
+  index=['first', 'second', 'third'], 
+  columns=['c1', 'c2', ‘c3’])
+ ans = ... # generated by Reference Solution
+Problem:
+I'm using the excellent read_csv()function from pandas, which gives:
+In [31]: data = pandas.read_csv("lala.csv", 
+delimiter=",")
+In [32]: data
+Out[32]:
+<class 'pandas.core.frame.DataFrame'>
+Int64Index: 12083 entries, 0 to 12082
+Columns: 569 entries, REGIONC to SCALEKER
+dtypes: float64(51), int64(518)
+but when i apply a function from scikit-learn i loose the informations about 
+columns:
+from sklearn import preprocessing
+preprocessing.scale(data)
+gives numpy array.
+Is there a way to apply preprocessing.scale to DataFrames without loosing 
+the information(index, columns)?
+A:
+<code>
+import numpy as np
+import pandas as pd
+from sklearn import preprocessing
+data = load_data()
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(df_out)
+</code>
+Figure 14: An example problem of Scikit-learn, requiring applying sklearn preprocessing method to Pandas dataframe.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+11/10/22, 1:55 PM
+python - Conﬁguring grid-lines in matplotlib plot - Stack Overﬂow
+https://stackoverﬂow.com/questions/54342199/conﬁguring-grid-lines-in-matplotlib-plot
+1/2
+  plt.rc(
+, usetex=
+) 
+  plt.rc(
+, family=
+) 
+  fig, ax = plt.subplots() 
+  ax.set_xlabel(
+, fontsize=
+) 
+  plt.grid(
+, linestyle=
+) 
+  plt.tick_params(labelsize=
+) 
+  ax.set_xticklabels(
+(
+,
+(number_of_runs))) 
+  ax.minorticks_on() 
+  ax.set_ylim([
+,
+]) 
+'text'
+True
+'font'
+'serif'
+"Run Number"
+25
+True
+'--'
+20
+map str range
+0.75 1.75
+ matplotlib.pyplot 
+ plt 
+fig, ax = plt.subplots() 
+number_of_runs = 
+( ,
+)    
+ 
+import
+as
+range 1 10
+# use your actual number_of_runs
+11/10/22, 1:55 PM
+python - Conﬁguring grid-lines in matplotlib plot - Stack Overﬂow
+https://stackoverﬂow.com/questions/54342199/conﬁguring-grid-lines-in-matplotlib-plot
+1/2
+  plt.rc(
+, usetex=
+) 
+  plt.rc(
+, family=
+) 
+  fig, ax = plt.subplots() 
+  ax.set_xlabel(
+, fontsize=
+) 
+  plt.grid(
+, linestyle=
+) 
+  plt.tick_params(labelsize=
+) 
+  ax.set_xticklabels(
+(
+,
+(number_of_runs))) 
+  ax.minorticks_on() 
+  ax.set_ylim([
+,
+]) 
+'text'
+True
+'font'
+'serif'
+"Run Number"
+25
+True
+'--'
+20
+map str range
+0.75 1.75
+ matplotlib.pyplot 
+ plt 
+fig, ax = plt.subplots() 
+number_of_runs = 
+( ,
+)    
+ 
+import
+as
+range 1 10
+# use your actual number_of_runs
+Consider the ﬁgure below: 
+This image has been set up with the following code. 
+plt.rc('text', usetex=True) 
+plt.rc('font', family='serif') 
+fig, ax = plt.subplots() 
+ax.set_xlabel("Run Number", fontsize=25) 
+plt.grid(True, linestyle=‘--') 
+... 
+Reference Solution
+plt.plot(y, x)
+plt.grid(color="blue", linestyle="dashed")
+Automatic Evaluation
+Test code
+# Precisely matching images with np.array
+from PIL import Image
+code_img, oracle_img = ... # load images
+sample_image_stat = (
+    code_img.shape == oracle_img.shape
+    and np.allclose(code_img, oracle_img)
+)
+try:
+    assert sample_image_stat
+# IF Failed, matching image components
+ax = plt.gca()
+assert ax.xaxis._major_tick_kw["gridOn"]
+assert "grid_color" in ax.xaxis._major_tick_kw
+assert ax.xaxis._major_tick_kw["grid_color"] in 
+["blue", “b"]
+assert "grid_linestyle" in ax.xaxis._major_tick_kw
+assert ax.xaxis._major_tick_kw["grid_linestyle"] in 
+["dashed", "--", "-.", ":"]
+Test case 1
+ x,y = ...[shown in prompt]
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+x = np.arange(10)
+y = np.arange(10)
+# Plot y over x and show blue dashed grid lines
+# SOLUTION START
+Rewrite prompt
+Figure 15: An example problem of Matplotlib. Matplotlib original problems often contain example ﬁgures which cannot
+be processed by current code models. We rewrite original problems into standalone problems in the form of comments.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+A:
+<code>
+from scipy import sparse
+import numpy as np
+sa = sparse.csr_matrix(np.array([[1,2,3],[4,5,6],
+[7,8,9]]))
+sb = sparse.csr_matrix(np.array([0,1,2]))
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+print(result)
+</code>
+A:
+<code>
+from scipy import sparse
+import numpy as np
+example_sA = sparse.csr_matrix(np.array([[1,2,3],
+[4,5,6],[7,8,9]]))
+example_sB = sparse.csr_matrix(np.array([0,1,2]))
+def f(sA = example_sA, sB = example_sB):
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+    return result
+</code>
+Problem:
+I have this example of matrix by matrix multiplication using numpy arrays:
+import numpy as np
+m = np.array([[1,2,3],[4,5,6],[7,8,9]])
+c = np.array([0,1,2])
+m * c
+array([[ 0,  2,  6],
+       [ 0,  5, 12],
+       [ 0,  8, 18]])
+How can i do the same thing if m is scipy sparse CSR matrix? The result should be csr_matrix as well.
+This gives dimension mismatch:
+sp.sparse.csr_matrix(m)*sp.sparse.csr_matrix(c)
+Figure 16: An example problem of surface perturbation. We expect model complete the function(on the right).
+Origin
+Problem:
+How do I convert data from a Scikit-learn Bunch object (from sklearn.datasets) to 
+a Pandas DataFrame?
+from sklearn.datasets import load_iris
+import pandas as pd
+data = load_iris()
+print(type(data))
+data1 = pd. # Is there a Pandas method to accomplish this?
+Problem:
+Can you give me any suggestion that transforms a sklearn Bunch object (from 
+sklearn.datasets) to a dataframe? I'd like to do it to iris dataset.
+Thanks!
+from sklearn.datasets import load_iris
+import pandas as pd
+data = load_iris()
+print(type(data))
+data1 = pd. # May be you can give me a Pandas method?
+Figure 17: An example problem of surface perturbation. The description in the prompt has been paraphrased.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Origin
+Problem:
+How to convert a numpy array of dtype=object to torch Tensor?
+array([
+   array([0.5, 1.0, 2.0], dtype=float16),
+   array([4.0, 6.0, 8.0], dtype=float16)
+], dtype=object)
+Problem:
+How to convert a numpy array of dtype=object to torch Tensor?
+x = np.array([
+    np.array([1.23, 4.56, 9.78, 1.23, 4.56, 9.78], dtype=np.double),
+    np.array([4.0, 4.56, 9.78, 1.23, 4.56, 77.77], dtype=np.double),
+    np.array([1.23, 4.56, 9.78, 1.23, 4.56, 9.78], dtype=np.double),
+    np.array([4.0, 4.56, 9.78, 1.23, 4.56, 77.77], dtype=np.double),
+    np.array([1.23, 4.56, 9.78, 1.23, 4.56, 9.78], dtype=np.double),
+], dtype=object)
+Figure 18: An example problem of surface perturbation. The example input in the prompt has been replaced with another
+one.
+Origin
+Problem:
+Sample dataframe:
+df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+I'd like to add inverses of each existing column to the dataframe and name them based on 
+existing column names with a prefix, e.g. inv_A is an inverse of column A and so on.
+The resulting dataframe should look like so:
+result = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6], "inv_A": [1/
+1, 1/2, 1/3], "inv_B": [1/4, 1/5, 1/6]})
+…[omitted for brevity]
+Problem:
+Sample dataframe:
+df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+I'd like to add exponentials of each existing column to the dataframe and name them based 
+on existing column names with a prefix, e.g. exp_A is an exponential of column A and so on.
+The resulting dataframe should look like so:
+result = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6], "exp_A 
+": [e^1, e^2, e^3], "exp_B": [e^4, e^5, e^6]})
+Notice that e is the natural constant.
+…[omitted for brevity]
+Figure 19: An example problem of semantic perturbation. “inverse” has been replaced with an analogy word “exponential”.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Origin
+Problem:
+I have a 2D array `a` to represent a many-many mapping :
+0   3   1   3
+3   0   0   0
+1   0   0   0
+3   0   0   0
+What is the quickest way to 'zero' out rows and column entries corresponding to a particular 
+index (e.g. zero_rows = 0, zero_cols = 0 corresponds to the 1st row/column) in this array?
+Problem:
+I have a 2D array `a` to represent a many-many mapping :
+0   3   1   3
+3   0   0   0
+1   0   0   0
+3   0   0   0
+What is the quickest way to 'zero' out the second row and the first column?
+Figure 20: An example problem of semantic perturbation. The required index of rows and columns has been changed.
+Origin
+Problem:
+I have the following dataframe:
+     text
+1 "abc" 
+2 "def" 
+3 "ghi"
+4 "jkl" 
+How can I merge these rows into a dataframe with a single row like the following one?
+     text 
+1 "abc, def, ghi, jkl"
+Problem:
+I have the following dataframe:
+     text
+1 "abc" 
+2 "def" 
+3 "ghi"
+4 "jkl" 
+How can I merge these rows into a dataframe with a single row like the following one?
+     text 
+1 "jkl, ghi, def, abc"
+Figure 21: An example problem of semantic perturbation. The order of the desired string has been reversed.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Origin
+Problem:
+I have a square correlation matrix in pandas, and am trying to divine the most efficient way to return all values 
+where the value (always a float -1 <= x <= 1) is above 0.3.
+The pandas.DataFrame.filter method asks for a list of columns or a RegEx, but I always want to pass all 
+columns in. Is there a best practice on this?
+desired DataFrame:
+                   Pearson Correlation Coefficient
+Col1 Col2                                 
+0        3                            0.373153
+1        3                            0.419219
+          4                            0.356149
+3        4                            0.389972
+Problem:
+I have a square correlation matrix in pandas, and am trying to divine the most efficient way to return all values 
+where the value (always a float -1 <= x <= 1) is above 0.3.
+The pandas.DataFrame.filter method asks for a list of columns or a RegEx, but I always want to pass all 
+columns in. Is there a best practice on this?
+desired Series:
+0  3    0.373153
+1  3    0.419219
+    4    0.356149
+3  4    0.389972
+dtype: float64
+Figure 22: An example problem of semantic perturbation. The type of the desired result has been changed but the content
+still keeps the same.
+Origin
+Problem:
+I have a logistic regression model using Pytorch, where my input is high-dimensional and my output must be a 
+scalar - 0, 1 or 2.
+I'm using a linear layer combined with a softmax layer to return a n x 3 tensor, where each column represents the 
+probability of the input falling in one of the three classes (0, 1 or 2).
+However, I must return a n x 1 tensor, so I need to somehow pick the highest probability for each input and create 
+a tensor indicating which class had the highest probability. How can I achieve this using Pytorch?
+To illustrate, my Softmax outputs this:
+[[0.2, 0.1, 0.7],
+ [0.6, 0.2, 0.2],
+ [0.1, 0.8, 0.1]]
+And I must return this:
+[[2],
+ [0],
+ [1]]
+Problem:
+…[omit for brevity]
+However, I must return a 1 x n tensor, and I want to somehow pick the lowest probability for each input and 
+create a tensor indicating which class had the lowest probability. How can I achieve this using Pytorch?
+To illustrate, my Softmax outputs this:
+[[0.2, 0.1, 0.7],
+ [0.6, 0.3, 0.1],
+ [0.15, 0.8, 0.05]]
+And I must return this:
+[1, 2, 2], which has the type torch.LongTensor
+Figure 23: An example problem that is difﬁcult re-written with a combination of surface and semantic perturbations
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Origin
+Problem:
+I can't figure out how to do a Two-sample KS test in Scipy.
+…[omit for brevity]
+test_stat = kstest(x, 'norm')
+#>>> test_stat
+#(0.021080234718821145, 0.76584491300591395)
+Which means that at p-value of 0.76 we can not reject the null hypothesis that the two distributions are identical.
+However, I want to compare two distributions and see if I can reject the null hypothesis that they are identical.
+…[omit for brevity]
+I tried the naive:
+test_stat = kstest(x, z)
+and got the following error:
+TypeError: 'numpy.ndarray' object is not callable
+Is there a way to do a two-sample KS test in Python? If so, how should I do it?
+Thank You in Advance
+Problem:
+…[omit for brevity]
+Is there a way to do a two-sample KS test in Python, then test whether I can reject the null hypothesis that the 
+two distributions are identical(result=True means able to reject, and the vice versa) based on alpha? If so, how 
+should I do it?
+Thank You in Advance
+Figure 24: An example problem that is difﬁcult re-written for more complexity
+Problem:
+Sample dataframe:
+df = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+I'd like to add inverses of each existing column to the dataframe and name them based 
+on existing column names with a prefix, e.g. inv_A is an inverse of column A and so on.
+… [omitted for brevity]
+Obviously there are redundant methods like doing this in a loop, but there should exist 
+much more pythonic ways of doing it … [omitted for brevity]
+A:
+<code>
+import pandas as pd
+df = pd.DataFrame({"A": [1, 2, 3],"B": [4, 5, 6]})
+</code>
+result = ...# put solution in this variable
+BEGIN SOLUTION
+<code>
+Figure 25: Completion prompt corresponding to Figure 1.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+A:
+<code>
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import BaggingClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.tree import DecisionTreeClassifier
+X_train, y_train = load_data()
+assert type(X_train) == np.ndarray
+assert type(y_train) == np.ndarray
+X_test = X_train
+param_grid = {
+    'base_estimator__max_depth': [1, 2, 3, 4, 5],
+    'max_samples': [0.05, 0.1, 0.2, 0.5]
+}
+dt = DecisionTreeClassifier(max_depth=1)
+bc = BaggingClassifier(dt, n_estimators=20, 
+max_samples=0.5, max_features=0.5)
+</code>
+solve this question with example variable `clf` and 
+put result in `proba`
+BEGIN SOLUTION
+<code>
+A:
+<code>
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import BaggingClassifier
+from sklearn.model_selection import GridSearchCV
+from sklearn.tree import DecisionTreeClassifier
+X_train, y_train = load_data()
+assert type(X_train) == np.ndarray
+assert type(y_train) == np.ndarray
+X_test = X_train
+param_grid = {
+    'base_estimator__max_depth': [1, 2, 3, 4, 5],
+    'max_samples': [0.05, 0.1, 0.2, 0.5]
+}
+dt = DecisionTreeClassifier(max_depth=1)
+bc = BaggingClassifier(dt, n_estimators=20, 
+max_samples=0.5, max_features=0.5)
+</code>
+BEGIN SOLUTION
+<code>
+[insert]
+</code>
+END SOLUTION
+<code>
+proba = clf.predict_proba(X_test)
+print(proba)
+</code>
+Problem:
+Say that I want to train BaggingClassifier that uses DecisionTreeClassifier:
+dt = DecisionTreeClassifier(max_depth = 1)
+bc = BaggingClassifier(dt, n_estimators = 20, max_samples = 0.5, max_features = 0.5)
+bc = bc.fit(X_train, y_train)
+I would like to use GridSearchCV to find the best parameters for both BaggingClassifier and 
+DecisionTreeClassifier(e.g. max_depth from DecisionTreeClassifier and max_samples from 
+BaggingClassifier), what is the syntax for this? Besides, you can just use the default arguments of GridSearchCV.
+Figure 26: More complex Completion (on the right) prompt that requires additional information for a solution.
+Problem:
+I am using Pandas to get a dataframe like this:
+    name  a  b   c
+0  Aaron 3  5   7
+1  Aaron 3  6   9
+2  Aaron 3  6  10
+3  Brave  4  6   0
+4  Brave  3  6   1
+I want to replace each name with a unique ID so output looks like:
+  name  a  b   c
+0    1     3   5   7
+1    1     3   6   9
+2    1     3   6  10
+3    2     4   6   0
+4    2     3   6   1
+How can I do that?
+Reference Solution
+# df: pd.DataFrame as input
+result = df.replace(df['name'].unique(),
+ range(1, len(df['name'].unique()) + 1))
+Wrong Solution
+# create a column named "ID"
+df['ID'] = df.groupby(['name']).ngroup()
+result = df
+Figure 27: An example wrong solution that misunderstands the requirements and modiﬁes on the wrong column.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+Problem:
+I'm using tensorflow 2.10.0.
+I have a list of bytes and I want to convert it to a list of strings:
+x=[b'\xd8\xa8\xd9\x85\xd8\xb3\xd8\xa3\xd9\x84\xd
+8\xa9',
+   b'\xd8\xa5\xd9\x86\xd8\xb4\xd8\xa7\xd8\xa1',
+    b'\xd9\x82\xd8\xb6\xd8\xa7\xd8\xa1',
+    b'\xd8\xac\xd9\x86\xd8\xa7\xd8\xa6\xd9\x8a',
+    b'\xd8\xaf\xd9\x88\xd9\x84\xd9\x8a'] 
+How can I get the string result list in Tensorflow? 
+Reference Solution
+# x: list of bytes as input
+result = [tf.compat.as_str_any(a) for a in x]
+Wrong Solution
+# Not using method in Tensorflow
+result = [item.decode('utf-8') for item in x]
+Figure 28: An example wrong solution that uses a common function instead of a function of TensorFlow.
+2022/11/2 20:22
+python - How to avoid "CUDA out of memory" in PyTorch - Stack Overflow
+How to avoid "CUDA out of memory" in PyTorch
+
+Asked 2 years, 11 months ago
+
+Modified 3 months ago
+
+288k times
+Viewed
+102
+I think it's a pretty common message for PyTorch users with low GPU memory:
+RuntimeError: CUDA out of memory. Tried to allocate 😊 MiB (GPU 😊; 😊 GiB total
+capacity; 😊 GiB already allocated; 😊 MiB free; 😊 cached)
+I tried to process an image by loading each layer to GPU and then loading it back:
+ m 
+ self.children():
+    m.cuda()
+    x = m(x)
+    m.cpu()
+    torch.cuda.empty_cache()
+for
+in
+But it doesn't seem to be very effective. I'm wondering is there any tips and tricks to train
+large deep learning models while using little GPU memory.
+python
+deep-learning
+pytorch
+object-detection
+low-memory
+Share Edit Follow Flag
+edited Mar 28 at 12:27
+Matee
+Mateen Ulhaq
+22.4k
+16
+86
+127
+asked Dec 1, 2019 at 20:46
+voilale
+voilalex
+1,525
+2
+11
+17
+1
+
+
+What's up with the smileys? lol.. Also, decrease your batch size and/or train on smaller images. Look
+at the Apex library for mixed precision training. Finally, when decreasing the batch size to, for
+example, 1 you might want to hold off on setting the gradients to zero after every iteration, since it's
+only based on a single image. – sansa Dec 1, 2019 at 21:02
+Figure 29: An example untestable problem involving hardware problems.
+
+
+DS-1000: A Natural and Reliable Benchmark for Data Science Code Generation
+2022/11/2 20:25
+python - ImportError: No module named sklearn.cross_validation - Stack Overflow
+https://stackoverflow.com/questions/30667525/importerror-no-module-named-sklearn-cross-validation
+1/6
+ImportError: No module named sklearn.cross_validation
+
+Asked 7 years, 5 months ago
+
+Modified 1 year, 6 months ago
+
+444k times
+Viewed
+247
+I am using python 2.7 in Ubuntu 14.04. I installed scikit-learn, numpy and matplotlib with
+these commands:
+sudo apt-get install build-essential python-dev python-numpy \
+python-numpy-dev python-scipy libatlas-dev g++ python-matplotlib \
+ipython
+But when I import these packages:
+ sklearn.cross_validation 
+ train_test_split
+from
+import
+It returns me this error:
+ImportError: No module named sklearn.cross_validation
+What I need to do?
+python
+scikit-learn
+Share Edit Follow Flag
+edited Feb 16, 2019 at 18:23
+deser
+desertnaut
+54.8k
+21
+132
+161
+asked Jun 5, 2015 at 13:15
+arthu
+arthurckl
+5,071
+6
+16
+16
+
+perhaps your module name is wrong if you have installed sklearn and anaconda correctly. – CKM
+Oct 11, 2016 at 9:52
+15
+
+
+I am really just repeating it, but you have to use sklearn.model_selection from now on.
+cross_validation is not usable since sklearn 20+ – Michal Mikuláši Mar 23, 2019 at 18:51
+
+
+Wow 13 answers to say the same thing. The latest 4 years after the first one (in case bits would fade
+with time I suppose) – mins Jan 9, 2021 at 18:12
+15 Answers
+Sorted by:
+Highest score (default)
+785
+It must relate to the renaming and deprecation of 
+ sub-module to 
+. Try substituting 
+ to 
+cross_validation
+model_selection
+cross_validation
+model_selection
+Share Edit Follow Flag
+edited Nov 26, 2019 at 14:14
+answered Jan 17, 2016 at 22:09
+Figure 30: An example untestable problem involving software errors.
+2022/11/2 20:16
+tensorflow - What is the purpose of tf.global_variables_initializer? - Stack Overflow
+What is the purpose of tf.global_variables_initializer?
+
+Asked 5 years, 4 months ago
+
+Modified 2 months ago
+
+37k times
+Viewed
+55
+I would like to understand what 
+ does in a bit more detail.
+A
+:
+tf.global_variables_initializer
+sparse description is given here
+Returns an Op that initializes global variables.
+But that doesn't really help me. I know that the op is necessary to initialize the graph, but what
+does that actually mean? Is this the step where the graph is complied?
+tensorflow
+deep-learning
+Share Edit Follow Flag
+edited Oct 27, 2019 at 22:09
+nbro
+14.4k
+27
+104
+188
+asked Jun 8, 2017 at 10:38
+Tok
+Faurb
+Toke Faurby
+5,618
+9
+38
+60
+2 Answers
+Sorted by:
+Highest score (default)
+Figure 31: An example untestable problem involving explanations.
+
+
+NaturalCodeBench: Examining Coding Performance
+Mismatch on HumanEval and Natural User Prompts
+Shudan Zhang12†∗, Hanlin Zhao1∗, Xiao Liu12∗, Qinkai Zheng12∗,
+Zehan Qi12†, Xiaotao Gu1, Xiaohan Zhang1, Yuxiao Dong2, Jie Tang2
+1Zhipu.AI
+2Tsinghua University
+Case of HumanEval
+Case of NaturalCodeBench
+def has_close_elements(numbers: 
+List[ﬂoat], threshold: ﬂoat) -> bool:
+""" Check if in given list of numbers, are any 
+two numbers closer to each other than 
+given threshold.
+"""
+Hello, please write a Python function for me. The function should read a 
+markdown ﬁle, add numbering like x.y.z... to the titles of each level, and 
+then return the modiﬁed string. Please note not to write into the original ﬁle.
+def add_section_numbering(markdown_ﬁle):
+""" markdown_ﬁle is the path to the markdown ﬁle. Return modiﬁed 
+markdown ﬁle content string
+"""
+Figure 1: Comparison between HumanEval and NATURALCODEBENCH. (Upper) Performance plot
+of tested LLMs on both benchmarks. LLMs in red circle present relatively mismatched performances
+on two benchmarks. (Lower) Case study on coding tasks in HumanEval and NCB. NCB is grounded
+on natural prompts from real-world users and evaluated in an executable docker environment.
+*SZ,
+HZ,
+XL,
+and
+QZ
+contributed
+equally.
+Emails:
+{zsd22@mails.tsinghua.edu.cn,
+hanlin.zhao@zhipuai.cn, shawliu9@gmail.com, qinkai.zheng1028@gmail.com}
+†Work done when SZ and ZQ interned at Zhipu AI.
+Preprint. Under review.
+arXiv:2405.04520v1  [cs.CL]  7 May 2024
+
+
+Abstract
+Large language models (LLMs) have manifested strong ability to generate codes
+for productive activities. However, current benchmarks for code synthesis, such
+as HumanEval, MBPP, and DS-1000, are predominantly oriented towards intro-
+ductory tasks on algorithm and data science, insufficiently satisfying challenging
+requirements prevalent in real-world coding. To fill this gap, we propose NATU-
+RALCODEBENCH (NCB), a challenging code benchmark designed to mirror the
+complexity and variety of scenarios in real coding tasks. NCB comprises 402
+high-quality problems in Python and Java, meticulously selected from natural user
+queries from online coding services, covering 6 different domains. Noting the
+extraordinary difficulty in creating testing cases for real-world queries, we also
+introduce a semi-automated pipeline to enhance the efficiency of test case construc-
+tion. Comparing with manual solutions, it achieves an efficiency increase of more
+than 4 times. Our systematic experiments on 39 LLMs find that performance gaps
+on NCB between models with close HumanEval scores could still be significant,
+indicating a lack of focus on practical code synthesis scenarios or over-specified
+optimization on HumanEval. On the other hand, even the best-performing GPT-4
+is still far from satisfying on NCB. The evaluation toolkit and development set are
+available at https://github.com/THUDM/NaturalCodeBench.
+1
+Introduction
+Large language models (LLMs) pre-trained on extensive open code repositories [13; 45; 33; 14] have
+demonstrated impressive performance on code synthesis and even achieve performance comparable
+to average human level in coding competitions [35]. Unlike open text generation, which often under-
+scores human preferences as noted by [47], code synthesis prioritizes accuracy and the fulfillment of
+user intent, essential for practical production and application.
+As a result, evaluating code synthesis presents unique challenges in the era of LLMs. Traditional
+evaluation metrics by token matching [48; 36; 50] show a weak correlation with human judgement
+[21] and overlook functional correctness of the generated code 20; 56. Recently, execution-based
+evaluation has gained increasing popularity, where code generated by models is tested through unit
+tests to verify its functional correctness. It leads to the development of several benchmarks, including
+HumanEval [13], MBPP [7], MBXP [6], CodeContests [35], and DS-1000 [32].
+Notwithstanding their commendable reliability and accuracy, these benchmarks fall short to suffi-
+ciently capture the wide range of needs and complexity found in real-world engineering applications.
+They are primarily limited to well-defined coding problems in algorithm, program basics, or data
+science. For example, as shown in Figure 1, a problem from HumanEval [13] tests the implementation
+of a basic function has_close_elements and takes floating-point arguments as inputs. However,
+in practical applications, user engineering requirements can be much more complex and varied. In
+Figure 1, we showcase an example adapted from a real user query, where the user asks to read and
+parse XML files given certain tags. Difficult and costly though it is, curating a benchmark composed
+of such problems is meaningful for evaluating the real user experience of LLM code synthesis.
+Contributions. In light of the challenge, we introduce NATURALCODEBENCH (NCB), a challenging
+application-driven dataset for code synthesis evaluation. NCB is dedicated to creating a reliable
+evaluation environment that is more aligned with real-world applications. We leverage an CodeGeeX
+[70] online services to collect real and diverse application-related user queries. After filtering and
+reprocessing, 402 high-quality Python and Java problems are compiled, covering 6 domains including
+software, front-end, system administration, and artificial intelligence, highlighting practical scenarios.
+Beyond basic data structures like lists and numbers, the test inputs for NCB problems include
+versatile file types and other complex structures, making it more challenging.
+The challenging nature of NCB necessitates significant human labor in its annotation process To
+improve construction efficiency, we tailor a semi-automated annotation pipeline to curate high-quality,
+testable, and useful queries with corresponding test cases. Specifically, we employ GPT-4 [45] to
+generate reference solutions followed by manual correction. Subsequently, GPT-4, guided by the
+problem descriptions and reference solutions, generates multiple test cases, which are also refined
+2
+
+
+2. Semi-Automated Pipeline
+402 High-Quality Problems
+Instruction: ...generate 
+6 high-coverage and 4 
+corner test cases … 
+def testcase1():
+…
+    assert groundTruth …
+1. Data Collection
+Human
+Annotated
+33,120 Problems 
+• Testable
+• Useful
+• Deterministic
+Real-World 
+Queries
+Auto Filtering
+ Mannully
+ Selecting
+Reference Solution
+def groundTruth(ﬁle_path,tag_name)
+    root = 
+ET.parse(ﬁle_path).getroot()
+    . . .
+    for … in root.ﬁndall(tag_name):
+        data_list.append(…)
+    return data_list
+Large 
+Language 
+Model
+Problems in 6 Domains
+Data Science
+System Administration
+Software Engineering
+Artiﬁcial Intelligence
+Front-End
+Algorithm
+Test Cases
+Generate a 
+solution and 
+10 test cases
+Annotators ﬁxes all errors in 
+the solution and test cases
+Figure 2: Overview of NATURALCODEBENCH. 1) Data Collection: collecting real-world queries
+from coding online services and selecting high-quality problems from the queries by GPT-3.5 and
+human annotators. 2) Semi-Automated Pipeline: improving efficiency of constructing evaluation
+framework by generating a solution and test cases with LLMs and then having them corrected by
+human annotators.
+with manual correction, for each problem. Consequently, the annotators are only required to correct
+any errors, substantially reducing the time and manpower required. Comparative experiments reveal
+that our semi-automated pipeline can quadruple the construction speed of the evaluation framework,
+as evidenced by tests involving programming experts with or without the pipeline.
+Based on NCB, we conduct extensive experiments on a variety range of LLMs, encompassing 39 APIs
+or open models. The results indicate that although certain LLMs demonstrate comparable performance
+on established benchmarks like HumanEval, they exhibit significant performance disparities when
+evaluated using NCB. It suggests that there may be inadequate focus on optimizing LLMs for
+practical coding applications, or have conducted over-specified optimization on HumanEval-style
+problems. More importantly, even the best-performing GPT-4 only reaches about a pass rate of
+53%, demonstrating a large room for LLMs to improve their coding skills to face real-world coding
+challenges.
+To facilitate community research, we pack up the whole NCB testing environment into a docker
+image and make its development set publicly available. To sum up our contributions:
+• We propose NATURALCODEBENCH, a benchmark that aligns with real-world applications,
+comprising 402 problems in Python and Java across 6 domains. We open source 140 problems
+(70 Python, 70 Java) as the development set of NCB for research purposes, but keep the 262
+problems of the test set closed to avoid contamination.
+• We introduce a semi-automated pipeline for the construction of code synthesis benchmarks, which
+significantly reduces time and manpower costs without compromising the quality of test cases.
+Comparative experiments reveal that our semi-automated pipeline can quadruple the construction
+speed of the evaluation framework
+• We systematically benchmark the code generation capabilities of 39 LLMs using NCB. Besides
+quantitative evaluation, we carry out a deep insight into the present stage of development in LLMs
+for code generation, and outline potential pathways for future progress.
+2
+Benchmark Construction
+The overview of NCB is shown in Figure 2. The pipeline of constructing NCB consists of four steps:
+1) collecting and filtering high-quality problems from online services (Section 2.1) 2) constructing
+a complete evaluation framework through a semi-automated pipeline (Section 2.2) 3) designing
+prompts to align different models (Section 2.3) 4) translating all problems and instructions to produce
+bilingual versions (Section 2.4).
+3
+
+
+2.1
+Problem Selection
+Collecting Real-World Problems. To establish a meaningful and practical benchmark, we centered
+on collecting real-world code problems frequently encountered by users. To achieve this, the seed
+problems of NCB are cleaned from the queries in coding online services. A part of users have granted
+permission for their data to be utilized exclusively for research purposes. We have strictly adhered to
+this directive by collecting only the relevant data from these consenting users and have implemented
+robust de-identification measures to eliminate any possibility of information leakage. We collect a
+varied collection of queries, spanning multiple programming languages, problem types, and levels
+of complexity. This diversity ensures that our benchmark accurately reflects a broad range of code
+issues users encountering in practice. We specifically concentrated on queries related to Python and
+Java, chosen for their widespread use in different domains.
+Filtering Testable Problems. While it’s possible to source inexhaustible queries from online services,
+many of these queries posed by users are either of low value or challenging to test the solution of
+these queries. For instance, some users may only seek basic clarifications on a built-in function,
+while others may not clearly articulate their objectives. To sieve out unsuitable queries for our testing,
+we’ve implemented a two-step filtering process. Initially, we employ GPT-3.5 to filter out low-
+quality queries, which saves on labour. This is achieved by adding specific criteria in the instruction,
+instructing GPT-3.5 to abandon those problems that cannot meet all specified requirements. These
+criteria are as follows: 1) Each query must involve at least one task, where the user requests the
+model’s assistance in solving one or more problems. 2) Each query should be associated with several
+input-output pairs, ensuring that a given input correspond to a singular, definitive output. 3) The
+query must not contain any elements of randomness or uncertainty. The specifics of the instruction
+are detailed in (Appendix A). Following this automated pre-screening, we conduct a manual review
+to further refine the selection, adhering to the outlined criteria. This process yields a final set of 201
+unique Python and 201 unique Java problems. It is noteworthy that over 80% of the initial queries
+failed to meet our stringent requirements.
+2.2
+Semi-automated Pipeline
+In this section, we will introduce our semi-automated pipeline. To generate structurally complex and
+accurate test cases by GPT-4, it is first necessary to determine the arguments and return values of
+functions, as well as the names of objects. Therefore, a completely accurate reference solution is
+required initially. We generate a solution using GPT-4, then manually correct all errors. After this,
+based on the problem description and the reference solution, we instruct GPT-4 to generate multiple
+test cases. These are then reviewed by programming experts who correct errors and supplement any
+deficiencies in the generated test cases.
+Generating and Rewriting Reference Solution. GPT-4 is instructed to generate a solution for
+each problem in NCB. It is important to note that while GPT-4 is highly capable, it is not infallible.
+Therefore, each solution generated by GPT-4 is meticulously examined by expert programmers to
+ensure correctness. In cases where the generated code contains errors, the expert programmers rewrite
+the code to rectify these issues. This process ensures the quality of the reference solutions. Even
+though we did not use the reference solution in NCB for evaluation, we provided them to facilitate
+the generation of test cases and future research.
+Build High-Coverage and Corner Evaluation. We employ GPT-4 to generate evaluation codes
+for each problem. We construct a prompt using 1) the description of the problem for GPT-4 to
+inspect; 2) the reference solution to demonstrate the names and formats in the code; 3) an instruction
+to encourage GPT-4 to come up with effective test cases. Specifically, each prompt start with an
+instruction that ask GPT-4 to produce ten test cases based on the description of problem and the
+reference solution. Then, we present both the description of problem and its reference solution.
+We finalize the prompt with a initial segment of the evaluation code to assist GPT-4 in accurately
+generating the desired code format. Our objective is to harness GPT-4’s advanced comprehension
+and analytical abilities to learn valid format in the code and essential functionalities of the reference
+solution to enable the generation of superior test cases that are adept at uncovering latent errors in
+code.
+4
+
+
+Benchmark
+Instruction Information
+Evaluation
+#Problem
+Domain
+#Data Type #Word
+Source
+#Test Case
+Method
+Humaneval [13]
+164
+Algorithm
+5
+23.0
+Hand-Written
+7.7
+Test-Case
+MBPP [7]
+974
+Program Basics
+5
+15.7
+Hand-Written
+3.0
+Test-Case
+DS-1000 [32]
+1,000
+Data Sci.
+6
+140.0 StackOverflow
+1.6
+Test-Case + SFC.
+APPS [24]
+10,000
+Algorithm
+5
+293.2
+Competitions
+13.2
+Test-Case
+Humaneval+ [37]
+164
+Algorithm
+5
+23.0
+Hand-Written
+764.1
+Augmented Test Cases
+NaturalCodeBench
+402
+Application
+6
+78.3 Online Services
+9.3
+Test-Case
+Table 1: Comparison between NATURALCODEBENCH and other benchmarks for code generation.
+A complete and effective test should seek to identify potential bugs at different locations in the code,
+while also finding inputs that might trigger errors in the code. High coverage ensures that each
+test case examines more code and branches, thereby facilitating the discovery of concealed errors.
+Meanwhile, it is often observed that corner values in a problem’s input are most prone to trigger code
+errors. Consequently, our instruction will cause some of the test cases generated by GPT-4 to have
+higher coverage, while the other part will be some corner values contained in the problem, so as to
+obtain more effective test cases.
+Subsequently, expert programmers review and correct any test cases with formatting and answer
+errors. To ensure that the final evaluation framework is error-free.
+2.3
+Alignment Between Different Models
+In contrast to the problem format in Humaneval, the majority of problems in our benchmark are
+composed in natural language by actual users. Consequently, there is no predetermined naming
+convention for functions or classes created by models. This divergence can lead to inconsistencies
+between the names generated by LLMs and those referenced in test cases. To address this issue
+of name misalignment, we present a representative test case that includes the designated function
+or class name and its usage within the test. We then instruct the LLMs to adhere to the naming
+convention specified in the provided test case when generating solutions. It is important to note that
+the test cases utilized for solution generation are not employed in subsequent testing phases. The
+details of the instruction is showed in Appendix A.
+2.4
+Building Bilingual Benchmark
+The majority of the questions we collected from online services are in Chinese, which is not fair for
+the LLMs that are primarily designed for English. Therefore, we translate all the problems, resulting
+in both Chinese and English versions.
+3
+Dataset Statistics
+We provide more detailed statistics in Table 2. NCB comprises a total of 402 problems collected from
+online services, with 201 problems in Python and 201 in Java, spanning across 6 domains: Database,
+Artificial Intelligence, Data Science, Algorithm and Data Structure, Front-End, Software Engineering,
+and System Administration. This diversity also leads to complex input data types in NCB, which
+are classified into 9 categories: number (int/float/boolean), string, list (array), dict, tensor (matrix),
+data frame (table), plain text file, image, and special format file. The first four are the most common
+and simplest data types. Since a boolean can be represented by 1 and 0, we consider it as a type
+of number. Matrix and list are two similar types of data, but they are categorized separately due
+to differences in their usage scenarios. Due to the current popularity of deep learning, tensor has
+become a very common data format. Therefore, we have designated a separate category for tensor
+and have included matrix within this category. The last three are all file types, differentiated by their
+processing methods. The content of a plain text file is text and can be directly read. Figures require
+processing of each pixel value. A special format file refers to files that require specific methods for
+processing, such as PDF and DOCX.
+5
+
+
+#Problems
+Avg. #Test Cases
+Dataset
+Test
+Dev
+Total
+Test
+Dev
+Total
+Software
+88
+44
+132
+9.7
+8.6
+9.3
+Data Sci.
+68
+32
+100
+9.6
+8.6
+9.3
+Algorithm
+73
+22
+95
+9.5
+8.8
+9.3
+Sys. Admin.
+22
+17
+33
+9.6
+8.5
+9.1
+AI. System
+13
+15
+28
+9.6
+9.1
+9.3
+Front-End
+3
+11
+14
+10.0
+8.7
+9.0
+Total/Avg.
+262
+140
+402
+9.6
+8.7
+9.3
+Table 2: Detailed statistics of NATURALCODEBENCH.
+Each problem within the dataset has been carefully curated with a set of test cases to assess the
+correctness of solutions. On average, there are 9.3 test cases associated with each problem. These
+cases are strategically designed, with about 60% focused on enhancing statement and branch coverage,
+and the remaining 40% dedicated to evaluating the robustness of solutions against corner values. The
+average word count for each problem in the NCB is 78.3.
+Compared with Other Benchmark. Table 1 compares NCB to other benchmarks. It is noteworthy
+that our benchmark offers a substantial supplement to current benchmarks in terms of both problem
+and data types. Unlike Humaneval and MBPP, which consist of 96.9% and 89.5% algorithmic and
+basic programming problems respectively, our benchmark features a more balanced distribution
+across each domain.
+In addition, NCB include more data types. Furthermore, NCB focuses on assessing the model’s
+ability to handle multiple file formats, a type of data that is both very commonly used in daily life
+and relatively challenging to process. We note that the problems involving files have fewer test cases,
+since GPT-4 still struggles to fully generate various types of file . This is also more challenging for
+human annotators to design compared to simpler data types.
+On the other hand, NCB is also limited by its size due to the high costs of problems collection
+and the construction of the evaluation framework. We are continuously working on expanding our
+benchmark.
+4
+Experiments
+4.1
+Setup
+We conducted comprehensive evaluations of 33 popular state-of-the-art models. For proprietary
+models, our focus was on OpenAI’s GPT-4-Turbo-0125, GPT-4-Turbo-1106, GPT-4, GPT-3.5-Turbo,
+Anthropic’s Claude-2, ZhipuAI’s CodeGeeX3. In the case of open-source models, we performed
+evaluations using the vLLM [31] and FastChat [69] framework. Our evaluation primarily utilizes
+pass@k [13] as the metric to accurately assess the functional correctness of code generated by these
+models. For k equal to 1, we employ greedy-search decoding. For random sampling, we demonstrate
+the best pass@k results of the best-performing models with each LLM family for each k ∈{10, 50},
+where the sampling temperature is set to 0.2 and topp to 0.9.
+Our semi-automated pipeline is capable of reducing the time required for benchmark construction
+without compromising the quality of test cases. This paper primarily focuses on evaluating the
+efficiency of benchmark construction and the quality of test cases. Specifically, we adopt code
+coverage [26], a widely used metric for assessing the effectiveness of testing, as the criterion for
+evaluating the quality of test cases. We invite five programming experts, each tasked with constructing
+the same five problems. Initially, we ask each expert to manually write a standard solution and 5 test
+cases. Subsequently, for the same problems, they complete the writing of standard solutions and test
+cases using the semi-automated pipeline. As it is challenging to ensure identical test case coverage,
+we require that the test cases written under both methods should not have a code coverage of less
+than 80%. Then, for the sake of convenient comparison, we calculate the scores for each construction
+6
+
+
+Model
+Size
+NCB (zh)
+NCB (en)
+NCB Total
+HumanEval ∆Rank
+Python Java Total Python Java Total Score Rank Score Rank
+API LLMs
+GPT-4 [45]
+N/A
+53.4
+51.1 52.3
+55.7
+51.1 53.4
+52.8
+1
+80.5
+5
+4
+GPT-4-Turbo-0125 [45]
+N/A
+51.4
+58.6 55.0
+48.6
+51.4 50.0
+52.5
+2
+87.2
+1
+-1
+GPT-4-Turbo-1106 [45]
+N/A
+47.3
+51.9 49.6
+51.9
+55.0 53.5
+51.5
+3
+81.7
+3
+0
+GPT-3.5-Turbo [46]
+N/A
+39.7
+38.9 39.3
+42.0
+42.0 42.0
+40.7
+8
+65.2
+18
+10
+Claude-3-Opus [5]
+N/A
+45.0
+50.4 47.7
+48.9
+48.9 48.9
+48.3
+4
+84.9
+2
+-2
+Claude-3-Sonnet [5]
+N/A
+44.6
+35.5 40.1
+40.5
+35.1 37.8
+38.9
+9
+73.0
+11
+2
+Claude-3-Haiku [5]
+N/A
+41.3
+35.9 38.6
+36.9
+30.5 33.7
+36.2
+11
+75.9
+9
+-2
+Claude-2.1 [4]
+N/A
+33.6
+32.8 33.2
+34.4
+36.6 35.5
+34.4
+13
+71.2
+16
+3
+ChatGLM-4 [68; 19]
+N/A
+43.5
+45.3 44.4
+41.5
+45.3 43.4
+43.9
+5
+72.6
+12
+7
+Gemini-1.5-Pro [10]
+N/A
+41.5
+43.1 42.3
+45.0
+39.7 42.3
+42.3
+7
+71.9
+14
+7
+CodeGeeX3 [70]
+N/A
+29.0
+29.0 29.0
+36.6
+32.8 34.7
+31.9
+18
+69.5
+17
+-1
+Open LLMs
+Deepseek-Coder-Instruct [23]
+33B
+44.3
+38.9 41.6
+44.3
+44.3 44.3
+43.0
+6
+79.3
+6
+0
+6.7B
+38.9
+29.8 34.4
+35.9
+35.9 35.9
+35.1
+12
+78.6
+7
+-5
+1.3B
+18.3
+24.4 21.4
+27.5
+25.2 26.4
+23.9
+22
+65.2
+19
+-3
+Llama-3-Instruct [2]
+70B
+39.1
+34.4 36.7
+35.4
+39.7 37.5
+37.1
+10
+81.7
+4
+-6
+8B
+35.9
+21.5 28.7
+19.7
+21.7 20.7
+24.7
+21
+62.2
+21
+0
+Deepseek-Chat [15]
+67B
+35.9
+28.2 32.1
+35.1
+33.6 34.4
+33.2
+14
+78.3
+8
+-6
+7B
+3.8
+12.2
+8.0
+8.4
+19.1 13.8
+10.9
+30
+48.2
+26
+-4
+Codellama-Instruct [51]
+70B
+35.1
+32.1 33.6
+32.8
+30.5 31.7
+32.6
+15
+72.0
+13
+-2
+34B
+23.7
+17.6 20.7
+28.2
+17.6 22.9
+21.8
+24
+51.8
+25
+1
+13B
+20.6
+16.8 18.7
+26.7
+19.1 22.9
+20.8
+25
+42.7
+26
+1
+7B
+16.8
+17.6 17.2
+21.4
+17.6 19.5
+18.4
+26
+34.8
+31
+5
+Phind-Codellama [49]
+34B
+34.4
+29.0 31.7
+33.6
+32.1 32.9
+32.3
+16
+71.3
+15
+-1
+Qwen-1.5 [9]
+110B
+35.4
+28.2 31.8
+38.5
+26.7 32.6
+32.2
+17
+52.4
+24
+7
+Qwen-Chat [8]
+72B
+28.2
+29.8 29.0
+24.4
+29.0 26.7
+27.9
+19
+64.6
+20
+1
+7B
+11.5
+13.0 12.3
+16.0
+11.5 13.8
+13.0
+28
+37.2
+30
+2
+WizardCoder [41]
+34B
+24.4
+22.9 23.7
+29.8
+22.1 26.0
+24.8
+20
+73.2
+10
+-10
+15B
+29.0
+17.6 23.3
+25.2
+19.1 22.2
+22.7
+23
+59.8
+22
+-1
+StarCoder [33]
+15.5B
+13.0
+13.0 13.0
+16.8
+9.9
+13.4
+13.2
+27
+40.8
+29
+2
+Mistral-Instruct [28]
+7B
+7.6
+9.9
+8.8
+11.5
+19.1 15.3
+12.0
+29
+28.7
+34
+5
+CodeGen2 [43]
+16B
+0.8
+11.5
+6.2
+2.3
+13.0
+7.7
+6.9
+31
+19.5
+36
+5
+7B
+2.3
+5.3
+3.8
+6.9
+5.3
+6.1
+5.0
+32
+18.3
+37
+5
+3.7B
+0.0
+0.0
+0.0
+0.0
+3.1
+1.6
+0.8
+38
+15.9
+38
+0
+1B
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+0.0
+39
+11.0
+39
+0
+Phi [34]
+2.7B
+5.3
+3.1
+4.2
+3.1
+5.3
+4.2
+4.2
+33
+53.7
+23
+-10
+1.3B
+0.0
+0.8
+0.4
+3.8
+0.0
+1.9
+1.2
+37
+41.4
+28
+-9
+CodeGen [44]
+16B
+0.8
+5.3
+3.1
+0.3
+9.2
+4.8
+3.9
+34
+32.9
+32
+-2
+6B
+0.0
+0.0
+0.0
+2.3
+3.8
+3.1
+1.5
+35
+29.3
+33
+-2
+2B
+0.0
+0.0
+0.0
+2.3
+3.8
+3.1
+1.5
+36
+24.4
+35
+-1
+Table 3: Evaluating LLMs on the test set of NATURALCODEBENCH. All results are pass@1 on
+greedy decoding. Dev set results are reported in Table 6. Compared to HumanEval [13], some LLMs
+present significant variations
+7
+
+
+Hand-Written
+Semi-Automated
+Time Cost
+Line
+Branch
+Score
+Time Cost
+Line
+Branch
+Score
+Expert_1
+179.5
+97.6
+95.9
+10.8
+36.0
+97.0
+96.9
+53.9
+Expert_2
+195.0
+97.6
+95.0
+9.9
+41.0
+88.1
+91.7
+43.9
+Expert_3
+145.0
+84.5
+84.0
+11.6
+26.0
+82.0
+85.0
+64.2
+Expert_4
+180.0
+90.9
+100.0
+10.6
+41.0
+84.4
+91.7
+42.9
+Expert_5
+180.0
+98.1
+83.3
+10.1
+56.0
+100.0
+100.0
+35.7
+Total/Avg.
+175.9
+93.7
+91.6
+10.5
+40.0
+90.3
+93.1
+48.1
+Table 4: Test case construction comparison between by Semi-Automated Pipeline and Hand-Written
+method in a straightforward manner, which is outlined as follows:
+Score = LineCov. + BranchCov.
+TimeCost
+∗10
+4.2
+Results of LLMs
+Table 3 and Table 6 shows the pass@1 results on the test set and dev set of NCB, respectively.
+Considering the high consistency of results, we primarily analyze the results on the test set. As
+expected, OpenAI’s GPT-4 achieves the highest score of 52.8%. The performance of GPT-4-Turbo is
+very close to that of GPT-4, differing only by 1.3% , with GPT-4-Turbo performing better in Java
+but showing a larger difference in Python. Among the open-source models, DeepSeek-Coder-33B-
+Instruct performs the best, reaching a score of 43.0%. However, the 9.8% score gap with GPT-4
+remains significant. On the other hand, it surpasses the 40.7% achieved by GPT-3.5, exceeding it by
+2.3%. In summary, the performance of state-of-the-art open-source models is now between GPT-3.5
+and GPT-4, yet the majority of open-source models still do not match the performance of GPT-3.5.
+When compared to a perfect score of 100%, it is observed that even the best-performing model,
+GPT-4, still falls significantly short. This is in contrast to its performance in HumanEval, where it has
+approached 90%.
+Comparing the performance of models in Chinese and English versions, it is evident that the vast
+majority of models perform better in English. This holds true even for the top models, GPT-4 and
+GPT-4-Turbo, which outperform their average scores in Chinese by 1.1% and 3.9%, respectively.
+Furthermore, Table 3 systematically presents the performance of various open-source models at
+different scales. Models smaller than 10B scored between 0.0% and 23.9%, models between 10B
+and 30B scored between 3.9% and 35.1%, models between 30B and 60B scored between 21.8% and
+43.0%, and models larger than 60B scored between 27.9% and 33.2%. It is evident that the scale of
+the model still has a significant impact on performance. Larger models generally outperform smaller
+models, indicating that increasing scale can indeed enhance a model’s capabilities. However, this
+is not to say that scale is everything; more refined data and training strategies can also significantly
+impact a model’s performance. Some smaller models, such as DeepSeek-Coder-6.7B-Instruct, can
+outperform those larger than 30B by approximately 2.8% and those larger than 60B by approximately
+1.9%.
+Table 5 shows the pass@k results of best-performing LLMs with each LLM family on NCB,
+where k ∈{10, 50}. We found that under random sampling, the scores of some models increased
+significantly. For instance, Codellama-70B-Instruct, unlike its performance on pass@1, clearly
+outperformed GPT-3.5 on both Pass@10 and Pass@50.
+We compared the Python scores on the test set of NCB with the performances of models on Hu-
+maneval, as shown in the Figure 1. Most models are located in the upper triangular area of the graph,
+with many models scoring high on Humaneval but exhibiting relatively lower performance on NCB.
+4.3
+Performance mismatch on HumanEval and NCB
+We show the rank orders of all tested LLMs in Table 3 with regard to HumanEval and NCB, as well
+as the difference of rank orders. We also plot the corresponding performances on two benchmarks to
+scatter diagram in Figure 1. Based on the table and figure, we have some interesting findings.
+8
+
+
+Performances of most LLMs on two benchmarks grow linearly proportional, and the differences of
+scores’ rank order are around 0. It demonstrates that NCB can indeed reflect the coding abilities of
+LLMs as HumanEval does in most cases.
+However, we observe that some model series, notably the Phi, Deepseek-Chat, and WizardCoder,
+consistently exhibit a propensity to achieve superior rankings on the Humaneval dataset as opposed
+to the NCB across various scales, as shown in the Table 3. Additional model families, including
+CodeGen and Llama-3-Instruct, similarly display the trend, though to a reduced degree.
+There might be a few potential hypotheses for the observation. First, as problems in NCB are more
+difficult and derived from natural user prompts, compared to those in HumanEval, LLMs with poorer
+generalization and instruction-following capabilities tend to perform worse. We find in preliminary
+experiments that problems in NCB cannot be properly solved by pre-trained base LLMs via mere
+in-context learning as HumanEval does, which indicates that to solve NCB problems requires stronger
+alignment and generalizability than HumanEval needs.
+Second, it is possible that training sets of some LLMs are over-specifiedly optimized for HumanEval-
+style problems. On one hand, pre-training data of certain LLMs may be contaminated. As GPT-4 [45]
+reported, 25% of HumanEval has been contaminated in their pre-training corpus. On the other hand,
+instruction fine-tuning dataset may also be polluted. For example, Phi [34] reports a considerable
+amount of synthetic prompts resonating to some test samples in HumanEval. In [64], the authors
+report leakage unidentifiable by n-gram overlap when using popular rephrasing techniques to create
+training sets. The performance discrepancy between HumanEval and NCB in our experiments is also
+an evidence of the potential contamination.
+4.4
+Results of Semi-automated Construction
+In Table 4, we can observe that the coverage of hand-written test cases is almost identical to that
+of test cases constructed through a semi-automatic pipeline, yet the time required for the former
+significantly exceeds the time needed for constructing test cases via the semi-automatic pipeline.
+Specifically, test cases can be constructed via the semi-automated pipeline in just 40 minutes, whereas
+manual writing requires 175.9 minutes, a difference of more than 4x. Consequently, the scores
+obtained for test cases constructed using the semi-automated pipeline are far higher than those for
+manually written test cases, with an average difference of 37.6. In summary, constructing test cases
+through the semi-automatic framework can achieve significantly higher efficiency without substantial
+loss in quality compared to manual writing.
+5
+Related Work
+LLMs for code. Significant advancements in LLMs (57, 18, 11) are transforming everyday life,
+particularly in the field of coding, driven by the vast amount of openly available codebases and
+the push to enhance productivity among developers. Code-specific LLMs have proven their ability
+to perform various tasks such as code generation (13, 27, 35), program repair (29, 58, 60, 61),
+automated testing (16, 17, 39, 59, 63), code translation (52, 53) and code summarization (1, 40).
+Notably, prominent LLMs including CODEX [13], CodeGen [44], INCODER [22], and PolyCoder
+[62] have been developed and rigorously tested, particularly in code generation. This area, often
+referred to as the ultimate goal in computer science research since the early days of AI in the 1950s,
+involves the model producing code snippets from natural language explanations of the required
+functionality. The landscape of code LLMs is currently experiencing a surge, with new models being
+introduced regularly. This includes both proprietary ones (42, 45) and open-source ones (36, 44, 55,
+33, 3, 54), marking a trend of frequent releases in this domain.
+Code Synthesis Benchmarks. As the capabilities of models advance, researchers are developing
+more challenging and versatile benchmarks for code generation. Initially, the earlier focus was on
+domain-specific languages [67], while the subsequent effort launched a Text-to-SQL benchmark to
+evaluate the capacity for generating comprehensive SQL programs [66]. A investigation [65] assesses
+the ability to compose brief yet broadly applicable Python snippets. More recent studies (25, 35)
+have tested models’ proficiency in solving competitive programming challenges using Python. A
+leading and extensively researched benchmark in this domain is HumanEval [13], which features 164
+Python function signatures accompanied by docstrings and corresponding test cases for validating
+9
+
+
+correctness. Additionally, each problem in HumanEval includes a reference solution. The MBPP
+[7] dataset, another Python-centric collection, was developed by having participants contribute 974
+programming challenges. Each challenge encompasses a problem description (i.e., docstring), a
+function signature, and three test cases. There are also benchmarks for other programming languages,
+such as HumanEval-X [70] for C++, JavaScript, and Go, CodeContests [35] for C++ and Java, and
+MultiPL-E [12], which expands HumanEval and MBPP to 18 languages.
+More recent efforts have introduced benchmarks that more closely mirror real-world coding scenarios
+that require interactive coding. For example, AgentBench [38] introduces interactive tasks regarding
+unix shell and MySQL. SWE-Bench [30] compiles GitHub issues, their associated codebases, and
+tests, to gauge LLMs’ effectiveness in practical software engineering tasks.
+6
+Conclusion
+We propose NATURALCODEBENCH for evaluating the code generating ability of LLMs. Our
+benchmark comprises a total of 402 problems selected from coding online services, and it supports
+automatic evaluation of code generated by LLMs. We have also proposed a semi-automated pipeline
+for efficiently constructing the entire benchmark, achieving an efficiency gain of more than 4x
+compared to manual construction. We hope that NCB can provide a fair environment for the
+comparison between models, and our pipline can also provide inspiration to other complex tasks or
+domains where evaluation costs are high.
+Limitations
+Here, we discuss several limitations of this work.
+To cover more domains. Although our problems are derived from real-world application scenarios,
+due to the difficulty of constructing accurate and efficient evaluation environments, we are unable to
+test some types of problems, such as those involving interface creation, web services, etc., which
+are also common problem types in actual applications. This results in some biases in our evaluation,
+which may affect the accuracy of the evaluation of certain models. We will leave these issues for
+future research.
+To reduce the cost. The semi-automated pipeline can significantly reduce the time and human
+resources required to construct an evaluation framework, but the cost of accessing OpenAI’s API
+remains expensive, and it does not completely eliminate the use of human resources.
+References
+[1] T. Ahmed and P. Devanbu. Few-shot training llms for project-specific code-summarization. In
+Proceedings of the 37th IEEE/ACM International Conference on Automated Software Engineer-
+ing, ASE ’22, New York, NY, USA, 2023. Association for Computing Machinery.
+[2] AI@Meta. Llama 3 model card. 2024.
+[3] Anonymous. Wizardcoder: Empowering code large language models with evol-instruct. In The
+Twelfth International Conference on Learning Representations, 2024.
+[4] Anthropic. Claude-2, 2023.
+[5] Anthropic.
+Introducing the claude 3 family.
+https://www.anthropic.com/news/
+claude-3-family, 2023. Accessed: 2024-04-28.
+[6] B. Athiwaratkun, S. K. Gouda, Z. Wang, X. Li, Y. Tian, M. Tan, W. U. Ahmad, S. Wang, Q. Sun,
+M. Shang, S. K. Gonugondla, H. Ding, V. Kumar, N. Fulton, A. Farahani, S. Jain, R. Giaquinto,
+H. Qian, M. K. Ramanathan, R. Nallapati, B. Ray, P. Bhatia, S. Sengupta, D. Roth, and B. Xiang.
+Multi-lingual evaluation of code generation models. In The Eleventh International Conference
+on Learning Representations, 2023.
+10
+
+
+[7] J. Austin, A. Odena, M. Nye, M. Bosma, H. Michalewski, D. Dohan, E. Jiang, C. Cai, M. Terry,
+Q. Le, and C. Sutton. Program synthesis with large language models, 2021.
+[8] J. Bai, S. Bai, Y. Chu, Z. Cui, K. Dang, X. Deng, Y. Fan, W. Ge, Y. Han, F. Huang, et al. Qwen
+technical report. arXiv preprint arXiv:2309.16609, 2023.
+[9] J. Bai, S. Bai, Y. Chu, Z. Cui, K. Dang, X. Deng, Y. Fan, W. Ge, Y. Han, F. Huang, B. Hui, L. Ji,
+M. Li, J. Lin, R. Lin, D. Liu, G. Liu, C. Lu, K. Lu, J. Ma, R. Men, X. Ren, X. Ren, C. Tan,
+S. Tan, J. Tu, P. Wang, S. Wang, W. Wang, S. Wu, B. Xu, J. Xu, A. Yang, H. Yang, J. Yang,
+S. Yang, Y. Yao, B. Yu, H. Yuan, Z. Yuan, J. Zhang, X. Zhang, Y. Zhang, Z. Zhang, C. Zhou,
+J. Zhou, X. Zhou, and T. Zhu. Qwen technical report. arXiv preprint arXiv:2309.16609, 2023.
+[10] G. A. Blog. Google gemini: Next generation model. https://blog.google/technology/
+ai/google-gemini-next-generation-model-february-2024/, Feb. 2024.
+[11] T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal, A. Neelakantan,
+P. Shyam, G. Sastry, A. Askell, S. Agarwal, A. Herbert-Voss, G. Krueger, T. Henighan, R. Child,
+A. Ramesh, D. Ziegler, J. Wu, C. Winter, C. Hesse, M. Chen, E. Sigler, M. Litwin, S. Gray,
+B. Chess, J. Clark, C. Berner, S. McCandlish, A. Radford, I. Sutskever, and D. Amodei. Lan-
+guage models are few-shot learners. In H. Larochelle, M. Ranzato, R. Hadsell, M. Balcan,
+and H. Lin, editors, Advances in Neural Information Processing Systems, volume 33, pages
+1877–1901. Curran Associates, Inc., 2020.
+[12] F. Cassano, J. Gouwar, D. Nguyen, S. Nguyen, L. Phipps-Costin, D. Pinckney, M.-H. Yee, Y. Zi,
+C. J. Anderson, M. Q. Feldman, A. Guha, M. Greenberg, and A. Jangda. Multipl-e: A scalable
+and extensible approach to benchmarking neural code generation, 2022.
+[13] M. Chen, J. Tworek, H. Jun, Q. Yuan, H. P. de Oliveira Pinto, J. Kaplan, H. Edwards, Y. Burda,
+N. Joseph, G. Brockman, A. Ray, R. Puri, G. Krueger, M. Petrov, H. Khlaaf, G. Sastry,
+P. Mishkin, B. Chan, S. Gray, N. Ryder, M. Pavlov, A. Power, L. Kaiser, M. Bavarian, C. Winter,
+P. Tillet, F. P. Such, D. Cummings, M. Plappert, F. Chantzis, E. Barnes, A. Herbert-Voss, W. H.
+Guss, A. Nichol, A. Paino, N. Tezak, J. Tang, I. Babuschkin, S. Balaji, S. Jain, W. Saunders,
+C. Hesse, A. N. Carr, J. Leike, J. Achiam, V. Misra, E. Morikawa, A. Radford, M. Knight,
+M. Brundage, M. Murati, K. Mayer, P. Welinder, B. McGrew, D. Amodei, S. McCandlish,
+I. Sutskever, and W. Zaremba. Evaluating large language models trained on code, 2021.
+[14] A. Chowdhery, S. Narang, J. Devlin, M. Bosma, G. Mishra, A. Roberts, P. Barham, H. W.
+Chung, C. Sutton, S. Gehrmann, et al. Palm: Scaling language modeling with pathways. Journal
+of Machine Learning Research, 24(240):1–113, 2023.
+[15] DeepSeek-AI. Deepseek llm: Scaling open-source language models with longtermism. arXiv
+preprint arXiv:2401.02954, 2024.
+[16] Y. Deng, C. S. Xia, H. Peng, C. Yang, and L. Zhang. Large language models are zero-shot
+fuzzers: Fuzzing deep-learning libraries via large language models. In Proceedings of the 32nd
+ACM SIGSOFT International Symposium on Software Testing and Analysis, ISSTA 2023, page
+423–435, New York, NY, USA, 2023. Association for Computing Machinery.
+[17] Y. Deng, C. S. Xia, C. Yang, S. D. Zhang, S. Yang, and L. Zhang. Large language models are
+edge-case fuzzers: Testing deep learning libraries via fuzzgpt, 2023.
+[18] J. Devlin, M.-W. Chang, K. Lee, and K. Toutanova. BERT: Pre-training of deep bidirectional
+transformers for language understanding. In J. Burstein, C. Doran, and T. Solorio, editors,
+Proceedings of the 2019 Conference of the North American Chapter of the Association for
+Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Pa-
+pers), pages 4171–4186, Minneapolis, Minnesota, June 2019. Association for Computational
+Linguistics.
+[19] Z. Du, Y. Qian, X. Liu, M. Ding, J. Qiu, Z. Yang, and J. Tang. GLM: General language model
+pretraining with autoregressive blank infilling. In S. Muresan, P. Nakov, and A. Villavicencio,
+editors, Proceedings of the 60th Annual Meeting of the Association for Computational Lin-
+guistics (Volume 1: Long Papers), pages 320–335, Dublin, Ireland, May 2022. Association for
+Computational Linguistics.
+11
+
+
+[20] A. Eghbali and M. Pradel. Crystalbleu: Precisely and efficiently measuring the similarity of
+code. In Proceedings of the 37th IEEE/ACM International Conference on Automated Software
+Engineering, ASE ’22, New York, NY, USA, 2023. Association for Computing Machinery.
+[21] M. Evtikhiev, E. Bogomolov, Y. Sokolov, and T. Bryksin. Out of the bleu: How should we
+assess quality of the code generation models? Journal of Systems and Software, 203:111741,
+Sept. 2023.
+[22] D. Fried, A. Aghajanyan, J. Lin, S. Wang, E. Wallace, F. Shi, R. Zhong, S. Yih, L. Zettlemoyer,
+and M. Lewis. Incoder: A generative model for code infilling and synthesis. In The Eleventh
+International Conference on Learning Representations, 2023.
+[23] D. Guo, Q. Zhu, D. Yang, Z. Xie, K. Dong, W. Zhang, G. Chen, X. Bi, Y. Wu, Y. K. Li, F. Luo,
+Y. Xiong, and W. Liang. Deepseek-coder: When the large language model meets programming
+– the rise of code intelligence, 2024.
+[24] D. Hendrycks, S. Basart, S. Kadavath, M. Mazeika, A. Arora, E. Guo, C. Burns, S. Puranik,
+H. He, D. Song, and J. Steinhardt. Measuring coding challenge competence with apps. NeurIPS,
+2021.
+[25] D. Hendrycks, S. Basart, S. Kadavath, M. Mazeika, A. Arora, E. Guo, C. Burns, S. Puranik,
+H. He, D. Song, and J. Steinhardt. Measuring coding challenge competence with apps, 2021.
+[26] M. Ivankovi´
+c, G. Petrovi´
+c, R. Just, and G. Fraser. Code coverage at google. In Proceedings
+of the 2019 27th ACM Joint Meeting on European Software Engineering Conference and
+Symposium on the Foundations of Software Engineering, ESEC/FSE 2019, page 955–963, New
+York, NY, USA, 2019. Association for Computing Machinery.
+[27] S. Iyer, I. Konstas, A. Cheung, and L. Zettlemoyer. Mapping language to code in programmatic
+context. In E. Riloff, D. Chiang, J. Hockenmaier, and J. Tsujii, editors, Proceedings of the
+2018 Conference on Empirical Methods in Natural Language Processing, pages 1643–1652,
+Brussels, Belgium, Oct.-Nov. 2018. Association for Computational Linguistics.
+[28] A. Q. Jiang, A. Sablayrolles, A. Mensch, C. Bamford, D. S. Chaplot, D. d. l. Casas, F. Bressand,
+G. Lengyel, G. Lample, L. Saulnier, et al. Mistral 7b. arXiv preprint arXiv:2310.06825, 2023.
+[29] N. Jiang, K. Liu, T. Lutellier, and L. Tan. Impact of code language models on automated
+program repair. In Proceedings of the 45th International Conference on Software Engineering,
+ICSE ’23, page 1430–1442. IEEE Press, 2023.
+[30] C. E. Jimenez, J. Yang, A. Wettig, S. Yao, K. Pei, O. Press, and K. Narasimhan. Swe-bench:
+Can language models resolve real-world github issues? arXiv preprint arXiv:2310.06770, 2023.
+[31] W. Kwon, Z. Li, S. Zhuang, Y. Sheng, L. Zheng, C. H. Yu, J. E. Gonzalez, H. Zhang, and
+I. Stoica. Efficient memory management for large language model serving with pagedattention.
+In Proceedings of the ACM SIGOPS 29th Symposium on Operating Systems Principles, 2023.
+[32] Y. Lai, C. Li, Y. Wang, T. Zhang, R. Zhong, L. Zettlemoyer, W.-T. Yih, D. Fried, S. Wang,
+and T. Yu. DS-1000: A natural and reliable benchmark for data science code generation. In
+A. Krause, E. Brunskill, K. Cho, B. Engelhardt, S. Sabato, and J. Scarlett, editors, Proceedings
+of the 40th International Conference on Machine Learning, volume 202 of Proceedings of
+Machine Learning Research, pages 18319–18345. PMLR, 23–29 Jul 2023.
+[33] R. Li, L. B. allal, Y. Zi, N. Muennighoff, D. Kocetkov, C. Mou, M. Marone, C. Akiki, J. LI,
+J. Chim, Q. Liu, E. Zheltonozhskii, T. Y. Zhuo, T. Wang, O. Dehaene, J. Lamy-Poirier, J. Mon-
+teiro, N. Gontier, M.-H. Yee, L. K. Umapathi, J. Zhu, B. Lipkin, M. Oblokulov, Z. Wang,
+R. Murthy, J. T. Stillerman, S. S. Patel, D. Abulkhanov, M. Zocca, M. Dey, Z. Zhang, U. Bhat-
+tacharyya, W. Yu, S. Luccioni, P. Villegas, F. Zhdanov, T. Lee, N. Timor, J. Ding, C. S.
+Schlesinger, H. Schoelkopf, J. Ebert, T. Dao, M. Mishra, A. Gu, C. J. Anderson, B. Dolan-
+Gavitt, D. Contractor, S. Reddy, D. Fried, D. Bahdanau, Y. Jernite, C. M. Ferrandis, S. Hughes,
+T. Wolf, A. Guha, L. V. Werra, and H. de Vries. Starcoder: may the source be with you!
+Transactions on Machine Learning Research, 2023. Reproducibility Certification.
+12
+
+
+[34] Y. Li, S. Bubeck, R. Eldan, A. D. Giorno, S. Gunasekar, and Y. T. Lee. Textbooks are all you
+need ii: phi-1.5 technical report, 2023.
+[35] Y. Li, D. Choi, J. Chung, N. Kushman, J. Schrittwieser, R. Leblond, T. Eccles, J. Keeling,
+F. Gimeno, A. Dal Lago, T. Hubert, P. Choy, C. de Masson d’Autume, I. Babuschkin, X. Chen, P.-
+S. Huang, J. Welbl, S. Gowal, A. Cherepanov, J. Molloy, D. J. Mankowitz, E. Sutherland Robson,
+P. Kohli, N. de Freitas, K. Kavukcuoglu, and O. Vinyals. Competition-level code generation
+with alphacode. Science, 378(6624):1092–1097, Dec. 2022.
+[36] C.-Y. Lin. ROUGE: A package for automatic evaluation of summaries. In Text Summarization
+Branches Out, pages 74–81, Barcelona, Spain, July 2004. Association for Computational
+Linguistics.
+[37] J. Liu, C. S. Xia, Y. Wang, and L. Zhang. Is your code generated by chatgpt really correct?
+rigorous evaluation of large language models for code generation, 2023.
+[38] X. Liu, H. Yu, H. Zhang, Y. Xu, X. Lei, H. Lai, Y. Gu, H. Ding, K. Men, K. Yang, et al.
+Agentbench: Evaluating llms as agents. arXiv preprint arXiv:2308.03688, 2023.
+[39] Z. Liu, C. Chen, J. Wang, X. Che, Y. Huang, J. Hu, and Q. Wang. Fill in the blank: Context-
+aware automated text input generation for mobile gui testing. In Proceedings of the 45th
+International Conference on Software Engineering, ICSE ’23, page 1355–1367. IEEE Press,
+2023.
+[40] S. Lu, D. Guo, S. Ren, J. Huang, A. Svyatkovskiy, A. Blanco, C. Clement, D. Drain, D. Jiang,
+D. Tang, G. Li, L. Zhou, L. Shou, L. Zhou, M. Tufano, M. Gong, M. Zhou, N. Duan, N. Sun-
+daresan, S. K. Deng, S. Fu, and S. Liu. Codexglue: A machine learning benchmark dataset for
+code understanding and generation, 2021.
+[41] Z. Luo, C. Xu, P. Zhao, Q. Sun, X. Geng, W. Hu, C. Tao, J. Ma, Q. Lin, and D. Jiang.
+Wizardcoder: Empowering code large language models with evol-instruct. arXiv preprint
+arXiv:2306.08568, 2023.
+[42] A. Moradi Dakhel, V. Majdinasab, A. Nikanjam, F. Khomh, M. C. Desmarais, and Z. M. J.
+Jiang. Github copilot ai pair programmer: Asset or liability? J. Syst. Softw., 203(C), sep 2023.
+[43] E. Nijkamp, H. Hayashi, C. Xiong, S. Savarese, and Y. Zhou. Codegen2: Lessons for training
+llms on programming and natural languages. arXiv preprint arXiv:2305.02309, 2023.
+[44] E. Nijkamp, B. Pang, H. Hayashi, L. Tu, H. Wang, Y. Zhou, S. Savarese, and C. Xiong. Codegen:
+An open large language model for code with multi-turn program synthesis. In The Eleventh
+International Conference on Learning Representations, 2023.
+[45] OpenAI, :, J. Achiam, S. Adler, S. Agarwal, L. Ahmad, I. Akkaya, F. L. Aleman, D. Almeida,
+J. Altenschmidt, S. Altman, S. Anadkat, R. Avila, I. Babuschkin, S. Balaji, V. Balcom, P. Bal-
+tescu, H. Bao, M. Bavarian, J. Belgum, I. Bello, J. Berdine, G. Bernadett-Shapiro, C. Berner,
+L. Bogdonoff, O. Boiko, M. Boyd, A.-L. Brakman, G. Brockman, T. Brooks, M. Brundage,
+K. Button, T. Cai, R. Campbell, A. Cann, B. Carey, C. Carlson, R. Carmichael, B. Chan,
+C. Chang, F. Chantzis, D. Chen, S. Chen, R. Chen, J. Chen, M. Chen, B. Chess, C. Cho,
+C. Chu, H. W. Chung, D. Cummings, J. Currier, Y. Dai, C. Decareaux, T. Degry, N. Deutsch,
+D. Deville, A. Dhar, D. Dohan, S. Dowling, S. Dunning, A. Ecoffet, A. Eleti, T. Eloundou,
+D. Farhi, L. Fedus, N. Felix, S. P. Fishman, J. Forte, I. Fulford, L. Gao, E. Georges, C. Gibson,
+V. Goel, T. Gogineni, G. Goh, R. Gontijo-Lopes, J. Gordon, M. Grafstein, S. Gray, R. Greene,
+J. Gross, S. S. Gu, Y. Guo, C. Hallacy, J. Han, J. Harris, Y. He, M. Heaton, J. Heidecke, C. Hesse,
+A. Hickey, W. Hickey, P. Hoeschele, B. Houghton, K. Hsu, S. Hu, X. Hu, J. Huizinga, S. Jain,
+S. Jain, J. Jang, A. Jiang, R. Jiang, H. Jin, D. Jin, S. Jomoto, B. Jonn, H. Jun, T. Kaftan, Łukasz
+Kaiser, A. Kamali, I. Kanitscheider, N. S. Keskar, T. Khan, L. Kilpatrick, J. W. Kim, C. Kim,
+Y. Kim, H. Kirchner, J. Kiros, M. Knight, D. Kokotajlo, Łukasz Kondraciuk, A. Kondrich,
+A. Konstantinidis, K. Kosic, G. Krueger, V. Kuo, M. Lampe, I. Lan, T. Lee, J. Leike, J. Leung,
+D. Levy, C. M. Li, R. Lim, M. Lin, S. Lin, M. Litwin, T. Lopez, R. Lowe, P. Lue, A. Makanju,
+K. Malfacini, S. Manning, T. Markov, Y. Markovski, B. Martin, K. Mayer, A. Mayne, B. Mc-
+Grew, S. M. McKinney, C. McLeavey, P. McMillan, J. McNeil, D. Medina, A. Mehta, J. Menick,
+13
+
+
+L. Metz, A. Mishchenko, P. Mishkin, V. Monaco, E. Morikawa, D. Mossing, T. Mu, M. Mu-
+rati, O. Murk, D. Mély, A. Nair, R. Nakano, R. Nayak, A. Neelakantan, R. Ngo, H. Noh,
+L. Ouyang, C. O’Keefe, J. Pachocki, A. Paino, J. Palermo, A. Pantuliano, G. Parascandolo,
+J. Parish, E. Parparita, A. Passos, M. Pavlov, A. Peng, A. Perelman, F. de Avila Belbute Peres,
+M. Petrov, H. P. de Oliveira Pinto, Michael, Pokorny, M. Pokrass, V. Pong, T. Powell, A. Power,
+B. Power, E. Proehl, R. Puri, A. Radford, J. Rae, A. Ramesh, C. Raymond, F. Real, K. Rimbach,
+C. Ross, B. Rotsted, H. Roussez, N. Ryder, M. Saltarelli, T. Sanders, S. Santurkar, G. Sas-
+try, H. Schmidt, D. Schnurr, J. Schulman, D. Selsam, K. Sheppard, T. Sherbakov, J. Shieh,
+S. Shoker, P. Shyam, S. Sidor, E. Sigler, M. Simens, J. Sitkin, K. Slama, I. Sohl, B. Sokolowsky,
+Y. Song, N. Staudacher, F. P. Such, N. Summers, I. Sutskever, J. Tang, N. Tezak, M. Thompson,
+P. Tillet, A. Tootoonchian, E. Tseng, P. Tuggle, N. Turley, J. Tworek, J. F. C. Uribe, A. Vallone,
+A. Vijayvergiya, C. Voss, C. Wainwright, J. J. Wang, A. Wang, B. Wang, J. Ward, J. Wei,
+C. Weinmann, A. Welihinda, P. Welinder, J. Weng, L. Weng, M. Wiethoff, D. Willner, C. Winter,
+S. Wolrich, H. Wong, L. Workman, S. Wu, J. Wu, M. Wu, K. Xiao, T. Xu, S. Yoo, K. Yu,
+Q. Yuan, W. Zaremba, R. Zellers, C. Zhang, M. Zhang, S. Zhao, T. Zheng, J. Zhuang, W. Zhuk,
+and B. Zoph. Gpt-4 technical report, 2023.
+[46] OpenAI. Introducing chatgpt, 2022.
+[47] L. Ouyang, J. Wu, X. Jiang, D. Almeida, C. Wainwright, P. Mishkin, C. Zhang, S. Agarwal,
+K. Slama, A. Ray, J. Schulman, J. Hilton, F. Kelton, L. Miller, M. Simens, A. Askell, P. Welinder,
+P. F. Christiano, J. Leike, and R. Lowe. Training language models to follow instructions with
+human feedback. In S. Koyejo, S. Mohamed, A. Agarwal, D. Belgrave, K. Cho, and A. Oh,
+editors, Advances in Neural Information Processing Systems, volume 35, pages 27730–27744.
+Curran Associates, Inc., 2022.
+[48] K. Papineni, S. Roukos, T. Ward, and W.-J. Zhu. Bleu: a method for automatic evaluation of
+machine translation. In P. Isabelle, E. Charniak, and D. Lin, editors, Proceedings of the 40th
+Annual Meeting of the Association for Computational Linguistics, pages 311–318, Philadelphia,
+Pennsylvania, USA, July 2002. Association for Computational Linguistics.
+[49] Phind. Phind-codellama-34b-v2, 2023.
+[50] M. Popovi´
+c.
+chrF: character n-gram F-score for automatic MT evaluation.
+In O. Bojar,
+R. Chatterjee, C. Federmann, B. Haddow, C. Hokamp, M. Huck, V. Logacheva, and P. Pecina,
+editors, Proceedings of the Tenth Workshop on Statistical Machine Translation, pages 392–395,
+Lisbon, Portugal, Sept. 2015. Association for Computational Linguistics.
+[51] B. Roziere, J. Gehring, F. Gloeckle, S. Sootla, I. Gat, X. E. Tan, Y. Adi, J. Liu, T. Remez,
+J. Rapin, et al. Code llama: Open foundation models for code. arXiv preprint arXiv:2308.12950,
+2023.
+[52] B. Roziere, M.-A. Lachaux, L. Chanussot, and G. Lample. Unsupervised translation of program-
+ming languages. In Proceedings of the 34th International Conference on Neural Information
+Processing Systems, NIPS’20, Red Hook, NY, USA, 2020. Curran Associates Inc.
+[53] B. Roziere, J. M. Zhang, F. Charton, M. Harman, G. Synnaeve, and G. Lample. Leveraging
+automated unit tests for unsupervised code translation, 2022.
+[54] B. Rozière, J. Gehring, F. Gloeckle, S. Sootla, I. Gat, X. E. Tan, Y. Adi, J. Liu, R. Sauvestre,
+T. Remez, J. Rapin, A. Kozhevnikov, I. Evtimov, J. Bitton, M. Bhatt, C. C. Ferrer, A. Grattafiori,
+W. Xiong, A. Défossez, J. Copet, F. Azhar, H. Touvron, L. Martin, N. Usunier, T. Scialom, and
+G. Synnaeve. Code llama: Open foundation models for code, 2024.
+[55] H. Touvron, T. Lavril, G. Izacard, X. Martinet, M.-A. Lachaux, T. Lacroix, B. Rozière, N. Goyal,
+E. Hambro, F. Azhar, A. Rodriguez, A. Joulin, E. Grave, and G. Lample. Llama: Open and
+efficient foundation language models, 2023.
+[56] N. Tran, H. Tran, S. Nguyen, H. Nguyen, and T. N. Nguyen. Does bleu score work for code
+migration? In Proceedings of the 27th International Conference on Program Comprehension,
+ICPC ’19, page 165–176. IEEE Press, 2019.
+14
+
+
+[57] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and
+I. Polosukhin. Attention is all you need. In Proceedings of the 31st International Conference
+on Neural Information Processing Systems, NIPS’17, page 6000–6010, Red Hook, NY, USA,
+2017. Curran Associates Inc.
+[58] Y. Wei, C. S. Xia, and L. Zhang. Copiloting the copilots: Fusing large language models with
+completion engines for automated program repair. In Proceedings of the 31st ACM Joint
+European Software Engineering Conference and Symposium on the Foundations of Software
+Engineering, ESEC/FSE 2023, page 172–184, New York, NY, USA, 2023. Association for
+Computing Machinery.
+[59] C. S. Xia, M. Paltenghi, J. L. Tian, M. Pradel, and L. Zhang. Fuzz4all: Universal fuzzing with
+large language models, 2024.
+[60] C. S. Xia, Y. Wei, and L. Zhang. Automated program repair in the era of large pre-trained
+language models. In Proceedings of the 45th International Conference on Software Engineering,
+ICSE ’23, page 1482–1494. IEEE Press, 2023.
+[61] C. S. Xia and L. Zhang. Less training, more repairing please: revisiting automated program
+repair via zero-shot learning. In Proceedings of the 30th ACM Joint European Software Engi-
+neering Conference and Symposium on the Foundations of Software Engineering, ESEC/FSE
+2022, page 959–971, New York, NY, USA, 2022. Association for Computing Machinery.
+[62] F. F. Xu, U. Alon, G. Neubig, and V. J. Hellendoorn. A systematic evaluation of large language
+models of code. In Proceedings of the 6th ACM SIGPLAN International Symposium on Machine
+Programming, MAPS 2022, page 1–10, New York, NY, USA, 2022. Association for Computing
+Machinery.
+[63] C. Yang, Y. Deng, R. Lu, J. Yao, J. Liu, R. Jabbarvand, and L. Zhang. White-box compiler
+fuzzing empowered by large language models, 2023.
+[64] S. Yang, W.-L. Chiang, L. Zheng, J. E. Gonzalez, and I. Stoica. Rethinking benchmark and
+contamination for language models with rephrased samples. arXiv preprint arXiv:2311.04850,
+2023.
+[65] P. Yin, B. Deng, E. Chen, B. Vasilescu, and G. Neubig. Learning to mine aligned code
+and natural language pairs from stack overflow. In Proceedings of the 15th International
+Conference on Mining Software Repositories, MSR ’18, page 476–486, New York, NY, USA,
+2018. Association for Computing Machinery.
+[66] T. Yu, R. Zhang, K. Yang, M. Yasunaga, D. Wang, Z. Li, J. Ma, I. Li, Q. Yao, S. Roman,
+Z. Zhang, and D. Radev. Spider: A large-scale human-labeled dataset for complex and cross-
+domain semantic parsing and text-to-SQL task. In E. Riloff, D. Chiang, J. Hockenmaier,
+and J. Tsujii, editors, Proceedings of the 2018 Conference on Empirical Methods in Natural
+Language Processing, pages 3911–3921, Brussels, Belgium, Oct.-Nov. 2018. Association for
+Computational Linguistics.
+[67] J. M. Zelle and R. J. Mooney.
+Learning to parse database queries using inductive logic
+programming. In Proceedings of the Thirteenth National Conference on Artificial Intelligence -
+Volume 2, AAAI’96, page 1050–1055. AAAI Press, 1996.
+[68] A. Zeng, X. Liu, Z. Du, Z. Wang, H. Lai, M. Ding, Z. Yang, Y. Xu, W. Zheng, X. Xia, W. L.
+Tam, Z. Ma, Y. Xue, J. Zhai, W. Chen, P. Zhang, Y. Dong, and J. Tang. Glm-130b: An open
+bilingual pre-trained model, 2023.
+[69] L. Zheng, W.-L. Chiang, Y. Sheng, S. Zhuang, Z. Wu, Y. Zhuang, Z. Lin, Z. Li, D. Li, E. P. Xing,
+H. Zhang, J. E. Gonzalez, and I. Stoica. Judging llm-as-a-judge with mt-bench and chatbot
+arena, 2023.
+[70] Q. Zheng, X. Xia, X. Zou, Y. Dong, S. Wang, Y. Xue, L. Shen, Z. Wang, A. Wang, Y. Li, T. Su,
+Z. Yang, and J. Tang. Codegeex: A pre-trained model for code generation with multilingual
+benchmarking on humaneval-x. In Proceedings of the 29th ACM SIGKDD Conference on
+Knowledge Discovery and Data Mining, KDD ’23, page 5673–5684, New York, NY, USA,
+2023. Association for Computing Machinery.
+15
+
+
+A
+Instructions in NATURALCODEBENCH
+To enhance the efficiency of benchmark construction and reduce human labor costs, we utilized the
+extensive knowledge storage and natrual language understanding capabilities of LLMs during the
+benchmark construction process. Below are the details of the instructions used in the construction
+process:
+• Figure 3 shows the instruction we employed to swiftly filter out queries unsuitable for testing.
+• Figure 13 shows how we instruct the GPT-4 to generate diverse and high-quality testcases.
+• Figure 4 illustrates how we address the issue of misalignment between class or function names
+generated by the LLMs and the names in the test cases.
+I will give you a #Given Prompt# which ask the LLM to generate 
+code. Please verify whether the #Given Prompt# satisﬁes the 
+following requirements:
+1. #Given Prompt# should contain a task, that is, the user asks the 
+model to help solve one or some problems.
+2. It is easily to ﬁnd the type of input and ouput in the #Given 
+Prompt#
+3. There is no randomness or uncertainty in the #Given Prompt#
+If the #Given Prompt# satisﬁes the above requirements, reply 
+"yes", otherwise reply "no". YOU CAN ONLY GENERATE "yes" or 
+"no", OTHER TOKENS ARE NOT ALLOWED.
+#Given Prompt#:
+{{given_prompt}}
+#Response#:
+Figure 3: The instruction used to quickly filter out low-quality queries
+Your task is to generate {{language}} code to solve the 
+following problem. The generated code must be 
+placed between the ```{{language}} and ```, and only 
+one code block is allowed: 
+{{prompt}}
+You need to follow the function names or class names 
+in the test cases. The generated code should not 
+contain any test cases: 
+{{test_demo}}
+Figure 4: The instruction used to align the names of classes or functions generated by the LLMs with
+the names in the test cases.
+B
+Examples
+B.1
+Examples of Semi-Automated Pipeline
+In this section, we present two examples, one each for Python and Java, of semi-automated pipeline
+with one test case to illustrate how we construct test cases and rectify errors therein.
+Figure 5 shows the Python example. Following the provision of problem description and reference
+solution, GPT-4 writes the majority of the test case, including the execution procedure and test
+case input. However, GPT-4 could not guarantee the correctness of each test case, resulting in the
+generation of erroneous expected outputs. At this point, our programming experts only needed to
+correct the incorrect expected outputs.
+Figure 6 shows the Java exmaple. In this problem, where the input type involves more complex file
+formats, our semi-automatic pipeline is unable to directly generate the input files corresponding to
+each test case. Therefore, in this instance, our programming experts need to not only supplement the
+missing procedures in the test cases but also create an input file for each test case. However, GPT-4
+has provided reference content for the input files in the comments, so our programming experts do
+not need to design the inputs themselves.
+16
+
+
+Model
+Dataset
+NCB(zh)
+NCB(en)
+Python
+Java
+Python
+Java
+Pass@10 Pass@50 Pass@10 Pass@50 Pass@10 Pass@50 Pass@10 Pass@50
+GPT-4 [45]
+Test
+62.4
+67.9
+64.6
+71.8
+65.3
+70.2
+62.7
+67.9
+Dev
+53.3
+55.7
+69.2
+72.9
+51.8
+54.3
+62.0
+64.3
+GPT-3.5-Turbo [46]
+Test
+46.5
+48.9
+49.3
+56.5
+53.5
+55.7
+51.5
+57.3
+Dev
+44.0
+47.7
+45.5
+51.4
+43.6
+47.1
+48.4
+50.0
+Deepseek-Coder-33B-Instruct [23]
+Test
+55.7
+61.8
+48.0
+51.1
+56.6
+64.9
+52.8
+59.5
+Dev
+48.1
+51.4
+46.8
+51.4
+46.5
+48.6
+46.7
+50.0
+Codellama-70B-Instruct [51]
+Test
+49.6
+56.5
+52.7
+61.8
+51.0
+62.6
+48.2
+58.0
+Dev
+47.5
+54.3
+53.9
+62.9
+47.6
+54.3
+50.5
+60.0
+Phind-Codellama-34B [49]
+Test
+42.3
+46.6
+39.4
+45.8
+40.6
+43.5
+47.6
+56.5
+Dev
+45.4
+50.0
+41.7
+45.7
+44.0
+45.7
+49.4
+51.4
+Deepseek-67B-Chat [15]
+Test
+44.3
+48.9
+40.8
+47.8
+47.3
+51.9
+40.9
+45.8
+Dev
+42.3
+47.1
+44.5
+47.1
+37.9
+41.4
+43.6
+50.0
+Qwen-72B-Chat [8]
+Test
+34.9
+37.4
+36.5
+39.7
+32.7
+35.9
+36.5
+38.2
+Dev
+43.4
+47.1
+31.4
+38.6
+41.0
+44.3
+31.5
+35.7
+StarCoder [33]
+Test
+23.1
+28.2
+23.3
+29.8
+24.1
+31.3
+26.8
+32.1
+Dev
+29
+32.9
+27.3
+32.9
+35.5
+41.4
+27.0
+30.0
+Mistral-7B-Instruct [28]
+Test
+15.5
+18.3
+17.3
+20.6
+19.6
+22.9
+22.0
+24.4
+Dev
+18.2
+21.4
+16.3
+20.0
+19.7
+24.3
+17.8
+21.4
+CodeGen2-16B [43]
+Test
+8.6
+16.8
+18.0
+22.9
+13.0
+19.1
+21.0
+26.0
+Dev
+11.6
+21.4
+12.8
+15.7
+16.0
+24.3
+18.5
+24.3
+CodeGen-16B [44]
+Test
+4.6
+9.2
+13.3
+18.3
+9.9
+15.3
+17.5
+21.4
+Dev
+10.7
+17.1
+15.6
+18.6
+16.1
+22.9
+17.4
+21.4
+Phi-2 [34]
+Test
+14.5
+21.4
+5.5
+7.6
+11.9
+19.8
+10.7
+14.5
+Dev
+15.3
+27.1
+5.1
+7.1
+10.9
+18.6
+6.4
+7.1
+Table 5: Pass@k results of best-performing LLMs with each LLM family on NaturalCodeBench.
+B.2
+Example Problems
+Here, we present an example problem and test cases for each of the 6 domains.
+Figure 7 shows a problem of Algorithm and Data Structure, querying the pattern of a sequence
+transformation and the total number of all transformations.
+Figure 8 illustrates an example problem in software engineering, requiring the addition of tags to
+different titles in a markdown file according to their levels.
+Figure 9 presents an example problem in data science, asking to select the row with the highest
+temperature from the temperature CSV files of each city and write these rows into a new CSV file.
+Figure 10 depicts an example problem in front-end development, requiring the replacement of given
+special tags within a string with specific HTML formats.
+Figure 11 shows an example problem in artificial intelligence, requiring the calculation of the distance
+between each point of two tensors, where the dimension of each tensor is batchsize * n * 3, with the
+third dimension representing the coordinates of the points.
+Figure 12 presents an example problem in system administration, inquiring how to rename all the
+files within a folder according to a given rule.
+C
+Extra Results
+Table 6 shows the pass@1 results on the development set of NCB. The results on the development
+set are essentially consistent with those on the test set, with some changes in the ranking among
+several models. This is due to differences in the distribution of problems across domains between the
+development set and the test set.
+Table 5 shows the pass@k results of best-performing LLMs with each LLM family on NCB, where
+k ∈{10, 50}. We do not evaluate the performance on pass@k for ErnieBot4, CodeGeeX3, Claude-3,
+Gemini-1.5-Pro and Llama-3-Instruct due to limitations on the use of API and other resources.
+17
+
+
+Model
+Size
+NCB(zh)
+NCB(en)
+Total
+Python
+Java
+Total
+Python
+Java
+Total
+API LLMs
+GPT-4 [45]
+N/A
+50.0
+64.3
+57.2
+47.1
+57.1
+52.1
+54.6
+GPT-4-Turbo-1106 [45]
+N/A
+54.3
+55.7
+55.0
+50.0
+54.3
+52.2
+53.6
+GPT-4-Turbo-0125 [45]
+N/A
+51.5
+55.7
+53.6
+48.6
+51.4
+50.0
+51.8
+GPT-3.5-Turbo [46]
+N/A
+38.6
+38.6
+38.6
+37.1
+41.4
+39.3
+38.9
+Claude-3-Opus [5]
+N/A
+46.4
+44.3
+45.3
+50.0
+47.1
+48.6
+47.0
+Claude-3-Haiku [5]
+N/A
+40.3
+32.9
+36.6
+43.8
+32.9
+38.4
+37.5
+Claude-3-Sonnet [5]
+N/A
+37.8
+41.4
+39.6
+38.6
+31.4
+35.0
+37.3
+Claude-2.1 [4]
+N/A
+41.4
+37.1
+39.3
+35.7
+35.7
+35.7
+37.5
+ChatGLM-4 [68; 19]
+N/A
+42.9
+47.1
+45.0
+44.3
+42.9
+43.6
+44.3
+Gemini-1.5-Pro [10]
+N/A
+44.3
+35.7
+40.0
+48.6
+34.3
+41.4
+40.7
+CodeGeeX3 [70]
+N/A
+40.0
+25.7
+32.9
+35.7
+25.7
+30.7
+31.8
+Open LLMs
+Deepseek-Coder-Instruct [23]
+33B
+41.4
+40.0
+40.7
+35.7
+41.4
+38.6
+39.6
+6.7B
+34.3
+40.0
+37.2
+34.4
+40.0
+37.2
+37.2
+1.3B
+22.9
+21.4
+22.2
+20.0
+27.1
+23.6
+22.9
+Llama-3-Instruct [2]
+70B
+42.9
+37.1
+40.0
+37.1
+41.4
+39.3
+39.6
+8B
+22.9
+20.0
+21.4
+12.9
+20.0
+16.4
+18.9
+Phind-Codellama [49]
+34B
+34.1
+31.4
+32.8
+38.6
+40.0
+39.3
+36.0
+Qwen-1.5 [9]
+110B
+35.7
+30.0
+32.9
+37.1
+35.7
+36.4
+34.6
+Codellama-Instruct [51]
+70B
+30.0
+30.0
+30.0
+35.7
+35.7
+35.7
+32.9
+34B
+14.3
+25.7
+20.0
+25.7
+25.7
+25.7
+22.9
+13B
+21.4
+20.0
+20.7
+22.9
+20.0
+21.5
+21.1
+7B
+25.7
+14.3
+20.0
+18.6
+17.1
+17.9
+18.9
+Deepseek-Chat [15]
+67B
+28.6
+35.7
+32.2
+28.6
+32.9
+30.8
+31.5
+7B
+12.9
+11.4
+12.2
+10.0
+14.3
+12.2
+12.2
+WizardCoder [41]
+34B
+31.4
+31.4
+31.4
+30.0
+31.4
+30.7
+31.1
+15B
+30.0
+24.3
+27.2
+31.4
+24.3
+27.9
+27.5
+Qwen-Chat [8]
+72B
+35.7
+24.3
+30.0
+34.3
+25.7
+30.0
+30.0
+7B
+10.0
+12.9
+11.5
+20.0
+15.7
+17.9
+14.7
+StarCoder [33]
+15.5B
+17.1
+15.7
+16.4
+21.4
+15.7
+18.6
+17.5
+Mistral-Instruct [28]
+7B
+11.4
+12.9
+12.2
+15.7
+11.4
+13.6
+12.9
+CodeGen2 [43]
+16B
+5.7
+7.1
+6.4
+8.6
+7.1
+7.9
+7.1
+7B
+1.4
+5.7
+3.6
+1.4
+5.7
+3.6
+3.6
+3.7B
+0.0
+5.7
+2.9
+2.9
+2.9
+2.9
+2.9
+1B
+0.0
+2.9
+1.5
+0.0
+2.9
+1.5
+1.5
+CodeGen [44]
+16B
+1.4
+5.7
+3.6
+7.1
+8.6
+8.6
+5.7
+6B
+2.9
+2.9
+2.9
+4.3
+7.1
+5.7
+4.3
+2B
+0.0
+2.9
+1.5
+2.9
+5.7
+4.3
+2.9
+Phi [34]
+2.7B
+4.3
+4.3
+4.3
+5.7
+4.3
+5.0
+4.7
+1.3B
+1.4
+2.9
+2.2
+5.7
+4.3
+5.0
+3.6
+Table 6: Evaluating LLMs on the dev set of NATURALCODEBENCH. All results are pass@1 on
+greedy decoding.
+18
+
+
+Problem
+I have a dataframe that includes the price and date of 
+a symbol, how can I identify the time periods where 
+the price has consistently ﬂuctuated within an x 
+percent range? 
+For instance, the output of the following statements:
+1) From December 10 to December 30
+2) From March 10 to March 23
+Reference Solution
+def ﬁnd_ﬂuctuation_periods(df, symbol, x):
+    symbol_data = df[…==symbol].sort_values(by='date')
+    …
+    for ind, row in symbol_data.iterrows():
+        if start_date is None:
+            …
+        else:
+            change = abs((row['price'] - prev_price) / prev_price 
+* 100)
+            if change > x:
+                if ind - start_ind > 1:
+                    periods.append((start_date.strftime('%Y-%m-
+%d'), prev_date.strftime('%Y-%m-%d')))
+                …
+    if start_date != end_date:
+        periods.append((start_date.strftime('%Y-%m-%d'), 
+end_date.strftime('%Y-%m-%d')))
+    return periods
+Human Rewritten Test Case 
+def test_ﬂuctuation_periods_2(self):
+    df = pd.DataFrame({
+        'symbol': ['AAPL', 'AAPL', 'AAPL', 'AAPL'],
+        'price': [100, 110, 120, 130],
+        'date': pd.to_datetime([
+            '2021-01-01', 
+            '2021-01-02', 
+            '2021-01-03', 
+            '2021-01-04'])
+    })
+    assert ﬁnd_ﬂuctuation_periods(df, 'AAPL', 10) == 
+[('2021-01-01', '2021-01-04')]
+Test Case Generated by GPT-4
+def test_ﬂuctuation_periods_2(self):
+    df = pd.DataFrame({
+        'symbol': ['AAPL', 'AAPL', 'AAPL', 'AAPL'],
+        'price': [100, 110, 120, 130],
+        'date': pd.to_datetime([
+            '2021-01-01', 
+            '2021-01-02', 
+            '2021-01-03', 
+            '2021-01-04'])
+    })
+    assert ﬁnd_ﬂuctuation_periods(df, 'AAPL', 10) == 
+[('2021-01-01', '2021-01-03’)]  Wrong Output
+Figure 5: A Python example of semi-automate pipeline.
+Problem
+Design a method in Java
+Use the following encryption method, encrypt the 
+content in the given encodingFile text ﬁle, and then 
+save it to the encodedFile ﬁle.
+Encryption rules:
+1. Numbers: If it is not the number 9, add 1 to the 
+original basis, If it is the number 9, it becomes 0.
+2. Letter characters: If it is a non-z character, move 
+one to the right, If it is z, z->a, Z->A. 
+3. Non-numeric and non-letter characters can remain 
+unchanged, such as Chinese characters and 
+punctuation marks, etc., just need to remain 
+unchanged.
+Reference Solution
+void encodeFile(File encodingFile, File encodedFile) {
+    try (FileReader reader = …(encodingFile);
+        FileWriter writer = …(encodedFile)) {
+        while ((c = reader.read()) != -1) {
+            char character = (char) c;
+            if (Character.isDigit(character)) {
+                character = character == '9' ? '0' : (char) 
+(character + 1);
+            }else if (Character.isLetter(character)) {
+                . . .
+                else if ((character >= 'a' && …) {
+                    character=(char)(character+1);
+     . . .
+Human Rewritten Test Case 
+@Test
+void testEncodeDigits() throws IOException {
+    File input = new File("testEncode.txt");
+    File output = new File("testEncodeOutput.txt");
+    FileEncoder.encodeFile(input, output);
+    assertEquals(“234567890",
+        readFileContent(output));
+}
+Test Case Generated by GPT-4
+@Test
+void testEncodeDigits() throws IOException {
+    File input = new File("testEncode.txt");
+    File output = new File("testEncodeOutput.txt");
+    // numbers.txt contains "123456789"
+    // encodedNumbers.txt should contain 
+"234567890"
+}              Not completely generated
+Figure 6: A Java example of semi-automate pipeline.
+19
+
+
+Problem:
+Given a sequence that only contains two possible 
+characters "O" and "x". There is a magical operation 
+that can combine two consecutive "x" characters in 
+the sequence into one "O" character. Suppose there is 
+a sequence of length n, containing only "x" characters, 
+and the magic operation can be used any number of 
+times. What is the maximum number of possible result 
+sequences? 
+For example:
+For a sequence of length 2, the initial state is "xx", you 
+can choose not to use the magic operation or use it 
+only once. There are two possible ﬁnal results: "xX" or 
+"O". 
+For a sequence of length 3, the initial state is "xxX", 
+you can choose not to use the magic operation or use 
+it once. There are three possible ﬁnal results: "xxx", 
+"OX!" (combining the ﬁrst two "x" characters) or 
+"XO" (combining the last two "x" characters).
+Test Cases
+class Testmax_possible_sequences:
+    def test_max_possible_sequences_1(self):
+        assert max_possible_sequences(4) == 5
+    def test_max_possible_sequences_2(self):
+        assert max_possible_sequences(7) == 21
+. . . 
+Rerference Solution
+def max_possible_sequences(n):
+    if n <= 0:
+        return 0
+    elif n == 0:
+        return 0
+    elif n == 0:
+        return 2
+    else:
+        return max_possible_sequences(n-1) \
+            + max_possible_sequences(n-1)
+Figure 7: An example problem of Algorithm and Data Structure.
+Problem:
+Hello, please write a Python function for me. The 
+function should read a markdown ﬁle, add 
+numbering like x.y.z... to the titles of each level, 
+and then return the modiﬁed string. Please note 
+not to write into the original ﬁle.
+Test Cases
+class Testadd_section_numbering:
+    def test_case1(self):
+    with open('test1.md', 'w') as f:
+        f.write('# Title\n## Subtitle\n### Sub-Subtitle\n## 
+Another Subtitle\n# Another Title')
+    assert add_section_numbering(
+        'test1.md') == '# 1 Title\n## 1.1 Subtitle\n### 1.1.1 
+Sub-Subtitle\n## 1.2 Another Subtitle\n# 2 Another Title'
+. . . 
+Rerference Solution
+def add_section_numbering(markdown_ﬁle):
+    with open(markdown_ﬁle, 'r') as ﬁle:
+        lines = ﬁle.readlines()
+    numbering = []
+    result = ''
+    for line in lines:
+        if line.startswith('#'):
+            level = line.count('#')
+            numbering = numbering[:level]
+            if len(numbering) < level:
+                numbering.append(0)
+            numbering[-1] += 1
+            line = '#'*level + ' ' + '.'.join(map(str, numbering)) 
++ ' ' + line[level:].strip() + '\n'
+        result += line
+    return result[:-1]
+Figure 8: An example problem of Software Engineering.
+20
+
+
+Problem:
+There are multiple CSV ﬁles in the data folder, each ﬁle has 
+two columns, containing the daily temperature records of a 
+certain city in 2022. The ﬁrst row is the title, which are Date 
+and Temperature. The temperature value is an integer. I 
+need to ﬁnd out the highest temperature value and the 
+corresponding date of each city in that year, and save the 
+results to a new CSV ﬁle. The result CSV consists of three 
+columns, including city, highest temperature, and date. 
+Note that if the highest temperature is the same for multiple 
+days, keep all dates that reach the highest temperature. 
+How can I use the pandas library's dataframe to complete 
+this task?
+Test Cases
+class Testmax_possible_sequences:
+    def test_single_ﬁle_single_max(self, tmpdir):
+        data = 
+"Date,Temperature\n2022-01-01,10\n2022-01-02,20\n2022-01-
+03,30"
+        p = tmpdir.mkdir("data").join("city1.csv")
+        p.write(data)
+        output_ﬁle = tmpdir.join("output.csv")
+       ﬁnd_max_temperature(str(tmpdir.join("data")), 
+str(output_ﬁle))
+        assert output_ﬁle.read() == 
+"City,Max_Temperature,Date\ncity1,30,2022-01-03\n"
+. . .
+Rerference Solution
+def ﬁnd_max_temperature(folder_path, output_ﬁle):
+    csv_ﬁles = [f for f in os.listdir(folder_path) 
+        if f.endswith('.csv')]
+    result_df = pd.DataFrame(columns=[
+        'City', 
+        'Max_Temperature', 
+        'Date'])
+    for csv_ﬁle in csv_ﬁles:
+        ﬁle_path = os.path.join(folder_path, csv_ﬁle)
+        df = pd.read_csv(ﬁle_path)
+        city_name = csv_ﬁle[:-4]
+        max_temp = df['Temperature'].max()
+        max_temp_dates = df.loc[
+            df['Temperature'] == max_temp, 
+            'Date'].tolist()
+        for date in max_temp_dates:
+            result_df = result_df._append({
+                'City': city_name,
+                'Max_Temperature': max_temp,
+                'Date': date}, ignore_index=True)
+    result_df.to_csv(output_ﬁle, index=False)
+Figure 9: An example problem of Data Science.
+Problem:
+How to replace a string containing content like ```html  ```, 
+```css  ```, ```python  ```, ```javascript  ```, ```golang  ``` with strings 
+like <pre><code class=\"language-html\">...</code></pre>, 
+<pre><code class=\"language-css\">...</code></pre>, 
+<pre><code class=\"language-python\">...</code></pre>, 
+<pre><code class=\"language-javascript\">...</code></pre>, 
+<pre><code class=\"language-golang\">...</code></pre>. 
+Please use python code.
+Test Cases
+class Testreplace_code_block:
+    def test_replace_code_block_1(self):
+        assert replace_code_block('```html ```') == '<pre><code 
+class="language-html"></code></pre>'
+. . .
+Rerference Solution
+def replace_code_block(text):
+    languages = {
+        "html": "language-html",
+        "css": "language-css",
+        "python": "language-python",
+        "javascript": "language-javascript",
+        "golang": "language-golang"
+    }
+    for lang, html_class in languages.items():
+        pattern = rf"```{lang}\b\s*(.*?)\s*```"
+        replacement = rf'<pre><code 
+class="{html_class}">\1</code></pre>'
+        text = re.sub(pattern, replacement, text, 
+ﬂags=re.DOTALL)
+    return text
+Figure 10: An example problem of Front-End.
+21
+
+
+Problem:
+Python code, calculate distance given two Pytorch 
+tensors with dimension batchsize x n x 3, n is points, 3 
+is x,y,z. Compute point wise distance along the last 
+dimension, for example only compute distance 
+between a[0,1] and b[0,1] not a[0,1] and b[0,2].
+Rerference Solution
+def calculate_distance(tensor_a, tensor_b):
+    diﬀ = tensor_a - tensor_b
+    dist = torch.sqrt(torch.sum(diﬀ ** 2, dim=-1))
+    return dist
+Test Cases
+class Testcalculate_distance:
+    def test_case_1(self):
+        tensor_a = torch.tensor([[[1,2,3],[4,5,6]]])
+        tensor_b = torch.tensor([[[1,2,3],[4,5,6]]])
+        expected_output = torch.tensor([[0.0, 0.0]])          
+        assert torch.allclose(calculate_distance(tensor_a, 
+tensor_b), expected_output)
+    def test_case_2(self):
+        tensor_a = torch.tensor([[[1,1,1],[2,2,2]]])
+        tensor_b = torch.tensor([[[0,0,0],[0,0,0]]])
+        expected_output = torch.tensor([[1.7321, 
+3.4641]])
+        assert torch.allclose(calculate_distance(tensor_a, 
+tensor_b), expected_output, atol=1e-4)
+. . .
+Figure 11: An example problem of Artificial Intelligence.
+Problem:
+I want to write a python program that rename 
+the ﬁles of a folder . 
+please remove all letters and keep the numbers
+Test Cases
+class Testrename_ﬁles_in_folder:
+    def test_rename_ﬁles_in_folder_1(self, tmpdir):
+        p = tmpdir.mkdir("sub").join("ﬁle123abc.txt")
+        p.write("content")
+        rename_ﬁles_in_folder(str(tmpdir) + '/sub/')
+        assert os.path.isﬁle(str(tmpdir) + '/sub/123.txt')
+    def test_rename_ﬁles_in_folder_2(self, tmpdir):
+            p = tmpdir.mkdir("sub").join("ﬁle456def.txt")
+            p.write("content")
+            rename_ﬁles_in_folder(str(tmpdir) + '/sub/')
+            assert os.path.isﬁle(str(tmpdir) + '/sub/
+456.txt')
+    def test_rename_ﬁles_in_folder_3(self, tmpdir):
+            p = tmpdir.mkdir("sub").join("ﬁle789ghi.txt")
+            p.write("content")
+            rename_ﬁles_in_folder(str(tmpdir) + '/sub/')
+            assert os.path.isﬁle(str(tmpdir) + '/sub/
+789.txt')
+. . .
+Rerference Solution
+def rename_ﬁles_in_folder(folder_path):
+    for ﬁlename in os.listdir(folder_path):
+        ﬁle_type = ﬁlename.split('.')[-1]
+        new_ﬁlename = re.sub("[A-Za-z]", "", 
+ﬁlename[:-len(ﬁle_type)]) + ﬁle_type
+        os.rename(os.path.join(folder_path, ﬁlename), 
+os.path.join(folder_path, new_ﬁlename))
+Figure 12: An example problem of System Administration.
+22
+
+
+I will give you a #Prompt# and a piece of #Code#. I need you to write 10 diverse 
+test cases to verify whether the function in the #Code# meets the requirements of 
+the #Prompt#. Among them, 6 test cases should cover as many lines and 
+branches in the #Code# as possible, and the other 4 test cases should try to 
+reach the boundaries of the requirements in the #Prompt#. The test cases should 
+conform to the Pytest/JUnit call format. You should only generate test cases 
+without any explanation. 
+#Prompt#: 
+{{given_prompt}}
+#Code#:
+```
+{{given_code}}
+```
+#Test cases#: 
+class Test{{class_name}} :/{
+Figure 13: The insturciton used in Semi-automated Pipeline. Generating 6 test cases for high-coverage
+and 4 corner test cases.
+23

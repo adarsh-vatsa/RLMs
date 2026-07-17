@@ -1,0 +1,5353 @@
+Bayesian Flow Networks
+
+Abstract
+This paper introduces Bayesian Flow Networks (BFNs), a new class of generative model in
+which the parameters of a set of independent distributions are modified with Bayesian inference
+in the light of noisy data samples, then passed as input to a neural network that outputs a
+second, interdependent distribution. Starting from a simple prior and iteratively updating
+the two distributions yields a generative procedure similar to the reverse process of diffusion
+models; however it is conceptually simpler in that no forward process is required. Discrete and
+continuous-time loss functions are derived for continuous, discretised and discrete data, along
+with sample generation procedures. Notably, the network inputs for discrete data lie on the
+probability simplex, and are therefore natively differentiable, paving the way for gradient-based
+sample guidance and few-step generation in discrete domains such as language modelling. The
+loss function directly optimises data compression and places no restrictions on the network
+architecture. In our experiments BFNs achieve competitive log-likelihoods for image modelling
+on dynamically binarized MNIST and CIFAR-10, and outperform all known discrete diffusion
+models on the text8 character-level language modelling task1.
+1
+Introduction
+Large-scale neural networks have revolutionised generative modelling over the last few years, with an
+unprecedented ability to capture complex relationships among many variables. Building a convincing
+joint model of all the pixels in a high resolution image, for example, was impossible before the
+advent of modern generative networks.
+Key to the expressive power of most of these networks — including autoregressive models
+e.g. [9, 46], flow-based models [32], deep VAEs [49] and diffusion models [41] — is that the joint
+distribution they encode is broken down into a series of steps, thereby eluding the “curse of
+dimensionality” that would doom any effort to explicitly define all the interactions among so many
+variables. In colloquial terms they solve a hard problem by splitting it into easy pieces.
+A general way to view such distributions is as an exchange of messages between a sender, Alice,
+who has access to some data, and her friend Bob, who wishes to receive it in as few bits as possible.
+At each step Alice sends a message to Bob that reveals something about the data. Bob attempts
+to guess what the message is: the better his guess the fewer bits are needed to transmit it. After
+receiving the message, Bob uses the information he has just gained to improve his guess for the
+next message. The loss function is the total number of bits required for all the messages.
+1Code and trained models can be found at https://github.com/nnaisense/bayesian-flow-networks
+1
+arXiv:2308.07037v5  [cs.LG]  3 Feb 2024
+
+
+In an autoregressive language model, for example, the messages are the word-pieces the text
+is divided into. The distribution encoding Bob’s prediction for the first message is of necessity
+uninformed: a zero-gram prior based on the relative frequencies of different word-pieces. The
+transmission cost is the negative log-probability under this prior. Bob then uses the first word-piece
+to predict the second; on average, the second prediction will be slightly more informed than the first,
+and the expected transmission cost will be slightly lower. The process repeats with the predictions
+improving at each step. The sum of the transmission costs is the negative log-probability of the
+complete text sequence, which is the loss function minimised by maximum likelihood training. It
+is also the minimum number of bits that would be required for Alice to transmit the pieces to
+Bob using arithmetic coding [53]. There is therefore a direct correspondence between fitting an
+autoregressive model with maximum likelihood and training it for data compression.
+Autoregressive networks are currently state-of-the-art for language modelling [29], and in general
+perform well on discrete data where a natural ordering exists. However they have proved less
+effective in domains such as image generation, where the data is continuous and no natural order
+exists among variables (e.g. there is no reason to generate one pixel before another). They also
+have the drawback that generating samples requires as many network updates as there are variables
+in the data.
+Diffusion models are an alternative framework that has proved particularly effective for image
+generation [5, 34]. In this case the transmission procedure is a little more complex2. Each message
+Bob receives is a noisy version of the message before, where the noise is designed so that in
+expectation the messages approach the data. The transmission cost at each step is the Kullback-
+Leibler divergence between the distribution from which Alice draws the message and Bob’s prediction
+of that distribution (which is a reparameterisation of his prediction of the data, and which is therefore
+improved by the information he gained from the previous message). The sum of the KL divergences
+is the evidence lower bound minimised by diffusion training [41]; it is also the expected number of
+bits needed to transmit the data using an efficient bits-back coding scheme [11, 51]. Once again
+there is an exact equivalence between the loss function used to train the model and the model’s
+ability to compress data, as elucidated by previous authors [47].
+We posit that the superiority of diffusion over autoregression for image generation lies in the
+way diffusion progresses from coarse to fine image details as the level of noise decreases — a more
+natural way to construct an image than one dot at a time. However diffusion has yet to match
+autoregression for discrete data, which is unfortunate, as diffusion models have the advantage of
+decoupling the number of generation steps from the number of variables. A fundamental challenge
+is that when the data is discrete, the noise in the diffusion process is also discrete, and therefore
+discontinuous. To return to the transmission metaphor, if the data is a piece of text, then Bob
+begins the process with a totally garbled text, every symbol of which is either randomly altered
+or left unchanged by each of Alice’s messages. A key motivation for this work was our belief that
+a fully continuous transmission process — where Alice’s messages smoothly alter Bob’s beliefs —
+would be more effective for discrete data. Moreover this should open the door to gradient-based
+sample guidance [5] and few-step generation techniques [37, 43, 52], similar to those that have been
+developed for continuous diffusion.
+Bayesian Flow Networks (BFNs), the model introduced in this paper, differ from diffusion models
+in that the network operates on the parameters of a data distribution, rather than on a noisy version
+of the data itself. This ensures that the generative process is fully continuous and differentiable,
+2We are here describing the reverse process of diffusion models.
+2
+
+
+Output
+Data
+Sender
+Receiver 
+Prev. Input
+…
+Network 
+Variable 1
+Network …
+…
++
+Input
++
+Bayesian 
+update
+sample
+Output
+Data
+Sender
+Receiver 
+Prev. Input
+Variable 2
++
+Input
+ALICE
++
+Bayesian 
+update
+KL
+sample
+BOB
+ALICE
+BOB
+Noise
+Noise
+KL
+Figure 1: System Overview. The figure represents one step of the modelling process of a Bayesian Flow
+Network. The data in this example is a ternary symbol sequence, of which the first two variables (‘B’ and ‘A’)
+are shown. At each step the network emits the parameters of the output distribution based on the parameters
+of the previous input distribution. The sender and receiver distributions (both of which are continuous,
+even when the data is discrete) are created by adding random noise to the data and the output distribution
+respectively. A sample from the sender distribution is then used to update the parameters of the input
+distribution, following the rules of Bayesian inference. Conceptually, this is the message sent by Alice to Bob,
+and its contribution to the loss function is the KL divergence from the receiver to the sender distribution.
+even when the data is discrete. BFNs can be summarised by the following transmission scheme
+(Figure 1). Bob has an “input distribution” which is initially a simple prior: a standard normal for
+continuous data, a uniform categorical for discrete data. At each transmission step he feeds the
+parameters of the input distribution (e.g. the mean of a normal distribution, the probabilities of a
+categorical distribution) into a neural network. The network outputs the parameters of a second
+distribution referred to as the “output distribution”. Alice then creates a “sender distribution” by
+adding noise to the data according to a predefined schedule, and Bob creates a “receiver distribution”
+by convolving the output distribution with the same noise distribution used by Alice: intuitively, for
+every value the data could take on, Bob constructs the sender distribution Alice would have used if
+3
+
+
+that value was correct, then sums over all these hypothetical sender distributions, weighted by the
+probability of the corresponding value under the output distribution. Alice picks a sample from the
+sender distribution and sends it to Bob at a cost equal to the KL divergence from receiver to sender.
+Bob then uses the sample to update his input distribution, following the rules of Bayesian inference.
+Usefully, the Bayesian updates are available in closed-form as long as the input distribution models
+all the variables in the data independently. Once the update is complete, Bob again feeds the
+parameters of the input distribution to the network which returns the parameters of the output
+distribution. The process repeats for n steps, at which point Bob can predict the data accurately
+enough that Alice can send it to him without any noise.
+Note the key difference between the input and output distributions: the input distribution
+receives information about each variable in the data independently (via the Bayesian updates), and
+is therefore unable to exploit contextual information, such as neighbouring pixels in an image or
+related words in a text; the output distribution, on the other hand, is produced by a neural network
+that jointly processes all the parameters in the input distribution, giving it access to all available
+context. Intuitively, the combination of the input and output distributions represents a division
+of labour between Bayesian inference and deep learning that plays to both of their strengths: the
+former provides a mathematically optimal and finely controllable way to collect and summarise
+information about individual variables, while the latter excels at integrating information over many
+interrelated variables.
+The above transmission process defines an n-step loss function that can be generalised to
+continuous time by sending n to ∞. In continuous time the Bayesian updates become a Bayesian
+flow of information from the data to the network. As well as removing the need to predefine the
+number of steps during training, the continuous-time loss function is mathematically simpler and
+easier to compute than the discrete-time loss. A BFN trained with continuous-time loss can be run
+for any number of discrete steps during inference and sampling, with performance improving as the
+number of steps increases.
+The rest of the paper is structured as follows. A short summary of related work is given
+in Section 2.
+The basic framework of BFNs, along with a general derivation of the discrete
+and continuous time loss functions is provided in Section 3. Specialisations of the framework to
+continuous, discretised and discrete data are provided in Sections 4–6, along with pseudocode
+for training, evaluating and sampling from the network. Experimental results on the CIFAR-10,
+dynamically binarized MNIST and text8 datasets are provided in Section 7 and concluding remarks
+are given in Section 8.
+2
+Related Work
+Of existing methods, Bayesian Flow Networks are most closely related to diffusion models. However
+the two differ in some crucial aspects. Most obviously BFNs embody a function from one distribution
+to another — rather than from data to a distribution, like diffusion models and most other
+probabilistic networks.
+One advantage of this approach is that, because the parameters of a
+categorical distribution are real-valued probabilities, the inputs to the network are continuous even
+when the data is discrete. This contrasts with discrete diffusion, which natively uses discrete samples
+as input [1, 14, 41].
+Numerous authors have proposed continuous variants of discrete diffusion. Typically these
+rely either on mapping to and from a continuous embedding space [2, 6, 21, 44], or on restricting
+4
+
+
+continuous diffusion to the probability simplex [23, 24, 33]. While we do not directly compare
+against the above methods, we note that continuity is an inherent property of the Bayesian Flow
+framework (the network inputs automatically lie on the probability simplex by virtue of being the
+parameters of a categorical distribution), rather than a constraint added to an existing system. As
+well as reducing the number of free parameters and design choices (e.g. the continuous embedding
+space, the mapping functions), this ensures that BFNs directly optimise the negative log-likelihood
+of discrete data, unlike continuous diffusion methods for discrete data, which typically require either
+simplified loss functions [24] or auxiliary loss terms [21] to make learning stable.
+For continuous data, BFNs are most closely related to variational diffusion models [17], with a
+very similar continuous-time loss function. The main difference in this case is that the network inputs
+are considerably less noisy in BFNs than in variational diffusion and other continuous diffusion
+models. This is because the generative process of BFNs begins with the parameters of a fixed prior,
+whereas that of diffusion models begins with pure noise. We hypothesise that the reduction in noise
+could lead to faster learning on large datasets where the model underfits; however we have yet to
+test this hypothesis experimentally.
+Another key difference from diffusion models is that there is no need to define and invert a
+forward process for BFNs, which arguably makes it easier to adapt them to different distributions
+and data types. We showcase this flexibility by adapting BFNs to continuous, discretised and
+discrete data, with minimal changes to the training procedure. This contrasts with e.g. discretised
+diffusion, which requires carefully defined transition matrices [1].
+3
+Bayesian Flow Networks
+This section covers the basic mathematical formalism of Bayesian Flow Networks, laying out the
+structure of the various functions and distributions required by the model, along with the discrete
+and continuous-time loss functions used for training. Specific instantiations of the general framework
+for continuous, discretised and discrete data are given in Sections 4–6.
+3.1
+Input and Sender Distributions
+Given D-dimensional data x =
+x(1), . . . , x(D)
+∈X D, let θ =
+θ(1), . . . , θ(D)
+be the parameters of
+a factorised input distribution pI(· | θ), with
+pI(x | θ) =
+D
+Y
+d=1
+pI(x(d) | θ(d)).
+(1)
+For example, θ(d) may consist of the probabilities of a categorical distribution. Let pS (· | x; α) be a
+similarly factorised sender distribution with y =
+y(1), . . . , y(D)
+∈YD and
+pS (y | x; α) =
+D
+Y
+d=1
+pS
+
+y(d) | x(d); α
+
+,
+(2)
+where α ∈R+ is an accuracy parameter defined such that when α = 0, the sender samples are entirely
+uninformative about x and as α increases the samples become progressively more informative.
+5
+
+
+3.2
+Output Distribution pO(· | θ, t)
+During the data transmission process, the input parameters θ are passed along with the process
+time t as input to a neural network Ψ.
+The network then emits an output vector Ψ(θ, t) =
+Ψ(1)(θ, t), . . . , Ψ(D)(θ, t)
+
+which is used to parameterise an output distribution factorised in the
+same way as the input and sender distributions:
+pO(x | θ, t) =
+D
+Y
+d=1
+pO(x(d) | Ψ(d)(θ, t)).
+(3)
+As discussed in the introduction, the key difference between the input and output distributions
+is that while each pI(x(d) | θ(d)) depends only on information gathered via pS
+y(d) | x(d); α
+
+about
+x(d), each pO(x(d) | Ψ(d)(θ, t)) depends (via the network) on all of θ and hence all of x. The
+output distribution, unlike the input distribution, can therefore exploit context information, such as
+surrounding pixels in an image or related words in a text.
+3.3
+Receiver Distribution pR(· | θ; t, α)
+Given sender distribution pS (· | x; α) and output distribution pO(· | θ, t) the receiver distribution
+over YD is defined as
+pR(y | θ; t, α) =
+E
+pO(x′|θ;t) pS
+y | x′; α
+
+.
+(4)
+Intuitively this can be understood as a receiver who knows the form of the sender distribution
+pS (· | x; α) but does not know x, and therefore integrates over all x′ ∈X D, and hence all possible
+sender distributions, weighted by the probability given to x′ by the output distribution pO(x | θ, t).
+The receiver distribution therefore combines two sources of uncertainty: the “known unknown” of
+the sender distribution entropy (which is a function of α), and the “unknown unknown” of the
+output distribution entropy.
+3.4
+Bayesian Updates
+Given parameters θ and sender sample y drawn with accuracy α the Bayesian update function h is
+derived by applying the rules of Bayesian inference to compute the updated parameters θ′:
+θ′ ←h(θ, y, α).
+(5)
+The Bayesian update distribution pU (· | θ, x; α) is then defined by marginalizing out y:
+pU (θ′ | θ, x; α) =
+E
+pS (y|x;α) δ
+θ′ −h(θ, y, α)
+
+,
+(6)
+where δ (· −a) is the multivariate Dirac delta distribution centred on the vector a. In Sections 4.4
+and 6.7 we will prove that both forms of pU (· | θ, x; α) considered in this paper have the following
+property: the accuracies are additive in the sense that if α = αa + αb then
+pU (θ′′ | θ, x; α) =
+E
+pU (θ′|θ,x;αa) pU (θ′′ | θ′, x; αb).
+(7)
+6
+
+
+It follows from this property that given prior input parameters θ0, the probability of observing
+parameters θn after drawing a sequence of n sender samples y1, . . . , yn with accuracies α1, . . . , αn is
+E
+pU (θ1|θ0,x;α1)
+E
+pU (θ2|θ1,x;α2) . . .
+E
+pU (θn−1|θn−2,x;αn−1) pU (θn | θn−1, x; αn) = pU
+ 
+θn | θ0, x;
+n
+X
+i=1
+αi
+!
+. (8)
+3.5
+Accuracy Schedule β(t)
+By performing an infinite number of transmission steps, the Bayesian update process can be
+generalized to continuous time. Let t ∈[0, 1] be the process time and let α(t) > 0 be the accuracy
+rate at time t. Now define the accuracy schedule β(t) as
+β(t) =
+Z t
+t′=0
+α(t′)dt′.
+(9)
+It follows from the above definitions that β(t) is a monotonically increasing function of t, that
+β(0) = 0, and that dβ(t)
+dt
+= α(t).
+Specific forms of β(t) for continuous and discrete data are provided in Sections 4.5 and 6.8. Both
+are derived using simple heuristics, with a deeper investigation left for future work.
+3.6
+Bayesian Flow Distribution pF (· | x; t)
+Given prior parameters θ0, Bayesian update distribution pU (· | θ, x; α) and accuracy schedule β(t),
+the Bayesian flow distribution pF (· | x; t) is the marginal distribution over input parameters at time
+t, defined by
+pF (θ | x; t) = pU (θ | θ0, x; β(t)).
+(10)
+3.7
+Loss Function L(x)
+Given prior parameters θ0 and accuracy schedule β(t), consider a sequence of n sender samples
+y1, . . . , yn sampled at times t1, . . . , tn where ti = i/n. The sender distribution at step i is pS (· | x; αi)
+where
+αi = β(ti) −β(ti−1),
+(11)
+the receiver distribution at step i is pR(· | θi−1; ti−1, αi), and the input parameter sequence θ1, . . . , θn
+is recursively calculated from
+θi = h(θi−1, y, αi).
+(12)
+Define the n-step discrete-time loss Ln(x) as the expected number of nats required to first transmit
+y1, . . . , yn, and the reconstruction loss Lr(x) as the expected number of nats required to then
+transmit x. Since — using a bits-back coding scheme [7, 11] — it requires DKL (pS ∥pR) nats to
+transmit a sample from pS to a receiver with pR,
+Ln(x) =
+E
+p(θ1,...,θn−1)
+n
+X
+i=1
+DKL (pS (· | x; αi) ∥pR(· | θi−1; ti−1, αi)) ,
+(13)
+7
+
+
+where
+p(θ1, . . . , θn) =
+n
+Y
+i=1
+pU (θi | θi−1, x; αi),
+(14)
+and since the number of nats needed to transmit x using an arithmetic coding scheme [53] based on
+p(x) is −ln p(x), and the marginal probability of θn is given by pF (· | x, 1),
+Lr(x) = −
+E
+pF (θ|x,1) ln pO(x | θ; 1).
+(15)
+Note that Lr(x) is not directly optimised in this paper; however it is indirectly trained by optimising
+Ln(x) since both are minimised by matching the output distribution to the data. Furthermore, as
+long as β(1) is high enough, the input distribution at t = 1 will be very close to x, making it trivial
+for the network to fit pO(x | θ; 1).
+The loss function L(x) is defined as the total number of nats required to transmit the data,
+which is the sum of the n-step and reconstruction losses:
+L(x) = Ln(x) + Lr(x)
+(16)
+Alternatively L(x) can be derived as the loss function of a variational autoencoder (VAE; [18]).
+Consider the sequence y1, . . . , yn as a latent code with posterior probability given by
+q(y1, . . . , yn) =
+n
+Y
+i=1
+pS (yi | x; αi) ,
+(17)
+and autoregressive prior probability given by
+p(y1, . . . , yn) =
+n
+Y
+i=1
+pR(yi | θi−1; ti−1, αi).
+(18)
+Then, noting that the decoder probability p(x | y1, . . . , yn) = pO(x | θn; 1), the complete trans-
+mission process defines a VAE with loss function given by the negative variational lower bound
+(VLB)
+L(x) = −VLB(x) = DKL (q ∥p) −
+E
+y1,...,yn∼q ln p(x | y1, . . . , yn)
+(19)
+= Ln(x) + Lr(x).
+(20)
+3.8
+Discrete-Time Loss Ln(x)
+Eq. 13 can be rewritten as
+Ln(x) = n
+E
+i∼U{1,n}
+E
+pU (θ1|θ0,x;α1) . . .
+E
+pU (θ|θi−2,x;αi−1) DKL (pS (· | x; αi) ∥pR(· | θ; ti−1, αi)) ,
+(21)
+where U{1, n} is the uniform distribution over the integers from 1 to n. Furthermore, it follows
+from Eqs. 8 and 10 that
+E
+pU (θ1|θ0,x;α1) . . .
+E
+pU (θ|θi−2,x;αi−1) =
+E
+pU (θ|θ0,x;β(ti−1))
+(22)
+=
+E
+pF (θ|x;ti−1),
+(23)
+8
+
+
+and hence
+Ln(x) = n
+E
+i∼U{1,n},pF (θ|x;ti−1) DKL (pS (· | x; αi) ∥pR(· | θ; ti−1, αi)) ,
+(24)
+which allows us approximate Ln(x) via Monte-Carlo sampling without computing the n-step sum.
+3.9
+Continuous-Time Loss L∞(x)
+Eq. 24 can be used to train the network directly. However this presupposes that n is fixed during
+training. Furthermore, for discrete and discretised data the KL terms do not have analytic solutions,
+leading to noisy gradient estimates.
+Inspired by Variational Diffusion Models [17] we derive a continuous-time loss function L∞(x)
+by taking the limit of Ln(x) as n →∞. This turns out to be mathematically simpler than the
+discrete-time loss, as well as removing both the noisy gradients for the discrete and discretised KL
+terms and the need to fix n during training.
+Let
+ϵ def
+= 1
+n,
+(25)
+α(t, ϵ) def
+= β(t) −β(t −ϵ),
+(26)
+L∞(x) def
+= lim
+n→∞Ln(x).
+(27)
+Then, from the definition of Ln(x) in Eq. 24,
+L∞(x) = lim
+ϵ→0
+1
+ϵ
+E
+t∼U(ϵ,1),pF (θ|x,t−ϵ) DKL (pS (· | x; α(t, ϵ)) ∥pR(· | θ; t −ϵ, α(t, ϵ))) ,
+(28)
+where U(a, b) is the continuous uniform distribution over the interval [a, b]. As we will see, for all
+the sender, receiver distribution pairs in this paper,
+DKL (pS (· | x; α) ∥pR(· | θ; α, t)) =
+D
+X
+d=1
+DKL
+
+N
+
+g(x(d)), Cα−1
+∥P (d)(θ, t) ∗N
+0, Cα−1
+,
+(29)
+where g : X →Y is a function from data space to sender space, P (d)(θ, t) is a distribution over Y
+with finite expectation and variance, ∗denotes the convolution of two probability distributions and
+C is a scalar constant.
+The following proposition is now required:
+Proposition 3.1. For a continuous univariate probability distribution P with finite expectation
+E[P] and variance V ar[P], the convolution P ∗N
+0, σ2
+→N
+E[P], σ2
+as σ2 →∞.
+Proof. Let ϵ2 be some variance in the interval
+0, π
+8
+
+and consider the sequence of random variables
+9
+
+
+X0, X1, . . . , Xn where X0 ∼P and Xj ∼N
+0, ϵ2
+for j > 0. Define
+Yj
+def
+=
+(
+X0 −E[P]
+if j = 0,
+Xj
+otherwise.
+(30)
+Rn
+def
+=
+n
+X
+j=0
+Yj,
+(31)
+S2
+n
+def
+=
+n
+X
+j=1
+V ar[Yj] = nϵ2,
+(32)
+T 2
+n
+def
+= V ar[P] + S2
+n.
+(33)
+It follows from the definition of convolution that Pn
+j=0 Xj ∼P ∗N
+0, nϵ2
+. Since nϵ2 →∞as
+n →∞, and Pn
+j=0 Xj = Rn + E[P], the result is proved if it can be shown that as n →∞,
+Rn →N
+0, nϵ2
+or equivalently Rn/(ϵ√n) →N (0, 1).
+The Lyapunov central limit theorem [8] states that if there exists λ > 0 such that
+limn→∞
+1
+T 2+λ
+n
+Pn
+j=0 E
+|Yj|2+λ
+= 0 then Rn/Tn →N (0, 1).
+First note that T 2
+n →S2
+n = nϵ2
+as n →∞. Hence if Rn/Tn →N (0, 1) then Rn/(ϵ√n) →N (0, 1). Now set λ = 1 and observe that
+for Yj ∼N
+0, ϵ2
+, E
+|Yj|3
+is the third moment of the half-normal distribution, which is ϵ3
+q
+8
+π.
+Our choice of ϵ2 therefore ensures that E
+|Yj|3
+< ϵ2 for j > 0. Also note that T 3
+n > S3
+n and, since
+E[P] and V ar[P] are finite, E
+|Y0|3
+< C for some constant C. Hence
+1
+T 3
+n
+n
+X
+j=0
+E
+|Yj|3
+< 1
+S3
+n
+C + nϵ2
+=
+C
+ϵ3n3/2 +
+1
+ϵ√n
+n→∞
+−
+−
+−
+→0.
+(34)
+It follows from the continuity of β(t) and Eq. 26 that α(t, ϵ)−1 →∞as ϵ →0. Therefore,
+Proposition 3.1 can be applied to Eq. 29 to yield
+lim
+ϵ→0 DKL (pS (· | x, αt) ∥pR(· | θ, αt, t)) =
+D
+X
+d=1
+DKL
+
+N
+
+g(x(d)),
+C
+α(t, ϵ)
+
+∥N
+
+E[P (d)(θ, t)],
+C
+α(t, ϵ)
+
+(35)
+= α(t, ϵ)
+2C
+∥g(x) −E[P(θ, t)]∥2 ,
+(36)
+where
+g(x) =
+
+g(x(1)), . . . , g(x(D))
+
+,
+(37)
+E[P(θ, t)] =
+
+E[P (1)(θ, t)], . . . , E[P (D)(θ, t)]
+
+.
+(38)
+Therefore,
+L∞(x) =
+E
+t∼U(0,1),pF (θ|x,t) lim
+ϵ→0
+α(t, ϵ)
+ϵ
+∥g(x) −E[P(θ, t)]∥2
+2C
+.
+(39)
+10
+
+
+Substituting from Eq. 26,
+lim
+ϵ→0
+α(t, ϵ)
+ϵ
+= lim
+ϵ→0
+β(t) −β(t −ϵ)
+ϵ
+= dβ(t)
+dt
+= α(t),
+(40)
+and hence
+L∞(x) =
+E
+t∼U(0,1),pF (θ|x,t) α(t)∥g(x) −E[P(θ, t)]∥2
+2C
+.
+(41)
+3.10
+Sample Generation
+Given prior parameters θ0, accuracies α1, . . . , αn and corresponding times ti = i/n, the n-step
+sampling procedure recursively generates θ1, . . . , θn by sampling x′ from pO(· | θi−1, ti−1), y from
+pS (· | x′, αi) (meaning that y ∼pR(· | θi−1; ti−1, αi) — see Eq. 4), then setting θi = h(θi−1, y).
+Given θn the network is run one more time and the final sample is drawn from pO(· | θn, 1).
+4
+Continuous Data
+For continuous data X = R and hence x ∈RD. In our experiments, x is normalised to lie in [−1, 1]D
+to ensure that the network inputs remain in a reasonable range; however this is not essential for the
+mathematical framework.
+4.1
+Input Distribution pI(· | θ)
+The input distribution for continuous data is a diagonal normal:
+θ def
+= {µ, ρ}
+(42)
+pI(x | θ) def
+= N
+x | µ, ρ−1I
+
+,
+(43)
+where I is the D × D identity matrix. We define the prior parameters as
+θ0
+def
+= {0, 1},
+(44)
+where 0 is the length D vectors of zeros. Hence the input prior is a standard multivariate normal:
+pI(x | θ0) = N (x | 0, I) .
+(45)
+The usual Bayesian approach would be to fit the prior mean and variance to the training data.
+However we found that a standard prior worked better in practice, as well as simplifying the
+equations. It is important to remember that the distributions pI(x | θ0) are never used directly
+to make predictions, but rather to inform the network’s predictions. All that matters is that the
+parameters fed into the network accurately and accessibly encode the information received so far
+about x. The network can easily learn the empirical prior of the training set and use that to correct
+its predictions.
+11
+
+
+Figure 2: Bayesian updates for continuous data. For univariate data x = 0.7, the initial input
+distribution parameters θ0 = {µ0 = 0, ρ0 = 1} are updated to θ1 = {µ1, ρ1}, θ2 = {µ2, ρ2}, θ3 = {µ3, ρ3} by
+iterating Eqs. 49 and 50 with sender samples y1, y2, y3 drawn with accuracies 2, 4, 6 respectively. Note how
+the input mean (µ1, µ2, µ3) stochastically approaches the data, while the input precision smoothly increases.
+4.2
+Bayesian Update Function h(θi−1, y, α)
+Given a univariate Gaussian prior N
+µa, ρ−1
+a
+
+over some unknown data x it can be shown [27] that
+the Bayesian posterior after observing a noisy sample y from a normal distribution N
+x, α−1
+with
+known precision α is N
+µb, ρ−1
+b
+
+, where
+ρb = ρa + α,
+(46)
+µb = µaρa + yα
+ρb
+.
+(47)
+Since both pI(x | θ) and pS (y | x; α) distributions are normal with diagonal covariance, Eqs. 46 and
+47 can be applied to obtain the following Bayesian update function for parameters θi−1 = {µi−1, ρi−1}
+and sender sample y drawn from pS (· | x; αI) = N
+x, α−1I
+
+:
+h({µi−1, ρi−1}, y, α) = {µi, ρi},
+(48)
+with
+ρi = ρi−1 + α,
+(49)
+µi = µi−1ρi−1 + y α
+ρi
+.
+(50)
+4.3
+Bayesian Update Distribution pU(· | θ, x; α)
+Eq. 50 computes µi given a single sample y from the sender distribution. To marginalise over
+y ∼N
+y | x, α−1I
+
+as defined in Eq. 6, the following standard identity for normal distributions
+12
+
+
+Figure 3: Bayesian update distribution for continuous data. For x = 0.7, the plot shows the
+distribution p(µ | θ0, x; α) over input mean µ from Eq. 52 given initial parameters µ0 = 0, ρ0 = 1 and 11 α
+values spaced log-linearly between e−5 and e5. Note how the distribution is tightly concentrated around µ0
+for very low alpha, then smoothly progresses to a tight concentration around x for high alpha.
+can be applied:
+X ∼N
+µX, σ2
+X
+
+=
+⇒aX + b ∼N
+aµX + b, a2σ2
+X
+
+∀a, b ∈R .
+(51)
+Substituting X = y, µX = x, σ2
+X = α−1I, a = α
+ρi and b = µi−1ρi−1
+ρi
+, Eq. 50 gives:
+µi ∼N
+α x +µi−1ρi−1
+ρi
+, α
+ρ2
+i
+I
+
+,
+(52)
+and therefore (since µi is the only random part of θi)
+pU (θi | θi−1, x; α) = N
+
+µi | α x +µi−1ρi−1
+ρi
+, α
+ρ2
+i
+I
+
+.
+(53)
+4.4
+Additive Accuracies
+We can check that the sender accuracies are additive in the sense required by Eq. 7 by first observing
+that if θi−1 = {µi−1, ρi−1} is drawn from p(· | θi−2, x; αa) then
+µi−1 ∼N
+αa x +µi−2ρi−2
+ρi−1
+, αa
+ρ2
+i−1
+I
+
+.
+(54)
+Define
+µ′
+i
+def
+= αb x +µi−1ρi−1
+ρi
+= ρi−1
+ρi
+µi−1 + αb x
+ρi
+,
+(55)
+13
+
+
+and apply Identity 51 with a = ρi−1
+ρi
+and b = αb x
+ρi
+to see that
+µ′
+i ∼N
+ρi−1
+ρi
+αa x +µi−2ρi−2
+ρi−1
++ αb x
+ρi
+, ρ2
+i−1
+ρ2
+i
+αa
+ρ2
+i−1
+I
+
+(56)
+= N
+(αa + αb) x +µi−2ρi−2
+ρi
+, αa
+ρ2
+i
+I
+
+.
+(57)
+Now observe that if θi = {µi, ρi} is drawn from p(· | θi−1, x; αb) then
+µi ∼N
+αb x +µi−1ρi−1
+ρi
+, αb
+ρ2
+i
+I
+
+,
+(58)
+and hence
+µi ∼µ′
+i + ϵ,
+(59)
+where
+ϵ ∼N
+
+0, αb
+ρ2
+i
+I
+
+.
+(60)
+Another standard identity for Gaussian variables can now be applied:
+X ∼N
+µX, σ2
+X
+
+, Y ∼N
+µY , σ2
+Y
+
+=
+⇒X + Y ∼N
+µX + µY , σ2
+X + σ2
+Y
+
+,
+(61)
+to see that
+µi ∼N
+(αa + αb) x +µi−2ρi−2
+ρi
+, αa + αb
+ρ2
+i
+I
+
+,
+(62)
+and hence
+E
+pU (θi−1|θi−2,x;αa) pU (θi | θi−1, x; αb) = pU (θi | θi−2, x; αa + αb),
+(63)
+as required.
+4.5
+Accuracy Schedule β(t)
+We derive β(t) for continuous data by requiring that the expected entropy of the input distribution
+linearly decreases with t. Intuitively, this means that information flows into the input distribution
+at a constant rate. Define
+H(t) def
+=
+E
+pF (θ|x;t) H(pI(· | θ))
+(64)
+= D
+2 ln
+
+2πe
+1 + β(t)
+
+.
+(65)
+14
+
+
+Then if H(t) linearly decreases with t,
+H(t) = (1 −t)H(0) + tH(1)
+(66)
+=
+⇒ln
+
+2π
+1 + β(t)
+
+= (1 −t) ln(2π) + t ln
+
+2π
+1 + β(1)
+
+(67)
+=
+⇒−ln(1 + β(t)) = −t ln(1 + β(1))
+(68)
+=
+⇒(1 + β(t))−1 = (1 + β(1))−t.
+(69)
+Define σ1 to be the standard deviation of the input distribution at t = 1. We will choose σ1 empirically
+to minimise the loss; in general it should be small enough to ensure that the reconstruction loss is
+low, but not so small as to create unnecessary transmission costs. Recalling that the precision ρ at
+time t is 1 + β(t), we see that
+σ2
+1 = (1 + β(1))−1.
+(70)
+Therefore
+(1 + β(t))−1 = σ2t
+1
+(71)
+=
+⇒β(t) = σ−2t
+1
+−1
+(72)
+=
+⇒α(t) = d
+σ−2t
+1
+−1
+
+dt
+(73)
+= −2 ln σ1
+σ2t
+1
+.
+(74)
+4.6
+Bayesian Flow Distribution pF (· | x; t)
+Recall from Eq. 10 that
+pF (θ | x; t) = pU (θ | θ0, x, β(t)).
+(75)
+Therefore, setting θi−1 = θ0 = {0, 1} and α = β(t) in Eq. 53, and recalling that ρ = 1 + β(t),
+pF (θ | x; t) = N
+
+µ |
+β(t)
+1 + β(t) x,
+β(t)
+(1 + β(t))2 I
+
+(76)
+= N (µ | γ(t) x, γ(t)(1 −γ(t))I) ,
+(77)
+where
+γ(t) def
+=
+β(t)
+1 + β(t)
+(78)
+= σ−2t
+1
+−1
+σ−2t
+1
+(79)
+= 1 −σ2t
+1 .
+(80)
+15
+
+
+Figure 4: Bayesian flow for continuous data. For x = 0.8, σ1 = 0.02 and γ(t) defined as in Eqn. 80, the
+plot shows stochastic parameter trajectories for the input distribution mean µ (white lines) superimposed on
+a log-scale heatmap of the Bayesian flow distribution p(θ | x; t). Note how the trajectories all begin at µ0 = 0
+then fan out before converging on x.
+4.7
+Output Distribution pO(· | θ; t)
+Following standard practice for diffusion models [42], the output distribution is defined by reparam-
+eterising a prediction of the Gaussian noise vector ϵ ∼N (0, I) used to generate the mean µ passed
+as input to the network. Recall from Eq. 77 that
+µ ∼N (γ(t) x, γ(t)(1 −γ(t))I) ,
+(81)
+and hence
+µ = γ(t) x +
+p
+γ(t)(1 −γ(t))ϵ
+(82)
+=
+⇒x =
+µ
+γ(t) −
+s
+1 −γ(t)
+γ(t)
+ϵ.
+(83)
+The network outputs an estimate ˆ
+ϵ(θ, t) of ϵ and this is transformed into an estimate ˆ
+x(θ, t) of x by
+ˆ
+x(θ, t) =
+µ
+γ(t) −
+s
+1 −γ(t)
+γ(t)
+ˆ
+ϵ(θ, t).
+(84)
+Given ˆ
+x(θ, t) the output distribution is
+pO(x | θ; t) = δ(x −ˆ
+x(θ, t)),
+(85)
+Note that γ(0) = 0, making the transformation from ˆ
+ϵ(θ, t) to pO(x | θ; t) undefined at t = 0. We
+therefore set pO(x | θ; t) = 0 for t under some small threshold tmin. Also, ˆ
+x(θ, t) is clipped to lie
+within the allowed range [xmin, xmax] for x. In our experiments tmin = 1e−6 and [xmin, xmax] =
+[−1, 1].
+16
+
+
+Figure 5: Input variance for Bayesian Flow Networks and diffusion models. For σ1 = 0.001 and
+γ(t) defined as in Eqn. 80, the blue line shows the variance γ(t)(1 −γ(t)) of the distribution over the input
+mean µ as a function of t (see Eq. 77). Note that the variance is 0 at t = 0 (since the input prior µ0 is
+deterministic) and becomes small again as t approaches 1 and µ becomes increasingly concentrated around
+the data. The green and red lines show the equivalent network input variance for two different noise schedules
+from the literature (linear [12] and cosine [28]) during the reverse process of a diffusion model (note that t is
+reversed relative to diffusion convention). The input variance is much lower for Bayesian Flow Networks.
+4.8
+Sender Distribution pS (· | x; α)
+The sender space Y = X = R for continuous data, and the sender distribution is normal with
+precision α:
+pS (y | x; α) = N
+y | x, α−1I
+
+.
+(86)
+4.9
+Receiver Distribution pR(· | θ; t, α)
+Substituting Eqs. 85 and 86 into Eq. 4,
+pR(y | θ; t, α) =
+E
+δ(x′ −ˆ
+x(θ,t)) N
+y | x′, α−1I
+
+(87)
+= N
+y | ˆ
+x(θ, t), α−1I
+
+.
+(88)
+4.10
+Reconstruction Loss Lr(x)
+Truly continuous data requires infinite precision to reconstruct, which makes the reconstruction loss
+problematic. However it would be reasonable to assume that either the data is finely discretised
+(as all information is on a digital computer), or that it contains some noise. The reconstruction
+loss for discretised data is presented in Section 5.3. Alternatively, if we assume the presence of
+normally distributed measurement noise on x, with fixed isotropic variance σ2, then a noisy version
+of the reconstruction loss can be defined as the expected KL divergence between N
+x, σ2I
+
+and
+the output distribution at t = 1:
+Lr(x) =
+E
+pF (θ|x,1) DKL
+N
+x, σ2I
+
+∥N
+ˆ
+x(θ, 1), σ2I
+
+(89)
+=
+E
+pF (θ|x,1)
+1
+2σ2 ∥x −ˆ
+x(θ, 1)∥2 .
+(90)
+17
+
+
+Figure 6: Sender, output and receiver distributions for continuous data. Note that the sender and
+receiver distributions have identical variance and the output distribution is a Dirac delta distribution centred
+on the network prediction ˆ
+x(θ, t).
+The noise does not directly affect training, as the reconstruction loss is not optimised. However the
+value of σ places a natural upper limit on the value that should be chosen for σ1: there is no point
+transmitting the data to greater precision than it was originally measured. Empirically, we find
+that when σ1 < σ/2 the reconstruction loss is very small.
+4.11
+Discrete-Time Loss Ln(x)
+From Eqs. 86 and 88,
+DKL (pS (· | x, αi) ∥pR(· | θi−1; ti−1, αi)) = DKL
+N
+x, α−1
+i I
+
+∥N
+ˆ
+x(θi−1, ti−1), α−1
+i I
+
+(91)
+= αi
+2 ∥x −ˆ
+x(θi−1, ti−1)∥2 ,
+(92)
+and from Eqs. 11 and 72,
+αi = β(ti) −β(ti−1)
+(93)
+= σ−2i/n
+1
+−σ−2(i−1)/n
+1
+(94)
+= σ−2i/n
+1
+
+1 −σ2/n
+1
+
+.
+(95)
+Therefore, substituting into Eq. 24,
+Ln(x) = n
+2
+
+1 −σ2/n
+1
+
+E
+i∼U{1,n},pF (θi−1|x;ti−1)
+∥x −ˆ
+x(θi−1, ti−1)∥2
+σ2i/n
+1
+,
+(96)
+where ti−1 = (i −1)/n.
+4.12
+Continuous-time Loss L∞(x)
+Eq. 29 claimed that
+DKL (pS (· | x, α) ∥pR(· | θ, α, t)) = DKL
+N
+g(x), Cα−1I
+
+∥P(θ, t) ∗N
+0, Cα−1I
+
+,
+(97)
+18
+
+
+for some embedding function g : X →Y, constant C and distribution pθ over YD with finite mean
+and variance. If g is the identity function, C = 1 and
+P(y | θ, t) = δ(y −ˆ
+x(θ, t)),
+(98)
+then P(θ, t) has finite mean and variance and
+N
+y | g(x), Cα−1I
+
+= N
+y | x, α−1I
+
+= pS (y | x; α) ,
+(99)
+P(y | θ, t) ∗N
+0, Cα−1I
+
+= N
+y | ˆ
+x(θ, t), α−1I
+
+= pR(y | θ, α, t),
+(100)
+so the claim is true and the continuous-time loss from Eq 41 applies, with E[P(θ, t)] = ˆ
+x(θ, t) and
+α(t) as defined in Eq 74, yielding
+L∞(x) = −ln σ1
+E
+t∼U(0,1),pF (θ|x;t)
+∥x −ˆ
+x(θ, t)∥2
+σ2t
+1
+.
+(101)
+4.13
+Pseudocode
+Pseudocode for evaluating the n-step loss Ln(x) and continuous-time loss L∞(x) for continuous
+data is presented in Algorithms 1 and 2, while the sample generation procedure is presented in
+Algorithm 3.
+# Note that θ = {µ, ρ}, but ρ is fully determined by t
+# For our experiments tmin = 1e−6, [xmin, xmax] = [−1, 1]
+function cts output prediction(µ ∈RD, t ∈[0, 1], γ >∈R+, tmin ∈R+, xmin, xmax ∈R)
+if t < tmin then
+ˆ
+x(θ, t) ←0
+else
+Input (µ, t) to network, receive ˆ
+ϵ(θ, t) as output
+ˆ
+x(θ, t) ←µ
+γ −
+q
+1−γ
+γ ˆ
+ϵ(θ, t)
+clip ˆ
+x(θ, t) to [xmin, xmax]
+end if
+Return ˆ
+x(θ, t)
+end function
+Algorithm 1 Discrete-Time Loss Ln(x) for Continuous Data
+Require: σ1 ∈R+, number of steps n ∈N
+Input: continuous data x ∈RD
+i ∼U{1, n}
+t ←i−1
+n
+γ ←1 −σ2t
+1
+µ ∼N (γ x, γ(1 −γ)I)
+ˆ
+x(θ, t) ←cts output prediction(µ, t, γ)
+Ln(x) ←
+n
+
+1−σ2/n
+1
+
+2σ2i/n
+1
+∥x −ˆ
+x(θ, t)∥2
+19
+
+
+Algorithm 2 Continuous-Time Loss L∞(x) for Continuous Data
+Require: σ1 ∈R+
+Input: continuous data x ∈RD
+t ∼U(0, 1)
+γ ←1 −σ2t
+1
+µ ∼N (γ x, γ(1 −γ)I)
+ˆ
+x(θ, t) ←cts output prediction(µ, t, γ)
+L∞(x) ←−ln σ1σ−2t
+1
+∥x −ˆ
+x(θ, t)∥2
+Algorithm 3 Sample Generation for Continuous Data
+Require: σ1 ∈R+, number of steps n ∈N
+µ ←0
+ρ ←1
+for i = 1 to n do
+t ←i−1
+n
+ˆ
+x(θ, t) ←cts output prediction(µ, t, 1 −σ2t
+1 )
+α ←σ−2i/n
+1
+
+1 −σ2/n
+1
+
+y ∼N
+ˆ
+x(θ, t), α−1I
+
+µ ←ρµ+α y
+ρ+α
+ρ ←ρ + α
+end for
+ˆ
+x(θ, 1) ←cts output prediction(µ, 1, 1 −σ2
+1)
+Return ˆ
+x(θ, 1)
+5
+Discretised Data
+This section considers continuous data that has been discretised into K bins. For example, 8-bit
+images are discretised into 256 bins, 16-bit audio is discretised in 216 = 65, 536 bins. This data
+is represented by tiling [−1, 1] into K intervals, each of length 2/K. Let kl, kc and kr denote
+respectively the left, centre and right of interval k, and let {1, K} denote the set of integers from 1
+to K. Then for k ∈{1, K},
+kc = 2k −1
+K
+−1,
+(102)
+kl = kc −1
+K ,
+(103)
+kr = kc + 1
+K .
+(104)
+Let k(x) =
+k(x(1)), . . . , k(x(D))
+
+∈{1, K}D be the vector of the indices of the bins occupied by
+x =
+x(1), . . . , x(D)
+∈RD, and let kl(x), kc(x) and kr(x) be the corresponding vectors of left edges,
+centres and right edges of the bins. If the data has not already been discretised, we set x = kc(x).
+For example if the red channel in an 8-bit RGB image has index 110, it will be represented by the
+20
+
+
+Figure 7: Output distribution for discretised data. For univariate data x discretised into K = 16 bins,
+the green line shows the continuous distribution N
+µx, σ2
+x
+
+that is discretised to yield the output distribution
+pO(x | θ, t), as described in Section 5.1. Bin boundaries are marked with vertical grey lines. The heights of the
+green bars represent the probabilities assigned to the respective bins by pO(x | θ, t). For ease of visualisation
+these heights are rescaled relative to the probability density, as indicated on the right axis. Note the clipping
+at ±1: the area under the dotted green line to the left of −1 is added to the probability of the first bin, the
+area under the dotted green line to the right of 1 is added to the probability of the last bin.
+number 2∗(110)−1
+256
+−1 = −0.14453125. Note that each x(d) therefore lies in the range [ 1
+K −1, 1 −1
+K ]
+and not [−1, 1].
+The input distribution pI(x | θ), prior parameters θ0, sender distribution pS (y | x; α), Bayesian
+update function h(θi−1, y, α), Bayesian update distribution pU(θi | θi−1, x; α), Bayesian flow
+distribution pF (θ | x; t) and accuracy schedule β(t) are all identical to the continuous case described
+in Section 4. It may surprise the reader that the output distribution is discretised while the input,
+sender and receiver distributions are not. We made this choice partly for mathematical convenience
+(Bayesian updates are considerably more complex for discretised distributions; [1]) and partly
+because we suspected that it would easier for the network to interpret continuous means than
+discrete probabilities as input. In a similar vein to our argument for standard priors in Sec. 4.1, we
+remind the reader that the input distribution only serves to inform the network and not directly to
+model the data; all that matters is that the input parameters contain enough information to allow
+the network to make accurate predictions.
+Section 4.11 noted that the level of measurement noise assumed for continuous data should
+inform the choice of standard deviation σ1 for the input distribution at t = 1 (which in turn defines
+the accuracy schedule β(t)). For discretised data a similar role is played by the width of the
+discretisation bins, as these place a natural limit on how precisely the data needs to be transmitted.
+For example, for 8-bit data with 256 bins and hence a bin width of 1/128, setting σ1 = 1e−3
+corresponds to a final input distribution with standard deviation roughly one eighth of the width of
+the bin, which should be precise enough for the network to identify the correct bin with very high
+probability.
+One caveat with discretisation is that calculating the loss has O(K) computational cost, which
+may be prohibitive for very finely discretised data. In any case, the benefits of discretisation tend
+to decrease as the number of bins increases, as we will see in our experiments.
+5.1
+Output Distribution pO(· | θ, t)
+Discretised continuous distributions offer a natural and expressive way to model discretised data
+with neural networks [38]. As in Section 4.7, the network outputs Ψ(θ, t) are not used to predict
+21
+
+
+x directly, but rather to model the Gaussian noise vector e used to generate the mean sample µ
+passed as input to the network.
+First Ψ(θ, t) is split into two length D vectors, µϵ and ln σϵ. Then these are transformed to µx
+and σx using
+µx =
+(
+0
+if t < tmin,
+µ
+γ(t) −
+q
+1−γ(t)
+γ(t) µϵ
+otherwise,
+(105)
+σx =
+(
+1
+if t < tmin,
+q
+1−γ(t)
+γ(t) exp(ln σϵ)
+otherwise.
+(106)
+For each d ∈{1, D}, define the following univariate Gaussian cdf
+F
+
+x | µ(d)
+x , σ(d)
+x
+
+= 1
+2
+"
+1 + erf
+ 
+x −µ(d)
+x
+σ(d)
+x
+√
+2
+!#
+,
+(107)
+and clip at [−1, 1] to obtain
+G
+
+x | µ(d)
+x , σ(d)
+x
+
+=
+
+
+
+
+
+
+
+0
+if x ≤−1,
+1
+if x ≥1,
+F
+
+x | µ(d)
+x , σ(d)
+x
+
+otherwise.
+(108)
+Then, for k ∈{1, K},
+p(d)
+O (k | θ; t) def
+= G(kr | µ(d)
+x , σ(d)
+x ) −G(kl | µ(d)
+x , σ(d)
+x ),
+(109)
+and hence
+pO(x | θ,t) =
+D
+Y
+d=1
+p(d)
+O
+
+k(x(d)) | θ; t
+
+.
+(110)
+5.2
+Receiver Distribution pR(· | θ; t, α)
+Substituting Eq. 110 and Eq. 86 into Eq. 4 gives
+pR(y | θ; t, α) =
+E
+pO(x′|θ,t) N
+
+y(d) | kc(x′), α−1I
+
+(111)
+=
+D
+Y
+d=1
+Z
+x′ dx′p(d)
+O
+k(x′) | θ; t
+
+N
+
+y(d) | kc(x′), α−1
+(112)
+=
+D
+Y
+d=1
+K
+X
+k=1
+p(d)
+O (k | θ; t)N
+
+y(d) | kc, α−1
+.
+(113)
+22
+
+
+Figure 8: Sender, output and receiver distributions for discretised data. For data x discretised
+into 8 bins, the three plots depict the sender distribution (red line), the discretised output distribution (green
+bars; heights reflect the probabilities assigned to each bin, rescaled as in Figure 7) and receiver distribution
+(blue line) for progressively increasing values of α, and for progressively more accurate predictions of x (both
+of which typically happen as t increases). Also shown are the continuous distribution N(x | µx, σ2
+x) (dotted
+green line) which is discretized to create the output distribution and the continuous receiver distribution from
+Section 4 (dashed orange line). Bin boundaries are marked with vertical grey lines. Note the KL divergences
+printed in the top right: taking discretisation into account leads to a lower KL due to the density “bumps” at
+the bin centres where x could be. The advantage of discretisation becomes more pronounced as the prediction
+gets closer to x and more of the probability mass is concentrated in the correct bin.
+23
+
+
+5.3
+Reconstruction Loss Lr(x)
+The reconstruction loss for discretised data is
+Lr(x) = −
+E
+pF (θ|x,1) ln pO(x | θ; 1)
+(114)
+= −
+E
+pF (θ|x,1)
+D
+X
+d=1
+ln p(d)
+O
+
+k(x(d)) | θ; 1
+
+.
+(115)
+5.4
+Discrete-time Loss Ln(x)
+From Eqs. 86 and 113,
+DKL (pS (· | x, αi) ∥pR(· | θi−1; ti−1, αi))
+(116)
+= DKL
+ 
+N
+x, α−1
+i I
+
+∥
+D
+Y
+d=1
+K
+X
+k=1
+p(d)
+O (k | θi−1, ti−1)N
+kc, α−1
+i
+
+!
+,
+(117)
+which cannot be calculated in closed form, but can be estimated with Monte-Carlo sampling.
+Substituting into Eq. 24,
+Ln(x) = n
+E
+i∼U{1,n},pF (θ|x;ti−1),N(y|x,α−1
+i
+I)
+ln N
+y | x, α−1
+i I
+
+(118)
+−
+D
+X
+d=1
+ln
+ K
+X
+k=1
+p(d)
+O (k | θ, ti−1)N
+
+y(d) | kc, α−1
+i
+!
+.
+(119)
+5.5
+Continuous-time Loss L∞(x)
+Justifying the claim made in Eq. 29 follows almost the same reasoning here as in Section 4.12, with
+C = 1 and g the identity function. The only difference is that
+P(y | θ; t) =
+D
+Y
+d=1
+K
+X
+k=1
+p(d)
+O (k | θ, t)δ(y(d) −kc),
+(120)
+which clearly has finite variance and mean. Since
+P(y | θ, t) ∗N
+0, Cα−1I
+
+= pR(y | θ, α, t),
+(121)
+the claim holds and the continuous time loss from Eq 41 can be applied with
+E[P(θ, t)] =
+ K
+X
+k=1
+p(1)(k | θ, t)kc, . . . ,
+K
+X
+k=1
+p(D)(k | θ, t)kc
+!
+def
+= ˆ
+k(θ, t),
+(122)
+and α(t) as defined in Eq 74, yielding
+L∞(x) = −ln σ1
+E
+t∼U(0,1),pF (θ|x;t)
+
+
+
+x −ˆ
+k(θ, t)
+
+
+
+2
+σ2t
+1
+.
+(123)
+Note that ˆ
+k(θ, t) is a function of the complete discretised distribution pO(x | θ, t), hence L∞(x)
+depends on both µx and σx, and not only on µx, as for continuous data. This also means that
+calculating L∞(x) has O(K) computational cost for discretised data.
+24
+
+
+5.6
+Pseudocode
+Pseudocode for evaluating the discrete-time loss Ln(x) and continuous-time loss L∞(x) for discretised
+data is presented in Algorithms 4 and 5, while sample generation is presented in Algorithm 6.
+function discretised cdf(µ ∈R, σ ∈R+, x ∈R)
+F(x) ←1
+2
+h
+1 + erf
+
+x−µ
+σ
+√
+2
+i
+G(x) ←
+
+
+
+
+
+0
+if x ≤−1
+1
+if x ≥1
+F(x)
+otherwise
+Return G(x)
+end function
+# For our experiments tmin = 1e−6
+# kl = 2(k−1)
+K
+−1, kr = 2k
+K −1
+function discretised output distribution(µ ∈RD, t ∈[0, 1], K ∈N, γ ∈R+, tmin ∈R+).
+if t < tmin then
+µx ←0
+σx ←1
+else
+Input (µ, t) to network, receive (µϵ, ln σϵ) as output
+µx ←µ
+γ −
+q
+1−γ
+γ
+µϵ
+σx ←
+q
+1−γ
+γ
+exp(ln σϵ)
+end if
+for d ∈{1, D}, k ∈{1, K} do
+p(d)
+O (k | θ; t) ←discretised cdf(µ(d)
+x , σ(d)
+x , kr) −discretised cdf(µ(d)
+x , σ(d)
+x , kl)
+end for
+Return pO(· | θ; t)
+end function
+25
+
+
+Algorithm 4 Discrete-Time Loss Ln(x) for Discretised Data
+# kc = 2k−1
+K
+−1
+Require: σ1 ∈R+, number of steps n ∈N, number of bins K ∈N
+Input: discretised data x ∈[ 1
+K −1, 1 −1
+K ]D
+i ∼U{1, n}
+t ←i−1
+n
+γ ←1 −σ2t
+1
+µ ∼N (γ x, γ(1 −γ)I)
+α ←σ−2i/n
+1
+
+1 −σ2/n
+1
+
+y ∼N
+x, α−1I
+
+pO(· | θ; t) ←discretised output distribution(µ, t, K, γ)
+Ln(x) ←n
+
+ln N
+y | x, α−1I
+
+−P
+d ln
+P
+k p(d)
+O (k | θ; t)N
+y(d) | kc, α−1
+Algorithm 5 Continuous-Time Loss L∞(x) for Discretised Data
+Require: σ1 ∈R+, number of bins K ∈N
+Input: discretised data x ∈[ 1
+K −1, 1 −1
+K ]D
+t ∼U(0, 1)
+γ ←1 −σ2t
+1
+µ ∼N (γ x, γ(1 −γ)I)
+pO(· | θ; t) ←discretised output distribution(µ, t, K, γ)
+ˆ
+k(θ, t) ←
+P
+k p(1)
+O (k | θ; t)kc, . . . , P
+k p(D)
+O (k | θ; t)kc
+
+L∞(x) ←−ln σ1σ−2t
+1
+
+
+
+x −ˆ
+k(θ, t)
+
+
+
+2
+Algorithm 6 Sample Generation for Discretised Data
+# kc =
+
+k(1)
+c , . . . , k(D)
+c
+
+Require: σ1 ∈R+, number of steps n ∈N, number of bins K ∈N
+µ ←0
+ρ ←1
+for i = 1 to n do
+t ←i−1
+n
+k ∼discretised output distribution(µ, t, K, 1 −σ2t
+1 )
+α ←σ−2i/n
+1
+
+1 −σ2/n
+1
+
+y ∼N
+kc, α−1I
+
+µ ←ρµ+α y
+ρ+α
+ρ ←ρ + α
+end for
+k ∼discretised output distribution(µ, 1, K, 1 −σ2
+1)
+Return kc
+26
+
+
+6
+Discrete Data
+We now consider discrete data in which no meaningful order or distance exists between the classes,
+unlike the discretised continuous data covered in the previous section. Some obvious examples are
+text characters, classification labels or any binary data. In this context the data is represented as a
+D dimensional vector of class indices: x =
+x(1), . . . , x(D)
+∈{1, K}D, where {1, K} is the set of
+integers from 1 to K.
+6.1
+Input Distribution pI(· | θ)
+For discrete data, the input distribution is a factorised categorical over the class indices. Let
+θ =
+θ(1), . . . , θ(D)
+∈[0, 1]KD with θ(d) =
+
+θ(d)
+1 , . . . , θ(d)
+K
+
+∈∆K−1, where θ(d)
+k
+is the probability
+assigned to class k for variable d. Then
+pI(x | θ) =
+D
+Y
+d=1
+θ(d)
+x(d).
+(124)
+The input prior is uniform with
+θ0 = 1
+K ,
+(125)
+where
+1
+K is the length KD vector whose entries are all
+1
+K . We chose a uniform prior—rather than
+an empirical prior fit to the training data—for the same reasons we chose a standard normal prior
+for continuous data: it’s mathematically simpler, and the disparity between the true prior and the
+simple prior can easily be corrected by the network.
+6.2
+Output Distribution pO(· | θ; t)
+Given data x, network inputs θ, t and corresponding network outputs Ψ(θ, t) =
+Ψ(1)(θ, t), . . . , Ψ(D)(θ, t)
+
+∈RKD, the output distribution for discrete data is as follows:
+p(d)
+O (k | θ; t) =
+
+softmax(Ψ(d)(θ, t))
+
+k ,
+(126)
+pO(x | θ; t) =
+D
+Y
+d=1
+p(d)
+O (x(d) | θ; t).
+(127)
+Note that for binary data only the probability θ(d)
+1
+that k = 1 is fed into the network, on the grounds
+that the probability of k = 2 can easily be inferred from θ(d)
+2
+= 1 −θ(d)
+1 . The output distribution for
+binary data is determined by applying the logistic sigmoid function elementwise to the length D
+output vector to get the probability for k = 1:
+p(d)
+O (1 | θ; t) = σ
+
+Ψ(d)(θ, t))
+
+,
+(128)
+where
+σ(x) =
+1
+1 −e−x ,
+(129)
+27
+
+
+then inferring the probabilities for k = 2 from
+p(d)
+O (2 | θ; t) = 1 −p(d)
+O (1 | θ; t).
+(130)
+In principle one class could also be removed from the inputs and outputs when K > 2 and inferred
+from the others. However this would require the network to internalise a slightly more sophisticated
+inference procedure that could potentially slow down learning. We therefore followed deep-learning
+convention and included a redundant input and output unit for K > 2.
+All probabilities are rescaled to the range [−1, 1] by multiplying by two then subtracting one
+before feeding them into the network.
+6.3
+Sender Distribution pS (· | x; α)
+Given ω ∈[0, 1], and a vector of D class indices k =
+k(1), . . . , k(D)
+∈{1, K}D, let
+p(k(d) | x(d); ω) def
+= 1 −ω
+K
++ ωδk(d)x(d),
+(131)
+where δij is the Kronecker delta function.
+Clearly p(k(d) | x(d); ω) ≥0 ∀k and PK
+k=1 p(k(d) |
+x(d); ω) = 1, so the vector
+a(x(d), ω) def
+=
+
+p(1 | x(d); ω), . . . , p(K | x(d); ω)
+
+,
+(132)
+defines a valid distribution over K classes. To simplify notation we will from now on drop the
+superscripts and refer to x(d) as x, p(k(d) | x(d); ω) as p(k | x; ω) and so on, except where necessary
+to remove ambiguity.
+Consider a vector of integer counts c = (c1, . . . , cK) ∈{1, m}K, corresponding to the number
+of times each of the K classes is observed among m independent draws from a(x, ω). Then the
+probability of observing c is given by the following multinomial distribution:
+p(c | x, ω) = Multi(m, a(x, ω))
+(133)
+=
+m!
+c1! . . . cK!
+K
+Y
+k=1
+(p(k | x; ω))ck
+(134)
+=
+m!
+c1! . . . cK!
+K
+Y
+k=1
+1 −ω
+K
++ ωδkd
+ck
+.
+(135)
+Now consider the fraction ck/m of observations of class k in c. Clearly
+lim
+m→∞
+ck
+m = p(k | x; ω),
+(136)
+meaning that for any finite ω it would be possible to deduce from c what the value of x is if m
+is sufficiently large. However as ω shrinks, p(k | x; ω) becomes closer to uniform, meaning that a
+larger m is required to unambigously identify x from c. By defining the accuracy α def
+= mω2 and
+sending m →∞(and hence ω →0 for any finite α), p(c | x, ω) can therefore be used to define a
+continuous-valued sender distribution that smoothly varies from totally uninformative at α = 0 to
+totally informative as α →∞, like the sender distribution for continuous data.
+28
+
+
+It can be proved from the central limit theorem that for any set of discrete probabilities
+p = {p1, . . . , pK}, where 0 < pk < 1 ∀k, that if c ∼Multi(m, p) then in the limit m →∞the
+following result holds [8]:
+c −mp
+√mp ∼N (0, I) ,
+(137)
+where I is the K × K identity matrix. Therefore
+lim
+m→∞p(ck | x, ω) = N (ck | mp(k | x; ω), mp(k | x; ω))
+(138)
+=
+1
+p
+2πmp(k | x; ω)
+exp
+ 
+−[ck −mp(k | x, ω)]2
+2mp(k | x; ω)
+!
+.
+(139)
+Now define
+ξ def
+= 1 + ωK
+1 −ω.
+(140)
+And the length K sender sample y = (y1, . . . , yK) as
+yk
+def
+=
+
+ck −m
+K
+
+ln ξ.
+(141)
+Note that y, unlike x, is continuous (Y = RK, X = {1, K}), and that
+c −m
+K
+
+measures the number
+of times each class is observed, minus the average number of observations per class. Intuitively, y
+provides information about the relative concentration of the classes among the counts, with (since
+ln ξ > 0) positive values for classes observed more frequently than the mean and negative values for
+those observed less frequently than the mean. As mω2 grows the concentration increases around
+the true class, and hence y become more informative about x.
+Rearranging Eq. 141,
+ck = yk
+ln ξ + m
+K
+(142)
+=
+⇒dck
+dyk
+=
+1
+ln ξ ,
+(143)
+which we can use for the following change of variables:
+p(yk | x, ω) =
+
+
+
+
+dck
+dyk
+
+
+
+ p(ck | x, ω)
+(144)
+=
+1
+ln ξ
+p
+2πmp(k | x, ω)
+exp
+
+
+
+−
+h
+yk
+ln ξ + m
+K −mp(k | x, ω)
+i2
+2mp(k | x, ω)
+
+
+,
+(145)
+where we have used the fact that ξ ≥1 and hence dck
+dyk ≥0. Recall that α = mω2 and hence m = α
+ω2 ,
+which can be substituted into the above to yield
+p(yk | x, ω) =
+1
+1
+ω ln ξ
+1
+p
+2παp(k | x, ω)
+exp
+
+
+
+−
+h
+yk
+1
+ω ln ξ + α
+ω
+ 1
+K −p(k | x, ω)
+i2
+2αp(k | x, ω)
+
+
+.
+(146)
+29
+
+
+Substituting from Eq. 131,
+1
+K −p(k | x, ω) = ω
+ 1
+K −δkx,
+
+,
+(147)
+and hence
+p(yk | x, ω) =
+1
+1
+ω ln ξ
+1
+p
+2παp(k | x, ω)
+exp
+
+
+
+−
+h
+yk
+1
+ω ln ξ −α
+δkx −1
+K
+i2
+2αp(k | x, ω)
+
+
+.
+(148)
+Applying the identity ln(1 + x) = P∞
+n=1
+(−1)n−1
+n
+xn for |x| < 1 to ln ξ = ln
+
+1 + ωK
+1−ω
+
+it can be seen
+that
+ln ξ ∈ωK
+1 −ω + O(ω2),
+(149)
+and hence
+lim
+ω→0
+1
+ω ln ξ = K.
+(150)
+Furthermore, it follows directly from Eq. 131 that
+lim
+ω→0 p(k | x, ω) = 1
+K ∀k ∈{1, K}.
+(151)
+Now define
+pS (yk | x; α) def
+= lim
+ω→0 p(yk | x, ω).
+(152)
+Plugging Eq. 150 and 151 into Eq. 148,
+pS (yk | x; α) =
+1
+K
+q
+2πα 1
+K
+exp
+ 
+−
+ yk
+K −α
+δkx −1
+K
+2
+2α 1
+K
+!
+(153)
+=
+1
+√
+2παK
+exp
+ 
+−[yk −α (Kδkx −1)]2
+2αK
+!
+(154)
+= N (α (Kδkx −1) , αK) .
+(155)
+Restoring the superscript,
+pS
+
+y(d) | x(d); α
+
+= N (α (Kex(d) −1) , αKI) ,
+(156)
+where 1 is a vector of ones, I is the identity matrix and ej ∈RK is the projection from the class
+index j to the length K one-hot vector defined by (ej)k = δjk, and therefore
+pS (y | x; α) = N (y | α (Kex −1) , αKI) ,
+(157)
+where ex
+def
+= (ex(1), . . . , ex(D)) ∈RKD.
+30
+
+
+6.4
+Receiver Distribution pR(· | θ; t, α)
+Substituting Eq. 127 and Eq. 157 into Eq. 4 gives the following receiver distribution for dimension
+d:
+p(d)
+R (y(d) | θ; t, α) =
+K
+X
+k=1
+p(d)
+O (k | θ; t)N (α (Kek −1) , αKI) ,
+(158)
+pR(y | θ; t, α) =
+D
+Y
+d=1
+p(d)
+R (y(d) | θ; t, α).
+(159)
+6.5
+Bayesian Update Function h(θi−1, y, α)
+Recall from Section 6.1 that (θi−1)(d)
+k
+is the probability assigned to x(d) = k by p(x(d) | θi−1).
+Dropping the superscript and returning to the count distribution p(c | x, ω) defined in Eq. 133, the
+posterior probability that x = k after observing c is
+p(k | c; ω) =
+p(c | k; ω)(θi−1)k
+PK
+k′=1 p(c | k′; ω)(θi−1)k′
+.
+(160)
+Substituting Eq. 135 into Eq. 160 and cancelling terms in the enumerator and denominator,
+p(k | c; ω) =
+ 1−ω
+K
+m−ck  1−ω
+K + ω
+ck (θi−1)k
+PK
+k′=1
+ 1−ω
+K
+m−ck′  1−ω
+K + ω
+ck′ (θi−1)k′
+(161)
+=
+ 1−ω
+K
+m h
+1 + ωK
+1−ω
+ick (θi−1)k
+ 1−ω
+K
+m PK
+k′=1
+h
+1 + ωK
+1−ω
+ick′
+(θi−1)k′
+(162)
+=
+h
+1 + ωK
+1−ω
+ick (θi−1)k
+PK
+k′=1
+h
+1 + ωK
+1−ω
+ick′
+(θi−1)k′
+(163)
+=
+ξck(θi−1)k
+PK
+k′=1 ξck′(θi−1)k′
+.
+(164)
+Now define
+h(θ, y) def
+=
+eyθ
+PK
+k=1 eykθk
+.
+(165)
+Substituting the definition of yk from Eq. 141 into the definition of h(θ, y) from Eq. 165,
+(h(θi−1, y))k =
+exp(−m
+K ln ξ) exp(ck ln ξ)(θi−1)k
+exp(−m
+K ln ξ) PK
+k′=1 exp(ck′ ln ξ)(θi−1)k′
+(166)
+=
+exp(ln ξck)(θi−1)k
+PK
+k′=1 exp(ln ξck′)(θi−1)k′
+(167)
+=
+ξck(θi−1)k
+PK
+k′=1 ξck′(θi−1)k′
+,
+(168)
+(169)
+31
+
+
+and hence, from Eq. 164,
+h(θi−1, y)k = p(k | c; ω).
+(170)
+Therefore in the limit m →∞with mω2 = α, the stochastic parameter update from θi−1 to θi
+induced by drawing c from multi(m, a(x, ω)) can be sampled by first drawing y from pS (· | x, α)
+then setting θi = h(θi−1, y). Hence the Bayesian update function is
+h(θi−1, y, α) def
+=
+eyθi−1
+PK
+k=1 eyk(θi−1)k
+,
+(171)
+where the redundant parameter α has been included for consistency with the update function for
+continuous data.
+6.6
+Bayesian Update Distribution pU(· | θi−1, x; α)
+Substituting Eqs. 157 and 171 into Eq. 6,
+pU (θ | θi−1, x; α) =
+E
+N(y|α(Kex−1),αKI) δ
+ 
+θ −
+eyθi−1
+PK
+k=1 eyk(θi−1)k
+!
+.
+(172)
+6.7
+Additive Accuracies
+It follows from the definition of the update distribution that if ya is drawn from pS (· | x; αa) then
+θi−1 = h(ya, θi−2) is drawn from p(· | θi−2, x; αa). Furthermore, if yb is drawn from pS (· | x; αb) then
+θi = h(yb, θi−1) = h(yb, h(ya, θi−2)) is drawn from EpU (θi−1|θi−2,x;αa) pU (θi | θi−1, x; αb). Substituting
+the definition of h from Eqn 165,
+h(yb, h(ya, θi−2)) =
+exp(yb)
+exp(ya)θi−2
+PK
+k′=1 exp((ya)k′)(θi−2)k′
+PK
+k=1 exp ((yb)k)
+exp((ya)k)(θi−2)k
+PK
+k′=1 exp((ya)k′)(θi−2)k′
+(173)
+=
+exp(yb) exp(ya)θi−2
+PK
+k=1 exp ((yb)k) exp ((ya)k) (θi−2)k
+(174)
+=
+exp(ya + yb)θi−2
+PK
+k=1 exp ((ya + yb)k) (θi−2)k
+(175)
+= h(ya + yb, θi−2).
+(176)
+From Eqn. 156
+ya ∼N (αa (Kex −1) , αaKI) ,
+(177)
+yb ∼N (αb (Kex −1) , αbKI)
+(178)
+(179)
+and hence, from Identity 61
+ya + yb ∼N ((αa + αb) (Kex −1) , (αa + αb)KI) .
+(180)
+32
+
+
+Therefore, if y is drawn from pS (· | x; αa + αb) and θi = h(y, θi−2) then θi is drawn from
+EpU (θi−1|θi−2,x;αa) pU (θi | θi−1, x; αb) and
+E
+pU (θi−1|θi−2,x;αa) pU (θi | θi−1, x; αb) = pU (θi | θi−2, x; αa + αb),
+(181)
+as required.
+6.8
+Accuracy Schedule β(t)
+As with continuous data, the guiding heuristic for β(t) was to decrease the expected entropy of
+the input distribution linearly with t. In the continuous case, where the entropy is a deterministic
+function of σ2, applying the heuristic was straightforward; in the discrete case an explicit computation
+of EpF (θ|x;t) H [pI(x | θ)] would be needed. We were unable to derive an analytic expression for this
+term, but found that
+β(t) = t2β(1)
+(182)
+was a reasonable approximation, with β(1) determined empirically for each experiment. Therefore
+α(t) = dβ(t)
+dt
+= β(1)2t.
+(183)
+6.9
+Bayesian Flow Distribution pF (· | x; t)
+Substituting Eq. 172 into Eq. 10,
+pF (θ | x; t) =
+E
+N(y|β(t)(Kex−1),β(t)KI) δ
+ 
+θ −
+eyθ0
+PK
+k=1 eyk(θ0)k
+!
+.
+(184)
+Since the prior is uniform with θ0 = 1
+K , this reduces to
+pF (θ | x; t) =
+E
+N(y|β(t)(Kex−1),β(t)KI) δ (θ −softmax(y)) ,
+(185)
+which can be sampled by drawing y from N (β(t) (Kex −1) , β(t)KI) then setting θ = softmax(y).
+The sender distribution for discrete data can therefore be interpreted as a source of softmax logits
+for the Bayesian flow distribution; the higher the sender accuracy α is, the larger in expectation the
+logits corresponding to x will be in y, hence the closer θ will be to ex and the more information the
+network will gain about x.
+6.10
+Reconstruction Loss Lr(x)
+The reconstruction loss for discrete data is
+Lr(x) = −
+E
+pF (θ|x,1) ln pO(x | θ; 1).
+(186)
+33
+
+
+Figure 9: Accuracy schedule vs. expected entropy for discrete data. The surface plot shows the
+expectation over the parameter distribution p(θ | x; β) of the entropy of the categorical input distribution
+p(x | θ) for K = 2 to 30 and √β = 0.01 to 3. The red and cyan lines highlight the entropy curves for 2 and
+27 classes, the two values that occur in our experiments. The red and cyan stars show the corresponding
+values we chose for
+p
+β(1).
+6.11
+Discrete-time Loss Ln(x)
+From Eqs. 156 and 158,
+DKL
+
+pS
+
+· | x(d); α
+
+∥p(d)
+R (· | θ; t, α)
+
+(187)
+= DKL
+ 
+N (α (Kex(d) −1) , αKI) ∥
+K
+X
+k=1
+p(d)
+O (k | θ; t)N (α (Kek −1) , αKI)
+!
+.
+(188)
+Therefore, substituting into Eq. 24,
+Ln(x) = n
+E
+i∼U{1,n},p(θ|x;ti−1),N(y|αi(Kex−1),αiKI) ln N (y | αi (Kex −1) , αiKI)
+(189)
+−
+D
+X
+d=1
+ln
+ K
+X
+k=1
+p(d)
+O (k | θ; ti−1)N
+
+y(d) | αi (Kek −1) , αiKI
+!
+,
+(190)
+34
+
+
+Figure 10: Bayesian flow for discrete data. For K = 3, the input distribution parameters θ = (θ1, θ2, θ3)
+can be visualised as points on the 2-simplex, with the data x corresponding to the bottom left corner. For
+the accuracy schedule β(t) from Eq. 182, the white line shows a single input parameter trajectory starting
+from θ0 =
+ 1
+3, 1
+3, 1
+3
+
+and evolving under the Bayesian update distribution pU (θi | θi−1; x, β(ti) −β(ti−1))
+from Eq. 172, superimposed on log-scale heatmaps of the Bayesian flow distribution pF (θ | x; t) from Eq. 185,
+plotted at regular intervals from t = 0.02 to 1.
+where, from Eq. 182,
+αi = β(ti) −β(ti−1)
+(191)
+= β(1)
+  i
+n
+2
+−
+i −1
+n
+2!
+(192)
+= β(1)
+2i −1
+n2
+
+.
+(193)
+35
+
+
+Figure 11: Bayesian flow for binary data. For the input probability p1 of class one, the plot shows
+several parameter trajectories starting from p1 = 0.5 at t = 0 and evolving under the Bayesian update
+distribution to t = 1, superimposed on a log-scale heatmap of the Bayesian flow distribution. β(1) = 4 in this
+plot. Note that both here and in Figure 10 the convergence towards the data appears slower and noisier than
+the equivalent trajectories for continuous data in Figure 4. This is a fundamental consequence of discreteness:
+since all points in X are equidistant the input distributions cannot concentrate on values close to x as the
+trajectories progress.
+6.12
+Continuous-time Loss L∞(x)
+Let
+v def
+= y
+α + 1,
+(194)
+and apply Identity 51 to see that if
+y(d) ∼pS
+
+· | x(d); α
+
+= N (α(Kex(d) −1), αKI) ,
+(195)
+then
+v(d) ∼N
+
+Kex(d), K
+α I
+
+,
+(196)
+and similarly if
+y(d) ∼p(d)
+R (· | θ; t, α) =
+K
+X
+k=1
+p(d)
+O (k | θ; t)N
+
+y(d) | α (Kek −1) , αKI
+
+,
+(197)
+then
+v(d) ∼
+K
+X
+k=1
+p(d)
+O (k | θ; t)N
+
+Kek, K
+α I
+
+(198)
+= K
+K
+X
+k=1
+p(d)
+O (k | θ; t)δ(· −ek) ∗N
+
+0, K
+α I
+
+.
+(199)
+36
+
+
+The Kullback-Leibler divergence is invariant under affine transformations of variables, hence
+DKL
+
+pS
+
+· | x(d); α
+
+∥p(d)
+R (· | θ; t, αi)
+
+(200)
+= DKL
+ 
+N
+
+Kex(d), K
+α I
+
+∥
+K
+X
+k=1
+p(d)
+O (k | θ; t)Kδ(· −ek) ∗N
+
+0, K
+α I
+!
+.
+(201)
+Now set C = K, g(x(d)) = Kex(d) and
+P (d)(θ, t) = K
+K
+X
+k=1
+p(d)
+O (k | θ; t)δ(· −ek),
+(202)
+which has finite variance and the following finite expectation
+E[P (d)(θ, t)] = Kˆ
+e(d)(θ, t),
+(203)
+where
+ˆ
+e(d)(θ, t) def
+=
+K
+X
+k=1
+p(d)
+O (k | θ; t)ek.
+(204)
+The conditions in Eq. 29 are therefore satisfied and Eqs. 203 and 183 can be substituted into Eq. 41
+to yield
+L∞(x) = Kβ(1)
+E
+t∼U(0,1),pF (θ|x,t) t∥ex −ˆ
+e(θ, t)∥2,
+(205)
+where
+ˆ
+e(θ, t) def
+=
+
+ˆ
+e(1)(θ, t), . . . ,ˆ
+e(D)(θ, t)
+
+.
+(206)
+6.13
+Pseudocode
+Pseudocode for evaluating the discrete-time loss Ln(x) and continuous-time loss L∞(x) for discrete
+data is presented in Algorithms 7 and 8, while sample generation is presented in Algorithm 9.
+function discrete output distribution(θ ∈[0, 1]KD, t ∈[0, 1])
+Input (θ, t) to network, receive Ψ(θ, t) as output
+for d ∈{1, D} do
+if k = 2 then
+p(d)
+O (1 | θ; t) ←σ
+Ψ(d)(θ, t)
+
+p(d)
+O (2 | θ; t) ←1 −p(d)
+O (1 | θ; t)
+else
+p(d)
+O (· | θ; t) ←softmax(Ψ(d)(θ, t))
+end if
+end for
+Return pO(· | θ; t)
+end function
+37
+
+
+Algorithm 7 Discrete-Time Loss Ln(x) for Discrete Data
+Require: β(1) ∈R+, number of steps n ∈N, number of classes K ∈N
+Input: discrete data x ∈{1, K}D
+i ∼U{1, n}
+t ←(i −1)/n
+β ←β(1)t2
+y′ ∼N (β (Kex −1) , βKI)
+θ ←softmax(y′)
+pO(· | θ; t) ←discrete output distribution(θ, t)
+α ←β(1)
+ 2i−1
+n2
+
+y ∼N (α (Kex −1) , αKI)
+Ln(x) ←n
+
+ln N (y | α (Kex −1) , αKI) −P
+d ln
+P
+k p(d)
+O (k | θ; t)N
+y(d) | α (Kek −1) , αKI
+
+Algorithm 8 Continuous-Time Loss L∞(x) for Discrete Data
+Require: β(1) ∈R+, number of classes K ∈N
+Input: discrete data x ∈{1, K}D
+t ∼U(0, 1)
+β ←β(1)t2
+y ∼N (β (Kex −1) , βKI)
+θ ←softmax(y)
+pO(· | θ; t) ←discrete output distribution(θ, t)
+ˆ
+e(θ, t) ←
+P
+k p(1)
+O (k | θ; t)ek, . . . , P
+k p(D)
+O (k | θ; t)ek
+
+L∞(x) ←Kβ(1)t ∥ex −ˆ
+e(θ, t)∥2
+Algorithm 9 Sample Generation for Discrete Data
+Require: β(1) ∈R+, number of steps n ∈N, number of classes K ∈N
+θ ←
+ 1
+K
+
+for i = 1 to n do
+t ←i−1
+n
+k ∼discrete output distribution(θ, t)
+α ←β(1)
+ 2i−1
+n2
+
+y ∼N (α (Kek −1) , αKI)
+θ′ ←eyθ
+θ ←
+θ′
+P
+k θ′
+k
+end for
+k ∼discrete output distribution(θ, 1)
+Return k
+38
+
+
+Model
+Dynamically Binarized MNIST
+CIFAR-10
+Improved DDPM [28]
+2.94
+NVAE [49]
+78.01
+2.91
+PixelVAE++† [35]
+78.00
+2.90
+Locally Masked PixelCNN† [15]
+77.58
+2.89
+Image Transformer† [30]
+2.89
+DDPM++ [16]
+2.88
+LSGM [50]
+2.87
+VDVAE [3]
+2.87
+Sparse Transformer† [4]
+2.80
+Reflected Diffusion [23]
+2.68
+VDM [17]
+2.65
+ARDM-Upscale 4 [13]
+2.64
+BFN
+77.87
+2.66
+CR-NVAE* [40]
+76.93
+2.51
+VDM* [17]
+2.49
+Table 1: Comparison of dynamically binarized MNIST and CIFAR-10 results with other
+methods. The best published results for both datasets (*) use data augmentation for regularization. Results
+for models marked with (†) are exact values; all other results are upper bounds.
+n-steps
+10
+25
+50
+100
+784
+1000
+∞
+NPI
+95.21
+84.40
+81.06
+79.46
+78.02
+78.07
+77.87
+Table 2: Dynamically binarized MNIST results. NPI is nats per image averaged over 2,000 passes
+through the test set with Ln(x) or L∞(x) sampled once per test image per pass. The reconstruction loss
+Lr(x) (included in NPI) was 0.46. 784 is the total number of pixels per image, hence the number of steps
+required to generate an image with an autoregressive model.
+7
+Experiments
+We evaluated Bayesian Flow Networks (BFNs) on the following generative benchmarks: CIFAR-10
+(32×32 8-bit color images), dynamically binarized MNIST (28×28 binarized images of handwritten
+digits) and text8 (length 256 character sequences with a size 27 alphabet). The continuous (Sec. 4)
+and discretised (Sec. 5) versions of the system were compared on CIFAR-10, while the discrete
+version (Sec. 6) was applied to the other datasets. In all cases, the network was trained using
+the continuous-time loss L∞(x), with the discrete-time loss Ln(x) evaluated for testing only, with
+various values of n. Standard network architectures and training algorithms were used throughout to
+allow for direct comparison with existing methods. Because the focus of this paper is on probabilistic
+modelling rather than image generation, FID scores were not calculated. However, examples of
+generated data are provided for all experiments.
+39
+
+
+(a) Test Data
+(b) Generated Data
+Figure 12: MNIST real and generated data. Samples generated with 100 steps.
+7.1
+Dynamically Binarized MNIST
+Data.
+The binarized MNIST benchmark data was originally created from the MNIST dataset
+of handwritten images [20] by treating the grayscale pixel intensities as Bernoulli probabilities
+and sampling a particular binarization [36] which is held fixed during training. In recent years, a
+variant of the same benchmark has become more popular, with a new binarization sampled from
+the probabilities for every training batch. The two are not comparable, as the latter, which we refer
+to as dynamically binarized MNIST, effectively has a larger training set and hence gives better test
+set performance. All our experiments and the results referenced from the literature use dynamically
+binarized MNIST.
+Setup.
+The network architecture was based on a U-Net introduced for diffusion models [28].
+Starting from the hyperparameters used for the CIFAR-10 dataset (see Appendix A in the above
+reference), we made the following modifications: the number of resblocks was reduced from three
+to two and the layer widths were reduced from [C, 2C, 2C, 2C] to [C, 2C, 2C] with C = 128. Fi-
+nally, the input and output of the standard network were concatenated and projected back to
+the output size. 600 randomly selected training images (1% of the training set) were used as a
+validation set. The optimiser was AdamW [22] with learning rate 0.0001, weight decay 0.01 and
+(β1, β2) = (0.9, 0.98). Dropout was used with probability 0.5, the training batch size was 512, and
+β(1) was set to 3 (see Sec. 6.8). The network was trained for 150 000 weight updates until early stop-
+ping. An exponential moving average of model parameters with a decay rate of 0.9999 was used for
+evaluation and sample generation. The total number of learnable parameters was approximately 25M.
+Results.
+As can be seen from Table 1, BFN is close to state-of-the-art for this task with no data
+augmentation. Table 2 shows the expected inverse relationship between loss and number of steps.
+Direct optimisation of the n-step loss would likely lead to reduced loss for low values of n; however
+40
+
+
+(a) Input Distribution
+(b) Output Distribution
+Figure 13: MNIST Input and output distributions. For two test set images the figure shows the white
+pixel probability at 20 steps evenly spaced between t = 0 and t = 1/3. Note how the input probabilities are
+initially uniform whereas the output distribution initially predicts a superposition of multiple digits, closely
+matching the per-pixel marginal prior over the training set: this supports our belief that the network learns
+to correct for the uniform prior in the input distribution. Also note that the output distribution is much
+less noisy than the input distribution, and that it changes more dramatically as new information is received
+(e.g. the network appears to switch from predicting a 6 to a 2 to a 7 for the first image). This highlights the
+network’s use of context to resolve ambiguity and noise in the input distribution.
+Figure 14: MNIST losses against time. The left plot shows the mean over the test set of the cts. time
+loss L∞(x) used for training for transmission time t between 0 and 1. The right plot shows the average
+cumulative value of L∞(x) up to t, along with the reconstruction loss Lr(x) evaluated at t and the sum of
+these two losses, which would be the total loss if the transmission process halted at t. Note the unevenness
+of L∞(x) against t: we speculate that rescaling β(t) to make the loss curve more uniform could improve
+performance.
+we leave that for future work. One issue is that the reconstruction loss was relatively high at 0.46
+nats per image. The obvious way to decrease this would be to increase β(1), but we found that
+doing so led to slower learning and worse performance. Along with the loss curves in Figure 14, this
+suggests that the accuracy schedule is suboptimal for binary data.
+41
+
+
+n-steps
+Cts. (256 bins)
+Discd. (256 bins)
+Cts. (16 bins)
+Discd. (16 bins)
+10
+6.18
+3.91
+1.42
+1.16
+25
+3.65
+3.16
+1.11
+1.02
+50
+3.10
+2.93
+1.03
+0.98
+100
+2.86
+2.81
+0.99
+0.96
+250
+2.73
+2.73
+0.97
+0.94
+500
+2.69
+2.71
+0.96
+0.94
+1000
+2.67
+2.70
+0.96
+0.94
+∞
+2.66
+2.68
+0.96
+0.94
+Lr(x)
+0.001
+0.003
+0.073
+0.070
+Updates
+5M
+5M
+250K
+1M
+Table 3: CIFAR-10 results. All losses are bits per dimension (BPD) averaged over 100 passes through
+the test set with Ln(x) or L∞(x) sampled once per test image per pass. The reconstruction losses Lr(x)
+(included in BPD) and the number of training updates for each network are shown below.
+7.2
+CIFAR-10
+Data.
+Two sets of generative modelling experiments were conducted on the CIFAR-10 database [19],
+one at the standard bit-depth of 8, corresponding to 256 discretised bins per colour channel, and
+one at a reduced bit-depth of 4, corresponding to 16 bins per channel. In both cases the bins
+evenly partitioned the interval [−1, 1] and the data was pre-processed by assigning each channel
+intensity to the nearest bin centre, as described in Section 5. The purpose of comparing 16 and 256
+bin discretisation was twofold: (1) to test the hypothesis that the advantage of training with the
+discretised loss from Section 5 rather than the continuous loss from Section 4 would be greater when
+the number of bins was lower, and (2) to test whether modelling the data at lower precision would
+lead to improved perceptual quality. No data augmentation, such as horizontal flips or random
+crops, was used on the training set.
+Setup.
+The network architecture was essentially the same as that used for Variational Diffusion
+Models (VDMs [17]), including the Fourier feature inputs. The only modification was an extra
+input-output connection similar to the network for MNIST. In total there were approximately 31M
+learnable parameters. The following hyperparameters were used for all CIFAR-10 experiments: a
+validation set of 500 randomly selected training images (1% of the training set), the AdamW [22]
+optmizer with weight decay 0.01, learning rate 0.0002 and (β1, β2) = (0.9, 0.99), dropout with
+probability 0.1, training batch size of 128, tmin = 1e−6, [xmin, xmax] = [−1, 1], and an exponential
+moving average of model parameters with a decay rate of 0.9999 for evaluation and sample generation.
+For the 256 bin experiments σ1 = 0.001, while for the 16 bin experiments σ1 =
+√
+0.001. For the
+networks trained with continuous loss, the reconstruction loss was measured using the discretised
+version of Lr(x) from Section 5.3 rather than the continuous version from Section 4.10, using a
+discretised Gaussian with mean equal to ˆ
+x(θ, 1) and std. deviation chosen empirically to be σ1 for
+256 bins and 0.7σ1 for 16 bins. This ensured the results were comparable between continuous and
+discretised training, and consistent with the literature.
+42
+
+
+(a) Test Data (256 bins)
+(b) Generated Data (256 bins)
+(c) Test Data (16 bins)
+(d) Generated Data (16 bins)
+Figure 15: CIFAR-10 real and generated data. Samples generated with 4,000 steps, using networks
+trained with discretised loss. The same random seed was used for both sets of samples. Note the improved
+image quality of the 16 bin samples compared to the 256 bin samples.
+Results.
+Table 1 shows that the best performing BFN gives 2.66 BPD for the 256 bin data, which
+is close to the state-of-the-art at 2.64 BPD. The most obvious performance benchmark (given the
+shared network architecture and similarity in loss function) is the VDM result at 2.65 BPD [17].
+However this took 10M weight updates to achieve, and due to time constraints we were only able to
+train BFNs for 5M updates. Validation performance was still improving after 5M updates, and it
+remains unclear how much performance would improve with 10M updates.
+43
+
+
+(a) Input Mean
+(b) Output Mean
+Figure 16: CIFAR-10 Input and output distributions. For two test set images the figure shows the
+means of the input and output distributions at steps evenly spaced between t = 0 and t = 0.25.
+Figure 17: CIFAR-10 losses against time. The plot was made using the network trained with discretised
+loss on 256 bins. Note the high loss at the very start of the process, which we did not observe with discrete
+data.
+Table 3 shows that discretised loss gave better performance than continuous loss for 16 bins, as
+well as much faster training time (250K updates vs. 1M). This supports the hypothesis that training
+with discretised loss is most beneficial when the number of bins is relatively low. Furthermore, for
+both 16 and 256 bins, discretised training gave much better results when the number of steps n was
+low (e.g. 10 or 25). However continuous loss gave better performance than discretised loss on 256
+bins (2.66 BPC vs 2.68); more investigation would be needed to understand why.
+Figure 15 shows that discretised training with 16 bins gives better sample quality than training
+with 256 bins. This is presumably because the loss function of the former is restricted to the first
+four bits of the data in which — as can be seen by comparing the test data at 16 and 256 bins —
+most of the perceptually relevant information is contained. An interesting direction for future work
+would be to train one BFN to model the lower bits of an image, and a second BFN to conditionally
+upscale to higher bits, as has previously been explored for autoregressive models [13, 26].
+44
+
+
+Model
+BPC
+Flow-based models
+IAF/SCF† [54]
+1.88
+Argmax Coupling Flow† [14]
+1.80
+Discrete Flow† [48]
+1.23
+Order-agnostic Models
+OA-ARDM [13]
+1.43 ± 0.001
+MAC [39]
+1.40
+Diffusion models
+Multinomial Diffusion [14]
+1.72
+D3PM uniform [1]
+1.61 ± 0.02
+D3PM NN [1]
+1.59 ± 0.03
+D3PM mask [1]
+1.45 ± 0.02
+BFN
+1.41
+Autoregressive baseline
+Transformer† [1]
+1.23
+Best result*
+Adaptive Span Transformer† [45]
+1.07
+Table 4: Comparison of text8 results with other methods. The best published model on this dataset
+(*) was trained on sequences of length 512. Rest of the above models were trained on sequences of length 256.
+Results for models marked with (†) are exact values; all other results are upper bounds.
+n-steps
+10
+25
+50
+100
+256
+1000
+∞
+BPC
+1.70
+1.52
+1.47
+1.43
+1.42
+1.41
+1.41
+Table 5: text8 results. BPC is bits per character averaged over 1M randomly cropped sequences from the
+test set with Ln(x) or L∞(x) sampled once per crop. The reconstruction loss Lr(x) (included in BPC) was
+0.006.
+7.3
+text8
+Data.
+The text8 dataset [25] was derived from a subset of the enwik9 Wikipedia dataset by
+removing punctuation and restricting the text to lowercase Latin letters and spaces, giving an
+alphabet of size 27. For clarity, we represent the space character with an underscore in figures.
+Setup.
+The network architecture was a Transformer similar to the small model (dmodel = 768)
+used by Radford et al. [31] except that it uses the GELU activation function [10] and the depth
+was increased to 24 layers. The input and output of the Transformer were concatenated and then
+projected back to the output size to produce the final output. The standard training/validation/test
+split of 90M/5M/5M consecutive characters was used, and the network was trained with a batch size
+of 3328 sequences of length 256, randomly cropped from the training set, for 1.2 M weight updates
+using the AdamW optimizer[22]. The learning rate was set to 10−4, weight decay to 0.1 and (β1, β2)
+to (0.9, 0.98). An exponential moving average of model parameters with a decay rate of 0.9999 was
+used for evaluation and sample generation. Dropout was not used, but overfitting was observed
+towards the end of training indicating that regularization may further improve results. β(1) was
+0.75. The total number of learnable parameters was approximately 170M. Note that the batch
+size and number of layers were larger than prior results from diffusion models. The first choice
+45
+
+
+nd_philip_melanchthon_in_one_five_six_one_he_copper_etched_a_map
+_a_single_sheet_cartouche_of_silesia_which_he_published_under_th
+e_title_silesiae_typus_and_dedicated_to_nicolaus_rhedinger_his_m
+ap_was_later_republished_in_several_versions_of_abraham_ortelius
+ages_middle_school_high_school_or_both_in_a_manner_that_includes
+_military_traditions_and_training_in_military_subjects_the_vast_
+majority_are_in_the_united_states_many_military_schools_are_also
+_boarding_schools_and_others_are_simply_magnet_schools_in_a_larg
+berno_norman_bourkes_have_been_in_mayo_since_the_thirteenth_cent
+ury_like_many_who_came_to_ireland_with_the_norman_invasion_it_wa
+s_said_of_the_bourkes_that_they_ended_up_more_irish_than_the_iri
+sh_themselves_her_family_had_links_with_many_diverse_political_s
+onally_eaten_on_the_day_is_goose_according_to_legend_martin_was_
+reluctant_to_become_bishop_which_is_why_he_hid_in_a_stable_fille
+d_with_geese_the_noise_made_by_the_geese_betrayed_his_location_t
+o_the_people_who_were_looking_for_him_also_in_the_east_part_of_t
+ide_film_fn_m_two_four_nine_saw_presentation_mpeg_for_the_religi
+ous_order_known_as_the_minimi_minims_order_of_the_minims_see_min
+im_religious_order_light_machine_guns_modern_firearms_of_the_uni
+ted_states_fabrique_nationale_de_herstal_five_five_six_mm_machin
+ining_to_fly_planes_atta_traveled_to_prague_stayed_overnight_and
+_then_entered_the_u_s_on_june_three_atta_and_earlier_arrived_hij
+ackers_opened_bank_accounts_and_continue_to_check_on_flight_scho
+ols_in_july_atta_and_marwan_al_shehhi_enrolled_at_huffman_aviati
+_boosted_by_its_famously_harsh_winters_the_region_is_reportedly_
+the_third_largest_theater_market_in_the_country_attracting_major
+_performances_the_guthrie_theater_is_the_most_famous_theater_in_
+the_city_in_order_to_help_revitalize_the_downtown_and_warehouse_
+(a) Test Data
+th_earth_it_will_receive_the_smell_of_a_body_known_as_the_postwa
+naplast_for_that_reason_two_devonian_rocks_englathus_slimche_rho
+se_ice_s_stalk_permanently_and_after_the_last_we_drink_meat_of_c
+ourse_the_sessiology_created_during_the_first_half_of_the_fall_t
+in_moor_was_employed_as_lake_in_among_others_one_nine_two_zero_b
+ut_the_pair_went_out_of_the_fame_a_cell_on_maytown_in_one_nine_s
+ix_six_kells_was_formally_promoted_by_being_presidential_candida
+te_for_proclamation_moor_was_the_first_author_of_snowman_s_expos
+rt_unofficially_naming_pepper_s_best_health_cea_resistant_tum_fu
+lci_ua_starring_yellow_the_negative_campaign_for_the_use_of_poly
+map_button_was_sent_on_systems_comparable_to_a_new_type_of_nasca
+r_historically_gea_involved_a_commission_that_the_government_net
+ir_own_context_although_finally_loyal_and_genial_to_medieval_voi
+l_the_honour_best_on_amber_can_be_done_by_scrutinous_members_of_
+the_knights_templar_and_grand_master_still_called_amber_the_pope
+_for_four_years_who_had_on_approximated_journeys_he_was_only_kno
+_as_were_independent_of_jesus_or_throughout_the_time_of_nazarite
+s_this_is_not_true_versical_times_despite_the_use_of_the_lattian
+s_as_still_not_readily_adjacent_to_the_text_the_popular_tendency
+_of_revision_is_current_in_the_three_gospels_some_subscriptions_
+_counter_strike_by_the_national_terrorists_c_e_ti_core_blooded_a
+m_forse_for_elsie_by_the_columbia_university_of_washington_stude
+nt_in_their_own_right_such_views_change_reflected_by_the_fiercel
+y_scriptly_knit_allegations_came_under_this_a_tendency_that_the_
+s_that_of_the_related_spirit_of_the_great_sword_and_by_the_spiri
+t_of_jehudah_as_they_were_attained_in_hebrew_trees_as_spiritual_
+witness_to_a_high_angel_of_the_south_thus_identified_pinhim_with
+_pulim_where_they_were_emphetic_and_assyrian_languages_in_ancien
+(b) Generated Data
+Figure 18: text8 real and generated data. Samples generated with 1000 steps.
+increases model capacity while the second tends to make overfitting more likely. These choices
+were made to maximize the utilization of available resources while achieving results in reasonable time.
+Results.
+Table 4 shows that BFN yielded a 1.41 BPC on the text8 test set, which is better than
+all discrete diffusion models we found in the literature, and close to the best order-agnostic model,
+MAC at 1.40 BPC. We note however that both a standard autoregressive baseline and a discrete
+flow model perform substantially better at 1.23 BPC. Table 5 shows that performance is reasonably
+robust to decreased n, with only 100 steps required to reach 1.43 BPC. This result could probably
+be improved by training with the discrete-time loss.
+8
+Conclusion
+This paper introduced Bayesian Flow Networks, a new class of generative model that combines
+Bayesian inference with neural networks in an iterative modelling process. Discrete and continuous-
+time loss functions were derived along with sampling procedures, and the model was succesfully
+applied to continuous, discretised and discrete data. We hope this work will inspire fresh perspectives
+and new directions for generative modelling research.
+Ackowledgements
+We would like to thank Vojtech Micka for his invaluable engineering and infrastructure support.
+46
+
+
+t = 0.0
+t = 0.2
+t = 0.4
+t = 0.6
+t = 0.8
+t = 1.0
+(a) Input Distribution
+(b) Output Distribution
+Figure 19: text8 Input and Output Distributions. The heatmaps show the character probability
+distributions across part of a test sequence at various times during the flow process. Whereas the expected
+entropy for each letter decreases independently in the input distribution, the entropy of the output distribution
+tends to chunk into words and phrases — e.g. the date “one five six one” is confidently predicted early in the
+process.
+References
+[1] Jacob Austin, Daniel D. Johnson, Jonathan Ho, Daniel Tarlow, and Rianne van den Berg. Struc-
+tured Denoising Diffusion Models in Discrete State-Spaces. arXiv preprint arXiv:2107.03006,
+July 2021.
+[2] Ting Chen, Ruixiang Zhang, and Geoffrey Hinton. Analog bits: Generating discrete data using
+diffusion models with self-conditioning. arXiv preprint arXiv:2208.04202, 2022.
+[3] Rewon Child. Very deep vaes generalize autoregressive models and can outperform them on
+images. arXiv preprint arXiv:2011.10650, 2020.
+47
+
+
+(a) Input Distribution
+(b) Output Distribution
+0.1
+0.2
+0.4
+0.6
+0.5
+0.7
+0.3
+t
+Figure 20: text8 Input and Output Distributions. An alternative visualisation with the character
+sizes scaled in proportion to their probability.
+[4] Rewon Child, Scott Gray, Alec Radford, and Ilya Sutskever. Generating long sequences with
+sparse transformers. arXiv preprint arXiv:1904.10509, 2019.
+[5] Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis.
+Advances in neural information processing systems, 34:8780–8794, 2021.
+[6] Sander Dieleman, Laurent Sartran, Arman Roshannai, Nikolay Savinov, Yaroslav Ganin,
+Pierre H Richemond, Arnaud Doucet, Robin Strudel, Chris Dyer, Conor Durkan, et al. Contin-
+uous diffusion for categorical data. arXiv preprint arXiv:2211.15089, 2022.
+[7] Jarek Duda. Asymmetric numeral systems. arXiv preprint arXiv:0902.0271, 2009.
+[8] H.O. Georgii. Stochastics: Introduction to Probability and Statistics. De Gruyter textbook.
+Walter De Gruyter, 2008. ISBN 9783110191455. URL https://books.google.co.uk/books
+?id=ttJ5xpQX2MgC.
+[9] Alex Graves.
+Generating sequences with recurrent neural networks.
+arXiv preprint
+arXiv:1308.0850, 2013.
+[10] Dan Hendrycks and Kevin Gimpel.
+Gaussian error linear units (gelus).
+arXiv preprint
+arXiv:1606.08415, 2016.
+[11] Geoffrey E Hinton and Drew Van Camp. Keeping the neural networks simple by minimizing the
+description length of the weights. In Proceedings of the sixth annual conference on Computational
+learning theory, pages 5–13, 1993.
+[12] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Advances
+in neural information processing systems, 33:6840–6851, 2020.
+48
+
+
+[13] Emiel Hoogeboom, Alexey A Gritsenko, Jasmijn Bastings, Ben Poole, Rianne van den Berg,
+and Tim Salimans. Autoregressive diffusion models. arXiv preprint arXiv:2110.02037, 2021.
+[14] Emiel Hoogeboom, Didrik Nielsen, Priyank Jaini, Patrick Forr´
+e, and Max Welling. Argmax
+Flows and Multinomial Diffusion: Learning Categorical Distributions. In Advances in Neural
+Information Processing Systems, volume 34, pages 12454–12465. Curran Associates, Inc., 2021.
+[15] Ajay Jain, Pieter Abbeel, and Deepak Pathak. Locally masked convolution for autoregressive
+models. In Conference on Uncertainty in Artificial Intelligence, pages 1358–1367. PMLR, 2020.
+[16] Dongjun Kim, Seungjae Shin, Kyungwoo Song, Wanmo Kang, and Il-Chul Moon.
+Soft
+truncation: A universal training technique of score-based diffusion model for high precision
+score estimation. arXiv preprint arXiv:2106.05527, 2021.
+[17] Diederik Kingma, Tim Salimans, Ben Poole, and Jonathan Ho. Variational diffusion models.
+Advances in neural information processing systems, 34:21696–21707, 2021.
+[18] Diederik P Kingma and Max Welling.
+Auto-encoding variational bayes.
+arXiv preprint
+arXiv:1312.6114, 2013.
+[19] Alex Krizhevsky. Learning multiple layers of features from tiny images. Technical report,
+University of Toronto, 2009.
+[20] Yann LeCun and Corinna Cortes. MNIST handwritten digit database, 2010. URL http:
+//yann.lecun.com/exdb/mnist/.
+[21] Xiang Lisa Li, John Thickstun, Ishaan Gulrajani, Percy Liang, and Tatsunori B. Hashimoto.
+Diffusion-lm improves controllable text generation. arXiv preprint arXiv:2205.14217, 2022.
+[22] Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint
+arXiv:1711.05101, 2017.
+[23] Aaron Lou and Stefano Ermon. Reflected diffusion models. arXiv preprint arXiv:2304.04740,
+2023.
+[24] Rabeeh Karimi Mahabadi, Jaesung Tae, Hamish Ivison, James Henderson, Iz Beltagy,
+Matthew E. Peters, and Arman Cohan. Tess: Text-to-text self-conditioned simplex diffu-
+sion. arXiv preprint arXiv:2305.08379, 2023.
+[25] Matt Mahoney. Large text compression benchmark., 2009. URL http://mattmahoney.net/
+dc/textdata.html.
+[26] Jacob Menick and Nal Kalchbrenner. Generating high fidelity images with subscale pixel
+networks and multidimensional upscaling. arXiv preprint arXiv:1812.01608, 2018.
+[27] Kevin Murphy. Conjugate bayesian analysis of the gaussian distribution. Technical report,
+University of British Columbia, 2007.
+[28] Alexander Quinn Nichol and Prafulla Dhariwal. Improved denoising diffusion probabilistic
+models. In International Conference on Machine Learning, pages 8162–8171. PMLR, 2021.
+49
+
+
+[29] OpenAI. Gpt-4 technical report. arXiv preprint arXiv:2303.08774, 2023.
+[30] Niki Parmar, Ashish Vaswani, Jakob Uszkoreit, Lukasz Kaiser, Noam Shazeer, Alexander Ku,
+and Dustin Tran. Image transformer. In International conference on machine learning, pages
+4055–4064. PMLR, 2018.
+[31] Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, Ilya Sutskever, et al.
+Language models are unsupervised multitask learners. Technical report, OpenAI, 2019.
+[32] Danilo Rezende and Shakir Mohamed.
+Variational inference with normalizing flows.
+In
+International conference on machine learning, pages 1530–1538. PMLR, 2015.
+[33] Pierre H. Richemond, Sander Dieleman, and Arnaud Doucet. Categorical SDEs with simplex
+diffusion. arXiv preprint arXiv:2210.14784, 2022.
+[34] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨
+orn Ommer.
+High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF
+conference on computer vision and pattern recognition, pages 10684–10695, 2022.
+[35] Hossein Sadeghi, Evgeny Andriyash, Walter Vinci, Lorenzo Buffoni, and Mohammad H Amin.
+Pixelvae++: Improved pixelvae with discrete prior. arXiv preprint arXiv:1908.09948, 2019.
+[36] Ruslan Salakhutdinov and Iain Murray. On the quantitative analysis of deep belief networks.
+In Proceedings of the 25th international conference on Machine learning, pages 872–879. ACM,
+2008.
+[37] Tim Salimans and Jonathan Ho. Progressive distillation for fast sampling of diffusion models.
+arXiv preprint arXiv:2202.00512, 2022.
+[38] Tim Salimans, Andrej Karpathy, Xi Chen, and Diederik P Kingma. Pixelcnn++: Improving the
+PixelCNN with discretized logistic mixture likelihood and other modifications. arXiv preprint
+arXiv:1701.05517, 2017.
+[39] Andy Shih, Dorsa Sadigh, and Stefano Ermon. Training and inference on any-order autoregres-
+sive models the right way. Advances in Neural Information Processing Systems, 35:2762–2775,
+2022.
+[40] Samarth Sinha and Adji Bousso Dieng. Consistency regularization for variational auto-encoders.
+Advances in Neural Information Processing Systems, 34:12943–12954, 2021.
+[41] Jascha Sohl-Dickstein, Eric Weiss, Niru Maheswaranathan, and Surya Ganguli. Deep unsuper-
+vised learning using nonequilibrium thermodynamics. In International conference on machine
+learning, pages 2256–2265. PMLR, 2015.
+[42] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and
+Ben Poole. Score-based generative modeling through stochastic differential equations. arXiv
+preprint arXiv:2011.13456, 2020.
+[43] Yang Song, Prafulla Dhariwal, Mark Chen, and Ilya Sutskever. Consistency models. arXiv
+preprint arXiv:2303.01469, 2023.
+50
+
+
+[44] Robin Strudel, Corentin Tallec, Florent Altch´
+e, Yilun Du, Yaroslav Ganin, Arthur Mensch, Will
+Grathwohl, Nikolay Savinov, Sander Dieleman, Laurent Sifre, et al. Self-conditioned embedding
+diffusion for text generation. arXiv preprint arXiv:2211.04236, 2022.
+[45] Sainbayar Sukhbaatar, Edouard Grave, Piotr Bojanowski, and Armand Joulin. Adaptive
+Attention Span in Transformers. arXiv preprint arXiv:1905.07799, August 2019.
+[46] Ilya Sutskever, James Martens, and Geoffrey E Hinton. Generating text with recurrent neural
+networks. In Proceedings of the 28th international conference on machine learning (ICML-11),
+pages 1017–1024, 2011.
+[47] James Townsend, Tom Bird, and David Barber. Practical lossless compression with latent
+variables using bits back coding. arXiv preprint arXiv:1901.04866, 2019.
+[48] Dustin Tran, Keyon Vafa, Kumar Agrawal, Laurent Dinh, and Ben Poole. Discrete flows:
+Invertible generative models of discrete data. Advances in Neural Information Processing
+Systems, 32, 2019.
+[49] Arash Vahdat and Jan Kautz. Nvae: A deep hierarchical variational autoencoder. Advances in
+neural information processing systems, 33:19667–19679, 2020.
+[50] Arash Vahdat, Karsten Kreis, and Jan Kautz. Score-based generative modeling in latent space.
+Advances in Neural Information Processing Systems, 34:11287–11302, 2021.
+[51] Chris S. Wallace.
+Classification by minimum-message-length inference.
+In International
+Conference on Computing and Information, 1991.
+[52] Daniel Watson, William Chan, Jonathan Ho, and Mohammad Norouzi. Learning fast samplers
+for diffusion models by differentiating through sample quality. arXiv preprint arXiv:2202.05830,
+2022.
+[53] Ian H Witten, Radford M Neal, and John G Cleary. Arithmetic coding for data compression.
+Communications of the ACM, 30(6):520–540, 1987.
+[54] Zachary Ziegler and Alexander Rush. Latent Normalizing Flows for Discrete Sequences. In
+Proceedings of the 36th International Conference on Machine Learning, pages 7673–7682. PMLR,
+May 2019.
+51
+
+
+Published as a conference paper at ICLR 2024
+UNIFIED GENERATIVE MODELING OF 3D MOLECULES
+VIA BAYESIAN FLOW NETWORKS
+Yuxuan Song1∗
+Jingjing Gong1∗
+Yanru Qu2
+Hao Zhou1
+Mingyue Zheng3
+Jingjing Liu1
+&
+Wei-Ying Ma1
+1 Institute of AI Industry Research (AIR), Tsinghua University
+2 University of Illinois Urbana-Champaign
+3 Shanghai Institute of Materia Medica, Chinese Academy of Sciences
+{songyuxuan,gongjingjing,zhouhao,maweiying}@air.tsinghua.edu
+ABSTRACT
+Advanced generative model (e.g., diffusion model) derived from simplified conti-
+nuity assumptions of data distribution, though showing promising progress, has
+been difficult to apply directly to geometry generation applications due to the multi-
+modality and noise-sensitive nature of molecule geometry. This work introduces
+Geometric Bayesian Flow Networks (GeoBFN), which naturally fits molecule
+geometry by modeling diverse modalities in the differentiable parameter space of
+distributions. GeoBFN maintains the SE-(3) invariant density modeling property by
+incorporating equivariant inter-dependency modeling on parameters of distributions
+and unifying the probabilistic modeling of different modalities. Through optimized
+training and sampling techniques, we demonstrate that GeoBFN achieves state-of-
+the-art performance on multiple 3D molecule generation benchmarks in terms of
+generation quality (90.87% molecule stability in QM9 and 85.6% atom stability in
+GEOM-DRUG1). GeoBFN can also conduct sampling with any number of steps
+to reach an optimal trade-off between efficiency and quality (e.g., 20× speedup
+without sacrificing performance).
+1
+INTRODUCTION
+Sender Distribution
+Bayesian
+Update
+EGNN
+Receiver Distribution
+Sender
+Sample
+KL
+Noisy channel
+Sender Distribution
+Bayesian
+Update
+EGNN
+Receiver Distribution
+Sender
+Sample
+Noisy channel
+KL
+Figure 1: The framework of GeoBFN
+Molecular geometries can be represented
+as three-dimensional point clouds, charac-
+terized by their Cartesian coordinates in
+space and enriched with descriptive fea-
+tures. For example, proteins can be repre-
+sented as proximity spatial graphs (Jing
+et al., 2021) and molecules as atomic
+graphs in 3D (Schütt et al., 2017). Thus,
+learning geometric generative models has
+the potential to benefit scientific discover-
+ies such as material and drug design. Re-
+cent progress in deep generative model-
+ing has paved the way for geometric gen-
+erative modeling. For example, Gebauer
+et al. (2019); Luo & Ji (2021) and Satorras
+et al. (2021a) use autoregressive models
+and flow-based models, respectively, for
+generating 3D molecules in-silico. Most
+recently, inspired by the huge success of
+diffusion model (DM) in image genera-
+tion Meng et al. (2022); Ho et al. (2020)
+∗Equal Contribution. Correspondence to Hao Zhou(zhouhao@air.tsinghua.edu).
+1The scores are reported at 1k sampling steps for fair comparison, and our scores could be further improved
+if sampling sufficiently longer steps
+1
+arXiv:2403.15441v1  [physics.chem-ph]  17 Mar 2024
+
+
+Published as a conference paper at ICLR 2024
+and beyond Li et al. (2022), DM incorporating geometric symmetries has been widely explored in
+the field of geometry generation Hoogeboom et al. (2022); Xu et al. (2023).
+However, two major challenges remain in directly applying DM to molecule geometry: multi-modality
+and noise sensitivity. The multi-modality issue refers to the dependency on diverse data forms to
+effectively depict the atomic-level geometry of a molecule. For instance, the continuous variable of
+atom coordinates is essential for describing the spatial arrangement, while either the discretised atom
+charge or categorical atom types are employed to completely determine the molecule’s composition.
+Noise sensitivity refers to the fact that applying noise or perturbing the atom coordinates will not only
+change the value of the variable but also have a significant impact on the relationship among different
+atoms as the Euclidean distances are also changed. Therefore, a small noise on atom coordinates
+could bring a sudden drop of the signal at the molecule level.
+To alleviate these issues, Xu et al. (2023) introduces a latent space for alleviating the inconsistency
+of unified Gaussian diffusion on different modalities. Anand & Achim (2022) propose to use
+decomposed modeling of different modalities. Peng et al. (2023) use different noise schedulers for
+different modalities to accommodate noise sensitivity. However, these methods either depend on the
+sophisticated and artifact-filled design or lack of guarantee or constraint on the designed space.
+In this work, we propose Geometric Bayesian Flow Networks (GeoBFN) to model 3D molecule
+geometry in a principally different way. Bayesian Flow Networks Graves et al. (2023) (BFN) is
+a novel generative model developed quite recently. Taking a unique approach by incorporating
+Bayesian inference to modify the parameters of a collection of independent distributions, brings a
+fresh perspective to geometric generative modeling. Firstly, GeoBFN uses a unified probabilistic
+modeling formulation for different modalities in the molecule geometry. Secondly, regarding the
+variable of 3D atom coordinates, the input variance for BFNs is considerably lower than DMs,
+leading to better compatibility with the inherent noise sensitivity. Further, we bring the geometry
+symmetries into the Bayesian update procedure through an equivariant inter-dependency modeling
+module. We also demonstrate that the density function of implied generative distribution is SE-(3)
+invariant and the generative process of iterative updating is roto-translational equivariant. Thirdly,
+with BFN’s powerful probabilistic modeling capacity, 3D molecule geometry representation can
+be further optimized into a representation with only two similar modalities: discretised charge and
+continuous atom coordinates. The mode-redundancy issue on discretised variable in the original
+BFNs is fixed by an early mode-seeking sampling strategy in GeoBFN.
+With operating on the space with less variance, GeoBFN could sample with any number of steps
+which provides a superior trade-off between efficiency and quality, which leads to a 20× speedup
+with competitive performance. Besides, GeoBFN is a general framework that can be easily extended
+to other molecular tasks. We conduct thorough evaluations of GeoBFN on multiple benchmarks, in-
+cluding both unconditional and property-conditioned molecule generation tasks. Results demonstrate
+that GeoBFN consistently achieves state-of-the-art generation performance on molecule stability and
+other metrics. Empirical studies also show a significant improvement in controllable generation and
+demonstrate that GeoBFN enjoys a significantly higher modeling capacity and inference efficiency.
+2
+PRELIMINARIES
+2.1
+SE-(3) INVARIANT DENSITY MODELING
+To distinguish geometry representation and the atomic property features, we use the tuple g = ⟨x, h⟩
+to represent the 3D molecules. Note here x = (x1, . . . , xN) ∈RN×3 is the atom coordinate matrix,
+and h = (h1, . . . , hN) ∈RN×d is the node feature matrix, e.g., atomic types and charges. Density
+estimation on the 3D molecules should satisfy specific symmetry conditions of the geometry. In this
+work, we focus on the transformations Tg in the Special Euclidean group (SE-(3)), i.e., the group of
+rotation and translation in 3D space, where transformations Tg can be represented by a translation
+t and an orthogonal matrix rotation R. Note for a generative model on molecule geometry with
+underlying density function pθ(⟨x, h⟩), the likelihood should not be influenced by the rotation or
+translation of the entire molecule, which means the likelihood function should be SE-(3) invariant on
+the input coordinates, i.e., pθ(⟨x, h⟩) = pθ(⟨Rx + t, h⟩).
+2.2
+BAYESIAN FLOW NETWORKS
+The Bayesian Flow Networks (BFNs) are based on the following latent variable models: for learning
+the probability distribution pθ over g, a series of noisy versions ⟨y1, · · · , yn⟩of g are introduced as
+2
+
+
+Published as a conference paper at ICLR 2024
+latent variables. And then the variational lower bound of likelihood is optimized:
+log pθ(g) ≥
+E
+y1,...,yn∼q
+
+log pϕ (g | y1, . . . , yn) pϕ (y1, . . . , yn)
+q(y1, . . . , yn|g)
+
+= −DKL(q∥pϕ (y1, . . . , yn)) +
+E
+y1,...,yn∼q log [pϕ (g | y1, . . . , yn)]
+(1)
+And q is namely the variational distribution. The prior distribution of latent variables is usually
+organized autoregressively, i.e., pϕ(y1, · · · , yn) = pϕ(y1)pϕ(y2 | y1)pϕ(yn | yn−1 · · · y1) which
+also implies the data generation procedure, i.e., y1 →· · · →yn →g (Note: this procedure only
+demonstrates the generation order, yet does NOT imply Markov property for the following derivative).
+One widely adopted intuition for the generation process is that the information of the data samples
+should progressively increase along with the above Markov chain, e.g., noisier images to cleaner
+images. The key motivation of BFNs is that the information along the latent variables should change
+as smoothly as possible for all modalities including discretized and discrete variables. To this end,
+BFNs operate on the distributions in the parameter space, in contrast to the sample space.
+We introduce components of BFNs one by one (Fig.2a). Firstly, the variational distribution q is
+defined by the following form:
+q (y1, . . . , yn | g) =
+n
+Y
+i=1
+pS (yi | g; αi)
+(2)
+pS (yi | g; αi) is termed as the sender distribution, which could be seen as adding noise to the data
+according to a predefined accuracy αi.
+Secondly, for the definition of pϕ, BFNs will first transfer the noisy sample y to the parameter
+space, obtaining θ, then apply Bayesian update in the parameters space and transfer back to the
+noisy sample space at last. To clarify, θ refers to the parameter of distributions in the sample space,
+e.g., the mean/variance for Gaussian distribution or probabilities for categorical distribution. In the
+scope of BFNs, the distributions on the sample space are factorized by default, e.g., p(g | θ) =
+QD
+d=1 p
+g(d) | θ(d)
+.
+Thirdly, a neural network Φ takes θ as input and aims to model the dependency among different
+dimensions hence to recover the distribution of the original sample g. The output of neural network
+Φ(θ) still lies in the parameter space, and we termed it as the parameter of output distribution pO,
+where pO(y|θ; ϕ) = QD
+d=1 pO(y(d) | Φ(θ)(d)).
+To map the noisy sample y to the input space, Bayesian update is applied to θ:
+θi ←h(θi−1, yi, αi),
+(3)
+h is called Bayesian update function . The distribution over (θ0, . . . , θn−1) is then defined by the
+Bayesian update distribution via marginalizing out y:
+pϕ (θ0, . . . , θn−1) = p(θ0)
+n
+Y
+i=1
+pU (θi | θi−1; αi) ,
+(4)
+where p(θ0) is a simple prior for ease of generation, e.g., standard normal, and pU could be obtained
+from Eq. 3:
+pU (θi | θi−1; αi) =
+E
+pR(yi|θi−1;αi)δ (θi −h(θi−1, yi, αi)) ,
+(5)
+δ being the Dirac delta distribution. pR(yi|θi−1, αi) =
+E
+pO(x′|θi−1;ϕ)pS(yi|x′; αi) and is also called
+the as receiver distribution.
+At last we map Φ(θ) back to the noisy sample space by combining the known form, accuracy of PS
+and marginalizing out y:
+pϕ (y1, . . . , yn) = pϕ(y1)
+n
+Y
+i=2
+pϕ(yi | y{1:i−1} =
+n
+Y
+i=1
+pϕ(yi | θi−1)
+=
+n
+Y
+i=1
+E
+pO(x′
+i|θi−1;ϕ) [pS(yi|x′
+i; αi)] ,
+(6)
+3
+
+
+Published as a conference paper at ICLR 2024
+a Graphical Model of BFN
+b Graphical Model of Diffusion
+Figure 2: Graphical View of Comparison between BFN and Diffusion
+where we use θ0:n−1 to abbreviate (θ0, . . . , θn−1), and y similar. . Till now, we have defined q,
+pϕ(y1, . . . , yn), and pϕ (g | y1, . . . , yn) is simply pO(g | θn) on each sample, thus Eq.1 can be
+estimated.
+3
+METHODOLOGY
+3.1
+SE-(3) INVARIANT GEOMETRY DENSITY MODELING
+As discussed in Sec. 2.1, for a generative model on the 3D molecule geometry, it is crucial to hold the
+SE-(3) invariant conditions. Recall the mathematics formula of the geometries g = ⟨x, h⟩, we denote
+the latent variable, e.g., noisy samples, of g as yg. We are interested in applying the SE-(3) invariant
+conditions to the probabilistic model pϕ. To this end, we need to first reformulate the likelihood
+function:
+pϕ(g) = pϕ(⟨x, h⟩) =
+Z
+yg
+1,··· ,yg
+n
+pϕ(g | yg
+1, · · · , yg
+n)pϕ(yg
+1, · · · , yg
+n)dyg
+1 . . . dyg
+n.
+(7)
+With θx and yx and all the distributions defined in the same way as above, we focus on the variables
+corresponds to x in the geometry yg. Then we have the following theorem:
+Theorem 3.1. (SE-(3) Invariant Condition)
+• With the θx, yx, x constrained in the zero Center of Mass(CoM) space (Köhler et al., 2020;
+Xu et al., 2022), the likelihood function pϕ is translational invariant.
+• When the following properties are satisfied, the likelihood function pϕ is roto-invariant:
+pO
+x′ | θx
+i−1; ϕ
+
+= pO
+R(x′) | R(θx
+i−1); ϕ
+
+; pS (yx | x′; α) = pS (R(yx) | R(x′); α) ;
+h(R(θx
+i−1), R(yx
+i ), αi) = Rh(θx
+i−1, yx
+i , αi); p(x′|θx
+0) = p(R(x′)|θx
+0), ∀orthogonal R
+Proposition 3.2. With the condition in Theorem. 3.1 satisfied, the evidence lower bound objective in
+Eq. 1, i.e.,
+LVLB(x) =
+E
+pϕ(θx
+0 ,...,θx
+n)
+" n
+X
+i=1
+DKL(pS (· | x; αi) ∥pR(· | θx
+i−1; αi)) −log pϕ (x | θx
+n)
+#
+,
+(8)
+with the Bayesian update distribution pϕ
+θx
+0, . . . , θx
+n−1
+
+= Qn
+i=1 pU (θi | θi−1, x; αi) similar to
+Eq. 4. And pR(· | θx
+i−1; αi) =
+E
+pO(x′
+i|θx
+i−1;ϕ) [pS(yi|x′
+i; αi)], pϕ(x|θx
+n) = pO(x|θx
+n, ϕ). Derivation
+from Eq. 1 to equation 8 is at Appendix C.4. if pU (θi | θi−1, x; αi) = pU (Rθi | Rθi−1, Rx; αi),
+then LVLB(x) is also SE-(3) invariant.
+We leave the formal proof of Theorem. 3.1 and Proposition. 3.2 in Appendix C.
+3.2
+GEOMETRIC BAYESIAN FLOW NETWORKS
+Then we introduce the detailed formulation of geometric Bayesian flow networks (GeoBFN) based on
+the analysis in Sec. 3.1. For describing a 3D molecule geometry g = ⟨x, h⟩, various representations
+can be utilized for the node features. The atom types ht and atomic charges hc are commonly
+employed, with the former being discrete (categorical) and the latter being discretized (integer).
+Together with the continuous variable, e.g., atom coordinates x, the network module in the modeling
+of the output distribution of GeoBFN could be parameterized with an equivariant graph neural
+network (EGNN) (Satorras et al., 2021b) Φ:
+Φ(Rθx + t, [θht, θhc]) = [Rθx′ + t, θh′
+t, θh′
+c],
+∀R, t
+(9)
+4
+
+
+Published as a conference paper at ICLR 2024
+where Φ(θx, [θht, θhc]) = [θx′, θh′
+t, θh′
+c]. And then we introduce the necessary components to
+derive the objective in Eq. 8
+Atom Coordinates x and Charge hc: For the continuous and discretized variables, the input
+distribution is set as the factorized Gaussian distributions, where θ
+def
+:= {µ, ρ} the parameter of
+N
+· | µ, ρ−1I
+
+. For simplicity, we take x as an example to illustrate the common parts of the
+two variables. And θx
+0 is set as {0, 1}. The sender distribution pS is also an isotropic Gaussian
+distribution:
+pS(· | x; αI) = N
+x, α−1I
+
+(10)
+Given the nice property of isotropic Gaussian (proof given by Graves et al. (2023)), the simple form
+of Bayesian update function could be derived as:
+h ({µi−1, ρi−1} , y, α) = {µi, ρi} ,
+Here
+ρi = ρi−1 + α, µi = µi−1ρi−1 + yα
+ρi
+(11)
+As shown in Eq. 11, the randomness only exists in µ, and the corresponding Bayesian update
+distribution in Eq. 8 is as:
+pU (θi | θi−1, x; α) = N
+
+µi | αx + µi−1ρi−1
+ρi
+, α
+ρ2
+i
+I
+
+(12)
+The above discrete-time Bayesian update could be easily extended to continuous-time, with an
+accuracy scheduler defined as β(t) =
+R t
+t′=0 α (t′) dt′, t ∈[0, 1]. Given the accuracy additive
+property of pU (proof given by Graves et al. (2023)),
+E
+pU (θi−1|θi−2,x;αa)pU (θi | θi−1, x; αb) =
+pU (θi | θi−2, x; αa + αb), the Bayesian flow distribution could be obtained as:
+pF (θx | x; t) = pU (θx | θ0, x; β(t))
+(13)
+The key difference of atom coordinates x and charges hc lies in the design of the output distribution.
+For continuous variable x, the network module Φ directly outputs an estimated ˆ
+x = Φ(θg, t). Hence
+for timestep t, the output distribution is
+pO (x′ | θg, t; ϕ) = δ(x −Φ(θg, t))
+(14)
+While for discretized variable hc, the network module will output two variables, µhc and ln σhc with
+dimension equivalent to hc which implies a distribution N(µhc, σ2
+hcI). With a K-bins discretized
+variable, the support is split into K buckets with each bucket k centered as kc = 2k−1
+K
+−1 and left
+boundary as kl = kc −1
+K and right boundary as kr = kc + 1
+K . Then for each k, the probability is
+the mass from kl to kr, i.e.,
+R kr
+kl N(µhc, σ2
+hcI). And the first and last bins are curated by making sure
+the sum of the probability mass is 1. Then the output distribution is:
+pO(hc | θg, t; ϕ) =
+D
+Y
+d=1
+p(d)
+O
+
+k
+
+h(d)
+c
+
+| θg, t; ϕ
+
+,
+(15)
+where the function k(·) maps the variable to the corresponding bucket.
+Atom Types ht: The atom types ht are discrete variables with K categories, where the corresponding
+parameter space lies in probability simplex thus the procedure is slightly different from the others.
+The input distribution for ht is pI(ht | θ) = QD
+d=1 θht(d), where D is number if variables. And
+the input prior θht
+0
+=
+1
+K, where 1
+K is the length KD vector whose entries are all
+1
+K . The sender
+distribution, could be derived with the central limit theorem, lies in the form of
+pS(y | ht; α) = N (y | α (Keht −1) , αKI)
+(16)
+where 1 is a vector of ones, I is the identity matrix, and ej ∈RK is a vector defined as the projection
+from the class index j to a length K one-hot vector (proof given by Graves et al. (2023)). In other
+words, each element of ej is defined as (ej)k = δjk, where δjk is the Kronecker delta function. And
+eht
+def
+=
+
+eh(1)
+t , . . . , eh(D)
+t
+
+∈RKD.
+5
+
+
+Published as a conference paper at ICLR 2024
+GeoBFN
+EDM
+Figure 3: The Bayesian Flow and Diffusion Process of GeoBFN and EDM.
+The Bayesian update function could be derived as h (θi−1, y, α) =
+eyθi−1
+PK
+k=1 eyk(θi−1)k (proof given by
+Graves et al. (2023)) . And similar to Eq. 13, the Bayesian flow distribution for ht is as:
+pF (θht | ht; t) =
+E
+N(yht|β(t)(Keht−1),β(t)KI)
+δ(θht −softmax(yht))
+(17)
+With the network module Φ, the output distribution could be obtained as
+p(d)
+O (k | θg; t) =
+
+softmax
+
+Φ(d)(θg, t)
+
+k , pO(ht | θ; t) =
+D
+Y
+d=1
+p(d)
+O
+
+h(d)
+t
+| θg; t
+
+(18)
+Training Objective: By combining the different variables together, we could obtain the unified
+continuous-time loss for GeoBFN based on Eq. 25 to Eq. 41 in (Graves et al., 2023) as:
+L∞(g) = L∞(⟨x, hc, ht⟩) =
+E
+t∼U(0,1),pF (θg|g;t)
+αg(t)
+2
+∥g −Φ(θg, t)∥2
+
+=
+E
+t∼U(0,1),
+θg∼pF (·|g;t)
+αx(t)
+2
+∥x −Φx∥2 + αhc(t)
+2
+∥hc −Φhc∥2 + αht(t)
+2
+∥ht −Φht∥2
+
+(19)
+Where Φ· is short for Φ·(θg, t). The joint Bayesian flow distribution is decomposed as:
+pF (θg | g; t) = pF (θx | x; t)pF (θhc | hc; t)pF (θht | ht; t),
+(20)
+with αx, αhc and αht refer to the corresponding accuracy scheduler (details provided by
+Graves et al. (2023)).
+And Φx is defined the same as in Eq. 14;
+while Φhc is de-
+fined by the weighted average of different bucket centers with the output distribution in
+Eq. 15 as
+PK
+k=1 p(1)
+O (k | θ, t)kc, . . . , PK
+k=1 p(D)
+O (k | θ, t)kc
+
+; And for Φht, it is defined as the
+PK
+k=1 p(d)
+O (k | θ; t)ek based on Eq. 18.
+Remark 3.3. The GeoBFN defined in the above formulation satisfied the SE(3)-invariant condition in
+Theorem. 3.1.
+Sampling GeoBFN will generate samples follow the graphical model in the recursive procedure as
+illustrated in Fig. 2a: e.g., g′ ∼pO(·|θi−1) →y ∼pS(·|g′, α) →θi = h(θi−1, y, α).
+3.3
+OVERCOME NOISE SENSITIVITY IN MOLECULE GEOMETRY
+One key obstacle of applying diffusion models to 3D molecule generation is the noise sensitivity
+property of the molecule geometry. The property of noise sensitivity seeks to state the fact: When
+noise is incorporated into the coordinates and displaces them significantly from their original positions,
+the bond distance between certain connected atoms may exceed the bond length range[1]. Under these
+circumstances, the point cloud could potentially lose the critical chemical information inherently
+encoded in the bonded structures; Another perspective stems from the reality that when noise is
+added to the coordinates, the relationships (distance) between different atoms could alter at a more
+rapid pace, e.g. modifying the coordinates of one atom results in altering its distance to all other
+atoms. Thus, the intermediate steps’ structure in the generation procedure of diffusion models the
+intermediate steps’ structure might be uninformative. And the majority of the information being
+acquired in the final few steps of generation (as depicted in Fig. 3).
+6
+
+
+Published as a conference paper at ICLR 2024
+A fundamental belief underpinning GeoBFN is that a smoother transformation during the generative
+process could result in a more favorable inductive bias according to (Graves et al., 2023). This
+process occurs within the parameter space of GeoBFN, which is regulated through the Bayesian
+update procedure. Specifically, samples exhibiting higher degrees of noise are assigned lesser weight
+during this update (refer to Eq. 11). This approach consequently leads to a significant reduction in
+variance within the parameter space as (Graves et al., 2023), which in turn facilitates the smooth
+transformation of molecular geometries. As illustrated in Fig. 3, this is evidenced by the gradual
+convergence of the structure of the intermediary steps towards the final structure, thus underscoring
+the effectiveness of smoother transformation.
+3.4
+OPTIMIZED DISCRETISED VARIABLE SAMPLING
+Previous research (Hoogeboom et al., 2022; Xu et al., 2023; Wu et al., 2022) utilizes both the atom
+types ht and charges hc to represent the atomic properties. The hc usually serves as an auxiliary loss
+for improving training which is not involved in determining the molecule graph during generation due
+to the insufficient modeling. However, there is redundant information between these two variables,
+since the ht and hc variables have a one-to-one mapping, e.g.the charge value 4 could be uniquely
+determined as the Carbon atom. We found that with advanced probabilistic modeling on discretized
+data, GeoBFN could conduct training and sampling only with x and hc. However, there exists a
+counterexample for the objective in Eq. 19 and the output distribution during sampling as in Eq. 15.
+As shown in Fig 5, the boundary condition for clamping the cumulative probability function in
+the bucket could cause the mismatch, e.g., the true density should be centered in the center bucket
+while the ouput distribution instead put the most density in the first and last buckets which cause the
+mode-redundancy as shown in upper-left in Fig. 5. Though the weighted sum in Eq. 19 is optimized,
+the sampling procedure will rarely sample the center buckets. And such cases could be non-negligible
+in our scenarios, especially when the number of bins is small for low dimensional data. To alleviate
+this issue, we instead update the output distribution in the sampling procedure to:
+ˆ
+kc(θ, t) = NEAREST_CENTER(
+" K
+X
+k=1
+p(1)
+O (k | θ, t)kc, . . . ,
+K
+X
+k=1
+p(D)
+O (k | θ, t)kc
+#
+)
+(21)
+Function NEAREST_CENTER compares inputs to the center bins ⃗
+kc =
+
+k(1)
+c , . . . , k(D)
+c
+
+, and return
+the nearest center for each input value. The updated distribution is unbiased towards the training
+objective and also reduce the variance during generation which could be found in the trajectory of
+Fig.5.
+4
+EXPERIMENTS
+4.1
+EXPERIMENT SETUP
+Task and Datasets We focus on the 3D molecule generation task following the setting of prior
+works (Gebauer et al., 2019; Luo & Ji, 2021; Satorras et al., 2021a; Hoogeboom et al., 2022; Wu et al.,
+2022). We consider both Unconditional Molecular Generation which assesses the capability to learn
+the underlying molecular data distribution and generate chemically valid and structurally diverse
+molecules and the Conditional Molecule Generation tasks which evaluate the capacity of generating
+molecules with desired properties. For Conditional Molecule Generation, we implement a conditional
+version GeoBFN with the details in the Appendix. The widely adapted QM9 (Ramakrishnan et al.,
+2014) and the GEOM-DRUG (Gebauer et al., 2019; 2021) with large molecules are used for the
+experiments. And the data configurations directly follow previous work(Anderson et al., 2019;
+Hoogeboom et al., 2022; Xu et al., 2023)2.
+Evaluation Metrics The evaluation configuration follows the prior works (Hoogeboom et al., 2022;
+Wu et al., 2022; Xu et al., 2023). For the Unconditional Molecular Generation, the bond types
+are first predicted (single, double, triple, or none) based on pair-wise atomic distance and atom
+types in the 10000 generated molecular geometries (Hoogeboom et al., 2022). With the obtained
+molecular graph, we evaluate the quality by calculating both atom stability and molecule stability
+metrics. Besides, the validity (based on RDKIT) and uniqueness are also reported. Regarding the
+2The official implementation is at https://github.com/AlgoMole/GeoBFN
+7
+
+
+Published as a conference paper at ICLR 2024
+Table 1: Results of atom stability, molecule stability, validity, validity×uniqueness (V×U), and
+novelty. A higher number indicates a better generation quality. The results marked with an asterisk
+were obtained from our own tests. And GeoBFNk denote the results of sampling the molecules with
+a specific number of steps k
+QM9
+DRUG
+# Metrics
+Atom Sta (%)
+Mol Sta (%)
+Valid (%)
+V×U (%)
+Novelty (%)
+Atom Sta (%)
+Valid (%)
+Data
+99.0
+95.2
+97.7
+97.7
+-
+86.5
+99.9
+ENF
+85.0
+4.9
+40.2
+39.4
+-
+-
+-
+G-Schnet
+95.7
+68.1
+85.5
+80.3
+-
+-
+-
+GDM-AUG
+97.6
+71.6
+90.4
+89.5
+74.6
+77.7
+91.8
+EDM
+98.7
+82.0
+91.9
+90.7
+58.0
+81.3
+92.6
+EDM-Bridge
+98.8
+84.6
+92.0
+90.7
+-
+82.4
+92.8
+GEOLDM
+98.9 ± 0.1
+89.4 ± 0.5
+93.8 ± 0.4
+92.7 ± 0.5
+57.0
+84.4
+99.3
+GEOBFN 50
+98.28 ± 0.1
+85.11 ± 0.5
+92.27 ± 0.4
+90.72 ± 0.3
+72.9
+75.11
+91.66
+GEOBFN 100
+98.64 ± 0.1
+87.21 ± 0.3
+93.03 ± 0.3
+91.53 ± 0.3
+70.3
+78.89
+93.05
+GEOBFN 500
+98.78 ± 0.8
+88.42 ± 0.2
+93.35 ± 0.2
+91.78 ± 0.2
+67.7
+81.39
+93.47
+GEOBFN 1k
+99.08 ± 0.06
+90.87 ± 0.2
+95.31 ± 0.1
+92.96 ± 0.1
+66.4
+85.60
+92.08
+GEOBFN 2k
+99.31 ± 0.03
+93.32 ± 0.1
+96.88 ± 0.1
+92.41 ± 0.1
+65.3
+86.17
+91.66
+Table 2: Mean Absolute Error for molecular prop-
+erty prediction with 500 sampling steps. A lower
+number indicates a better controllable generation
+result.
+Property
+α
+∆ε
+εHOMO
+εLUMO
+µ
+Cv
+Units
+Bohr3
+meV
+meV
+meV
+D
+cal
+molK
+QM9*
+0.10
+64
+39
+36
+0.043
+0.040
+Random*
+9.01
+1470
+645
+1457
+1.616
+6.857
+Natoms
+3.86
+866
+426
+813
+1.053
+1.971
+EDM
+2.76
+655
+356
+584
+1.111
+1.101
+GEOLDM
+2.37
+587
+340
+522
+1.108
+1.025
+GEOBFN
+2.34
+577
+328
+516
+0.998
+0.949
+Table 3:
+Ablation study, GeoBFN models
+molecule charge settings, the sampling step is
+set to 1,000.
+Charge Feature
+Atom Stable (%)
+Mol Stable (%)
+discretised_basis
+99.08
+90.87
+continuous_basis
+98.97
+89.94
+discrete
+98.93
+88.93
+discrete + continuous
+98.96
+89.33
+discrete + discretised
+98.91
+88.65
+Conditional Molecule Generation, we evaluate our conditional version of GeoBFN on QM9 with
+6 properties: polarizability α, orbital energies εHOMO, εLUMO and their gap ∆ε, Dipole moment
+µ, and heat capacity Cv. Following previous work Hoogeboom et al. (2022); Xu et al. (2023), the
+conditional GeoBFN is fed with a range of property s to generate samples and the same pre-trained
+classifier w is utilized to measure the property of generated molecule as ˆ
+s. The Mean Absolute Error
+(MAE) between s and ˆ
+s is calculated to measure whether the generated molecules is related to the
+conditioned property.
+Baselines GeoBFN is compared with several advanced baselines including G-Schnet (Gebauer et al.,
+2019), Equivariant Normalizing Flows (ENF) (Satorras et al., 2021a) and Equivariant Graph Diffusion
+Models (EDM) with its non-equivariant variant (GDM) (Hoogeboom et al., 2022). Also with recent
+advancements, EDM-Bridge (Wu et al., 2022) which improves upon the performance of EDM by
+incorporating well-designed informative prior bridges and also GeoLDM (Xu et al., 2023) where
+a latent space diffusion model is applied are both included. To yield a fair comparison, all the
+method-agnostic configurations are set as the same. The implementation details could be found in
+Appendix. B.
+0
+1000
+2000
+3000
+4000
+Sampling Step
+0.65
+0.70
+0.75
+0.80
+0.85
+0.90
+0.95
+1.00
+Molecule Stability
+GeoBFN
+EDM
+EDM-Bridge
+GEOLDM
+upper bound
+Figure 4: QM9 Molecule Stability wrt. Sampling
+Steps
+Original 
+sampling 
+algorithm
+Improved 
+samping 
+algorithm
+Figure 5: 2D Synthetic case of optimized
+synthetic example. In the left columns,
+generated samples are in orange, and data
+points are in blue.
+8
+
+
+Published as a conference paper at ICLR 2024
+4.2
+MAIN RESULTS
+The results of Unconditional Molecular Generation can be found in Tab. 1. We could observe that in
+both the QM9 and GEOM-DRUG datasets, GeoBFN achieves a new state-of-the-art performance
+regarding both the quality and diversity of the generated molecules which demonstrates the huge
+potential of GeoBFN on geometry generative modeling. The phenomenon demonstrates that the
+GeoBFN does not hold the tendency to collapse to the subset of training data which could imply
+a probabilistic generalization ability and could be useful for several application scenarios; The
+Conditional Molecule Generation results can be found in Tab. 2. GeoBFN consistently outperforms
+other baseline models by an obvious margin in all conditional generation tasks. This clearly highlights
+the effectiveness and generalization capability of the proposed methods.
+4.3
+ANY-STEP SAMPLING
+One notable property of GeoBFN is that training with the continuous-time loss, e.g., Eq. 19, the
+sampling could be conducted with any steps without incurring additional training overhead. As shown
+in Tab. 1, GeoBFN could get superior performance compared to several advanced models with only 50
+steps during sampling which brings 20× speed-up during sampling due to the benefit of low variance
+parameter space. As we could find in Fig 4, with the sampling steps increasing from 50 to 4600, the
+molecule stability could be further boosted to approach the upper bound, e.g., 94.25% with 4000 steps.
+4.4
+ABLATION STUDIES
+We conduct ablation studies on the effect of input modalities in Tab. 3. We try different compositions
+and losses to represent the atom types, discretised basis refers to the case where the charge feature is
+used with discretised and the Gaussian basis, i.e., ϕj(x) = exp
+
+−
+(x−µj)2)
+2σ2
+
+is used as functional
+embedding for charge; continous basis only differ in that the continous loss is utilized. The discrete
+refers to including the one-hot type representation; discrete+continuous refers to both the one-hot
+type and charge are included while continuous loss is included; Similar is the discrete+continuous.
+With only discretised variable utilized, the performance is superior to including the discrete variable
+which implies powerful probabilistic modeling capacity and the benefits of applying similar modality.
+5
+RELATED WORK
+Previous molecule generation studies have primarily focused on generating molecules as 2D graphs
+(Jin et al., 2018; Liu et al., 2018; Shi et al., 2020), but there has been increasing interest in 3D
+molecule generation. With the increasing interest in 3D molecule generation, G-Schnet and G-
+SphereNet (Gebauer et al., 2019; Luo & Ji, 2021) respectively, employ autoregressive techniques
+to create molecules in a step-by-step manner by progressively connecting atoms or molecular
+fragments. These frameworks have also been extended to structure-based drug design (Li et al.,
+2021; Peng et al., 2022; Powers et al., 2022). There are approaches use atomic density grids
+that generate the entire molecule in a single step by producing a density over the voxelized 3D
+space (Masuda et al., 2020). Most recently, the attention has shifted towards using DMs for 3D
+molecule generation (Hoogeboom et al., 2022; Wu et al., 2022; Peng et al., 2023; Xu et al., 2023),
+with successful applications in target drug generation (Lin et al., 2022), antibody design (Luo et al.,
+2022), and protein design (Anand & Achim, 2022; Trippe et al., 2022). However, our method is
+based on the Bayesian Flow Network (Graves et al., 2023) objective and hence lies in a different
+model family which fundamentally differs from this line of research in both training and generation.
+6
+CONCLUSION
+We introduce GeoBFN, a new generative framework for molecular geometry. GeoBFN operates
+in a differentiable parameter space for variables from different modalities. Also, the less variance
+in parameter space is naturally compatible with the noise sensitivity of molecule geometry. Given
+the appealing property, the GeoBFN achieves state-of-the-art performance on several 3D molecule
+generation benchmarks. Besides, GeoBFN can also conduct sampling with an arbitary number
+of steps to reach an optimal trade-off between efficiency and quality (e.g., 20× speedup without
+sacrificing performance).
+9
+
+
+Published as a conference paper at ICLR 2024
+ACKNOWLEDGMENTS
+The authors thank the anonymous reviewers for reviewing the draft. This work is supported by the
+National Science and Technology Major Project (2022ZD0117502), Natural Science Foundation
+of China (62376133) and Guoqiang Research Institute General Project, Tsinghua University (No.
+2021GQG1012).
+REFERENCES
+Namrata Anand and Tudor Achim. Protein structure and sequence generation with equivariant
+denoising diffusion probabilistic models. arXiv preprint arXiv:2205.15019, 2022.
+Brandon Anderson, Truong Son Hy, and Risi Kondor. Cormorant: Covariant molecular neural
+networks. Advances in neural information processing systems, 32, 2019.
+Niklas Gebauer, Michael Gastegger, and Kristof Schütt. Symmetry-adapted generation of 3d point
+sets for the targeted discovery of molecules. Advances in neural information processing systems,
+32, 2019.
+Niklas WA Gebauer, Michael Gastegger, Stefaan SP Hessmann, Klaus-Robert Müller, and Kristof T
+Schütt. Inverse design of 3d molecular structures with conditional generative neural networks.
+arXiv preprint arXiv:2109.04824, 2021.
+Alex Graves, Rupesh Kumar Srivastava, Timothy Atkinson, and Faustino Gomez. Bayesian flow
+networks. arXiv preprint arXiv:2308.07037, 2023.
+Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. arXiv preprint
+arXiv:2006.11239, 2020.
+Emiel Hoogeboom, Vıctor Garcia Satorras, Clément Vignac, and Max Welling. Equivariant diffusion
+for molecule generation in 3d. In International Conference on Machine Learning, pp. 8867–8887.
+PMLR, 2022.
+Wengong Jin, Regina Barzilay, and Tommi Jaakkola. Junction tree variational autoencoder for
+molecular graph generation. In International conference on machine learning, pp. 2323–2332.
+PMLR, 2018.
+Bowen Jing, Stephan Eismann, Patricia Suriana, Raphael John Lamarre Townshend, and Ron Dror.
+Learning from protein structure with geometric vector perceptrons. In International Conference on
+Learning Representations, 2021.
+Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. In 3nd International
+Conference on Learning Representations, 2014.
+Jonas Köhler, Leon Klein, and Frank Noe. Equivariant flows: Exact likelihood generative learning for
+symmetric densities. In Proceedings of the 37th International Conference on Machine Learning,
+2020.
+Xiang Lisa Li, John Thickstun, Ishaan Gulrajani, Percy Liang, and Tatsunori Hashimoto. Diffusion-
+LM improves controllable text generation. In Alice H. Oh, Alekh Agarwal, Danielle Belgrave,
+and Kyunghyun Cho (eds.), Advances in Neural Information Processing Systems, 2022. URL
+https://openreview.net/forum?id=3s9IrEsjLyk.
+Yibo Li, Jianfeng Pei, and Luhua Lai. Structure-based de novo drug design using 3d deep generative
+models. Chemical science, 12(41):13664–13675, 2021.
+Haitao Lin, Yufei Huang, Meng Liu, Xuanjing Li, Shuiwang Ji, and Stan Z Li. Diffbp: Generative
+diffusion of 3d molecules for target protein binding. arXiv preprint arXiv:2211.11214, 2022.
+Qi Liu, Miltiadis Allamanis, Marc Brockschmidt, and Alexander Gaunt. Constrained graph variational
+autoencoders for molecule design. In Advances in neural information processing systems, 2018.
+10
+
+
+Published as a conference paper at ICLR 2024
+Shitong Luo, Yufeng Su, Xingang Peng, Sheng Wang, Jian Peng, and Jianzhu Ma. Antigen-specific
+antibody design and optimization with diffusion-based generative models for protein structures.
+In Alice H. Oh, Alekh Agarwal, Danielle Belgrave, and Kyunghyun Cho (eds.), Advances in
+Neural Information Processing Systems, 2022. URL https://openreview.net/forum?
+id=jSorGn2Tjg.
+Youzhi Luo and Shuiwang Ji. An autoregressive flow model for 3d molecular geometry generation
+from scratch. In International Conference on Learning Representations, 2021.
+Tomohide Masuda, Matthew Ragoza, and David Ryan Koes. Generating 3d molecular structures con-
+ditional on a receptor binding site with deep generative models. arXiv preprint arXiv:2010.14442,
+2020.
+Chenlin Meng, Yutong He, Yang Song, Jiaming Song, Jiajun Wu, Jun-Yan Zhu, and Stefano Ermon.
+SDEdit: Guided image synthesis and editing with stochastic differential equations. In International
+Conference on Learning Representations, 2022. URL https://openreview.net/forum?
+id=aBsCjcPu_tE.
+Adam Paszke, Sam Gross, Soumith Chintala, Gregory Chanan, Edward Yang, Zachary DeVito,
+Zeming Lin, Alban Desmaison, Luca Antiga, and Adam Lerer. Automatic differentiation in
+pytorch. In NIPS-W, 2017.
+Xingang Peng, Shitong Luo, Jiaqi Guan, Qi Xie, Jian Peng, and Jianzhu Ma. Pocket2mol: Efficient
+molecular sampling based on 3d protein pockets. In International Conference on Machine Learning,
+2022.
+Xingang Peng, Jiaqi Guan, Qiang Liu, and Jianzhu Ma.
+Moldiff: Addressing the atom-bond
+inconsistency problem in 3d molecule diffusion generation. arXiv preprint arXiv:2305.07508,
+2023.
+Alexander S. Powers, Helen H. Yu, Patricia Suriana, and Ron O. Dror. Fragment-based ligand
+generation guided by geometric deep learning on protein-ligand structure. bioRxiv, 2022. doi: 10.
+1101/2022.03.17.484653. URL https://www.biorxiv.org/content/early/2022/
+03/21/2022.03.17.484653.
+Raghunathan Ramakrishnan, Pavlo O Dral, Matthias Rupp, and O Anatole Von Lilienfeld. Quantum
+chemistry structures and properties of 134 kilo molecules. Scientific data, 1(1):1–7, 2014.
+Victor Garcia Satorras, Emiel Hoogeboom, Fabian B Fuchs, Ingmar Posner, and Max Welling. E (n)
+equivariant normalizing flows for molecule generation in 3d. arXiv preprint arXiv:2105.09016,
+2021a.
+Vıctor Garcia Satorras, Emiel Hoogeboom, and Max Welling. E(n) equivariant graph neural networks.
+In International conference on machine learning, pp. 9323–9332. PMLR, 2021b.
+Kristof T Schütt, Farhad Arbabzadah, Stefan Chmiela, Klaus R Müller, and Alexandre Tkatchenko.
+Quantum-chemical insights from deep tensor neural networks. Nature communications, 8:13890,
+2017.
+Chence Shi, Minkai Xu, Zhaocheng Zhu, Weinan Zhang, Ming Zhang, and Jian Tang. Graphaf: a
+flow-based autoregressive model for molecular graph generation. arXiv preprint arXiv:2001.09382,
+2020.
+Brian L Trippe, Jason Yim, Doug Tischer, Tamara Broderick, David Baker, Regina Barzilay, and
+Tommi Jaakkola. Diffusion probabilistic modeling of protein backbones in 3d for the motif-
+scaffolding problem. arXiv preprint arXiv:2206.04119, 2022.
+Lemeng Wu, Chengyue Gong, Xingchao Liu, Mao Ye, and qiang liu. Diffusion-based molecule
+generation with informative prior bridges. In Alice H. Oh, Alekh Agarwal, Danielle Belgrave,
+and Kyunghyun Cho (eds.), Advances in Neural Information Processing Systems, 2022. URL
+https://openreview.net/forum?id=TJUNtiZiTKE.
+Minkai Xu, Lantao Yu, Yang Song, Chence Shi, Stefano Ermon, and Jian Tang. Geodiff: A geometric
+diffusion model for molecular conformation generation. arXiv preprint arXiv:2203.02923, 2022.
+11
+
+
+Published as a conference paper at ICLR 2024
+Minkai Xu, Alexander Powers, Ron Dror, Stefano Ermon, and Jure Leskovec. Geometric latent
+diffusion models for 3d molecule generation. arXiv preprint arXiv:2305.01140, 2023.
+A
+EXPLANATION OF THE DATA EXCHANGE PERSPECTIVE OF BAYESIAN
+FLOW NETWORKS
+In this section, we provide a brief overview of the Bayesian Flow Networks Graves et al. (2023) from
+a data exchange perspective. Bayesian Flow Networks (BFNs) is a new class of generative model
+that operates on the parameters of a set of independent distributions with Bayesian inference. The
+meta elements of BFNs are the input distributions, sender distributions, and output distributions.
+To start with, we denote the D-dimensional variable as m =
+m(1), . . . , m(D)
+∈MD, and
+θ =
+θ(1), . . . , θ(D)
+represent the parameters of a D-dimensional factorised distribution, i.e.,
+p(m | θ) = QD
+d=1 p
+m(d) | θ(d)
+.
+The basic logic of BFN could be better explained by the following communication example between
+the sender, referred to as Alice, and the receiver Bob. Alice aims to transfer some data to Bod in a
+progressive fashion, i.e., at each timestep, Alice corrupts the data according to some channel noise,
+and then the noisy sample is transferred. The sender distribution is then defined to describe the noise-
+adding procedure, which is also a factorized distribution, pS(y | m; α) = QD
+d=1 pS
+y(d) | m(d); α
+
+.
+α refers to the accuracy parameter, α = 0 refers to the information of the sample being totally
+destroyed by the noise, and with α increase the noisy sample will contain more information of the
+original sample. Intuitively, the sender distribution could be approximately understood as adding
+noise to each dimension of the data independently.
+After receiving the noisy sample y, Bob will first update an initial “guess” of what is the original
+sample behind the noisy sample, i.e. input distribution. Note that except for the noisy sample, Bob
+also knows the accuracy parameter α and noise formulation while not aware of the original sample m,
+i.e., the noise level to create such a sample. The input distribution is initially a simple prior on the data
+space, e.g., a standard Gaussian, lies in the mean-field family, pI(m | θ) = QD
+d=1 pI
+x(d) | θ(d)
+.
+The parameter of input distribution will be updated through Bayesian inference, noted as θi =
+h (θi−1, y, αi). This update usually lies in a simple form, e.g. additive or weighted average.
+After updating the parameter of input distribution, Bob has an “assistant” which will help to provide
+a better guess on the original data which generates the observed noisy sample. The assistant aims
+to exploit more context information between different dimensions, e.g., the relationship between
+different pixels in an image, in contrast to updating each dimension independently as in the input
+distribution. Empirically, the assistant could be implemented by a neural network Ψ which takes
+all parameters of input distribution for the prediction of parameters of each dimension, i.e, Ψ(θ) =
+Ψ(1)(θ, t), . . . , Ψ(D)(θ, t)
+
+.
+The output distribution is then implied by the predicted parameter which lies in the formulation of
+pO(m | θ, t) = QD
+d=1 pO
+m(d) | Ψ(d)(θ, t)
+
+. Then Bob could construct a distribution to approxi-
+mate the sender distribution at accuracy α by combining the output distribution with the known noise
+form, accuracy, i.e., pR (· | θ; t, α) = EpO(x′|θ;t)pS (y | x′; α). Such distribution is called receiver
+distribution. The "assistant" of BFNs Ψ is to minimize the KL divergence with a defined accuracy
+scheduler under different timesteps, i.e., DKL (pS (· | m; αi) ∥pR (· | θi−1; ti−1, αi)), which could
+also be interpreted as transmission cost under the bits-back coding scheme.
+B
+IMPLEMENTATION DETAILS
+The bayesian flow network is implemented with EGNNs Satorras et al. (2021b) by PyTorch (Paszke
+et al., 2017) package. We set the dimension of latent invariant features k to 1 for QM9 and 2 for
+DRUG, which extremely reduces the atomic feature dimension. For the training of vector field
+network vθ: on QM9, we train EGNNs with 9 layers and 256 hidden features with a batch size 64;
+and on DRUG, we train EGNNs with 4 layers and 256 hidden features, with batch size 64. The
+model uses SiLU activations. We train all the modules until convergence. For all the experiments,
+we choose the Adam optimizer (Kingma & Ba, 2014) with a constant learning rate of 10−4 as our
+12
+
+
+Published as a conference paper at ICLR 2024
+default training configuration. The training on QM9 takes approximately 2000 epochs, and on DRUG
+takes 20 epochs.
+C
+PROOF OF THEOREMS
+In this Section, we provide the formal proof of the Theorem. 3.1 and Proposition. 3.2, as well as the
+detailed derivations for Equations.
+C.1
+DISCUSSION ON THE TRANSLATIONAL INVARIANCE
+Remark C.1. It is important to distinguish it from the rotation invariant. The rotational invariant
+is defined as p(x) = p(Rx), while the translational is not as p(x) = p(x + t) as such distribution
+can not integrate into one and hence does not exist. Fortunately, the freedom of translation could
+be eliminated by only focusing on learning distribution on the linear subspace where the center of
+gravity is always zero. This is, for all configurations on Rn×3 space, the density on the zero CoM
+space is utilized to represent their density; It’s important to note that the distribution is not defined for
+configurations outside the zero CoM space. However, it remains possible to leverage the distribution
+to provide a density-evaluation (not probability density) on the configurations outside the zero CoM
+space. This is achieved by projecting them back into the subspace. The evaluation procedure for
+configurations out of zero CoM space could only get a quantity defined artificially instead of the true
+density of some real distribution, e.g. It is referred to as "CoM-free density" in (Xu et al., 2022).
+Thus, there does not exist correctness issues.
+C.1.1
+ZERO CENTER OF MASS(COM) IN THE GEOBFN
+Here we provide detailed discussions on optimizing the distribution in the zero CoM space. Recall
+the training objective in equation 8,
+LVLB(x) =
+E
+pϕ(θx
+0 ,...,θx
+n)
+" n
+X
+i=1
+DKL(pS (· | x; αi) ∥pR(· | θx
+i−1; αi)) −log pϕ (x | θx
+n)
+#
+,
+(22)
+where pϕ(x|θx
+n) = pO(x|θx
+n, ϕ). For learning a distribution on the zero CoM space of Rn×3, the
+pS (· | x; αi), pR(· | θx
+i−1; αi) and pϕ (x | θx
+n) are all defined and supported on the zero CoM space,
+here Pn
+i=1 xi = 0 and Pn
+i=1 θx = 0. In other words, such distribution has no definition for variable
+v ∈Rn×3 if Pn
+i=1 vi ̸= 0. We then express the likelihood function of an isotropic diagonal Gaussian
+distribution, which is originally defined on the zero CoM space ((n −1) × 3-dimensional), in the
+ambient space (n × 3-dimensional) as (Hoogeboom et al., 2022):
+Nx
+x | µ, σ2I
+
+= (
+√
+2πσ)−(n−1)×3 exp
+
+−1
+2σ2 ∥x −µ∥2
+
+(23)
+Here σ2 is the variance which is equivalent for each dimension.
+Recall the Eq.
+35 in the
+(Graves et al., 2023), which shows that DKL(pS (· | x; αi) ∥pR(· | θx
+i−1; αi)) takes the form of
+DKL
+N
+x, α−1
+i I
+
+∥N(Φx(θg, t), α−1
+i I)
+
+which is the KL divergence between to diagonal Gaus-
+sian, then we derive the KL divergence for isotropic diagonal normal distributions of zero CoM with
+means represent on the ambient space. If pS = N
+ ˆ
+µ1, σ2I
+
+and pR = N
+ ˆ
+µ2, σ2I
+
+on subspace,
+where ˆ
+µ1 and ˆ
+µ2 is (n −1) × 3-dimension. Then the KL between them could be represented as:
+DKL(q∥p) = 1
+2
+"
+∥ˆ
+µ1 −ˆ
+µ2∥2
+σ2
+#
+(24)
+There is an orthogonal transformation Q which transforms the ambient space µi ∈Rn×3 where
+P
+i µi = 0 to the subspace in the way that
+
+ˆ
+µ
+0
+
+= Qµ. With ∥ˆ
+µ∥= ∥
+
+µ
+0
+
+∥= ∥µ∥, there is
+∥ˆ
+µ1 −ˆ
+µ2∥2 = ∥µ1 −µ2∥2. Hence we have:
+DKL
+N
+x, α−1
+i I
+
+∥N(Φx(θg, t), α−1
+i I)
+
+= αi
+2 ∥x −Φx (θg, t)∥2
+(25)
+Hence we demonstrate the correctness of our objective in Eq. 19.
+13
+
+
+Published as a conference paper at ICLR 2024
+C.1.2
+PROOF OF THE TRANSLATIONAL INVARIANT DENSITY EVALUATION PROCEDURE.
+Proof. For an n-atom molecule g = ⟨x, h⟩, the coordinate variable x has the dimension of n × 3.
+Note that with the zero Center of Mass mapping (Xu et al., 2022; Satorras et al., 2021a), where
+we constrain the center of gravity as zero (Pn
+i=1 xi = 0), then variable x essentially lies in the
+(n −1) × 3-dimensional linear subspace. The generative distributions pX mentioned in all of the
+related literature (Satorras et al., 2021a; Hoogeboom et al., 2022; Xu et al., 2022; 2023) is constrained
+in the zero Center of Mass space. This is, for samples in the ambient space, if Pn
+i=1 xi ̸= 0, pX is not
+defined. The translational invariant property of distribution pX mentioned is not referred to the fact
+that pX(x) = pX(x + t) for all translation vector t is satisfied in the ambient space with dimension
+n × 3. Actually, such conditions could not be satisfied in any space (Satorras et al., 2021a). The
+translational invariant condition actually refers to the invariant function f which could evaluate the
+density of all the ambient space based on pX, the evaluated density by f also referred to as "CoM-free
+standard density" in (Xu et al., 2022). The function f is defined as
+f(x) = pX(Qx)
+(26)
+where Q refers to the operation which maps the x to the zero Center of Mass space, e.g. in our work
+Q is defined as
+Q = I3 ⊗
+
+IN −1
+N 1N1T
+N
+
+,
+s.t.
+Qx =
+
+
+x1 −
+Pn
+i=1 xi
+n
+· · ·
+xn −
+Pn
+i=1 xi
+n
+
+
+(27)
+that subtracting mean
+Pn
+i=1 xi
+n
+from each xi, where Ik denotes the k × k identity matrix and 1k
+denotes the k-dimensional vector filled with 1s. Then the density evaluation function f is translational
+invariant in the ambient space:
+f(x + t) = pX( ˆ
+Q(x + t)) = pX(
+
+
+x1 + ti −
+Pn
+i=1(xi+ti)
+n
+· · ·
+xn + tn −
+Pn
+i=1(xi+ti)
+n
+
+)
+(28)
+Note t stands for a translation vector, which implies that t1 = · · · = ti = tn = C ∈R3. Then we
+have:
+f(x + t) = pX(
+
+
+x1 + C −
+Pn
+i=1(xi+C)
+n
+· · ·
+xn + C −
+Pn
+i=1(xi+C)
+n
+
+) = pX(
+
+
+x1 −
+Pn
+i=1 xi
+n
+· · ·
+xn −
+Pn
+i=1 xi
+n
+
+) = pX(Qx) = f(x)
+(29)
+Furthermore, the above proof has no constraint on the distribution pX. This is, for any distribution on
+the zero Center of Mass space, the corresponding evaluation function defined in Eq. 26 is translational
+invariant.
+C.2
+PROOF OF THEOREM. 3.1.
+Given the above discussion on the translational invariance, for simplicity, we could only focus on the
+rotation transformation.
+Proof. Recall the graphical model in Fig. 2, we could reformulate the density function in Eq. 7 as:
+pϕ(x) =
+Z
+pϕ(x | θx
+1, · · · , θx
+n)pϕ(θx
+1, · · · , θx
+n)dθx
+1:n
+(definition of marginal)
+=
+Z
+pϕ(x | θx
+n)p(θ0)
+n
+Y
+i=1
+pU (θi | θi−1; αi) dθx
+1:n.
+(30)
+Note that pϕ(x | θx
+n) = pϕ(Rx | Rθx
+n) = pO (R(x) | R(θx
+n); ϕ) due to the property of EGNN,
+and p(θ0) = p(Rθ0) since θ0 = 0. Then we prove that pU (θi | θi−1; αi) satisfies the equiv-
+ariant condition that pU (θi | θi−1; αi) = pU (Rθi | Rθi−1; αi). Recall that pU (θi | θi−1; αi) =
+14
+
+
+Published as a conference paper at ICLR 2024
+E
+pO(yi|θi−1;αi)δ (θi −h (θi−1, yi, αi)), then we have:
+pU (Rθi | Rθi−1; αi) =
+E
+pO(yi|Rθi−1;αi)δ (Rθi −h (Rθi−1, yi, αi))
+=
+Z
+pO (yi | Rθi−1; αi) δ (Rθi −h (Rθi−1, yi, αi)) dyi
+(31)
+Then we apply integration-by-substitution and replace the variable yi with a new variable y′
+i, i.e.
+yi = Ry′
+i, into the Eq. 31:
+Z
+pO (yi | Rθi−1; αi) δ (Rθi −h (Rθi−1, yi, αi)) dyi
+=
+Z
+pO (Ry′
+i | Rθi−1; αi) δ (Rθi −h (Rθi−1, Ry′
+i, αi)) dRy′
+i
+=
+Z
+pO (Ry′
+i | Rθi−1; αi) δ (Rθi −h (Rθi−1, Ry′
+i, αi)) |det(R)|dy′
+i
+(32)
+The rotation matrix R is a SO(3) matrix, thus the |det(R)| = 1. And for the continuous coordinate
+variable, the update function h defined in Eq. 11 is also equivariant:
+h (Rθi−1, Ryi, αi) = Rθi−1ρi−1 + Ryiαi
+ρi
+= Rh (θi−1, yi, αi)
+(33)
+Putting these conditions back to the Eq. 32, we have that
+pU (Rθi | Rθi−1; αi) =
+Z
+pO (yi | Rθi−1; αi) δ (Rθi −h (Rθi−1, yi, αi)) dyi
+=
+Z
+pO (Ry′
+i | Rθi−1; αi) δ (Rθi −Rh (θi−1, y′
+i, αi)) |det(R)|dy′
+i
+=
+Z
+pO (y′
+i | θi−1; αi) δ (θi −h (θi−1, y′
+i, αi)) dy′
+i
+= pU (θi | θi−1; αi)
+(34)
+Hence the transitions on the θ space are the Markov and equivariant to rotation as shown in Eq. 30.
+The initial state θ0 is a zero vector 0 which is rotation invariant. To derive the rotation-invariant
+property of pϕ, we will use the following Lemma, which is the direct application of Proposition 1 in
+(Xu et al., 2022). We changed the notation to make it consistent with our literature.
+Lemma C.2. (Xu et al., 2022) Let p (θ0) be an SE(3)-invariant density function, i.e., p (θ0) =
+p (Tg (θ0)).
+If Markov transitions p (θi | θi−1) are SE(3)-equivariant, i.e., p (θi | θi−1) =
+p (Tg (θi) | Tg (θi−1)), then we have that the density p (θn) =
+R
+p (θ0) p (θ1:n | θ0) dθ0:n is also
+SE(3)-invariant. (Tg stands for the SE(3) transformations.)
+For completeness, we also include the derivation of the lemma from (Xu et al., 2022):
+p (Tg(θn)) =
+Z
+p (Tg(θ0)) p (Tg(θ1:n) | Tg(θ0)) dθ0:n
+=
+Z
+p (Tg (θ0)) Πn
+i=1p (Tg (θi) | Tg (θi−1)) dθ0:n
+=
+Z
+p (θ0) Πn
+i=1pθ (Tg (θi) | Tg (θi−1)) dθ0:n
+( invariant prior p (θ0))
+=
+Z
+p (θ0) Πn
+i=1pθ (θi | θi−1) dθ0:n
+(equivariant kernels p (θi | θi−1))
+=
+Z
+p (θ0) p (θ1:n | θ0) dθ0:n
+= p (θn)
+(35)
+Given the invariant property of θ0 and equivariant property of the transition pU (θi | θi−1; αi) and
+the pϕ(x | θx
+n), we could directly get the conclusion in Theorem. 3.1. Now we finish the proof.
+15
+
+
+Published as a conference paper at ICLR 2024
+C.3
+PROOF OF PROPOSITION. 3.2.
+Proof. Then we derive the invariant property of the variational lower bound in of the variational
+lower bounds in equation 8:
+LV LB(x) =
+E
+pϕ(θx
+0 ,...,θx
+n)
+[
+n
+X
+i=1
+DKL(pS (· | x; αi) ∥pR(· | θx
+i−1; αi)) −log pϕ (x | θx
+n)]
+To start with, we consider the first term:
+E
+pϕ(θx
+0 ,...,θx
+n)
+n
+X
+i=1
+DKL(pS (· | x; αi) ∥pR(· | θx
+i ; αi))
+=
+n−1
+X
+i=0
+E
+pϕ(θx
+i )
+DKL(pS (· | x; αi) ∥pR(· | θx
+i ; αi))
+(36)
+Note a natural conclusion from the Theorem. 3.1 is that the SE(3) invariance property is not only
+satisfied in the marginal distribution of the last time step variable p(θn), but also for the distribution
+of any intermediate p(θi). Such property could be justified based on the condition in Lemma. C.2.
+Actually, the proof of Theorem. 3.1 in the above section does not specify the time steps, hence the
+marginal distribution of any time step could be proved in exactly the same way. Consider the i-th
+term in the KL part of LVLB(Rx):
+E
+pϕ(θx
+i )
+DKL(pS (· | Rx; αi) ∥pR(· | θx
+i ; αi))
+=
+Z
+pϕ (θx
+i ) DKL(pS (· | Rx; αi) ∥pR(· | θx
+i ; αi))dθx
+i
+(37)
+we introduce the variable θ′
+i similar to Eq. 32, i.e. θi = Rθ′
+i, and then we extend i-th term in the
+Eq. 36:
+Z
+pϕ
+
+Rθx′
+i
+
+DKL(pS (· | Rx; αi) ∥pR(· | Rθx′
+i ; αi))|det(R)|dθx′
+i
+(38)
+As proved in the proof of Theorem. 3.1, pϕ is invariant and hence pϕ
+
+Rθx′
+i
+
+= pϕ(θx′
+i ); Also the
+|det(R)| = 1 for SO(3) rotation matrix. And then we discuss the KL divergence term:
+DKL(pS (· | Rx; αi) ∥pR(· | Rθx′
+i ; αi)) =
+Z
+pS (y | Rx; αi) log pS (y | Rx; αi)
+pR(y | Rθx′
+i ; αi)dy
+=
+Z
+pS (Ry′ | Rx; αi) log pS (Ry′ | Rx; αi)
+pR(Ry′ | Rθx′
+i ; αi)det(R)|dy′
+=
+Z
+pS (y′ | x; αi) log pS (y′ | x; αi)
+pR(y′ | θx′
+i ; αi)dy′ = DKL(pS (· | x; αi) ∥pR(· | θx′
+i ; αi))
+(39)
+Note that pS (y′ | x; αi) = pS (Ry′ | Rx; αi) is due to that the sender distribution is isotropic;
+And for receiver distribution, the equivariant property that pR (y′ | x; αi) = pR (Ry′ | Rx; αi) is
+guaranteed by both the parameterization of pO with Equivariant Graph Neural Network and the
+isotropic pS. At last, we put the above conclusion back to Eq. 37, and we get that:
+E
+pϕ(θx
+i )
+DKL(pS (· | Rx; αi) ∥pR(· | θx
+i ; αi))
+=
+Z
+pϕ (θx
+i ) DKL(pS (· | Rx; αi) ∥pR(· | θx
+i ; αi))dθx
+i
+=
+Z
+pϕ (θx
+i ) DKL(pS (· | x; αi) ∥pR(· | θx
+i ; αi))dθx
+i
+=
+E
+pϕ(θx
+i )
+DKL(pS (· | x; αi) ∥pR(· | θx
+i ; αi))
+(40)
+And here we prove the first term in LV LB(Rx) is equivalent to LV LB(x). The second term could be
+derived in exactly the same way, and here we finish the proof.
+16
+
+
+Published as a conference paper at ICLR 2024
+C.4
+DERIVATION OF EQUATION 8
+Note that the equation 8:
+LVLB(x) =
+E
+pϕ(θx
+0 ,...,θx
+n)
+" n
+X
+i=1
+DKL(pS (· | x; αi) ∥pR(· | θx
+i−1; αi)) −log pϕ (x | θx
+n)
+#
+,
+(41)
+is the extension formulation of Eq. 1. To align the notation of Eq. 1 and equation 8, we use x in
+the following derivation. We first consider the term −DKL(q∥pϕ (y1, . . . , yn)) in Eq. 1, we put the
+Eq. 2
+q = q (y1, . . . , yn | x) =
+n
+Y
+i=1
+pS (yi | x; αi)
+(42)
+And the pϕ (y1, . . . , yn)) in Eq. 6 as
+pϕ (y1, . . . , yn) =
+E
+pϕ(θ0:n−1)
+" n
+Y
+i=1
+E
+pO(x′
+i|θi−1;ϕ) [pS(yi|x′
+i; αi)]
+#
+=
+E
+pϕ(θ0:n)
+n
+Y
+i=1
+pR(yi|θi−1; αi)
+(43)
+Putting them together into the KL divergence term, and then we get the
+DKL(q∥pϕ (y1, . . . , yn)) =
+E
+Qn
+i=1 pS(yi|x;αi) log
+Qn
+i=1 pS (yi | x; αi)
+E
+pϕ(θ0:n−1)
+Qn
+i=1 pR(yi|θi−1; αi)
+=
+E
+pϕ(θ0:n−1)
+E
+Qn
+i=1 pS(yi|x;αi) log
+Qn
+i=1 pS (yi | x; αi)
+Qn
+i=1 pR(yi|θi−1; αi)
+=
+E
+pϕ(θ0:n−1)
+n
+X
+i=1
+DKL(pS (· | g; αi) ∥pR(· | θi−1; αi))
+(44)
+And we have derived the first term in equation 8. And for the second term,
+log pϕ(x|y1, · · · , yn) = log pϕ(x|θ0, · · · , θn)
+(Graphical Model in Fig. 2)
+= log pϕ(x|θn)
+(Markov Property of θ)
+(45)
+And here we finish the derivation.
+D
+DETAILS ON CONDITIONAL GENERATION EXPERIMENTS
+D.1
+PARAMETERIZATION AND SAMPLING
+For the conditional experiments, we directly follow the conditional setting of previous litera-
+ture (Hoogeboom et al., 2022). We discuss the details of the parameterization and sampling in
+the following. For conditional experiments, we add the property c as the extra input for the interde-
+pendency modeling module in Eq. 19. The conditional objective will be as:
+L∞(g, c)
+=
+E
+t∼U(0,1),pF (θg|g;t)
+αx(t)
+2
+∥x −Φx∥2 + αhc(t)
+2
+∥hc −Φhc∥2 + αht(t)
+2
+∥ht −Φht∥2
+
+(46)
+Where Φ·(θg, t, c) is short for Φ·(θg, t, c).
+For the sampling procedure, the property c and node number M will be firstly sampled from a prior
+p(c, M) defined in (Hoogeboom et al., 2022). Here p(c, M) is computed on the training partition as
+a parametrized two-dimensional categorical distribution where the continuous variable c is discretized
+into small uniformly distributed intervals. Then we could conduct generation as in Algorithm 3 based
+on the conditional output distribution pO(·|θ, c, t) base on Φ(θ, c, t).
+17
+
+
+Published as a conference paper at ICLR 2024
+D.2
+EXPLANATIONS ON THE PROPERTIES IN TAB. 2
+α Polarizability: Tendency of a molecule to acquire an electric dipole moment when subjected to
+anexternal electric field.
+εHOMO: Highest occupied molecular orbital energy.
+εLUMO: Lowest unoccupied molecular orbital energy.
+∆ε Gap: The energy difference between HOMO and LUMO.
+µ : Dipole moment.
+Cv : Heat capacity at 298.15 K
+E
+DETAILED ALGORITHMS FOR TRAINING AND SAMPLING
+For a better understanding of the whole procedure in training and sampling, we involve the detailed
+algorithms and implements of functions in Algorithm 1, Algorithm 2 and Algorithm 3.
+Algorithm 1 Functions for GeoBFN
+function DISCRETISED_CDF(µ ∈R, σ ∈R+, x ∈R)
+F(x) ←1
+2
+h
+1 + erf
+
+x−µ
+σ
+√
+2
+i
+G(x) ←
+
+
+
+0
+if x ≤−1
+1
+if x ≥1
+F(x)
+otherwise
+Return G(x)
+end function
+function OUTPUT_PREDICTION(µx ∈RD×3, µh ∈RD, t ∈[0, 1], γx, γh ∈R+, tmin ∈R+)
+# tmin set to 0.0001 by default
+if t < tmin then
+ˆ
+x(θ, t) ←0
+ˆ
+µh ←0
+ˆ
+σh ←1
+else
+Input (µx, µh, t) to network, receive ˆ
+ϵ(θ, t), ˆ
+µϵ
+h, ln ˆ
+σϵ
+h as output
+ˆ
+x(θ, t) ←µx
+γx −
+q
+1−γx
+γx ˆ
+ϵ(θ, t)
+ˆ
+µh ←ˆ
+µh
+γh −
+q
+1−γh
+γh
+ˆ
+µϵ
+h
+ˆ
+σh ←
+q
+1−γh
+γh
+ln ˆ
+σϵ
+h
+end if
+for d ∈1, · · · , D, k ∈K do
+p(d)
+O (k | θ; t) ←DISCRETISED_CDF(ˆ
+µ(d)
+h , ˆ
+σ(d)
+h , kr) −DISCRETISED_CDF(ˆ
+µ(d)
+h , ˆ
+σ(d)
+h , kl)
+end for
+Return ˆ
+x(θ, t), pO(· | θ; t)
+end function
+18
+
+
+Published as a conference paper at ICLR 2024
+Algorithm 2 Training with continuous loss
+Require: σx, σh ∈R, number of bins K ∈N
+Input: coordinates x ∈RD×3, normalized charges h ∈[ 1
+K −1, 1 −1
+K ]D
+t ∼U(0, 1)
+γx ←1 −σ2t
+x , γh ←1 −σ2t
+h
+µx ∼N(γx, γx(1 −γx)I)
+µh ∼N(γh, γh(1 −γh)I)
+ˆ
+x(θ, t), pO(· | θ; t) ←OUTPUT_PREDICTION(µx, µh, t, γx, γh)
+ˆ
+k(θ, t) ←
+P
+k p(1)
+O pO(k | θ; t)kc, . . . , P
+k p(D)
+O (k | θ; t)kc
+
+L∞(x) ←−ln σxσ−2t
+x
+∥x −ˆ
+x(θ, t)∥2
+L∞(h) ←−ln σhσ−2t
+h
+
+
+
+h −ˆ
+k(θ, t)
+
+
+
+2
+Return L∞(x) + L∞(h)
+Algorithm 3 Sampling procedure
+# ⃗
+kc =
+
+k(1)
+c , . . . , k(D)
+c
+
+# Function NEAREST_CENTER compares inputs to the center bins ⃗
+kc,
+# and return the nearest center for each input value.
+Require: σx, σh ∈R+, number of steps N ∈N
+µx, µh ←0
+ρx, ρh ←1
+for i = 1 to N do
+t ←i−1
+n
+γx ←1 −σ2t
+x , γh ←1 −σ2t
+h
+ˆ
+x(θ, t), pO(· | θ; t) ←OUTPUT_PREDICTION(µx, µh, t, γx, γh)
+αx ←σ−2i/n
+x
+
+1 −σ2/n
+x
+
+αh ←σ−2i/n
+h
+
+1 −σ2/n
+h
+
+ˆ
+kc(θ, t) ←NEAREST_CENTER(
+hP
+k p(1)
+O (k | θ; t)kc, . . . , P
+k p(D)
+O (k | θ; t)kc
+i
+)
+yh ∼N(ˆ
+kc(θ, t), α−1
+h I)
+yx ∼N(ˆ
+x(θ, t), α−1
+x I)
+µx, µh ←ρxµx+αxyx
+ρx+αx
+, ρhµh+αhyh
+ρh+αh
+ρx, ρh ←(ρx + αx), (ρh + αh)
+end for
+ˆ
+x(θ, 1), pO(· | θ; 1) ←OUTPUT_PREDICTION(µx, µh, 1, 1 −σ2
+x, 1 −σ2
+h)
+ˆ
+kc(θ, 1) ←NEAREST_CENTER(
+hP
+k p(1)
+O (k | θ; 1)kc, . . . , P
+k p(D)
+O (k | θ; 1)kc
+i
+)
+Return ˆ
+x(θ, 1), ˆ
+kc(θ, 1)
+19

@@ -1,0 +1,4664 @@
+ChatGLM-Math: Improving Math Problem-Solving in
+Large Language Models with a Self-Critique Pipeline
+Yifan Xu12†∗, Xiao Liu12∗, Xinghan Liu12†, Zhenyu Hou12, Yueyan Li1†, Xiaohan Zhang1,
+Zihan Wang12, Aohan Zeng12,Zhengxiao Du12, Wenyi Zhao1, Jie Tang2, Yuxiao Dong2
+1Zhipu.AI
+2Tsinghua University
+Abstract
+Large language models (LLMs) have shown excellent mastering of human language,
+but still struggle in real-world applications that require mathematical problem-
+solving. While many strategies and datasets to enhance LLMs’ mathematics
+are developed, it remains a challenge to simultaneously maintain and improve
+both language and mathematical capabilities in deployed LLM systems. In this
+work, we tailor the Self-Critique pipeline, which addresses the challenge in the
+feedback learning stage of LLM alignment. We first train a general Math-Critique
+model from the LLM itself to provide feedback signals. Then, we sequentially
+employ rejective fine-tuning and direct preference optimization over the LLM’s
+own generations for data collection. Based on ChatGLM3-32B, we conduct a
+series of experiments on both academic and our newly created challenging dataset,
+MATHUSEREVAL. Results show that our pipeline significantly enhances the
+LLM’s mathematical problem-solving while still improving its language ability,
+outperforming LLMs that could be two times larger. Related techniques have been
+deployed to ChatGLM1, an online serving LLM. Related evaluation dataset and
+scripts are released at https://github.com/THUDM/ChatGLM-Math.
+Model
+Avg. of GSM8k
+& MATH
+AlignBench
+Language
+DeepSeek-67B-Chat [12]
+58.3
+7.11
+DeepSeek-67B-Chat-DPO [12]
+57.7 (-1.2%)
+7.60 (+6.8%)
+InternLM2-Chat-20B [43]
+57.2
+7.68
+Math-InternLM2-20B [43]
+60.2 (+5.1%)
+6.53 (-14.8%)
+ChatGLM3-32B-SFT-2312
+52.4
+7.37
++ RFT&DPO
+61.6 (+17.5%) 7.80 (+5.85%)
+Table 1: Our self-critique pipeline enables simul-
+taneous improvement of language and mathemati-
+cal abilities. Previous alignment methods enhance
+language but could potentially impair mathemati-
+cal abilities [12], whereas math-specialized mod-
+els could harm language capabilities [43].
+40
+45
+50
+55
+60
+65
+70
+75
+Hungarian Exam Score
+52.5
+55.0
+57.5
+60.0
+62.5
+65.0
+67.5
+70.0
+Avg. of GSM8k & MATH
+GPT-3.5-Turbo-0613
+GPT-4-0613
+GLM-4
+DeepSeek-Chat-67B
+Qwen-Chat-72B
+ChatGLM3-32B-SFT-2312
+ChatGLM3-32B-SFT-2312 + RFT
+ChatGLM3-32B-SFT-2312 + RFT&DPO
+Figure 1: Results of Hungarian Exam and Average
+Scores of GSM8k and MATH.
+*Yifan and Xiao contributed equally. Emails: xu-yf23@mails.tsinghua.edu.cn,shawliu9@gmail.com
+†Work done while Xinghan and Yueyan interned at Zhipu AI.
+1https://chatglm.cn
+Preprint. Under review.
+arXiv:2404.02893v1  [cs.CL]  3 Apr 2024
+
+
+1
+Introduction
+Large Language Models (LLMs) [8; 10; 20; 40; 44; 61; 1] have garnered widespread attention for their
+remarkable proficiency in various linguistic tasks such as text summarization[18; 47; 33; 26], question
+answering [16; 24; 7], and role-playing conversations [46; 67; 41]. Furthermore, their potential in
+addressing complex problems requiring mathematical reasoning [57; 48; 31] has expanded their
+applicability across real-world missions [30; 5].
+Despite these advances, optimizing LLMs to excel simultaneously in language understanding and
+mathematical problem-solving presents a notable challenge. The prevalent reinforcement learning
+from human feedback (RLHF) approach primarily enhances text generation based on reward models
+reflecting human preferences [44; 35; 45]. Although this method boosts the quality of generated text,
+it often overlooks the accuracy and logical coherence essential for solving mathematical problems,
+leading to a discrepancy in performance known as the "alignment tax"[2] when applied to mathemati-
+cal reasoning (refer to Table 1). Conversely, attempts to bolster LLMs’ mathematical capabilities
+typically entail supervised fine-tuning (SFT) that inadvertently diminishes their linguistic versatility,
+posing a dilemma for practical applications of LLM systems [43; 57; 31; 60].
+Pipeline: Self-Critique. This paper introduces a novel approach aimed at enhancing both linguistic
+and mathematical skills of LLMs without compromising one for the other. Our strategy deviates
+from traditional RLHF by incorporating a Math-Critique model derived from the LLM itself, which
+evaluates its mathematical outputs. This self-critique mechanism enables the model to learn from AI-
+generated feedback specifically tailored to mathematical content [4; 25]. Our methodology comprises
+two primary phases:
+• Stage 1: Rejective Fine-tuning (RFT) [58] employs a rejection sampling technique, wherein
+responses failing to meet Math-Critique standards are discarded, while the rest undergo further
+fine-tuning. This stage aims to enhance the model’s accuracy and consistency in mathematical
+responses while ensuring diversity among the selected answers.
+• Stage 2: Direct Preference Optimization (DPO) [38] extends the improvement process by
+directly learning from pairs of correct and incorrect answers, further refined through Math-Critique,
+focusing on the most challenging questions from the previous stage.
+Benchmark: MATHUSEREVAL. To accurately assess LLMs’ capabilities in solving real-world
+mathematical problems, we develop the MATHUSEREVAL dataset. It features a diverse range of
+questions, extending beyond academic exercises to include practical application scenarios, thereby
+better reflecting user needs compared to traditional academic math datasets [64; 50; 11]. We leverage
+both GPT-4-turbo and our Math-Critique model for comprehensive scoring.
+In summary, our contributions include:
+• The introduction of the Self-Critique pipeline, a novel framework that elevates both the mathe-
+matical and linguistic capabilities of LLMs through self-generated feedback, thereby eliminating
+the need for external supervisory models and manual annotations. This approach has been vali-
+dated on a ChatGLM3-32B model, achieving unparalleled performance on the MATHUSEREVAL,
+Ape210k [64], MATH [16], and the linguistic tasks of AlignBench [29].
+• The creation of the MATHUSEREVAL benchmark, tailored to assess LLMs on complex, open-ended
+mathematical queries relevant to real-world applications, setting a new standard in evaluating
+practical mathematical reasoning capabilities.
+• A detailed analysis of the key factors contributing to the enhancement of mathematical proficiency
+through the Self-Critique pipeline, offering insights into future directions for autonomous model
+improvement.
+2
+Related Work
+LLM for Math Problem-Solving. Various approaches have been explored to enhance the mathe-
+matical problem-solving abilities of language models. Prompting Methods, initiated by Chain of
+Thought prompting [51], have been refined to guide models through detailed reasoning, with notable
+contributions from [55; 6; 53] enhancing mathematical and reasoning tasks. These methods, however,
+2
+
+
+Instruction: Act as a judge …
+Question: A has three eigenvalues 0, 3, 
+and 5, …
+Reference:… x =ku+ 1/3 * v + 1/5 * w.
+Model Answer: …x = pu + \frac{1}{3}
+v + \frac{1}{5}w,where p is any real 
+number 
+Response:
+Analysis: The AI assistant's answer… 
+Score: 9   
+(1) Train Math-Critique
+(2) Train Critique-RFT Model
+Pseudo Tag & 
+Human Label
+Questions
+References 
+Question and References 
+are sampled from our 
+Math Dataset.
+Generate the pseudo tag 
+from CritiqueLLM and 
+manually label it.
+The data is used to train 
+the Math-Critique model 
+from the base model. The 
+Score in response refers 
+to the quality of the 
+model answer.
+Ans. 1
+Ans. 2
+…
+Ans. N
+Sample multiple 
+candidate answers 
+from our model.
+Questions
+10
+8
+…
+2
+Answers are scored by 
+Math-Critique model.
+Critique-RFT Training Set
+Question
+Response
+Select better model 
+responses for training 
+our rejected sampling 
+supervised fine-tuning 
+model (Critique-RFT 
+model).
+Ans. 1
+Ans. 2
+…
+Ans. N
+Questions
+Sample questions were 
+incorrectly answered 
+during step (2) from 
+our Critique-RFT 
+model.
+Ans. 1
+9
+…
+…
+Ans. N
+2
+Chosen
+Rejected
+Answers are reranked 
+by the Math-Critique 
+model. Best and worst 
+answers are labeled as 
+Chosen and Rejected 
+answers.
+Critique-DPO Training Set
+Question 
+Response-Chosen
+Response-Rejected
+Select Chosen and 
+Rejected answers for 
+training Critique-
+DPO Model. 
+(3) Train Critique-DPO Model
+Math-Critique Model
+Math-Critique Model
+Math-Critique Model
+Figure 2: Self-Critique pipeline for ChatGLM-Math. Our method comprises three steps: training the
+Math-Critique model, then utilizing the results from Math-Critique for sampling, followed by two
+stages of training: Critique RFT and Critique DPO. Throughout the entire process, only a minimal
+amount of manual involvement is required during the Math-Critique training phase. Subsequent steps
+can be fully automated and do not depend on external supervisory models.
+are limited by the model’s inherent capabilities as they do not modify the model itself. Supervised
+Fine-tuning and Reinforcement Learning (RL) have also been pivotal. High-quality supervisory data
+from works like [31; 58; 9; 57; 60; 62] aim to improve model capabilities directly. RL’s potential in
+general domains, demonstrated by [34; 44; 12], has led to mathematical enhancements through Ope-
+nAI’s Process Reward Model [27] and PPO algorithm applications [31; 48], despite the challenges in
+applying the DPO algorithm [38] for mathematical tasks. Decoding Strategy and the use of External
+Tools offer additional avenues for improvement. Self-Consistency [49] and MATH-SHEPHERD
+[48] explore sampling strategies to enhance problem-solving while code insertion techniques in works
+like Mammoth [60] and Tora [15] bypass computational limitations.
+Mathematical Evaluation. Complex reasoning tasks, such as mathematics, have always been one
+of the key indicators in assessing the capabilities of language models [22; 37; 17; 14]. Solving a
+mathematical problem involves semantic understanding, problem decomposition, symbolic reasoning,
+and numerical computation, making it an unparalleled choice for evaluating the cognitive reasoning
+ability of LLMs. The GSM8k [11] and MATH [17] datasets have become the most widely used
+benchmarks. The GSM8K dataset focuses on multi-step reasoning with basic arithmetic, showcasing
+the complexity and linguistic diversity inherent in grade school-level mathematics. The MATH
+benchmark further spans various subjects and difficulty levels, facilitating a detailed examination of a
+model’s problem-solving skills.
+Additionally, as one of the most focused-on abilities in language models, there exists a vast array of
+datasets for mathematical capability across various languages. Some standout sets like AQuA [28] ,
+Mathematics [39] and SAT-Math [66] dive deep into pure math prowess, while NumGLUE [32]
+and BBH [42] mix math with other abilities. Moreover, in Chinese, Math23K [50] and CMath [52]
+make elementary and middle school math a playground for problem-solvers, with AgiEval [66] and
+GaoKaoBench [63] turn to exam-level challenges. Moreover, Math401 [59] zeroes in on the ability
+of number calculation. However, these data are primarily in fixed formats, and current works have
+found that simple perturbations to these questions can significantly impact performance [23; 68].
+Therefore, performance on these datasets needs to accurately reflect how models would perform
+when faced with user math questions.
+3
+Math-Critique: A General Critic for Math
+Definition. The first part of our work involves constructing an accurate and robust evaluation model.
+We propose Math-Critique, inspired by works that use large models for evaluation purposes [21; 65].
+This method scores mathematical responses generated by models based on questions and reference
+answers, including an output of explanatory analysis and a score between 1 and 10. Compared to
+traditional reward models, this approach leverages the contextual capabilities of language models,
+3
+
+
+enabling more accurate judgments by integrating reference answers. The use of explanatory analysis
+combined with scoring is also inspired by the concept of thought chains, enhancing scoring accuracy
+while providing interpretability.
+In the instructions, Math-Critique must classify responses into four categories: entirely incorrect,
+partially correct methodology yet erroneous outcome, accurate conclusion with partially flawed
+methodology, and wholly correct. These categories are aligned with scoring ranges of 1–2, 3–5, 6–8,
+and 9–10, respectively.
+Therefore, the Math critique model can be defined as:
+MathCritique(Question, Reference, Answer) →(Critique, Score)
+Here, the Question and Reference are the original problem and the reference answer, respectively,
+and the Model Answer is the answer given by the model being evaluated.
+We employed two evaluation methods using math-critique: average score evaluation and hard-split
+evaluation. The average score evaluation calculates the mean of the critique scores assigned to each
+model answer for a set of questions. On the other hand, the hard-split evaluation categorizes each
+model answer as either passing or failing based on a predefined correctness threshold. If the critique
+score surpasses this threshold for each answer, the answer is considered correct; otherwise, it is
+deemed incorrect. The overall score is then calculated as the proportion of correct answers out of the
+total number of questions.
+Data Collection. Our construction method involves the following steps:
+• We redesigned the scoring rules and intervals for mathematical responses, enabling the model to
+grade based on the correctness of the result and the process.
+• We filtered a dataset from the training data, which includes mathematics questions along with
+their reference answers and model responses, primarily sourced from exam questions ranging
+from junior high to university levels. We utilized model sampling answers from multiple sources,
+including different versions of ChatGLM and other models.
+• We employed CritiqueLLM [21] and ORM to annotate the dataset, selecting annotations that
+represented the best and worst scoring extremes from these models, and directly used these pseudo
+tags for training. This step generated a total of 10k annotated data entries.
+• For results with scores in the middle range, we selected a portion for manual annotation into four
+categories and then mapped these outcomes to a 10-point scale. We also divided a test set from the
+training dataset and used the same method for four-category annotation. This step generated 5k
+annotated data entries for the training set and 800 for the test set.
+4
+The Self-Critique Pipeline
+Overview. Based on the construction method of Math-Critique, this section introduces the Self-
+Critique pipeline. This pipeline is a weakly supervised iterative training method for enhancing
+mathematical abilities, originating from a single model. Initially, we train a Math-Critique model
+using the base model and concurrently train a basic Chat Model using the fundamental SFT dataset.
+Subsequently, we employ the Math-Critique model to supervise the fine-tuning of the Chat Model
+through rejection sampling. The outcome of this step can serve as a new base model to update both
+the Math-Critique model and the rejection sampling supervised fine-tuning model. Building upon
+these steps, our final action involves utilizing the latest Math-Critique model to sample contrast data
+and then proceeding with DPO training.
+In these steps, the data construction for the Math-critique-base involves a small amount of manual
+annotation. However, this batch of annotations is a one-time effort, as only this batch of annotated
+data is needed as a bootstrap for the remaining iterations. After that, inference and automatic model
+filtering can complete all remaining steps.
+Replacing manual annotation with inference can significantly reduce the time required for each
+iteration from the base model to the final chat model. This avoids a problematic scenario: after weeks
+of manual annotation, the base model may have undergone further pretraining and become stronger,
+making it unclear whether the data sampled weeks ago is still accurate or has a significant distribution
+gap for the current model.
+4
+
+
+4.1
+Stage 1: Rejective Fine-tuning
+We utilized a rejection sampling method based on Math-Critique. We re-examined and redesigned the
+implementation of RFT and found that both the sampling range and the model influence the outcomes
+during the rejection sampling process. Specifically, we designed the following sampling principles:
+• Pre-deduplication: Cluster question embeddings from the training set and evenly sample across
+categories, ensuring a diverse range of questions without repetition.
+• Post-sampling deduplication: We conducted a selection process after 5-10 sampling iterations based
+on the results from Math-Critique. After essential deduplication, we chose the entirely correct
+response only in cases where there were both correct and incorrect responses to the same question.
+Following the process outlined above, we have obtained the Critique-RFT dataset:
+DRFT =
+(
+(qi, aij) | 1
+n
+X
+x
+MathCritique(aix) < 1 and MathCritique(aij) > correct-bound
+)
+In this dataset, qi denotes the ith sampled question, with each question undergoing n samplings. aij
+represents the jth response to the ith question. MathCritique refers to Math-Critique score. ’correct
+bound’ denotes the minimum acceptable score for a correct answer, generally set at 0.7.
+4.2
+Stage 2: Direct Preference Optimization
+We employed the DPO method to enhance model capabilities further following Critique RFT. The
+primary advantages of this method are its simplicity in constructing data flows, stability, and speed
+during training. The DPO method directly compares the correct and incorrect answers to the same
+question. In our approach, both answers are sampled from the model post-RFT, which we found to
+be critically important. We also integrated sft loss of DPO positive examples during training as an
+approximate substitute for a regularization term.
+Our DPO data filtering process is similar to Critique RFT, with the sole difference being the con-
+struction method of DPO training pairs. For the selection of DPO pairs, under the premise that there
+is at least one correct and one incorrect answer, we choose the data pair with the most significant
+difference in Math-Critique scoring results.
+Following the process outlined above, we have obtained the Critique-DPO dataset:
+DDPO =
+
+
+(qi, achosen, arejected)
+
+
+
+
+
+
+1
+n
+P
+x MathCritique(aix) < 1,
+MathCritique(achosen) > correct-bound,
+MathCritique(arejected) < rejected-bound
+
+
+
+In this dataset, each element is a tuple, where qi is the ith sampled question. For every question qi,
+sampled n responses, each denoted by aix. The Math-Critique (MathCritique) score is computed
+for each response aix, and the average of these scores must be less than 1. The chosen answer
+for each question, ai−chosen, is the one that exceeds the ’correct-bound’, which is a predetermined
+threshold indicating a satisfactory level of correctness, often set above a specific value. Conversely,
+ai−rejected represents the answer that falls below the ’rejected-bound’, which is the threshold below
+which answers are considered incorrect or unsatisfactory.
+4.3
+Training
+4.3.1
+Math-Critique Training
+We employ the base model of ChatGLM3-32B [61; 13] as the initial Math-Critique base model. After
+each iteration, the model currently refined through SFT (Supervised Finetuning) or Critique RFT will
+be used as the base. We use a learning rate 3e-6 and a batch size 128 on both 6B and 32B scales.
+4.3.2
+Critique-RFT Training
+During the Critique RFT phase, each of our finetuning iterations includes the datasets from previous
+stages after deduplication, which also encompasses the initial sft dataset. We merge DRFT and DSFT
+5
+
+
+Solution: The length of the first curve of the track: 
+3.14 × 72.6 = 227.964 (meters),
+The length of the second curve of the track:
+3.14 × (72.6 ÷ 2 + 1.25) × 2 = 235.814 (meters);
+The difference between the two curves: 235.814 - 
+227.964 = 7.85 (meters);
+ 
+Reference Answer
+Question: In a 400-meter running race, if the 
+diameter of the first semicircular track is 72.6 
+meters and the width of each lane is 1.25 meters, 
+how far apart should the starting points of the 
+first and second lanes be to ensure fairness in the 
+competition? 
+In a 400-meter running race, to ensure fairness, it is 
+necessary to consider the impact of the curve radius on 
+the distance that athletes run. 
+ 
+Since the starting point of the first runner is on the 
+diameter, its circumference is π × 72.6 meters.
+For the second lane, … (More Steps)
+ 
+Taking π as approximately 3.1416, we get a distance 
+difference of 3.1416 × (75.1 - 72.6) meters = 3.1416 × 
+2.5 meters = 7.854 meters.
+ 
+Therefore, the starting points of the first and second 
+lanes should differ by 7.854 meters to conduct the 
+race more fairly.
+ 
+Critique-RFT Training Response
+······
+Critique-DPO Chosen
+First, we need to calculate the radius of the first track. 
+Since the diameter is 72.6 meters, the radius would be 
+72.6 meters divided by 2, equaling 36.3 meters.
+ 
+Next, we need to determine the ··· (truncated)
+ 
+So, the starting points of the first and second lanes 
+should be 2.5 meters apart for the race.
+Critique-DPO Rejected
+Math-Critique Score: 9
+Math-Critique Score: 1
+Math-Critique Score: 10
+(1) Given question and reference answer
+(2) An example response adopted by RFT stage
+(3) An example pair adopted by DPO stage
+Figure 3: Training datasets examples. The training data we generated is divided into two categories,
+originating from the questions and references within existing datasets. We have constructed separate
+RFT training data and paired DPO training data.
+as:
+D = DRFT ∪DSFT
+The DSFT dataset encompasses many routine tasks and can be substituted with an open-source
+instruction finetuning dataset. To eliminate the potential interference of this dataset on the final
+results, we compared the impact of including or excluding the sft data in our ablation study. We
+finetune a base LLM model πθ by standard max-loglikelihood loss:
+L(πθ) = −E(qi,aij)∼D [log (πθ(aij|qi))]
+In this stage, we use a learning rate 2e-5 and finetune for 8000 steps with a batch size of 64.
+4.3.3
+Critique-DPO Training
+During the Critique-DPO phase, it was observed that the direct use of DPO loss led to instability in
+the training process. A cross-entropy loss for the chosen answer was introduced as a regularization
+term to the total loss to mitigate this issue. This addition aimed to enhance the stability of the model
+training. The DPO dataset, previously constructed and denoted as DDPO, was used as the training
+dataset. The loss function we used is as follows:
+LDPO(πθ; πref) = −E(qi,ai−cho,ai−rej)∼DDPO
+
+log σ
+
+β log πθ(ai−cho|qi)
+πref(ai−cho|qi) −β log πθ(ai−rej|qi)
+πref(ai−rej|qi)
+
+LCE(πθ; πref) = −E(qi,ai−cho)∼D [log (πθ(ai−cho|qi))]
+Lmerge = λ · LDPO + LCE
+In this context, λ represents the coefficient of the cross-entropy loss for the chosen answer in the
+total loss. Commonly, we experiment with values in {0.5, 1, 1.5}. Another critical coefficient is
+β, which measures the penalty intensity of DPO for incorrect answers. Owing to the addition of a
+regularization term, the value of this coefficient is higher than that of the standard DPO, with our
+testing range for this value being {0.5, 1, 2}. Besides these, the overall learning rate is set at 1e-6.
+The experimental section will report the optimal results under these coefficient settings. We train 500
+steps with a batch size of 64 in this stage.
+5
+MATHUSEREVAL: Benchmarking LLMs’ Mathematical Reasoning in
+Application
+MATHUSEREVAL is a test set designed for real-use scenarios, targeting issues of concern to users and
+more challenging mathematical problems. Some of our data originates from university examination
+questions, while another is from simulated dialogues. For the latter, we assigned a series of annotators
+who posed math-related questions to our system based on their daily experiences and observations
+using large models.
+6
+
+
+Table 2: The composition of the MATHUSEREVAL data set. We divided the test set into three
+categories: Elementary and Advanced Mathematics. For calculating the total score, we used the
+macro-average score.
+Category
+Sub-Category
+Size
+Source
+Elementary
+Calculate
+75
+Dialogues
+Algebra
+113
+Geometry
+81
+Trigonometry
+73
+Advanced
+Discrete Math
+45
+Dialogues&Exams
+Probability
+46
+Linear Algebra
+58
+Calculus
+54
+Based on the distribution of the collected data, we divided the test set into two main categories,
+Elementary and Advanced, and eight sub-categories. Given that Calculate Applications are less
+challenging and closely aligned with the scope of previous public datasets, we selected fewer questions
+from this category. The quantity of questions in each of these categories is as shown in Table 2. All
+questions are posed in an open-ended format. Possible answers include a single number, multiple
+numbers, or mathematical expressions.
+We offer two evaluation methods: GPT-4-1106——Preview [34; 29; 65] evaluation and Math-Critique
+evaluation. The former adopts the evaluation method of alignbench [29], to provide a more accurate,
+fair, and accessible evaluation approach; the latter employs the same usage as the Math-Critique
+introduced above. Similarly, we will also report two types of scores: avg-score and hard-split.
+6
+Experiment
+6.1
+Data Collection
+The primary sources of our data collection can be categorized as follows: training sets from public
+datasets and publicly available middle school and university examination questions. We have selected
+all prompts from GSM8k [11] and MATH [17] training set as the question set for the English data,
+and used the responses from the original dataset as the standard answers. Regarding publicly available
+middle school and university exam questions, we used the answer formats provided with the exam
+papers as the common answers without further processing.
+6.2
+Evaluation Setting
+6.2.1
+Datasets
+In our research, we primarily tested the MATHUSEREVAL dataset, which originates from simulated
+dialogue records and actual exam papers. Compared to academic datasets, this dataset features
+a more diverse array of question styles and more closely aligns with real-world usage scenarios.
+Additionally, we tested the following academic datasets: 1. English academic datasets: GSM8k [11]
+and MATH [17]. These two datasets contain English mathematics problems at the middle and high
+school and competition levels. 2. Chinese academic datasets: ape210k [64] and cmath [52]. The
+questions in these datasets also originate from middle and high school levels. We also employed the
+Hungarian National Exam [36] as an Out-Of-Distribution test set. It should be noted that, across all
+test sets, we only used the training sets of GSM8k and MATH as seed data for data generation.
+To evaluate general linguistic capabilities, we selected the Chinese language component of Align-
+Bench [29] and full MT-Bench [65] for testing.
+6.2.2
+Baselines
+Since most of our work is conducted in Chinese, we selected three categories of baselines: open-
+source mathematics-specific models, open-source Chinese models, and leading proprietary models.
+7
+
+
+Table 3: Main Result. All results reported are the highest achieved in zero-shot or few-shot settings
+and are based on greedy decoding. The best models are marked in bold and the underline signifies
+the second best model.
+Models
+#params
+Chinese
+English
+General
+MathUserEval
+Ape210kCmathGSM8kMATHHunga
+-rian
+AlignBenchMT-Bench
+OverallElementaryAdvanced
+Language
+GPT-4-1106-Preview [34]
+N/A
+5.73
+5.07
+6.81
+84.2
+89.3
+93.6
+53.6
+92
+8.29
+9.32
+GPT-4-0613 [34]
+N/A
+4.14
+3.34
+5.33
+83.6
+86.5
+91.4
+45.8
+68
+7.59
+9.18
+GPT-3.5-Turbo-0613 [34]
+N/A
+3.42
+3.04
+4.07
+70.4
+76.8
+78.2
+28.0
+41
+6.82
+8.36
+Claude-2 [1]
+N/A
+3.29
+2.63
+4.35
+72.8
+80.5
+88.0
+-
+55
+6.78
+8.06
+GLM-4
+N/A
+5.11
+4.86
+5.43
+93.5
+89.0
+91.8
+49.0
+75
+8.38
+8.62
+Skywork-13B-Math [54]
+13B
+2.66
+2.75
+2.54
+74.4
+77.3
+72.3
+17.0
+39
+5.58
+4.12
+InternLM2-Chat [43]
+20B
+3.25
+3.00
+3.68
+72.0
+80.7
+79.6
+34.8
+48
+7.68
+8.21
+Math-InternLM2 [43]
+20B
+3.17
+3.08
+3.37
+75.2
+78.5
+82.6
+37.7
+66
+6.53
+6.09
+Yi-Chat [56]
+34B
+2.64
+2.49
+2.87
+65.1
+77.7
+76.0
+15.9
+39
+6.18
+6.54
+DeepSeek-Chat [12]
+67B
+3.24
+2.76
+3.84
+76.7
+80.3
+84.1
+32.6
+58
+7.11
+8.35
+MetaMath (EN) [57]
+70B
+-
+-
+-
+-
+-
+82.3
+26.0
+35
+-
+4.28
+Qwen-Chat [3]
+72B
+3.87
+3.99
+3.67
+77.1
+88.1
+76.4
+31.8
+52
+7.29
+6.43
+ChatGLM3-32B-SFT-2312∗
+32B
+3.25
+3.03
+3.60
+78.0
+79.8
+75.8
+29.0
+39
+7.37
+8.05
++ RFT
+32B
+4.01
+3.86
+4.26
+87.0
+85.3
+82.4
+39.5
+58
+7.42
+8.03
++ RFT, DPO
+32B
+4.23
+4.01
+4.59
+89.4
+85.6
+82.6
+40.6
+73
+7.80
+8.08
+* ChatGLM3-32B-SFT-2312 is a newer version of the ChatGLM series and not identical to the model discussed in [19], despite
+sharing the same model size.
+For the open-source mathematics models, we chose SkyMath [54], MetaMath [57], and Internlm2-
+Math [43] as our baselines. To effectively compare with the best Chinese models, we selected
+Qwen-Chat [3], Yi-Chat [56], DeepSeek-Chat [12], and InternLM2 [43]. Additionally, we also report
+the results for GPT-4-1106-Preview(known as GPT4-Turbo), GPT-4-0613,GPT-3.5-Turbo [34], and
+Claude-2 [1].
+6.2.3
+Metrics
+For all datasets, we utilized the results of greedy inference performed once. Regarding academic
+datasets, we report the self-reported results of corresponding models and the highest zero-shot/few-
+shot results from the OpenCompass and MATHUSEREVAL websites. For the math subset of Align-
+Bench [29] and our proposed MATHUSEREVAL test set, we report the scoring results from GPT-4-
+Turbo and the scores generated by Math-Critique. More information about evaluation settings can be
+found in Appendix C.
+6.3
+Main Results
+Table 3 displays our main results. In models with more than 10 billion parameters, our model achieved
+a score of 4.23 on MATHUSEREVAL, 89.4 on ape210k [64], and 40.6 on MATH [16], surpassing all
+models with published parameters and achieved near-top performances on Cmath and GSM8k. Our
+model also scored 73 in the Hungary Test [36], the highest score among all known parameter models.
+We used the ChatGLM3-32B-SFT-2312 version as our baseline. Our RFT phase significantly
+improved across all math datasets. In contrast, the DPO phase’s improvement focused on open-
+ended math problems, including MATHUSEREVAL, the Hungarian Exam, and the general-purpose
+AlignBench. Even though our improvement on MT-bench [65] is not significant, given that over 90%
+of our training data is in Chinese, we believe that maintaining parity essentially demonstrates that our
+method has preserved the original English general or multi-turn capabilities.
+Compared to proprietary models, especially the GPT series by OpenAI, GLM-4 demonstrates
+competitive or superior performance in specific areas. GPT-4-1106-Preview, for example, shows the
+best performance in most tasks, including the highest scores in both Chinese and English benchmarks,
+highlighting its effectiveness in various mathematical problem-solving contexts. However, GLM-
+4 surpasses it in the Ape210k and AlignBench benchmarks, suggesting particular strengths in
+mathematical reasoning and cross-linguistic generalization.
+8
+
+
+Table 4: Ablation Study for 32B model. All results are fine-tuned from our 32B base model. We
+selected Metamath training set as baselines that we consider comparatively strong. MATHUSEREVAL
+is scored with Math-Critique model.
+Method
+Chinese
+English
+MATHUSEREVAL
+Ape210k∗
+GSM8k
+MATH∗
+Metamath [57]
+2.80
+75.8
+77.9
+35.6
+ChatGLM3-32B-SFT-2312 + RFT
+3.74
+87.0
+82.4
+39.5
+- Real scenarios & Academic
+3.29
+85.9
+74.8
+27.6
+- Real scenarios
+3.29
+74.6
+77.4
+36.0
+- Academic
+3.72
+75.8
+81.0
+36.2
+ChatGLM3-32B-SFT-2312 + RFT & DPO
+4.37
+89.4
+82.6
+41.0
+- Real Scenarios & Academic
+4.14
+87.8
+81.5
+37.8
+* Ablated experiments are conducted on 500-sample test subsets.
+1
+2
+3
+4
+5
+6
+7
+8
+9
+Avg Score of all Models
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Hard-split pass rate
+ChatGLM3-32B-SFT-2312 + RFT&DPO
+ChatGLM3-32B-SFT-2312 + RFT
+ChatGLM3-32B-SFT-2312
+Figure 4: The Relationship between Different Boosting Methods and Problem Difficulty. The
+horizontal axis displays the average score of MATHUSEREVAL across 24 models (scored by GPT-4-
+1106-Preview), which we regard as a representation of problem difficulty. The vertical axis represents
+the hard-split scores of the models on these questions.
+6.4
+Ablation Study
+Impact of data composition. Table 4 presents the results of ablation experiments. We selected
+Metamath [57] training set as baselines that we consider comparatively strong. After applying
+Critique-RFT, we found that using only academic datasets to construct RFT data results in inferior
+performance in real-life scenario-based MATHUSEREVAL and academic test sets compared to the
+outcomes after integrating real-life scenario data. Furthermore, introducing English data significantly
+improves performance on English datasets without substantially affecting Chinese capabilities.
+The ablation experiments conducted during the Critique-DPO phase indicate that, compared to using
+general DPO data, the addition of math-specific DPO data significantly enhances mathematical
+capabilities. We no longer conduct separate tests on the impact of Real scenarios and Academic data
+on capabilities. This is because, in previous stages, questions that the model could solve correctly
+were removed, making it impossible to ensure that both datasets still have sufficient size for a
+complete training session.
+Relationship between Different Boosting Methods and Problem Difficulty.
+Figure 4 displays the relationship between the average accuracy of each question in MATHUSEREVAL
+across all 24 models tested (including some intermediate models) and the hard-split scores of the
+four GLM series models. The average accuracy across all tested models is considered a reflection
+of the difficulty level of the question. It can be observed that the RFT step improves performance
+across almost all difficulty levels, but the most significant improvements come from questions with
+an average score between 4 and 6. The DPO step mainly enhances performance on questions with an
+9
+
+
+Table 5: Evaluation for Math-Critique Model. We report "Acc" as the accuracy of the model in
+determining whether an answer is correct, as well as the Pearson, Spearman, and Kendall correlation
+coefficients for Math-Critique in comparison with human annotations in a four-category classification.
+Model
+Acc.
+Pearson
+Spearman
+Kendall
+GPT-3.5-Turbo
+62.1
+31.8
+33.5
+30.1
+GPT-4-0613
+90.2
+80.5
+78.1
+71.0
+Math-Critique-32B
+90.5
+80.4
+77.1
+70.2
+average score between 5 and 7. This suggests that our two-step approach to enhancing mathematical
+capabilities can be seen as aligning the model more closely with real-world conditions, with the most
+noticeable improvements on medium-difficulty questions.
+Impact on general capabilities. Considering that our goal is not to develop a specialized mathemati-
+cal model for leaderboard climbing but rather a general model with strong mathematical capabilities,
+we tested the results using Alignbench [29], a Chinese general open question-answering dataset. The
+results in Table 3 demonstrate that our model exceeds the training outcomes of similar baseline models
+that do not incorporate specialized mathematical data regarding Chinese language capabilities. Addi-
+tionally, it performs exceptionally well compared to other open-source Chinese mathematical/general
+models.
+In terms of English general capabilities, we tested using MT-Bench [65] as the test set. Given that
+over 90% of our training data consists of Chinese, the fact that the results on MT-Bench [65] remained
+largely unchanged during our training process indicates that the English language capabilities were
+not significantly affected.
+Effectiveness of Math-Critique. During the process of manual annotation, we collected a test set of
+800 questions, all of which were manually marked for the correctness of their answers and procedures,
+thus forming a four-category test; the output results of Math-Critique were mapped to these four
+categories according to the requirements of the instructions.
+We validated the effectiveness of Math-Critique itself through empirical experiments. We set up
+two evaluation methods: the accuracy of directly scoring to judge correct/incorrect results and the
+accuracy of judging our defined four categories. We extracted test sets from Chinese junior and senior
+high school exam questions and MATHUSEREVAL, annotated correct judgment by experts.
+The results shown in Table 5 indicate that our Math-Critique-32B model significantly surpasses GPT-
+3.5-Turbo in both judgment accuracy and correlation coefficients compared to human annotations
+and is essentially on par with GPT-4-0613.
+Out-Of-Distribution Test. Following the approach of Grok-1, to test the performance on Out-Of-
+Distribution datasets, we selected the Hungarian national final exam [36]. This is a test set of 33
+exam questions without a training set, the advantage being that it allows for evaluating a model’s
+mathematical capabilities in an utterly OOD environment. As shown in Figure 1, using human expert
+evaluation, we found that at a model scale of 32B, our RFT model scored 57, while the DPO model
+scored 73. However, it is essential to note that since our model’s primary language is Chinese, if the
+model answers correctly in Chinese, we would score it usually. We plan to address this issue in future
+models.
+7
+Limitation and Future Work
+We observed the following issues in our mathematical models, and we leave it for our future work:
+Graphic thinking and drawing abilities. Due to the limitations of being a purely linguistic model,
+our model has deficiencies in handling questions requiring drawing. For example, in a question
+from the Hungary Test, which required connecting six numbers as divisors of each other, our model
+correctly listed the different numbers’ connecting topology but could not draw it accurately. Also, as
+a language model, it struggles to respond correctly to questions requiring an understanding of images.
+10
+
+
+A potential solution could be integrating multimodal input and output components, an area we plan
+to explore further.
+Precision calculation capability. We observed that in incorrectly answered questions, if the problem
+required multiplication, division, or exponentiation of three or more decimal places, our model might
+compute with a deviation of up to 5%. This phenomenon aligns with observations from GPT-4
+models without an integrated code interpreter. This issue might be a fundamental problem to pure
+language models and could be mitigated but not resolved with increasing model size. Using external
+tools for computation or directly employing code with a code interpreter could solve this problem.
+However, our discussion in this paper focuses on enhancing the mathematical capabilities of pure
+language models, and we will endeavor to address these issues in future work.
+8
+Conclusion
+In this paper, we introduce the Math-Critique method for evaluating the correctness of mathematical
+problems, and based on this method, we propose the Self-Critique method aimed at enhancing the
+mathematical capabilities of language models without the need for external supervisory models and
+manual annotations. Our experiments were conducted in both English and Chinese, and a 32-billion
+parameter model achieved state-of-the-art results among open-source language models on multiple
+datasets. Additionally, it surpassed several renowned proprietary models, including GPT-4-0613, on
+our proposed MATHUSEREVAL test set. Our method was applied during the development process of
+GLM-4 as a component to improve mathematical capabilities, achieving the best results on datasets
+such as MATHUSEREVAL, ape210k, GSM8k, and the Hungarian test, except GPT-4-Turbo.
+11
+
+
+References
+[1] Anthropic. Introducing claude, 2023.
+[2] A. Askell, Y. Bai, A. Chen, D. Drain, D. Ganguli, T. Henighan, A. Jones, N. Joseph, B. Mann,
+N. DasSarma, N. Elhage, Z. Hatfield-Dodds, D. Hernandez, J. Kernion, K. Ndousse, C. Olsson,
+D. Amodei, T. Brown, J. Clark, S. McCandlish, C. Olah, and J. Kaplan. A general language
+assistant as a laboratory for alignment, 2021.
+[3] J. Bai, S. Bai, et al. Qwen technical report, 2023.
+[4] Y. Bai, S. Kadavath, S. Kundu, A. Askell, J. Kernion, A. Jones, A. Chen, A. Goldie, A. Mirho-
+seini, C. McKinnon, C. Chen, C. Olsson, C. Olah, D. Hernandez, D. Drain, D. Ganguli, D. Li,
+E. Tran-Johnson, E. Perez, J. Kerr, J. Mueller, J. Ladish, J. Landau, K. Ndousse, K. Lukosuite,
+L. Lovitt, M. Sellitto, N. Elhage, N. Schiefer, N. Mercado, N. DasSarma, R. Lasenby, R. Lar-
+son, S. Ringer, S. Johnston, S. Kravec, S. E. Showk, S. Fort, T. Lanham, T. Telleen-Lawton,
+T. Conerly, T. Henighan, T. Hume, S. R. Bowman, Z. Hatfield-Dodds, B. Mann, D. Amodei,
+N. Joseph, S. McCandlish, T. Brown, and J. Kaplan. Constitutional ai: Harmlessness from ai
+feedback, 2022.
+[5] Y. Bai, X. Lv, J. Zhang, H. Lyu, J. Tang, Z. Huang, Z. Du, X. Liu, A. Zeng, L. Hou, et al.
+Longbench: A bilingual, multitask benchmark for long context understanding. arXiv preprint
+arXiv:2308.14508, 2023.
+[6] M. Besta, N. Blach, A. Kubicek, R. Gerstenberger, L. Gianinazzi, J. Gajda, T. Lehmann,
+M. Podstawski, H. Niewiadomski, P. Nyczyk, et al. Graph of thoughts: Solving elaborate
+problems with large language models. arXiv preprint arXiv:2308.09687, 2023.
+[7] Y. Bisk, R. Zellers, R. Le bras, J. Gao, and Y. Choi. Piqa: Reasoning about physical com-
+monsense in natural language. Proceedings of the AAAI Conference on Artificial Intelligence,
+34(05):7432–7439, Apr. 2020.
+[8] T. Brown, B. Mann, N. Ryder, M. Subbiah, J. D. Kaplan, P. Dhariwal, A. Neelakantan, P. Shyam,
+G. Sastry, A. Askell, et al. Language models are few-shot learners. Advances in neural
+information processing systems, 33:1877–1901, 2020.
+[9] E. Chern, H. Zou, X. Li, J. Hu, K. Feng, J. Li, and P. Liu. Generative ai for math: Abel.
+https://github.com/GAIR-NLP/abel, 2023.
+[10] A. Chowdhery, S. Narang, J. Devlin, M. Bosma, G. Mishra, A. Roberts, P. Barham, H. W.
+Chung, C. Sutton, S. Gehrmann, et al. Palm: Scaling language modeling with pathways. arXiv
+preprint arXiv:2204.02311, 2022.
+[11] K. Cobbe, V. Kosaraju, M. Bavarian, M. Chen, H. Jun, L. Kaiser, M. Plappert, J. Tworek,
+J. Hilton, R. Nakano, C. Hesse, and J. Schulman. Training verifiers to solve math word
+problems, 2021.
+[12] DeepSeek-AI, :, X. Bi, D. Chen, G. Chen, S. Chen, D. Dai, C. Deng, H. Ding, K. Dong, Q. Du,
+Z. Fu, H. Gao, K. Gao, W. Gao, R. Ge, K. Guan, D. Guo, J. Guo, G. Hao, Z. Hao, Y. He, W. Hu,
+P. Huang, E. Li, G. Li, J. Li, Y. Li, Y. K. Li, W. Liang, F. Lin, A. X. Liu, B. Liu, W. Liu, X. Liu,
+X. Liu, Y. Liu, H. Lu, S. Lu, F. Luo, S. Ma, X. Nie, T. Pei, Y. Piao, J. Qiu, H. Qu, T. Ren, Z. Ren,
+C. Ruan, Z. Sha, Z. Shao, J. Song, X. Su, J. Sun, Y. Sun, M. Tang, B. Wang, P. Wang, S. Wang,
+Y. Wang, Y. Wang, T. Wu, Y. Wu, X. Xie, Z. Xie, Z. Xie, Y. Xiong, H. Xu, R. X. Xu, Y. Xu,
+D. Yang, Y. You, S. Yu, X. Yu, B. Zhang, H. Zhang, L. Zhang, L. Zhang, M. Zhang, M. Zhang,
+W. Zhang, Y. Zhang, C. Zhao, Y. Zhao, S. Zhou, S. Zhou, Q. Zhu, and Y. Zou. Deepseek llm:
+Scaling open-source language models with longtermism, 2024.
+[13] Z. Du, Y. Qian, X. Liu, M. Ding, J. Qiu, Z. Yang, and J. Tang. Glm: General language model
+pretraining with autoregressive blank infilling. In Proceedings of the 60th Annual Meeting of
+the Association for Computational Linguistics (Volume 1: Long Papers), pages 320–335, 2022.
+[14] Y. Fu, L. Ou, M. Chen, Y. Wan, H. Peng, and T. Khot. Chain-of-thought hub: A continuous effort
+to measure large language models’ reasoning performance. arXiv preprint arXiv:2305.17306,
+2023.
+12
+
+
+[15] Z. Gou, Z. Shao, Y. Gong, Y. Shen, Y. Yang, M. Huang, N. Duan, and W. Chen. Tora: A
+tool-integrated reasoning agent for mathematical problem solving, 2023.
+[16] D. Hendrycks, C. Burns, S. Basart, A. Zou, M. Mazeika, D. Song, and J. Steinhardt. Measuring
+massive multitask language understanding. Proceedings of the International Conference on
+Learning Representations (ICLR), 2021.
+[17] D. Hendrycks, C. Burns, S. Kadavath, A. Arora, S. Basart, E. Tang, D. Song, and J. Stein-
+hardt.
+Measuring mathematical problem solving with the math dataset.
+arXiv preprint
+arXiv:2103.03874, 2021.
+[18] K. M. Hermann, T. Kocisky, E. Grefenstette, L. Espeholt, W. Kay, M. Suleyman, and P. Blunsom.
+Teaching machines to read and comprehend. In C. Cortes, N. Lawrence, D. Lee, M. Sugiyama,
+and R. Garnett, editors, Advances in Neural Information Processing Systems, volume 28. Curran
+Associates, Inc., 2015.
+[19] Z. Hou, Y. Niu, Z. Du, X. Zhang, X. Liu, A. Zeng, Q. Zheng, M. Huang, H. Wang, J. Tang,
+and Y. Dong. Chatglm-rlhf: Practices of aligning large language models with human feedback,
+2024.
+[20] J. Kaplan, S. McCandlish, T. Henighan, T. B. Brown, B. Chess, R. Child, S. Gray, A. Rad-
+ford, J. Wu, and D. Amodei.
+Scaling laws for neural language models.
+arXiv preprint
+arXiv:2001.08361, 2020.
+[21] P. Ke, B. Wen, Z. Feng, X. Liu, X. Lei, J. Cheng, S. Wang, A. Zeng, Y. Dong, H. Wang, et al.
+Critiquellm: Scaling llm-as-critic for effective and explainable evaluation of large language
+model generation. arXiv preprint arXiv:2311.18702, 2023.
+[22] R. Koncel-Kedziorski, S. Roy, A. Amini, N. Kushman, and H. Hajishirzi. Mawps: A math word
+problem repository. In Proceedings of the 2016 conference of the north american chapter of
+the association for computational linguistics: human language technologies, pages 1152–1157,
+2016.
+[23] V. Kumar, R. Maheshwary, and V. Pudi. Adversarial examples for evaluating math word problem
+solvers. In Findings of the Association for Computational Linguistics: EMNLP 2021, pages
+2705–2712, 2021.
+[24] T. Kwiatkowski, J. Palomaki, O. Redfield, M. Collins, A. Parikh, C. Alberti, D. Epstein,
+I. Polosukhin, J. Devlin, K. Lee, et al. Natural questions: a benchmark for question answering
+research. Transactions of the Association for Computational Linguistics, 7:453–466, 2019.
+[25] H. Lee, S. Phatale, H. Mansoor, T. Mesnard, J. Ferret, K. Lu, C. Bishop, E. Hall, V. Carbune,
+A. Rastogi, and S. Prakash. Rlaif: Scaling reinforcement learning from human feedback with ai
+feedback, 2023.
+[26] Y. Li, Y. Zhang, Z. Zhao, L. Shen, W. Liu, W. Mao, and H. Zhang. CSL: A large-scale
+Chinese scientific literature dataset. In Proceedings of the 29th International Conference
+on Computational Linguistics, pages 3917–3923. International Committee on Computational
+Linguistics, Oct. 2022.
+[27] H. Lightman, V. Kosaraju, Y. Burda, H. Edwards, B. Baker, T. Lee, J. Leike, J. Schulman,
+I. Sutskever, and K. Cobbe. Let’s verify step by step, 2023.
+[28] W. Ling, D. Yogatama, C. Dyer, and P. Blunsom. Program induction by rationale generation:
+Learning to solve and explain algebraic word problems. In Proceedings of the 55th Annual
+Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages
+158–167, 2017.
+[29] X. Liu, X. Lei, S. Wang, Y. Huang, Z. Feng, B. Wen, J. Cheng, P. Ke, Y. Xu, W. L. Tam,
+et al. Alignbench: Benchmarking chinese alignment of large language models. arXiv preprint
+arXiv:2311.18743, 2023.
+[30] X. Liu, H. Yu, H. Zhang, Y. Xu, X. Lei, H. Lai, Y. Gu, H. Ding, K. Men, K. Yang, et al.
+Agentbench: Evaluating llms as agents. arXiv preprint arXiv:2308.03688, 2023.
+13
+
+
+[31] H. Luo, Q. Sun, C. Xu, P. Zhao, J. Lou, C. Tao, X. Geng, Q. Lin, S. Chen, and D. Zhang.
+Wizardmath: Empowering mathematical reasoning for large language models via reinforced
+evol-instruct. arXiv preprint arXiv:2308.09583, 2023.
+[32] S. Mishra, A. Mitra, N. Varshney, B. Sachdeva, P. Clark, C. Baral, and A. Kalyan. Numglue: A
+suite of fundamental yet challenging mathematical reasoning tasks. In Proceedings of the 60th
+Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers),
+pages 3505–3523, 2022.
+[33] S. Narayan, S. B. Cohen, and M. Lapata. Don’t give me the details, just the summary! Topic-
+aware convolutional neural networks for extreme summarization. In Proceedings of the 2018
+Conference on Empirical Methods in Natural Language Processing, Brussels, Belgium, 2018.
+[34] OpenAI. Gpt-4 technical report, 2023.
+[35] L. Ouyang, J. Wu, X. Jiang, D. Almeida, C. Wainwright, P. Mishkin, C. Zhang, S. Agarwal,
+K. Slama, A. Ray, et al. Training language models to follow instructions with human feedback.
+Advances in Neural Information Processing Systems, 35:27730–27744, 2022.
+[36] K. Paster. Testing language models on a held-out high school national finals exam. https:
+//huggingface.co/datasets/keirp/hungarian_national_hs_finals_exam, 2023.
+[37] S. Polu and I. Sutskever. Generative language modeling for automated theorem proving. arXiv
+preprint arXiv:2009.03393, 2020.
+[38] R. Rafailov, A. Sharma, E. Mitchell, S. Ermon, C. D. Manning, and C. Finn. Direct preference
+optimization: Your language model is secretly a reward model, 2023.
+[39] D. Saxton, E. Grefenstette, F. Hill, and P. Kohli. Analysing mathematical reasoning abilities of
+neural models. arXiv preprint arXiv:1904.01557, 2019.
+[40] T. L. Scao, A. Fan, C. Akiki, E. Pavlick, S. Ili´
+c, D. Hesslow, R. Castagné, A. S. Luccioni,
+F. Yvon, M. Gallé, et al. Bloom: A 176b-parameter open-access multilingual language model.
+arXiv preprint arXiv:2211.05100, 2022.
+[41] Y. Shao, L. Li, J. Dai, and X. Qiu. Character-llm: A trainable agent for role-playing, 2023.
+[42] M. Suzgun, N. Scales, N. Schärli, S. Gehrmann, Y. Tay, H. W. Chung, A. Chowdhery, Q. V. Le,
+E. H. Chi, D. Zhou, et al. Challenging big-bench tasks and whether chain-of-thought can solve
+them. arXiv preprint arXiv:2210.09261, 2022.
+[43] I. Team. Internlm: A multilingual language model with progressively enhanced capabilities.
+https://github.com/InternLM/InternLM, 2023.
+[44] H. Touvron, T. Lavril, G. Izacard, X. Martinet, M.-A. Lachaux, T. Lacroix, B. Rozière, N. Goyal,
+E. Hambro, F. Azhar, et al. Llama: Open and efficient foundation language models. arXiv
+preprint arXiv:2302.13971, 2023.
+[45] H. Touvron, L. Martin, K. Stone, P. Albert, A. Almahairi, Y. Babaei, N. Bashlykov, S. Batra,
+P. Bhargava, S. Bhosale, D. Bikel, L. Blecher, C. C. Ferrer, M. Chen, G. Cucurull, D. Esiobu,
+J. Fernandes, J. Fu, W. Fu, B. Fuller, C. Gao, V. Goswami, N. Goyal, A. Hartshorn, S. Hosseini,
+R. Hou, H. Inan, M. Kardas, V. Kerkez, M. Khabsa, I. Kloumann, A. Korenev, P. S. Koura, M.-A.
+Lachaux, T. Lavril, J. Lee, D. Liskovich, Y. Lu, Y. Mao, X. Martinet, T. Mihaylov, P. Mishra,
+I. Molybog, Y. Nie, A. Poulton, J. Reizenstein, R. Rungta, K. Saladi, A. Schelten, R. Silva, E. M.
+Smith, R. Subramanian, X. E. Tan, B. Tang, R. Taylor, A. Williams, J. X. Kuan, P. Xu, Z. Yan,
+I. Zarov, Y. Zhang, A. Fan, M. Kambadur, S. Narang, A. Rodriguez, R. Stojnic, S. Edunov, and
+T. Scialom. Llama 2: Open foundation and fine-tuned chat models, 2023.
+[46] Q. Tu, S. Fan, Z. Tian, and R. Yan. Charactereval: A chinese benchmark for role-playing
+conversational agent evaluation, 2024.
+[47] M. Völske, M. Potthast, S. Syed, and B. Stein. TL;DR: Mining Reddit to learn automatic
+summarization. In L. Wang, J. C. K. Cheung, G. Carenini, and F. Liu, editors, Proceedings of
+the Workshop on New Frontiers in Summarization, pages 59–63, Copenhagen, Denmark, Sept.
+2017. Association for Computational Linguistics.
+14
+
+
+[48] P. Wang, L. Li, Z. Shao, R. X. Xu, D. Dai, Y. Li, D. Chen, Y. Wu, and Z. Sui. Math-shepherd:
+Verify and reinforce llms step-by-step without human annotations, 2023.
+[49] X. Wang, J. Wei, D. Schuurmans, Q. Le, E. Chi, S. Narang, A. Chowdhery, and D. Zhou.
+Self-consistency improves chain of thought reasoning in language models, 2023.
+[50] Y. Wang, X. Liu, and S. Shi. Deep neural solver for math word problems. In M. Palmer, R. Hwa,
+and S. Riedel, editors, Proceedings of the 2017 Conference on Empirical Methods in Natural
+Language Processing, pages 845–854, Copenhagen, Denmark, Sept. 2017. Association for
+Computational Linguistics.
+[51] J. Wei, X. Wang, D. Schuurmans, M. Bosma, B. Ichter, F. Xia, E. Chi, Q. Le, and D. Zhou.
+Chain-of-thought prompting elicits reasoning in large language models, 2023.
+[52] T. Wei, J. Luan, W. Liu, S. Dong, and B. Wang. Cmath: Can your language model pass chinese
+elementary school math test?, 2023.
+[53] C. Yang, X. Wang, Y. Lu, H. Liu, Q. V. Le, D. Zhou, and X. Chen. Large language models as
+optimizers. arXiv preprint arXiv:2309.03409, 2023.
+[54] L. Yang, H. Yang, W. Cheng, L. Lin, C. Li, Y. Chen, L. Liu, J. Pan, T. Wei, B. Li, L. Zhao,
+L. Wang, B. Zhu, G. Li, X. Wu, X. Luo, and R. Hu. Skymath: Technical report, 2023.
+[55] S. Yao, D. Yu, J. Zhao, I. Shafran, T. L. Griffiths, Y. Cao, and K. Narasimhan. Tree of thoughts:
+Deliberate problem solving with large language models. arXiv preprint arXiv:2305.10601,
+2023.
+[56] Yi. A series of large language models trained from scratch by developers at 01-ai. https:
+//github.com/01-ai/Yi, 2023.
+[57] L. Yu, W. Jiang, H. Shi, J. Yu, Z. Liu, Y. Zhang, J. T. Kwok, Z. Li, A. Weller, and W. Liu.
+Metamath: Bootstrap your own mathematical questions for large language models. arXiv
+preprint arXiv:2309.12284, 2023.
+[58] Z. Yuan, H. Yuan, C. Li, G. Dong, K. Lu, C. Tan, C. Zhou, and J. Zhou. Scaling relationship on
+learning mathematical reasoning with large language models, 2023.
+[59] Z. Yuan, H. Yuan, C. Tan, W. Wang, and S. Huang. How well do large language models perform
+in arithmetic tasks?, 2023.
+[60] X. Yue, X. Qu, G. Zhang, Y. Fu, W. Huang, H. Sun, Y. Su, and W. Chen. Mammoth: Building
+math generalist models through hybrid instruction tuning. arXiv preprint arXiv:2309.05653,
+2023.
+[61] A. Zeng, X. Liu, Z. Du, Z. Wang, H. Lai, M. Ding, Z. Yang, Y. Xu, W. Zheng, X. Xia, et al.
+Glm-130b: An open bilingual pre-trained model. arXiv preprint arXiv:2210.02414, 2022.
+[62] D. Zhang, Z. Hu, S. Zhoubian, Z. Du, K. Yang, Z. Wang, Y. Yue, Y. Dong, and J. Tang. Sciglm:
+Training scientific language models with self-reflective instruction annotation and tuning, 2024.
+[63] X. Zhang, C. Li, Y. Zong, Z. Ying, L. He, and X. Qiu. Evaluating the performance of large
+language models on gaokao benchmark. 2023.
+[64] W. Zhao, M. Shang, Y. Liu, L. Wang, and J. Liu. Ape210k: A large-scale and template-rich
+dataset of math word problems, 2020.
+[65] L. Zheng, W.-L. Chiang, Y. Sheng, S. Zhuang, Z. Wu, Y. Zhuang, Z. Lin, Z. Li, D. Li, E. P. Xing,
+H. Zhang, J. E. Gonzalez, and I. Stoica. Judging llm-as-a-judge with mt-bench and chatbot
+arena, 2023.
+[66] W. Zhong, R. Cui, Y. Guo, Y. Liang, S. Lu, Y. Wang, A. Saied, W. Chen, and N. Duan. Agieval:
+A human-centric benchmark for evaluating foundation models, 2023.
+15
+
+
+[67] J. Zhou, Z. Chen, D. Wan, B. Wen, Y. Song, J. Yu, Y. Huang, L. Peng, J. Yang, X. Xiao, et al.
+Characterglm: Customizing chinese conversational ai characters with large language models.
+arXiv preprint arXiv:2311.16832, 2023.
+[68] Z. Zhou, Q. Wang, M. Jin, J. Yao, J. Ye, W. Liu, W. Wang, X. Huang, and K. Huang. Mathattack:
+Attacking large language models towards math solving ability. arXiv preprint arXiv:2309.01686,
+2023.
+A
+Case Study
+A.1
+Case Study of Math-Critique
+We have provided several examples of scoring by Math-Critique. In the examples from Table 6 and
+Table 7, we observed that the model provided correct answers. However, the answer formats differed
+from the standard answers, specifically regarding fraction expression and the selection of unknown
+variables. These differences are equivalent, yet traditional evaluation methods struggle to judge them
+accurately. However, Math-Critique correctly scored these two examples and provided reasonable
+evaluations.
+In the example from Table 8, the model made a mistake in the calculation process. Math-Critique
+accurately pinpointed the error location, and since the model correctly solved a part of the problem,
+Math-Critique awarded a score of 3 points.
+A.2
+Case Study of Mathematical Models
+Here are a few comparisons between ChatGLM3-32B-Math(ChatGLM3-32B-SFT-2312 +
+RFT&DPO) and other models. In the example from Table 9, the problem is a math question
+of Chinese junior high school difficulty. During the solution process by GPT-4-0613, an error oc-
+curred in solving the equation. ChatGLM3-32B-SFT-2312 did not correctly understand the question.
+ChatGLM3-32B-Math correctly listed the equation and accurately solved it using the factorization
+method.
+In the example from Table 10, both GPT-4-0613 and ChatGLM3-32B-Math provided the correct
+answers, but the difference lies in that ChatGLM3-32B-Math offered a very detailed derivation
+process. We believe that detailed derivation aids in understanding for users and helps prevent errors
+that may occur during the model’s step-skipping.
+In the example from Table 11, originating from the Hungry Test, ChatGLM3-32B-Math correctly
+conducted the analysis and provided the solution. In contrast, Qwen-Max, despite being accurate in
+most processes, made a simplification error in the expressions for S6 and S7, leading to an incorrect
+result despite precise calculations.
+A.3
+Case Study of Errors
+In the first error example shown in Table 12, ChatGLM3-32B-Math correctly listed the matrix
+equations but made a mistake in transferring terms during the complex calculation process. This led
+to an incorrect solution despite the overall process being correct.
+In the second example shown in Table 13, the question includes an image. This question originates
+from MATH, and although the image is provided in Asymptote code, the language model still
+struggles to understand the meaning of the image. This demonstrates a deficiency in our model’s
+ability to process images. In fact, within the MATH test set, for questions that include images, our
+model’s accuracy rate is only 23%, significantly lower than the 40% accuracy rate across the entire
+dataset.
+In the third example shown in Table 14, we can observe certain deficiencies in the computational
+accuracy of the language model. In the first column of the table, the model correctly calculates the
+multiplication of integers and a single decimal. Still, in the second column, when calculating 424*1.06,
+the model incurred an error of approximately 0.2%. This error led to subsequent calculations being
+incorrect due to the accumulation of errors.
+16
+
+
+Table 6: Math-Critique Example (1)
+Question
+1/x+x三次方的原函数是多少。
+Question
+(Translate)
+What is the original function of 1/x+x cubed.
+Reference
+首先，我们可以将1/x + x3 重新写成x−1 + x3，然后利用幂函数和多项式函数
+的求导原理求出它的原函数。具体来说，我们得到：
+Z
+(x−1 + x3)dx =
+Z
+x−1dx +
+Z
+x3dx = ln |x| + 1
+4x4 + C,
+其中C 是不定积分常数。因此，1/x + x3 的原函数是ln |x| + 1
+4x4 + C。
+Reference
+(Translate)
+First, we can rewrite 1/x + x3 as x−1 + x3, and then use the derivation principles of
+power functions and polynomial functions to find its original function. Specifically, we
+get:
+Z
+(x−1 + x3)dx =
+Z
+x−1dx +
+Z
+x3dx = ln |x| + 1
+4x4 + C,
+where C is the indefinite integral constant. Therefore, the original function of 1/x + x3
+is ln |x| + 1
+4x4 + C.
+Model
+An-
+swer
+by
+GLM4
+要求函数f(x) = 1
+x + x3 的原函数（不定积分），我们需要分别对这两项进行积
+分。对于1
+x，其原函数是ln |x|（自然对数）。对于x3，我们可以利用幂函数
+的积分规则，即对于xn（其中neq −1），其原函数是xn+1
+n+1 。因此，x3 的原函
+数是x4
+4 。将这两项的原函数相加，我们得到f(x) 的原函数：
+Z  1
+x + x3
+
+dx = ln |x| + x4
+4 + C
+其中C 是积分常数。这个结果表示在定义域内（除了x = 0 的情况，因为1
+x 在
+x = 0 处未定义），f(x) 的一个原函数。由于ln |x| 在x = 0 处未定义，所以这
+个原函数在x = 0 处也是不连续的。
+Model
+Answer
+(Translate)
+To find the primitive function (indefinite integral) of the function f(x) = 1
+x + x3, we
+need to integrate these two terms separately. For 1
+x, the original function is ln |x| (natural
+logarithm). For x3, we can use the integration rule of the power function, that is, for xn
+(where neq −1), the original function is xn+1
+n+1 . Therefore, the original function of x3 is
+x4
+4 . Adding the original functions of these two terms, we get the original function of
+f(x):
+Z  1
+x + x3
+
+dx = ln |x| + x4
+4 + C
+where C is the integration constant. This result means that within the domain (except
+for the case of x = 0, since 1
+x is undefined at x = 0), f(x)Aprimitivefunctionof.
+Since ln |x| is undefined at x = 0, the original function is also discontinuous at x = 0.
+Critique Re-
+sult
+AI助手的回答非常准确和详细，它正确地解释了如何求解给定函数的原函
+数。AI助手首先分别对函数的两部分进行积分，然后将它们的结果相加，得
+到了原函数。此外，AI助手还注意到了在x=0处，原函数是不连续的，这是一
+个重要的观察。总的来说，AI助手的回答与参考答案非常接近，没有明显的缺
+点。因此，我会给它一个高分。评分：[[9]
+Critique Re-
+sult
+(Trans-
+late)
+The AI assistant’s answer is very accurate and detailed, and it correctly explains how
+to solve the original function of a given function. The AI assistant first integrates the
+two parts of the function separately and then adds their results to obtain the original
+function. In addition, the AI assistant also noticed that at x=0, the original function is
+discontinuous, which is an important observation. Overall, the AI assistant’s answers
+are very close to the reference answers, with no obvious shortcomings. Therefore, I
+would give it a high score. Rating:[[9]
+17
+
+
+Table 7: Math-Critique Example (2)
+Question
+三阶矩阵A有三个特征值0,3,5，对应的特征向量分别为u,v,w，则线性方程组Ax = v + w的通
+解为？
+Question
+(Translate)
+The third-order matrix A has three eigenvalues 0, 3, and 5, and the corresponding eigenvectors are u,
+v, and w respectively. What is the general solution to the linear equation system Ax = v + w?
+Reference
+给定矩阵A有特征值0,3,5，对应的特征向量为u,v,w。线性方程组Ax = v + w，我们可以
+写作Au = 0 * u，Av = 3 * v，和Aw = 5 * w。所以A(1/3*v)=v,A(1/5*w)=w，左右两边相加
+得A(1/3*v+1/5*w)= v + w。又因为Ax = v + w，所以1/3 * v + 1/5 * w是Ax = v + w的一个特
+解，因为Au = 0，所以u是Au = 0的基础解系，因此方程Ax = v + w的通解是x =ku+ 1/3 * v +
+1/5 * w。
+Reference
+(Translate)
+A given matrix A has eigenvalues 0, 3, and 5, and the corresponding eigenvectors are u, v, and w.
+For the linear system of equations Ax = v + w, we can write Au = 0 * u, Av = 3 * v, and Aw = 5 *
+w. So A(1/3*v)=v, A(1/5*w)=w, adding the left and right sides gives A(1/3*v+1/5*w)= v + w. And
+because Ax = v + w, 1/3 * v + 1/5 * w is a special solution of Ax = v + w. Because Au = 0, so u is the
+basic solution system of Au = 0, so the equation Ax The general solution of = v + w is x =ku+ 1/3 * v
++ 1/5 * w.
+Model
+Answer by
+ChatGLM3-
+32B-Math
+给定三阶矩阵A 的三个特征值分别为0, 3, 5，对应的特征向量分别为u, v, w。要找线性
+方程组Ax = v + w 的通解，我们可以利用特征值和特征向量的性质。首先，我们知道
+Av = 3v 和Aw = 5w。因此，v 和w 分别是特征值3 和5 对应的特征向量。线性方程组
+Ax = v + w 可以重写为Ax −v −w = 0。我们可以将x 写成x = pu + qv + rw，其中
+p, q, r 是待定系数。将x 代入方程Ax −v −w = 0，我们得到：
+A(pu + qv + rw) −v −w = 0
+... 由于v 和w 是线性无关的特征向量（因为它们对应不同的特征值），上式成立的唯一可
+能是3q −1 = 0 和5r −1 = 0。解这两个方程，我们得到q = 1
+3 和r = 1
+5。因此，方程
+Ax = v + w 的通解为：
+x = pu + 1
+3v + 1
+5w
+其中p 是任意实数。所以，通解的形式是：
+x = pu + 1
+3v + 1
+5w
+这里的u 是特征值0 对应的特征向量，v 和w 分别是特征值3 和5 对应的特征向量。p 是
+任意实数，可以取任何值。
+Model
+Answer
+(Translate)
+Given the three eigenvalues of the third-order matrix A are 0, 3, 5, the corresponding eigenvectors
+are u, v, w. To find the general solution to a system of linear equations Ax = v + w, we can exploit
+the properties of eigenvalues and eigenvectors. First of all, we know Av = 3v and Aw = 5w.
+Therefore, v and w are the eigenvectors corresponding to the eigenvalues 3 and 5 respectively. The
+system of linear equations Ax = v + w can be rewritten as Ax −v −w = 0. We can write x
+as x = pu + qv + rw, where p, q, r are the undetermined coefficients. Substituting x into the
+equationAx −v −w = 0, we get:
+A(pu + qv + rw) −v −w = 0
+... Therefore, the general solution of equation Ax = v + w is:
+x = pu + 1
+3v + 1
+5w
+Where p is any real number. So, the general solution is in the form:
+x = pu + 1
+3v + 1
+5w
+Hereu is the eigenvector corresponding to the eigenvalue 0, v and w are the eigenvectors correspond-
+ing to the eigenvalues 3 and 5 respectively. p is any real number and can take on any value.
+Critique
+Result
+AI助手的回答非常详细，它首先解释了如何利用特征值和特征向量的性质来解决这个问
+题，然后逐步进行了详细的步骤，包括将方程重写，将x写成待定系数的形式，然后将这些
+系数代入方程，最后解出这些系数。这个答案不仅准确，而且深入，提供了详细的解释和
+步骤，使得读者能够理解如何解决这个问题。与参考答案相比，AI助手的答案更加详细和
+深入，因此我认为AI助手的回答质量非常高。评分：[[9]]。
+Critique
+Result
+(Translate)
+The AI assistant’s answer is very detailed. It first explains how to use the properties of eigenvalues
+and eigenvectors to solve this problem, and then goes through the detailed steps, including rewriting
+the equation, writing x in the form of undetermined coefficients, and then converting these The
+coefficients are substituted into the equation and finally the coefficients are solved. This answer is not
+only accurate but also in-depth, providing detailed explanations and steps so the reader can understand
+how to solve the problem. Compared with the reference answers, the AI assistant’s answers are more
+detailed and in-depth, so I think the quality of the AI assistant’s answers is very high. Rating: [[9]].
+18
+
+
+Table 8: Math-Critique Example (3)
+Question
+二元一次方程4x-3y=12,当x=0,1,2,3时,y=
+Question
+(Translate)
+Quadratic equation 4x-3y=12, when x=0,1,2,3, y=
+Reference
+将二元一次方程4x-3y=12改写为y的表达式：4x-3y=12 -3y = -4x + 12 y =
+(4/3)x - 4 当x=0时，y=(-4)；当x=1时，y=(4/3)-4=-8/3；当x=2时，y=(8/3)-4=-
+4/3；当x=3时，y=(4)-4=0。因此，当x分别为0、1、2、3时，y的值分别为-4、-
+8/3、-4/3和0。
+Reference
+(Translate)
+Rewrite the linear equation 4x-3y=12 into the expression of y: 4x-3y=12 -3y = -4x +
+12 y = (4/3)x - 4 When x= When 0, y=(-4); When x=1, y=(4/3)-4=-8/3; When x=2,
+y=(8/3)-4 =-4/3; When x=3, y=(4)-4=0. Therefore, when x is 0, 1, 2, and 3 respectively,
+the values of y are -4, -8/3, -4/3, and 0 respectively.
+Model
+An-
+swer
+by
+Claude-2
+* 给定二元一次方程:4x - 3y = 12 * 将x替换为给定的数值,可以得到y的值: * x = 0
+代入方程,得到: -3y = 12, y = -4 * x = 1 代入方程,得到: 4 - 3y = 12, -3y = 8, y = -2 *
+x = 2 代入方程,得到: 8 - 3y = 12, -3y = 4, y = 0 * x = 3 代入方程,得到:12 - 3y = 12,
+-3y = 0, y = 2 * 综上,当x=0,1,2,3时,y依次等于-4,-2,0,2。所以应该填写:-4,-2,0,2。
+Model
+Answer
+(Translate)
+* Given a linear equation of two variables: 4x - 3y = 12 * Replace x with the given
+value, you can get the value of y: * x = 0 Substitute into the equation, you get: -3y = 12,
+y = - 4 * x = 1 Substituting into the equation, we get: 4 - 3y = 12, -3y = 8, y = -2 * x = 2
+Substituting into the equation, we get: 8 - 3y = 12, -3y = 4, y = 0 * x = 3 Substituting
+into the equation, we get: 12 - 3y = 12, -3y = 0, y = 2 * In summary, when x=0,1,2,3, y
+is equal to -4 in turn ,-2,0,2. So you should fill in:-4,-2,0,2.
+Critique Re-
+sult
+AI助手的回答在计算过程中出现了错误。当x=1时，AI助手错误地计算出y=-2，
+而实际上应该是y=-8/3。同样，当x=3时，AI助手错误地计算出y=2，而实际上
+应该是y=0。因此，AI助手的回答在准确性和深度上都存在问题。然而，AI助
+手的回答在结构和详细程度上是正确的，它详细地解释了如何计算y的值，并给
+出了每个x值对应的y值。总的来说，AI助手的回答虽然有一些错误，但是仍然
+提供了一些有用的信息。因此，我会给AI助手的回答打分为3。评分：[[3]]
+Critique Re-
+sult
+(Trans-
+late)
+There was an error in the calculation process of the AI assistant’s answer. When x=1,
+the AI assistant incorrectly calculates y=-2, when it should actually be y=-8/3. Likewise,
+when x=3, the AI assistant incorrectly calculates y=2, when it should actually be y=0.
+Therefore, the AI assistant’s answers have problems with accuracy and depth. However,
+the AI assistant’s answer is correct in structure and level of detail. It explains in detail
+how to calculate the value of y and gives the corresponding y value for each x value.
+Overall, although the AI assistant’s answers contained some errors, they still provided
+some useful information. Therefore, I would rate the AI assistant’s answer a 3. Rating:
+[[3]]
+19
+
+
+Table 9: ChatGLM3-32B-Math Example (1)
+Question
+已知一个两位数的十位数字比个位数字大2，两位数字的积比这个两位数小34，求这个两位
+数。
+Question
+(Trans-
+late)
+Given a two-digit number where the tens digit is 2 greater than the units digit, and the product of the
+digits is 34 less than the number itself, find this two-digit number.
+Reference
+设这个两位数为10x+y（x表示十位数，y表示个位数），根据题意可得：（1）x = y + 2
+（十位数比个位数大2）（2）xy = 10x+y - 34 （两位数字的积比这个两位数小34）将（1）
+式代入（2）式得到：(y+2)y = 10(y+2)+y-34整理得到y2 + 2y = 11y + 20 −34，整理得
+y2 −9y + 14 = 0，解方程得到y=7 或y=2.所以x=7+2=9或x=2+2=4所以这个数为97或者42.答
+案：97或42。
+Reference
+(Trans-
+late)
+Let the two-digit number be 10x + y (where x is the tens digit and y is the units digit). According to
+the problem: (1) x = y + 2 (the tens digit is 2 greater than the units digit) (2) xy = 10x + y −34
+(the product of the digits is 34 less than the number itself). Substituting (1) into (2) gives: (y + 2)y =
+10(y + 2) + y −34, which simplifies to y2 + 2y = 11y + 20 −34, and further simplifies to
+y2 −9y + 14 = 0. Solving the equation yields y = 7 or y = 2. Thus, x = 7 + 2 = 9 or
+x = 2 + 2 = 4, making the number 97 or 42. Answer: 97 or 42.
+GPT-4-
+0613
+设这个两位数为10x+y，其中x为十位数，y为个位数。根据题意，我们有以下两个方程：x
+= y + 2 （十位数字比个位数字大2）xy = 10x + y - 34 （两位数字的积比这个两位数小34）将
+第一个方程代入第二个方程，我们得到：(y + 2)y = 10(y + 2) + y - 34解这个方程，我们得到y
+= 4。将y = 4代入第一个方程，我们得到x = 6。所以，这个两位数是64。
+GPT-
+4-0613
+(Trans-
+late)
+Let the two-digit number be 10x + y, where x is the tens digit and y is the units digit. According
+to the problem, we have two equations: x = y + 2 (the tens digit is 2 greater than the units digit)
+and xy = 10x + y −34 (the product of the digits is 34 less than the number itself). Substituting the
+first equation into the second, we get: (y + 2)y = 10(y + 2) + y −34. Solving this equation yields
+y = 4. Substituting y = 4 back into the first equation gives x = 6. Therefore, the two-digit number
+is 64.
+ChatGLM3-
+32B-SFT
+设这个两位数为10a + b，其中a 是十位数字，b 是个位数字。根据题意，我们有以下两
+个条件：1. 十位数字比个位数字大2，即a = b + 2 2. 两位数字的积比这个两位数小34，
+即ab < 10a + b −34 现在我们来解这个两个方程。从第一个条件，我们得到a = b + 2。
+将a 替换进第二个条件中，我们得到：b(b + 2) < 10(b + 2) −34 展开并简化这个不等
+式：b2 + 2b < 10b + 20 −34 b2 + 2b < 7b −14 移项得到：b2 −5b + 14 < 0 这是一个一元
+二次不等式，我们可以求解这个不等式得到b 的范围。因式分解得到：(b −1)(b −14) < 0
+根据一元二次不等式的性质，我们知道b 应该在两个根之间，即：1 < b < 14 但是由于
+a = b + 2，且a 是一个十位数（即1 ≤a ≤9），所以b 必须小于9。因此b 的可能取值
+为2, 3, 4, 5, 6, 7, 8。现在我们来检查b 的每一个值，并找出对应的a 和两位数。当b = 2
+时，a = 0，这不满足a 为十位数的要求；当b = 3 时，a = 1，这也不满足a 为十位数的要
+求；...当b = 7 时，a = 5，这满足要求，并且a 和b 的积是35，确实比35 小34，满足题
+目的要求。所以这个两位数是57。
+ChatGLM3-
+32B-SFT
+(Trans-
+late)
+Let the two-digit number be 10a + b, where a is the tens digit and b is the units digit. According to
+the problem, we have two conditions: 1. The tens digit is 2 greater than the units digit, i.e., a = b + 2
+2. The product of the digits is 34 less than the number itself, i.e., ab < 10a + b −34 Now let’s
+solve these two equations. From the first condition, we get a = b + 2. Substituting a into the second
+condition, we get: b(b + 2) < 10(b + 2) −34 Expanding and simplifying this inequality gives:
+b2 + 2b < 10b + 20 −34 b2 + 2b < 7b −14 Rearranging gives: b2 −5b + 14 < 0 This is a
+quadratic inequality, which we can solve to find the range for b. Factoring gives: (b −1)(b −14) < 0
+According to the properties of quadratic inequalities, we know b should be between the two roots,
+i.e., 1 < b < 14. However, since a = b + 2 and a is a tens digit (1 ≤a ≤9), b must be less than
+9. Thus, the possible values for b are 2, 3, 4, 5, 6, 7, 8. Now we check each value of b to find the
+corresponding a and the two-digit number. When b = 2, a = 0, which does not meet the requirement
+for a to be a tens digit; when b = 3, a = 1, which also does not meet the requirement; ... when
+b = 7, a = 5, which meets the requirement, and the product of a and b is 35, indeed less than 35 by
+34, meeting the problem’s requirement. Therefore, the two-digit number is 57.
+ChatGLM3-
+32B-Math
+设这个两位数为10a+b，其中a 是十位数字，b 是个位数字。根据题目条件，我们有以下两
+个方程：1. 十位数字比个位数字大2，即a = b + 2。2. 两位数字的积比这个两位数小34，
+即ab = (10a+b)−34。我们可以用第一个方程代入第二个方程来解这个问题。将a = b+2
+代入第二个方程，得到：b(b+2) = 10(b+2)+b−34 展开并简化：b2+2b = 10b+20+b−34
+b2 + 2b = 11b −14 移项得到一个二次方程：b2 −9b + 14 = 0 这是一个二次方程，我们可
+以通过分解因式来解它：(b −7)(b −2) = 0 所以，b 的值可以是7 或者2。如果b = 7，则
+a = b + 2 = 9，所以这个两位数是97。如果b = 2，则a = b + 2 = 4，所以这个两位数是
+42。因此，这个两位数是42 或97。
+ChatGLM3-
+32B-Math
+(Trans-
+late)
+Let the two-digit number be 10a + b, where a is the tens digit and b is the units digit. According to
+the problem conditions, we have two equations: 1. The tens digit is 2 greater than the units digit, i.e.,
+a = b + 2. 2. The product of the digits is 34 less than the number itself, i.e., ab = (10a + b) −34.
+We can solve this problem by substituting the first equation into the second. Doing so gives:
+b(b + 2) = 10(b + 2) + b −34 Expanding and simplifying yields: b2 + 2b = 10b + 20 + b −34
+b2 + 2b = 11b −14 Rearranging into a quadratic equation gives: b2 −9b + 14 = 0 This quadratic
+equation can be solved by factoring: (b −7)(b −2) = 0 Thus, b can be either 7 or 2. If b = 7, then
+a = b + 2 = 9, making the two-digit number 97. If b = 2, then a = b + 2 = 4, making the two-digit
+number 42. Therefore, the two-digit number could be either 42 or 97.
+20
+
+
+Table 10: ChatGLM3-32B-Math Example (2)
+Question
+两个相互独立的事件A，B都不发生的概率为1/9，A发生而B不发生的概率与A不发生B发生
+的概率相等，则P(A)等于？
+Question
+(Trans-
+late)
+Given two independent events A and B, where the probability of neither A nor B occurring is 1/9,
+and the probability of A occurring without B equals the probability of B occurring without A, what is
+P(A)?
+Reference
+由题意的：P(A ¯
+B) = P(B ¯
+A),即P(A)(1-P(B))=P(B)(1-P(A)) 所以P(A)=P(B) 又P( ¯
+A ¯
+B) = 1
+9 所
+以P( ¯
+A) = 1
+3 所以P(A) = 2
+3
+Reference
+(Trans-
+late)
+From the problem statement: P(A and not B) = P(B and not A), i.e., P(A)(1-P(B)) = P(B)(1-P(A)).
+Thus, P(A) = P(B). Also, P(neither A nor B) = 1/9. Therefore, P(not A) = 1/3, leading to P(A) = 2/3.
+GPT-4-
+0613
+设A发生的概率为p，B发生的概率为q，则A，B都不发生的概率为(1-p)(1-q)=1/9，A发生
+而B不发生的概率为p(1-q)，A不发生B发生的概率为(1-p)q。由题意知，p(1-q)=(1-p)q，解
+得p=q。将p=q代入(1-p)(1-q)=1/9，得(1 −p)2 = 1/9，解得p=2/3或p=-1/3。由于概率不能为
+负，所以p=2/3，即P(A)=2/3。
+GPT-
+4-0613
+(Trans-
+late)
+Let the probability of A occurring be p, and the probability of B occurring be q. Then, the probability
+of neither A nor B occurring is (1-p)(1-q) = 1/9. The probability of A occurring without B is p(1-q),
+and the probability of B occurring without A is (1-p)q. From the problem, p(1-q) = (1-p)q, leading to
+p = q. Substituting p = q into (1-p)(1-q) = 1/9 gives (1 −p)2 = 1/9, resulting in p = 2/3 or p = -1/3.
+Since probability cannot be negative, p = 2/3, i.e., P(A) = 2/3.
+ChatGLM3-
+32B-SFT
+设事件A发生的概率为P(A)，事件B发生的概率为P(B)。已知A和B相互独立，那么事件A不
+发生而B发生的概率为P(B)(1-P(A))，事件A发生而B不发生的概率为P(A)(1-P(B))。根据题
+目条件，A发生而B不发生的概率与A不发生B发生的概率相等，即：P(A)(1-P(B)) = P(B)(1-
+P(A)) 由于A和B相互独立，我们可以将上式简化为：P(A) - P(A)P(B) = P(B) - P(B)P(A) 由
+于A和B的概率都是非负的，上式意味着P(A) = P(B)。但独立事件的概率相等并不一定意味
+着A和B是同一个事件，因为它们可以有相同的或不同的概率但独立性保持不变。现在，我
+们知道了两个事件独立，且都不发生的概率为1/9。这意味着：P(A) * P(B) = 1/9 由于P(A)
+= P(B)，我们可以将这个等式写成：P(A)2 = 1/9 因为P(A)是概率，所以它必须在0和1之
+间。唯一满足这个等式的概率值是：P(A) = æ(1/9) = 1/3 因此，P(A) = 1/3。既然P(A) =
+P(B)，那么P(B)也等于1/3。
+ChatGLM3-
+32B-Math
+设事件A发生的概率为P(A)，事件B发生的概率为P(B)。根据题意，我们可以列出以下关
+系：1. 事件A和事件B都不发生的概率为1/9，即：
+P(A不发生且B不发生) = P(A不发生) × P(B不发生) = (1 −P(A)) × (1 −P(B)) = 1
+9
+2. 事件A发生而事件B不发生的概率与事件A不发生而事件B发生的概率相等，即：
+P(A发生且B不发生) = P(A不发生且B发生)
+根据概率的性质，我们有：
+P(A发生且B不发生) = P(A) × (1 −P(B))
+P(A不发生且B发生) = (1 −P(A)) × P(B)
+由于这两个概率相等，我们可以得到：
+P(A) × (1 −P(B)) = (1 −P(A)) × P(B)
+现在我们有两个方程：1. (1 −P(A)) × (1 −P(B)) =
+1
+9 2. P(A) × (1 −P(B)) = (1 −
+P(A)) × P(B) 我们可以通过这两个方程来解出P(A)和P(B)的值。首先，从第二个方程中我
+们可以得到：
+P(A) −P(A) × P(B) = P(B) −P(A) × P(B)
+P(A) = P(B)
+这意味着事件A和事件B发生的概率相等。现在，我们用这个结论来解第一个方程：
+(1 −P(A)) × (1 −P(A)) = 1
+9
+(1 −P(A))2 = 1
+9
+取平方根得到：
+1 −P(A) = 1
+3
+或
+1 −P(A) = −1
+3
+由于概率值不能为负，我们只取正值：
+1 −P(A) = 1
+3
+P(A) = 2
+3
+所以，事件A发生的概率P(A)等于2/3。
+21
+
+
+Table 11: ChatGLM3-32B-Math Example (3)
+Question
+The first term of an arithmetic sequence is 18. The sum of the first six terms of the
+sequence is equal to the sum of the first seven terms.Show that the sum of the first 13
+terms of the sequence is 0 and calculate the 13th term of the sequence.
+Reference
+If the sum of the first six terms of a sequence is equal to the sum of the first seven terms
+then the seventh term must be 0. Let d be the common difference of the sequence. Now
+18 + 6d = 0 and so d = -3. a13 = 18 + 12*(-3) = -18
+ChatGLM3-
+32B-Math
+Let’s denote the common difference of the arithmetic sequence as d. The formula for
+the n-th term of an arithmetic sequence is an = a1 + (n −1)d, where a1 is the first
+term and n is the term number.
+Given that the first term a1 = 18, the formula for the n-th term becomes an = 18 +
+(n −1)d.
+The sum Sn of the first n terms of an arithmetic sequence is given by the formula
+Sn = n
+2 [2a1 + (n −1)d].
+According to the problem, the sum of the first six terms (S6) is equal to the sum of the
+first seven terms (S7). We can write this relationship as:
+S6 = S7
+6
+2[2 · 18 + (6 −1)d] = 7
+2[2 · 18 + (7 −1)d]
+3[36 + 5d] = 7
+2[36 + 6d]
+108 + 15d = 7
+2 · 36 + 7
+2 · 6d
+108 + 15d = 126 + 21d
+Now, we solve for d:
+15d −21d = 126 −108
+−6d = 18
+d = −3
+Now that we have the common difference d = −3, we can find the 13th term a13:
+a13 = 18 + (13 −1) · (−3)
+a13 = 18 −12 · 3
+a13 = 18 −36
+a13 = −18
+Now, let’s find the sum of the first 13 terms S13 using the formula:
+S13 = 13
+2 [2 · 18 + (13 −1) · (−3)]
+S13 = 13
+2 [36 −12 · 3]
+S13 = 13
+2 [36 −36]
+S13 = 13
+2 · 0
+S13 = 0
+So, the sum of the first 13 terms of the sequence is indeed 0, and we’ve also calculated
+that the 13th term of the sequence is −18.
+B
+Prompt Template
+In Figure 5, we present the Chinese version example of the prompts utilized by Math-Critique and
+the corresponding English translations. In practical application, we employ the Chinese version of
+the prompts for all inquiries.
+C
+Evaluation Settings
+C.1
+Evaluation Settings for Academic Datasets
+Given our focus on evaluating zero-shot capabilities, traditional methods of answer verification fail
+to provide accurate assessments. Consequently, we have adapted our evaluation methodology as
+follows:
+1. Extract the final sentence of the response (demarcated by a double newline character) or
+prompt the model with "Therefore, the answer is".
+22
+
+
+Table 12: ChatGLM3-32B-Math Error Case (1)
+Question
+The matrices
+
+
+
+2
+a
+−3
+−1
+
+
+
+and
+
+
+
+−1
+16
+b
+3
+16
+1
+8
+
+
+
+are inverses. Enter the ordered pair (a, b).
+Reference
+(6, −3
+8)
+ChatGLM3-
+32B-Math
+Two matrices are inverses if their product is the identity matrix. The identity matrix for
+a 2x2 matrix is
+
+
+
+1
+0
+0
+1
+
+
+.
+So, we need to find the values of a and b such that
+
+
+
+2
+a
+−3
+−1
+
+
+
+
+
+
+−1
+16
+b
+3
+16
+1
+8
+
+
+=
+
+
+
+1
+0
+0
+1
+
+
+.
+We can calculate the product as follows:
+
+
+
+2
+a
+−3
+−1
+
+
+
+
+
+
+−1
+16
+b
+3
+16
+1
+8
+
+
+=
+
+
+
+2(−1
+16) + a( 3
+16)
+2b + a( 1
+8)
+−3(−1
+16) −1( 3
+16)
+−3b −1( 1
+8)
+
+
+.
+This gives us the equations 2(−1
+16) + a( 3
+16) = 1,
+2b + a( 1
+8) = 0,
+−3(−1
+16) −1( 3
+16) = 0
+−3b −1( 1
+8) = 1
+Simplifying, we get −1
+8 + 3a
+16 = 1,
+2b + a
+8 = 0,
+3
+16 −3
+16 = 0,
+−3b −1
+8 = 1.
+From the third equation, we have a
+8 = 2b. Multiplying both sides by 8, we get a = 16b.
+Substituting into the first equation, we get
+−1
+8 + 3(16b)
+16
+= 1,
+which simplifies to 3b = 5
+8. Therefore, b =
+5
+24.
+Substituting into the second equation, we get
+2( 5
+24) + 16b
+8
+= 0,
+which simplifies to b = −5
+16. This is consistent with our previous calculation, so b =
+5
+24
+is the correct value.
+Finally, substituting into the fourth equation, we get
+−3( 5
+24) −1
+8 = 1,
+which simplifies to a =
+1
+16.
+Therefore, (a, b) =
+ 1
+16, 5
+24
+
+.
+23
+
+
+Table 13: ChatGLM3-32B-Math Error Case (2)
+Question
+n the graph below, each grid line counts as one unit. The line shown below passes
+through the point (1001, n) (not shown on graph). Find n.
+x
+y
+(note: the graph was written in Asymptote code in original question)
+Reference
+575
+ChatGLM3-
+32B-Math
+The line passes through the point (1001, n), which means that when x = 1001, y = n.
+We can find the slope of the line by looking at the change in y divided by the change in
+x between two points on the line.
+If we consider the point (999, 7) and the point (1001, n), the change in x is 1001−999 =
+2 and the change in y is n −7.
+Since the line passes through the point (1001, n), we can say that the slope of the line is
+n−7
+2 .
+We know that the line also passes through the point (0, −2.71), so we can use this point
+to find the slope of the line. The change in x is 0 −(−10) = 10 and the change in y is
+−2.71 −(−7) = 4.29.
+Now we can set the two slopes equal to each other and solve for n:
+n −7
+2
+= 4.29
+10
+Cross multiplying gives:
+10(n −7) = 2 · 4.29
+10n −70 = 8.58
+Adding 70 to both sides gives:
+10n = 78.58
+Finally, dividing both sides by 10 gives:
+n = 7.858
+But since the grid lines count as one unit, we need to round n to the nearest whole
+number. 7.858 is closer to 8 than it is to 7, so n = 8 .
+24
+
+
+Table 14: ChatGLM3-32B-Math Error Case (3)
+Question
+In the year 2018 factory A produced goods worth 500 million forints, while factory B
+produced goods worth 400 million forints. According to their long-term plans, factory
+A will increase production by 5% each year, while factory B will increase production by
+6% per year.
+The above plans were published on an economy website. A debate started in the
+comment section of the article: one user claimed that the difference between the volumes
+of production between the two factories would get smaller and smaller in the next couple
+of years.
+Calculate the missing values of the table below and show that the above claim is not
+true.
+| Year | Production volume of factory A (million Ft) | Production volume of factory B
+(million Ft) |
+|——|——————————————–|———————————————|
+| 2018 | 500 | 400 |
+| 2019 | | |
+| 2020 | | |
+| 2021 | | |
+Reference
+| Year | Production volume of factory A (million Ft) | Production volume of factory B
+(million Ft) |
+|——|——————————————–|———————————————|
+| 2018 | 500 | 400 |
+| 2019 | 525 | 424 |
+| 2020 | 551.3 | 449.4 |
+| 2021 | 578.8 | 476.4 |
+The difference between the production values in the given years:
+525 – 424 = 101,
+551.3 – 449.4 = 101.9 and
+578.8 – 476.4 = 102.4 (million forints).
+As the difference between the production values is increasing (in the period in question),
+the statement is, in fact, false.
+ChatGLM3-
+32B-Math
+To calculate the production volumes for the years 2019, 2020, and 2021, we will apply
+the percentage increases to the production of each factory.
+For Factory A: - 2018 production: 500 million Ft - 5
+For Factory B: - 2018 production: 400 million Ft - 6
+Let’s fill in the table:
+| Year | Production volume of factory A (million Ft) | Production volume of factory B
+(million Ft) |
+|——|——————————————–|———————————————|
+| 2018 | 500 | 400 |
+| 2019 | 500 * 1.05 = 525 | 400 * 1.06 = 424 |
+| 2020 | 525 * 1.05 = 551.25 | 424 * 1.06 = 448.24 |
+| 2021 | 551.25 * 1.05 = 578.96 | 448.24 * 1.06 = 475.92 |
+Now, let’s analyze the data. The difference in production between the two factories in
+2018 was 100 million Ft (500 million - 400 million).
+- In 2019, the difference is 21 million Ft (525 million - 424 million). - In 2020, the
+difference is 23.31 million Ft (551.25 million - 448.24 million). - In 2021, the difference
+is 23.94 million Ft (578.96 million - 475.92 million).
+The difference is not getting smaller; in fact, it is increasing slightly each year. This
+is because the rate of increase for Factory A (5%) is lower than the rate for Factory B
+(6%). The claim made in the debate that the difference would get smaller and smaller is
+not true based on these figures.
+25
+
+
+[Instruction]
+请你扮演⼀名评审，对⼈⼯智能助⼿对数学问题⽣成的回答进⾏评分。你的评价需要优先考虑最终答案的正确性，其次关
+注解题步骤每⼀步的正确性，并严格按照下⾯的评分标准进⾏评分：
+1)分数：1~2， 标准：最终答案完全错误，并且解答过程中错误出现很早，即解答刚开始便出现明显错误。
+2)分数：3~5， 标准：最终答案错误，且解题过程前半部分正确，但后半部分中出现错误。
+3)分数：6~8， 标准：最终答案正确，但中间步骤出现部分错误。
+4)分数：9~10， 标准：最终答案完全正确，且解题步骤完全正确。
+我会提供⼀段参考答案和⼈⼯智能助⼿的答案，请你以参考答案为基础对⼈⼯智能助⼿的答案尽可能客观地评价。请你输
+出 1) ⾸先提供⼀段简短的解释，⽤来评价⼈⼯智能助⼿回答的质量，如有最终答案错误或者步骤错误，请指出并简单解
+释；2) 然后给出评估分数，必须严格按照以下格式进⾏评分：\"[[rating]]\"，例如：\"评分:[[4]]\".
+[Question]
+设X服从泊松分布P(λ)，且E[(X-1)(X-2)]=1，则λ等于？
+[The Start of Reference Answer]
+⾸先我们需要知道泊松分布的期望是λ，⽅差是λ。由题意，E[(X-1)(X-2)]=1，所以 E[(X-1)(X-2)]=E[X^2]-3E[X]+2=1
+DX=EX^2-EX^2
+EX^2=λ+λ^2
+解这个⽅程我们可以得到λ=1
+[The End of Reference Answer]
+[The Start of Assistant's Answer]
+设随机变量X服从泊松分布P(λ)，我们知道泊松分布的期望值E[X]等于λ，⽅差Var[X]也等于λ。
+根据题⽬条件，我们有：
+E[(X-1)(X-2)] = 1
+因为X服从泊松分布，我们可以利⽤⼆项式定理展开(X-1)(X-2)，然后将其与期望值相乘以找到λ。
+(X-1)(X-2) = X^2 - 3X + 2
+展开后得到：
+E[X^2 - 3X + 2] = 1
+我们知道E[X^2] = Var[X] + (E[X])^2，且E[X] = λ。因此，我们可以将E[X^2]替换为λ^2 + λ，并且知道E[X] = λ。
+所以，我们有：
+λ^2 + λ - 3λ + 2 = 1
+解这个⽅程得到 λ = 1。
+所以，λ的值为1。
+[The End of Assistant's Answer]
+Math-Critique Prompt Template
+Figure 5: Prompt Template with an example for Math-Critique Model.
+2. For numeric standard answers, the response undergoes the following recognition process:
+fractions or decimals in LaTeX format, and regular fractions, decimals, or integers. We
+compute the numerical result and compare it with the standard answer. A discrepancy less
+than (1e-6) is deemed correct.
+3. For standard answers that are strings (exclusive to the MATH dataset): identify the content
+following "xxx is" or an equality sign, or within boxed{}. The evaluation considers whether
+the normalized strings match.
+For the English datasets GSM8k and MATH, our principle for selecting results is as follows:
+1. If the model itself reports results on these two datasets, we choose the higher of either the
+zero-shot or few-shot results.
+2. If the model does not report its results, we utilize the results reported by OpenCompass,
+again selecting the higher of the zero-shot or few-shot outcomes. This applies to models
+such as GPT-4-0613, GPT-3.5-Turbo-0613, Yi-6B-Chat, and Qwen-Chat-7B. Should there
+be any omissions from the above sources, results will not be reported.
+For the Hungarian Exam results, we had annotators score them according to a grading standard, which
+is referenced from [36]. It’s noted that the reported results actually sum the scores of all questions,
+making the total score effectively 117. To align with the reported results, we adopted this scoring
+method as well.
+With reproducibility in mind, all our results were obtained using a sampling temperature of 0 and
+setting the max-seq-length to 4096.
+26
+
+
+Table 15: Math-User-Result Result, GPT-4-1106-Preview-rated. All results were scored by GPT-
+4-1106-Preview, with the scoring method consistent with AlignBench. All Overall scores were
+calculated using the macro-average.
+Model
+Overall
+Elementary
+Advanced
+Avg
+algebra
+calculate
+geo.
+tri.
+Avg
+calculus
+discrete
+linear.
+Prob.
+GPT-4-0125-Preview [34]
+5.79
+5.26
+5.04
+7.63
+3.98
+4.59
+6.71
+7.26
+6.62
+5.48
+7.72
+GPT-4-1106-Preview [34]
+5.73
+5.07
+4.96
+7.00
+3.78
+4.71
+6.81
+7.39
+6.96
+5.29
+7.91
+GLM-4
+5.11
+4.86
+4.47
+6.56
+3.95
+4.74
+5.43
+6.00
+5.67
+4.26
+6.02
+ChatGLM3-32B-SFT-2312 + RFT&DPO
+4.23
+4.01
+3.88
+5.41
+2.90
+3.99
+4.59
+5.22
+4.76
+3.38
+5.20
+GPT-4-0613 [34]
+4.14
+3.34
+2.88
+4.76
+3.17
+2.78
+5.33
+5.57
+5.49
+4.26
+6.22
+ChatGLM3-32B-SFT-2312 + RFT
+4.01
+3.86
+3.84
+5.37
+2.57
+3.77
+4.26
+4.72
+4.69
+2.98
+4.89
+Qwen-72B-Chat [3]
+3.87
+3.99
+3.96
+4.81
+3.83
+3.34
+3.67
+4.54
+3.71
+2.84
+3.65
+GPT-3.5-Turbo-0613 [34]
+3.42
+3.04
+2.81
+4.07
+2.23
+3.26
+4.07
+4.83
+4.38
+3.26
+3.91
+ChatGLM3-32B-SFT-2312
+3.39
+3.35
+3.35
+4.51
+2.51
+3.11
+3.44
+4.04
+4.38
+2.41
+3.13
+Claude-2 [1]
+3.29
+2.63
+2.35
+3.63
+2.20
+2.53
+4.35
+4.56
+4.53
+3.29
+5.28
+DeepSeek-Chat-67B [12]
+3.24
+2.76
+2.21
+4.73
+2.12
+2.30
+3.84
+4.41
+4.82
+2.79
+3.52
+Yi-34B-Chat [56]
+2.64
+2.49
+2.04
+3.61
+2.25
+2.27
+2.87
+2.80
+3.47
+2.03
+3.41
+C.2
+Evaluation Settings for 2023 Hungarian national high school finals in mathematics
+For the Hungarian national high school finals in mathematics, we submit the model’s answers to
+annotators for marking. For results of models not listed in [36], we score them based on the answers
+provided in [36] according to the scoring points. We sum the scores of all questions to present a total
+score. All annotations are carried out by two annotators; in case of inconsistency, a third annotator
+decides.
+Considering the general situation of multiple models, we do not restrict the language used by the
+language models to answer the questions. Any language used to correctly answer is considered
+correct. Additionally, since most questions do not restrict the form of the answer, we stipulate that
+answers are deemed correct as long as they retain more than one decimal place accurately or are
+provided in fraction form.
+D
+Additional Results
+D.1
+Subcategory Results of MathUserEval
+In Table 15, we display the results for all subsets of MathUserEval. The reported results were
+evaluated by GPT-4-1106-Preview, with the evaluation method consistent with AlignBench. It is
+noted that GPT-4-0125-Preview and GPT-4-1106-Preview still occupy the leading positions. Except
+for Probability, the GLM4 model’s total score and individual scores surpassed GPT-4-0613. Our
+GLM-Math-32B w/ DPO model performed exceptionally well in the Elementary category, exceeding
+GPT-4-0613, but a significant gap remains in Advanced mathematics. Our Self-Critique training
+method showed significant progress in MathUserEval, with an overall improvement of 24%.
+27
+
+
+D.2
+Subcategory Results of Alignbench [29]
+Model
+Language
+Avg.
+Fund.
+Chi.
+Open.
+Writ.
+Role.
+Pro.
+GPT-4-1106-Preview [34]
+8.29
+7.99
+7.33
+8.61
+8.67
+8.47
+8.65
+ChatGLM3-32B-SFT-2312 + RFT&DPO
+7.80
+7.14
+6.90
+8.37
+8.41
+8.09
+7.90
+GPT-4-0613 [34]
+7.59
+7.81
+6.93
+7.42
+7.93
+7.51
+7.94
+ChatGLM3-32B-SFT-2312 + RFT
+7.43
+6.37
+6.95
+8.03
+7.71
+7.97
+7.54
+ChatGLM3-32B-SFT-2312
+7.38
+6.84
+7.02
+8.08
+7.37
+7.70
+7.27
+Qwen-72B-Chat [3]
+7.29
+6.63
+7.31
+7.24
+7.29
+7.59
+7.71
+DeepSeek-67B-Chat [12]
+7.11
+7.12
+6.52
+7.58
+7.20
+6.91
+7.37
+GPT-3.5-Turbo-0613 [34]
+6.82
+6.71
+5.81
+7.29
+7.03
+7.28
+6.77
+Claude-2 [1]
+6.78
+6.87
+6.24
+7.08
+6.36
+6.85
+7.31
+Yi-34B-Chat [56]
+6.18
+4.32
+6.05
+7.37
+6.00
+6.30
+7.06
+Table 16: Results of Alignbench [29], Language Part.
+1 The ChatGLM3-32B-SFT-2312 is a newer version of the ChatGLM series and not identical to the
+model discussed in [19], despite sharing the same model size.
+Table 16 reports detailed results from the language capability subsection of AlignBench. Within
+this, we present the scores of our four models and have tested the results for Qwen-72B-Chat [3],
+Claude-2 [1], and Yi-34B-Chat [56]. Additional results are derived from the AlignBench paper, and
+the results for DeepSeek are taken from its report [12].
+28
+
+
+CRITIQUELLM: Towards an Informative Critique Generation Model for
+Evaluation of Large Language Model Generation
+Pei Ke1,∗, Bosi Wen1,2,∗,†, Zhuoer Feng1,2,∗,†, Xiao Liu3,2,∗,
+Xuanyu Lei3,2,†, Jiale Cheng1,2,†, Shengyuan Wang3,2,†, Aohan Zeng3,2,†,
+Yuxiao Dong3, Hongning Wang1, Jie Tang3, Minlie Huang1,‡
+1The Conversational Artificial Intelligence (CoAI) Group, Tsinghua University
+2Zhipu AI
+3The Knowledge Engineering Group (KEG), Tsinghua University
+kepei1106@outlook.com,
+{wbs23,fze22,liuxiao21}@mails.tsinghua.edu.cn, aihuang@tsinghua.edu.cn
+Abstract
+Since the natural language processing (NLP)
+community started to make large language mod-
+els (LLMs) act as a critic to evaluate the quality
+of generated texts, most of the existing works
+train a critique generation model on the evalua-
+tion data labeled by GPT-4’s direct prompting.
+We observe that these models lack the ability
+to generate informative critiques in both point-
+wise grading and pairwise comparison espe-
+cially without references. As a result, their gen-
+erated critiques cannot provide fine-grained dis-
+tinguishability on generated texts, causing un-
+satisfactory evaluation performance. In this pa-
+per, we propose a simple yet effective method
+called Eval-Instruct, which can first acquire
+pointwise grading critiques with pseudo refer-
+ences and then revise these critiques via multi-
+path prompting to obtain informative evalua-
+tion data in different tasks and settings, includ-
+ing pointwise grading and pairwise comparison
+with / without references. After fine-tuning on
+these data, the resulting model CRITIQUELLM
+is empirically shown to outperform ChatGPT
+and all the open-source baselines and even
+achieve comparable evaluation performance to
+GPT-4 in system-level correlations of pointwise
+grading. We also demonstrate that our gener-
+ated critiques can act as scalable feedback to
+further improve the generation quality of strong
+LLMs like ChatGPT1.
+1
+Introduction
+Recently, large language models (LLMs) (OpenAI,
+2022, 2023; Touvron et al., 2023a) have been im-
+proved rapidly and approached human-level per-
+formance on various natural language processing
+∗Equal contribution
+†Work done when these authors interned at Zhipu AI.
+‡Corresponding author
+1The codes are available at https://github.com/
+thu-coai/CritiqueLLM.
+(NLP) tasks, such as question answering, text sum-
+marization, dialogue generation, and code gener-
+ation (Laskar et al., 2023). How to automatically
+measure the performance of LLMs has now be-
+come an essential research problem and attracted
+extensive attention (Chang et al., 2023; Zhang et al.,
+2023; Liu et al., 2024). Strong evaluation meth-
+ods are expected to provide high-quality critiques
+(including not only rating scores but also expla-
+nations) that act as scalable feedback and guide
+LLMs to improve persistently (Cui et al., 2023).
+Traditional evaluation metrics, usually based on
+n-gram overlap between generated texts and refer-
+ence texts (such as BLEU (Papineni et al., 2002)
+and ROUGE (Lin, 2004)), have limited effective-
+ness. Recent works mostly resort to model-based
+evaluation metrics, especially LLM-based ones
+(Wang et al., 2023a; Liu et al., 2023b; Zheng et al.,
+2023). Since most of the best-performing LLMs
+such as ChatGPT (OpenAI, 2022) and GPT-4 (Ope-
+nAI, 2023) can only be accessed via OpenAI APIs,
+researchers start to automatically collect evaluation
+data by directly prompting GPT-4 and train their
+own evaluation models, aiming to avoid potential
+risks of commerical APIs, such as high cost, un-
+stable usage, and data leakage (Zheng et al., 2023;
+Wang et al., 2024; Li et al., 2024).
+However, we argue that these evaluation models
+are still struggling to generate informative critiques
+in different evaluation tasks including pointwise
+grading and pairwise comparison. Especially in
+the challenging reference-free setting, these mod-
+els tend to generate general critiques without fine-
+grained distinguishability on generated texts, caus-
+ing unsatisfactory evaluation performance (Zheng
+et al., 2023).
+In this work, we propose a simple yet effective
+method called Eval-Instruct, which can automati-
+cally construct informative instruction-tuning data
+for different evaluation tasks and settings, includ-
+ing pointwise grading and pairwise comparison
+1
+arXiv:2311.18702v2  [cs.CL]  26 Jun 2024
+
+
+with / without references. Our main idea is to
+fully utilize referenced pointwise grading critiques,
+which are shown to possess rich information with
+the assistance of references and elaborate prompt
+design (Zheng et al., 2023; Liu et al., 2023a), to
+construct evaluation data for other tasks and set-
+tings. Specifically, after acquiring pointwise grad-
+ing critiques with pseudo references via GPT-4, we
+devise a multi-path prompting method including
+two strategies: 1) Pointwise-to-Pairwise Prompt-
+ing aims to inject pointwise grading critiques into
+pairwise critiques and enrich them with more in-
+formation about the respective quality of text pairs.
+2) Referenced-to-Reference-Free Prompting is
+targeted at removing direct comparison with refer-
+ences in referenced critiques, while keeping other
+details to improve the specificity of reference-free
+critiques. The evaluation data in different tasks
+and settings can be acquired via different paths
+consisting of these two strategies. And we also
+design a cross validation mechanism to improve
+the data quality of reference-free pairwise com-
+parison because both of the two paths reach this
+task. After fine-tuning on the data of all the tasks
+and settings, the resulting model CRITIQUELLM
+is empirically shown to outperform all the open-
+source baselines and even achieve comparable per-
+formance with GPT-4 in system-level correlations
+of pointwise grading. We also show the potential
+of CRITIQUELLM to act as effective feedback to
+enhance the performance of LLMs like ChatGPT.
+Our main contributions are as follows:
+• We propose an evaluation data construction
+method called Eval-Instruct to automatically
+acquire informative evaluation data in both
+pointwise grading and pairwise comparison
+with / without references.
+• We conduct extensive experiments on CRI-
+TIQUELLM, which is fine-tuned on the data
+constructed by Eval-Instruct. Experimental re-
+sults on three instruction following benchmark
+datasets show that our model can outperform
+all the open-source baselines and even per-
+form comparably with GPT-4 in system-level
+correlations of pointwise grading.
+• We reveal the potential of CRITIQUELLM to
+guide LLMs to improve persistently by show-
+ing the positive impact of our generated cri-
+tiques as scalable feedback on the generation
+quality of LLMs.
+2
+Related Work
+Evaluation is a long-standing task in NLP, which
+becomes more challenging with the rapid develop-
+ment of LLMs (Celikyilmaz et al., 2020; Chang
+et al., 2023). Currently, there are mainly two lines
+of work on LLM evaluation, including NLU-style
+and NLG-style evaluations. NLU-style evaluation
+methods utilize natural language understanding
+(NLU) tasks such as multi-choice QA to measure
+the performance of LLMs via simple objective met-
+rics (such as accuracy and F1 score) (Hendrycks
+et al., 2021; Zhong et al., 2023; Huang et al.,
+2023b), which may deviate from the common us-
+age of LLMs and may not exactly reflect the ability
+of LLMs in generating responses for user queries.
+NLG-style evaluation methods extend metrics
+for natural language generation (NLG) tasks and
+expect to apply them to the measurement of LLM’s
+performance, which are the main focus of this pa-
+per. Compared with early metrics that depend on
+the n-gram overlap between generated texts and
+reference texts (Papineni et al., 2002; Banerjee and
+Lavie, 2005; Lin, 2004), recently proposed met-
+rics based on state-of-the-art LLMs like GPT-4
+(OpenAI, 2023) are shown to be strong evaluators
+due to the encouraging effectiveness of LLMs and
+the simplicity of formulating evaluation tasks as
+instruction-following tasks (Wang et al., 2023a;
+Chen et al., 2023; Liu et al., 2023b; Zheng et al.,
+2023; Ke et al., 2023; Fu et al., 2023). Since most
+of the state-of-the-art LLMs can only be accessed
+via APIs, researchers start to automatically collect
+evaluation data by directly prompting GPT-4 and
+train their own evaluation models to provide sta-
+ble and effective evaluations at a lower cost (Wang
+et al., 2024; Li et al., 2024; Kim et al., 2024).
+The concurrent works similar to ours are the
+LLMs specially trained for evaluation tasks like
+PandaLM (Wang et al., 2024), JudgeLM (Zhu
+et al., 2023), and AUTO-J (Li et al., 2024). For
+comparison, our work is the first attempt to deal
+with the challenge of uninformative critique gen-
+eration which commonly appears in recent LLM-
+based evaluation models especially without refer-
+ences. Instead of prompting GPT-4 directly, our
+proposed Eval-Instruct can fully utilize the connec-
+tion among different evaluation tasks and settings
+to construct informative evaluation data, which are
+empirically shown to improve the quality of gener-
+ated critiques.
+2
+
+
+3
+Method
+3.1
+Task Definition and Method Overview
+This paper mainly involves two typical evaluation
+tasks: 1) Pointwise Grading: Given a user query
+q, a LLM-generated text x, and a reference text r
+(omitted in the reference-free setting), the goal is
+to obtain a critique c including a rating score and
+an explanation to support this score. 2) Pairwise
+Comparison: Given a user query q, two LLM-
+generated texts x1 and x2, and a reference text r
+(omitted in the reference-free setting), our purpose
+is to acquire a critique c including a comparison
+label (i.e., win / tie / lose) and an explanation to
+support this label.
+Our method consists of the following steps. We
+first construct an informative instruction-tuning
+dataset for different evaluation tasks and settings,
+including pointwise grading and pairwise com-
+parison with / without references (§3.2). Specifi-
+cally, after collecting user queries, LLM-generated
+texts, and pseudo references (§3.2.1), we can ac-
+quire high-quality referenced pointwise grading
+critiques via elaborately prompting GPT-4. Then,
+we devise a multi-path prompting method to con-
+struct informative evaluation data in other tasks
+and settings, which covers pointwise-to-pairwise
+and referenced-to-reference-free prompting strate-
+gies (§3.2.2). Since there are two paths to obtain
+reference-free pairwise comparison data, we design
+a cross validation mechanism to filter out the con-
+tradictory data and improve the quality (§3.2.3). Fi-
+nally, we perform supervised fine-tuning on the au-
+tomatically constructed evaluation data in a multi-
+task manner to train a unified critique generation
+model for different evaluation tasks and settings
+(§3.3).
+3.2
+Evaluation-Oriented Instruction Data
+Construction (Eval-Instruct)
+3.2.1
+Pseudo Reference Collection
+To construct instruction-tuning data for evaluation,
+it is imperative to first obtain the evaluation input,
+including user queries, LLM-generated texts, and
+references. We refer to recent works on instruc-
+tion following (Liu et al., 2023a; Li et al., 2024;
+Zhang et al., 2024) and merge their task taxonomy
+to consider ten instruction following tasks covering
+diverse NLP applications in real-world scenarios2.
+2Our task taxonomy contains fundamental language abil-
+ity, advanced Chinese understanding, open-ended question
+answering, writing ability, logical reasoning, mathematics,
+We utilize self-instruct (Wang et al., 2023d) to aug-
+ment seed queries of these tasks which are publicly
+available and conduct strictly filtering to improve
+the data quality. The details are provided in Ap-
+pendix A.
+Then, we collect LLM-generated texts from 10
+representative models, which cover different levels
+of generation qualities, including GPT-4 (OpenAI,
+2023), ChatGPT (OpenAI, 2022), two versions
+of ChatGLM (Du et al., 2022; Zeng et al., 2023),
+MOSS (Sun et al., 2023), Minimax3, Sparkdesk4,
+Chinese-Llama2-7B-Chat5, Baichuan2-13B-Chat
+(Yang et al., 2023), and Ernie Bot6. We further
+filter out the generated results by removing a small
+number of failure cases, such as empty responses.
+Finally, we select the best-performing LLM (i.e.,
+GPT-4) and manually check its generated texts for
+each user query, while revising them if necessary
+to improve the quality. Thus, these generated texts
+after manual check and revise can act as pseudo
+references to assist the evaluation data construction.
+3.2.2
+Multi-Path Prompting
+To acquire high-quality evaluation data in differ-
+ent evaluation tasks and settings, we first construct
+referenced pointwise grading critiques by prompt-
+ing GPT-4 with the assistance of pseudo references
+and well-designed prompts like Liu et al. (2023a),
+which are empirically shown to be informative
+(Zheng et al., 2023). Then, regarding this setting
+as a beginning, we devise a multi-path prompting
+method to obtain evaluation data in other tasks and
+settings. As shown in Figure 1, there are two main
+prompting strategies:
+(1) Pointwise-to-Pairwise Prompting (fP2P ): This
+prompting strategy injects pointwise grading cri-
+tiques of generated texts into pairwise comparison
+critiques, enriching them with information about
+the respective text quality. Meanwhile, it requires
+self-reflection on the pointwise critiques generated
+by GPT-4 before obtaining the final pairwise com-
+parison results.
+(2) Referenced-to-Reference-Free Prompting
+(fR2RF ): This prompting strategy aims to remove
+direct comparison with references while keeping
+informative contents from references. It also re-
+task-oriented role play, professional knowledge, code genera-
+tion, and multi-lingual ability.
+3https://api.minimax.chat/
+4https://xinghuo.xfyun.cn/
+5https://huggingface.co/FlagAlpha/
+Llama2-Chinese-7b-Chat/
+6https://yiyan.baidu.com/
+3
+
+
+Pointwise Grading
+Referenced
+Pairwise Comparison
+Referenced
+Pointwise Grading
+Reference-Free
+Pairwise Comparison
+Reference-Free
+User Query
+LLM-generated Text
+Evaluation Input
+Reference Text
+Explanation: Compared with the 
+reference, AI assistant’s response … 
+Rating: [5]
+Evaluation Output (Critique)
+Cross 
+Validation
+Explanation: Based the reference, AI 
+assistant 1’s response …, while AI 
+assistant 2’s response … 
+Label: AI assistant 1 Wins
+Path#1
+Path#2
+Explanation: AI assistant 1’s response …, 
+while AI assistant 2’s response …
+Label: AI assistant 1 Wins
+Explanation: AI assistant’s response … 
+Rating: [5]
+Pointwise-to-Pairwise
+Referenced-to-Reference-Free
+𝑓
+𝑃2𝑃
+𝑓
+𝑃2𝑃
+𝑓
+𝑅2𝑅𝐹
+𝑓
+𝑅2𝑅𝐹
+User Query
+LLM-generated Text 1
+Evaluation Input
+Reference Text
+Evaluation Output (Critique)
+LLM-generated Text 2
+User Query
+LLM-generated Text 1
+Evaluation Input
+Evaluation Output (Critique)
+LLM-generated Text 2
+User Query
+LLM-generated Text
+Evaluation Input
+Evaluation Output (Critique)
+1. Combined with the reference and LLM-generated
+texts with their pointwise grading results, give a detailed
+comparison critique … (Knowledge Injection)
+2. Give a detailed explanation if the comparison label
+isn’t consistent with the rating order … (Self-Reflection)
+Pointwise-to-Pairwise
+1. Combined with LLM-generated texts with their
+pointwise grading results, give a detailed comparison
+critique … (Knowledge Injection)
+2. Give a detailed explanation if the comparison label
+isn’t consistent with the rating order … (Self-Reflection)
+1. Don’t mention the comparison with references directly,
+while keeping enough details … (Reference Removal)
+2. Allow to slightly modify the comparison label if the
+label isn’t consistent with the revised explanation …
+(Self-Reflection)
+Referenced-to-Reference-Free
+1. Don’t mention the comparison with references directly,
+while keeping enough details … (Reference Removal)
+2. Allow to modify the rating if the rating isn’t consistent
+with the revised explanation … (Self-Reflection)
+Figure 1: Overview of Eval-Instruct. Starting from referenced pointwise grading data, our proposed multi-path
+prompting method can apply pointwise-to-pairwise and referenced-to-reference-free prompting strategies to acquire
+evaluation data in other tasks and settings via two different paths. Cross validation is adopted to filter out the
+contradictory data from these two paths and further improve the data quality.
+quires GPT-4 to self-reflect7 whether the evalua-
+tion results including scores / labels and revised
+explanations are consistent, and modify the results
+if necessary.
+Equipped with the above prompting strategies,
+we have two paths to construct evaluation data
+in different tasks and settings.
+Assume that
+Dpoint,r = {(qi, ri, xi, cpoint,r
+i
+)}N
+i=1 indicates the
+referenced pointwise grading dataset constructed
+above and cpoint,r
+i
+represents the critique in the
+corresponding setting, our purpose is to acquire
+the datasets Dpair,r, Dpoint,rf, Dpair,rf via differ-
+ent paths, where point/pair means pointwise /
+pairwise evaluation and r/rf indicates referenced
+/ reference-free evaluation, respectively. The two
+paths are devised as follows.
+Path#1: Dpoint,r fP 2P
+−
+−
+−
+→Dpair,r fR2RF
+−
+−
+−
+−
+→Dpair,rf
+As shown in Path#1 of Figure 1, we firstly
+conduct pointwise-to-pairwise prompting to ac-
+quire the referenced pairwise comparison dataset
+Dpair,r = {(qi, ri, xi,1, xi,2, cpair,r
+i
+)}M
+i=1:
+cpair,r
+i
+= fP2P (qi, ri, xi,1, xi,2, cpoint,r
+i,1
+, cpoint,r
+i,2
+)
+i = 1, 2, · · · , M
+(1)
+where qi, ri, xi,1, xi,2 indicate the user query, the
+reference, and two generated texts of the i-th data,
+7The purpose of self-reflection in the two strategies is to
+alleviate the inconsistency problem in the output critiques, re-
+ducing error propagation during the data construction process.
+respectively. cpoint,r
+i,1
+, cpoint,r
+i,2
+, cpair,r
+i
+are the refer-
+enced pointwise and pairwise evaluation results
+of xi,1, xi,2, respectively8. Then, we can apply
+referenced-to-reference-free prompting to obtain
+Dpair,rf = {(qi, xi,1, xi,2, cpair,rf
+i
+)}:
+cpair,rf,1
+i
+= fR2RF (qi, ri, xi,1, xi,2, cpair,r
+i
+)
+i = 1, 2, · · · , M
+(2)
+where cpair,rf,1
+i
+means the reference-free pairwise
+comparison critique of the i-th data from Path#1.
+Path#2: Dpoint,r fR2RF
+−
+−
+−
+−
+→Dpoint,rf fP 2P
+→Dpair,rf
+Similarly, as shown in Path#2 of Figure 1, we
+can exchange the order of two prompting strategies
+applied to Dpoint,r accordingly. In this way, we
+can in turn acquire Dpoint,rf and Dpair,rf:
+cpoint,rf
+i
+= fR2RF (qi, ri, xi, cpoint,r
+i
+)
+i = 1, 2, · · · , N
+(3)
+cpair,rf,2
+i
+= fP2P (qi, xi,1, xi,2, cpoint,rf
+i,1
+, cpoint,rf
+i,2
+)
+i = 1, 2, · · · , M
+(4)
+where cpair,rf,2
+i
+denotes the reference-free pairwise
+comparison critique of the i-th data from Path#2.
+8We conduct strictly rule-based filtering after each prompt-
+ing step to remove low-quality data with errors in format and
+other aspects, which is omitted in this subsection.
+4
+
+
+3.2.3
+Cross Validation
+Since both of the two paths finally reach Dpair,rf,
+we design a cross validation mechanism to further
+improve the data quality. Specifically, Dpair,rf
+only contains the data whose comparison labels
+from two paths are consistent. In this case, the
+critiques from both of the two paths are added to
+Dpair,rf. The other data with contradictory com-
+parison labels are strictly filtered. In our experi-
+ment, the proportion of the evaluation data which
+are filtered out is 7.7%, demonstrating that most
+of our constructed data from the two paths have
+consistent comparison labels, indicating acceptable
+data quality.
+3.3
+Supervised Fine-Tuning
+We perform supervised fine-tuning on the LLM Pθ
+using all the constructed training data in a multi-
+task manner to obtain CRITIQUELLM:
+L = −1
+N
+N
+X
+i=1
+Pθ(cpoint,r
+i
+|qi, ri, xi)
+−1
+N
+N
+X
+i=1
+Pθ(cpoint,rf
+i
+|qi, xi)
+−1
+M
+M
+X
+i=1
+Pθ(cpair,r
+i
+|qi, ri, xi,1, xi,2)
+−1
+M
+′
+M
+′
+X
+i=1
+Pθ(cpair,rf
+i
+|qi, xi,1, xi,2)
+where M
+′ indicates the data amount of Dpair,rf
+after cross validation. During fine-tuning, we fol-
+low Bai et al. (2022) to add simplified prompts to
+distinguish different parts of inputs. We also follow
+Li et al. (2024) to augment pairwise training data
+via swapping the order of two generated texts and
+exchanging the corresponding contents in critiques.
+4
+Experiment
+4.1
+Dataset
+We adopt three benchmark datasets on open-ended
+instruction following, which involve various NLP
+tasks in LLM’s real-world scenarios9. The datasets
+also cover all the evaluation tasks and settings in
+this paper. The statistics are shown in Table 1.
+AlignBench (Liu et al., 2023a): This benchmark
+includes 8 categories of instruction following tasks
+9We have conducted string matching to show that there is
+no overlap between the queries in the training and test sets.
+Dataset
+Task
+Setting #Models #Samples / #Pairs Length
+AlignBench
+Pointwise R / R-F
+8
+3,200
+274
+Pairwise
+R / R-F
+8
+1,600
+293
+AUTO-J (Eval-P)
+Pairwise
+R-F
+6
+1,392
+372
+LLMEval
+Pairwise
+R-F
+11
+1,530
+283
+Table 1: Statistics of the benchmark datasets, including
+the evaluation task / setting, the number of models / sam-
+ples / pairs, and the average length of generated texts.
+R / R-F indicates referenced / reference-free evaluation,
+respectively.
+and 8 LLMs for generation. It provides an evalu-
+ation dataset with human-annotated scores on the
+quality of generated texts. In addition to using
+human-annotated scores for measuring pointwise
+grading performance, we also follow the original
+paper to sample text pairs of the same query for
+pairwise comparison10, whose label is automati-
+cally determined by their pointwise scores.
+AUTO-J (Eval-P) (Li et al., 2024): This bench-
+mark provides 1,392 pairwise comparison data,
+each of which contains a user query, two LLM-
+generated texts, and a human-annotated preference
+label. These data involve 58 real-world scenarios
+and 6 model families for generation.
+LLMEval (Zhang et al., 2024): This benchmark
+designs 17 types of user queries covering repre-
+sentative NLP tasks in real-world scenarios, and
+provides ∼100,000 pairwise comparison data with
+human-annotated labels. Due to the limitation of
+computational resources and API costs for LLM-
+based evaluation methods, we randomly sample a
+subset (∼1,000) to measure the performance of our
+method and all the baselines for a fair comparison.
+As for the relationship between our training
+dataset in §3.2 and these benchmark datasets, our
+training dataset has similar task categories with
+AlignBench because our task taxonomy is built
+mainly based on AlignBench (Liu et al., 2023a)
+with other tasks in recent works (Li et al., 2024;
+Zhang et al., 2024) as supplementary, as described
+in §3.2.1. Also, our training dataset includes the
+training data of AUTO-J (Eval-P) (Li et al., 2024)
+while excluding its test set. Compared with Align-
+Bench and AUTO-J (Eval-P), LLMEval (Zhang
+et al., 2024) does not have a similar task or data
+10The authors in the original paper of AlignBench (Liu et al.,
+2023a) collect all the pairs of generated texts for each query
+(∼10,000 pairwise comparison data), causing high demand
+of computational resources and API costs for LLM-based
+evaluation methods. Thus, we randomly sample a subset
+(∼1,000 pairwise comparison data) to test our method and all
+the baselines for a fair comparison.
+5
+
+
+Level
+Text-Level
+System-Level
+Setting
+Referenced
+Reference-Free
+Referenced
+Reference-Free
+Metric
+r
+ρ
+τ
+r
+ρ
+τ
+r
+ρ
+τ
+r
+ρ
+τ
+Closed-Source Evaluation Models
+ChatGPT
+0.443
+0.421
+0.379
+0.292
+0.287
+0.266
+0.955
+0.976
+0.929
+0.778
+0.833
+0.643
+GPT-4
+0.629
+0.583
+0.532
+0.523
+0.494
+0.447
+0.995
+1.000
+1.000
+0.997
+0.976
+0.929
+Open-Source Evaluation Models
+ChatGLM3-6B
+0.223
+0.222
+0.207
+0.159
+0.150
+0.140
+0.790
+0.833
+0.643
+0.544
+0.548
+0.429
+Baichuan2-13B-Chat
+0.199
+0.200
+0.187
+0.125
+0.117
+0.110
+0.854
+0.929
+0.786
+0.663
+0.527
+0.400
+Qwen-14B-Chat
+0.373
+0.379
+0.358
+0.255
+0.254
+0.239
+0.901
+0.929
+0.786
+0.772
+0.833
+0.643
+Mixtral-8x7B
+0.474
+0.471
+0.426
+0.302
+0.306
+0.282
+0.972
+0.976
+0.929
+0.863
+0.929
+0.786
+Llama-2-70B-Chat
+0.152
+0.162
+0.109
+0.123
+0.122
+0.113
+0.663
+0.667
+0.500
+0.547
+0.429
+0.286
+JudgeLM-13B
+0.450
+0.430
+0.391
+0.170
+0.162
+0.155
+0.984
+0.976
+0.929
+0.717
+0.905
+0.786
+AUTO-J-Bilingual-6B
+-
+-
+-
+0.044
+0.045
+0.041
+-
+-
+-
+0.558
+0.571
+0.500
+CRITIQUELLM (Ours)
+0.555
+0.523
+0.477
+0.366
+0.352
+0.319
+0.995
+1.000
+1.000
+0.954
+0.976
+0.929
+Table 2: Text-level and system-level Pearson (r), Spearman (ρ), and Kendall (τ) correlations in referenced and
+reference-free settings of pointwise grading on AlignBench. The highest correlation among the methods based on
+local models is bold, while the highest correlation overall is underlined. - means that AUTO-J-Bilingual-6B cannot
+support referenced pointwise grading.
+distribution with our training dataset, which can act
+as a benchmark to test the generalization ability.
+4.2
+Baselines
+We choose state-of-the-art general LLMs and
+evaluation-specific LLMs as our baselines.
+General
+LLMs:
+We
+adopt
+ChatGPT
+(gpt-3.5-turbo-1106) (OpenAI, 2022), GPT-
+4
+(gpt-4-1106-preview)
+(OpenAI,
+2023),
+ChatGLM3-6B (Du et al., 2022; Zeng et al., 2023),
+Baichuan2-13B-Chat (Yang et al., 2023), Qwen-
+14B-Chat (Bai et al., 2023), Llama-2-70B-Chat
+(Touvron et al., 2023b), and Mixtral-8x7B (Jiang
+et al., 2024) as our general baselines.
+These
+general LLMs can perform as an evaluator for
+pointwise grading and pairwise comparison via
+elaborate prompts without further training. We
+directly prompt these LLM to obtain evaluation
+results in single-turn interaction.
+Evaluation-Specific LLMs: We select AUTO-J-
+Bilingual-6B (Li et al., 2024) and JudgeLM-13B
+(Zhu et al., 2023) as our task-specific baselines.
+These two baselines are designed for specific eval-
+uation tasks and settings.
+4.3
+Implementation Details
+We choose ChatGLM3-6B (Du et al., 2022; Zeng
+et al., 2023) as our base model and use Zero Redun-
+dancy Optimizer (ZeRO) (Rajbhandari et al., 2020)
+stage 2 framework from the Deepspeed (Rasley
+et al., 2020) library. CRITIQUELLM is trained on
+8 A800 GPUs. The number of training samples
+for Dpoint,r/Dpoint,rf/Dpair,r/Dpair,rf is 12,102
+/ 12,095 / 6,190 / 5,428, respectively. We use
+AdamW (Kingma and Ba, 2015) optimizer with
+the weight decay of 0.1. The peak learning rate is
+6e-5 with 10% warmup ratio. We set the maximum
+sequence length to 8,192 and the batch size to 64.
+The number of training epochs is 5. We use greedy
+decoding in the main result and investigate the ef-
+fect of different decoding methods on our model in
+§4.7. For beam search, we set the beam size to 4.
+For the sampling-based decoding method, we adopt
+Nucleus Sampling (i.e., Top-p Sampling) (Holtz-
+man et al., 2020) and set both the temperature and p
+to 0.9. For self-consistency decoding (Wang et al.,
+2023c), the number of candidate critiques is 5.
+4.4
+Main Results
+4.4.1
+Pointwise Grading
+Following Colombo et al. (2022), we adopt text-
+level and system-level Pearson (r), Spearman (ρ),
+and Kendall (τ) correlation coefficients between hu-
+man judgments and automatic metrics to measure
+the pointwise grading performance. Text-level cor-
+relation is computed by the average score over the
+correlation coefficients between human judgments
+and automatic metrics for all the generated texts of
+each instruction. For comparison, system-level cor-
+relation is obtained by the correlation coefficients
+between human judgments and automatic metrics
+of each LLM’s score, which is the average value
+over all the scores of the corresponding model on
+6
+
+
+Dataset
+AlignBench
+AUTO-J (Eval-P)
+LLMEval
+Setting
+Referenced
+Reference-Free
+Reference-Free
+Reference-Free
+Metric
+Agr.
+Cons.
+Agr.
+Cons.
+Agr.
+Cons.
+Agr.
+Cons.
+Closed-Source Evaluation Models
+ChatGPT
+32.50
+38.56
+39.56
+53.94
+42.74
+62.43
+40.07
+64.58
+GPT-4
+74.69
+86.75
+70.25
+84.88
+62.28
+86.28
+50.98
+84.71
+Open-Source Evaluation Models
+ChatGLM3-6B
+17.75
+31.84
+24.75
+42.88
+14.15
+26.22
+28.56
+51.70
+Baichuan2-13B-Chat
+35.81
+50.06
+27.06
+40.82
+19.40
+32.33
+23.53
+43.27
+Qwen-14B-Chat
+33.81
+43.25
+42.06
+58.75
+31.68
+52.08
+42.81
+69.61
+Mixtral-8x7B
+61.69
+74.06
+53.88
+72.25
+35.20
+52.66
+48.04
+79.02
+Llama-2-70B-Chat
+40.56
+57.13
+41.38
+64.19
+33.62
+56.90
+40.00
+68.50
+JudgeLM-13B
+-
+-
+42.50
+66.00
+35.13
+58.19
+44.77
+75.82
+AUTO-J-Bilingual-6B
+-
+-
+26.00
+45.38
+49.43
+77.23
+27.58
+55.56
+CRITIQUELLM (Ours)
+70.56
+89.25
+58.81
+83.06
+50.93
+82.76
+50.72
+85.95
+Table 3: Agreement (Agr.) and consistency (Cons.) rates in pairwise comparison evaluation. The highest correlation
+among the methods based on local models is bold, while the highest correlation overall is underlined. - means that
+JudgeLM-13B and AUTO-J-Bilingual-6B cannot support referenced pairwise comparison.
+Figure 2: Critique quality evaluation results. The per-
+centages indicate the preference results between CRI-
+TIQUELLM and other models via GPT-4’s evaluation
+and human verification.
+the dataset.
+The results in Table 2 show that CRITIQUELLM
+can achieve comparable performance with GPT-4
+especially in system-level correlations, while out-
+performing ChatGPT and all the open-source base-
+lines. This indicates that our proposed method
+can successfully improve the quality of generated
+critiques. We can observe that system-level cor-
+relations of CRITIQUELLM are almost the same
+as those of GPT-4, which even approach 1,0. This
+demonstrate that our model is nearly able to dis-
+tinguish the overall performance of all the eight
+LLMs.
+4.4.2
+Pairwise Comparison
+Following Li et al. (2024), we adopt agreement and
+consistency rates to test the pairwise comparison
+performance. Specifically, we conduct two compar-
+isons for each data sample via swapping the order
+of two generated texts. We consider the model’s
+evaluation result to agree with humans only when
+the two comparison results are consistent and align
+with the human preference label.
+The results in Table 3 show that CRITIQUELLM
+can beat ChatGPT and all the open-source baselines
+in both agreement and consistency rates. Com-
+pared with GPT-4, CRITIQUELLM achieves com-
+parable performance especially in the consistency
+rate. This indicates that CRITIQUELLM equipped
+with high-quality evaluation data in different tasks
+and settings not only performs well in pointwise
+grading, but also has a strong evaluation ability in
+pairwise comparison.
+4.5
+Analysis on Critique Quality
+To further measure the quality of generated cri-
+tiques, we follow Chen et al. (2024) to combine
+automatic and human evaluations. Specifically, we
+follow existing works (Wang et al., 2023b; Sun
+et al., 2024) to devise an evaluation prompt for
+GPT-4 to judge the quality of generated critiques.
+After GPT-4’s evaluation, we manually verify the
+results and modify them if necessary. We randomly
+select 100 evaluation data in the setting of pair-
+wise comparison, which are from the mix of three
+datasets. And we collect generated critiques from
+CRITIQUELLM, state-of-the-art evaluators (i.e.,
+ChatGPT and GPT-4), and an alternative model
+CRITIQUELLM (DP) whose training data in differ-
+7
+
+
+Critique Model
+Overall
+Logical
+Open-ended QA
+Professional
+Fundamental
+Mathematics
+Role Play
+Writing
+Chinese Understanding
+None
+6.385
+5.318
+7.000
+5.824
+6.310
+6.160
+7.260
+7.154
+6.000
+ChatGPT
+6.300
+5.045
+6.762
+6.353
+6.276
+5.760
+7.000
+6.885
+6.063
+GPT-4
+6.545
+4.455
+7.190
+6.588
+6.897
+6.200
+7.111
+7.077
+6.563
+CRITIQUELLM
+6.530
+5.136
+7.381
+6.765
+6.414
+6.000
+7.407
+7.192
+5.315
+Table 4: GPT-4’s referenced pointwise scores on AlignBench for original generated texts from ChatGPT (i.e., None)
+and modified texts based on each critique generation model, respectively.
+ent tasks and settings are acquired from GPT-4’s
+direct prompting. For each pair of critiques (one
+from CRITIQUELLM and the other from a baseline
+/ an alternative model, given the same evaluation
+input), GPT-4 are required to label which critique is
+better (i.e. win, lose or tie) in terms of correctness,
+helpfulness, and informativeness. The priority of
+these three aspects is set to follow the above order.
+Then, human verification is conducted to check
+GPT-4’s evaluation on critiques.
+The results are shown in Figure 2. We can ob-
+serve that CRITIQUELLM can achieve superior per-
+formance over ChatGPT and CritiqueLLM (DP),
+and even perform comparably with GPT-4. This
+demonstrates that our proposed evaluation data con-
+struction method can successfully improve the over-
+all quality of generated critiques and enhance their
+informativeness.
+4.6
+Analysis of Critique as Feedback
+To investigate whether the critiques generated by
+our model can serve as feedback to improve the
+quality of LLM-generated texts, we employ Chat-
+GPT, GPT-4, and CRITIQUELLM to provide cri-
+tiques for the generated texts of ChatGPT in the
+reference-free setting. Then, we instruct ChatGPT
+to modify its original generation based on the cri-
+tiques. Finally, we use GPT-4 to perform refer-
+enced evaluations on the original texts and the mod-
+ified texts generated by ChatGPT, respectively.
+The results in Table 4 show that the critiques
+from CRITIQUELLM can serve as positive feed-
+back whose contributed improvement on the overall
+score is close to that from the GPT-4’s critiques.
+This further verifies the utility of CRITIQUELLM
+to provide informative critiques as scalable feed-
+back that can guide LLMs towards better genera-
+tion. We also notice that the critiques from Chat-
+GPT itself have a negative impact on the overall
+quality of its generated texts. This phenomenon is
+consistent with recent works that doubt the self-
+correction ability of LLMs without external in-
+puts (Huang et al., 2023a; Stechly et al., 2023;
+Valmeekam et al., 2023).
+We also report the evaluation scores before and
+after the critique-based modification across differ-
+ent tasks in Table 4. It is notable that the critiques
+from CRITIQUELLM can help enhance the quality
+of generated texts in a majority of tasks. However,
+in the tasks of logical reasoning, mathematics, and
+advanced Chinese understanding which are mostly
+hard tasks involving reasoning, the critiques from
+CRITIQUELLM seem to degrade the performance.
+We manually checked error cases and found that
+our model obtained misleading critiques on the rea-
+soning process of generated texts. Since the evalua-
+tion of reasoning chains remains a challenging task
+(Golovneva et al., 2023) even for GPT-4, we leave
+further investigation in these tasks as future work.
+Since our experiment is a preliminary step to-
+wards utilizing critiques as feedback, we addition-
+ally have some findings which may inspire future
+research. First, while incorporating human cri-
+tiques can provide the comparison results between
+the generation performance assisted by the cri-
+tiques from humans and LLMs, we notice that it
+is not trivial to collect high-quality critiques from
+human annotators for AlignBench especially in the
+reference-free setting. It is because AlignBench is
+designed to be difficult and covers a wide range of
+tasks (Liu et al., 2023a). Thus, how to collect high-
+quality human critiques to improve the generation
+quality of LLMs is worth further exploring. Then,
+since we choose ChatGPT as the generation model,
+we find that stronger LLMs which can already gen-
+erate high-quality responses struggle to be further
+improved via generated critiques. While weaker
+LLMs have a lot of room for improvement, they
+also have the weak ability to follow instructions.
+Thus, how to make weaker LLMs follow critiques
+to generate texts of a higher quality should be left
+as important future work.
+4.7
+Ablation Study
+To further investigate the impact of each part on
+CRITIQUELLM, we conduct additional ablation
+8
+
+
+Setting
+Pointwise
+Pairwise
+R
+R-F
+R
+R-F
+Metric
+r
+r
+Agr.
+Agr.
+CRITIQUELLM
+0.555
+0.366
+70.56
+58.81
+Fine-Tuning Data
+w/o Cross Validation
+0.566
+0.361
+66.13
+57.44
+Decoding Strategy
+w/ Beam Search
+0.554
+0.374
+70.31
+57.75
+w/ Sampling
+0.547
+0.353
+68.69
+57.31
+w/ Self-Consistency
+0.573
+0.384
+69.13
+58.44
+Explanation
+w/o Explanation
+0.509
+0.332
+60.19
+51.56
+Table 5: Text-level Pearson (r) correlations and agree-
+ment rates (Agr.) of ablation models in reference (R)
+and reference-free (R-F) settings of AlignBench.
+studies. For fine-tuning data, we remove the cross
+validation module (§3.2.3) to explore its impact on
+the evaluation performance. Table 5 shows that
+the performance of CRITIQUELLM degrades espe-
+cially in pairwise comparison, demonstrating that
+cross validation can filter out low-quality evalua-
+tion data and contribute to the final performance.
+As for decoding strategies, we show the evalu-
+ation performance of three decoding strategies in
+addition to greedy decoding in the main result, in-
+cluding beam search, Nucleus Sampling (Holtzman
+et al., 2020), and self-consistency decoding (Wang
+et al., 2023c). The results in Table 5 show that the
+self-consistency decoding method can enhance the
+performance of our model especially in pointwise
+grading. Meanwhile, greedy decoding performs
+best in pairwise comparison, while achieving com-
+parable performance with other methods in point-
+wise grading at a smaller computational cost.
+For evaluation explanations, we remove the ex-
+planations in the critiques of training data. The
+results in Table 5 show that the performance of
+CRITIQUELLM largely degrades in both point-
+wise and pairwise evaluations without explanations.
+This verifies the positive impact of explanations on
+the final performance, which play a similar role to
+chain-of-thought reasoning (Wei et al., 2022).
+5
+Conclusion
+We present an evaluation data construction method
+called Eval-Instruct, which can automatically con-
+struct informative evaluation data in both pointwise
+grading and pairwise comparison with / without
+references. After fine-tuning on the data from Eval-
+Instruct, the resulting model CRITIQUELLM can
+beat ChatGPT and all the open-source baselines,
+and perform comparably with GPT-4 in system-
+level correlations of pointwise grading.
+CRI-
+TIQUELLM can also provide scalable feedback
+which can improve the generation quality of LLMs.
+Limitations
+The limitations of our work are summarized as
+follows:
+(1) In our method of multi-path prompting, we de-
+vise two prompting strategies to enrich the informa-
+tion in the resulting critiques, which can improve
+the critique quality. However, this method also
+increases the length of input prompts and lead to
+higher API costs when constructing evaluation data
+in different tasks and settings. We believe that it
+is not a severe problem because data acquisition
+is single-round and we do not repeatedly acquire
+critiques for the same evaluation input. Also, our
+proposed critique generation model based on open-
+source LLMs (i.e., ChatGLM3-6B) can achieve
+comparable performance with GPT-4 in some as-
+pects, which may save the cost for LLM evaluation
+via APIs and avoid the risks such as unstable usage
+and data leakage.
+(2) Similar to other model-based evaluation meth-
+ods, our evaluation model suffers from the self-
+evaluation bias (He et al., 2023) (also known as
+self-enhancement bias (Zheng et al., 2023)), which
+indicates the preference on the generated texts from
+the same base model. This bias is commonly rec-
+ognized even in state-of-the-art LLM-based eval-
+uators like GPT-4. We argue that researchers and
+developers can use multiple LLM-based evalua-
+tors with different base models including CRI-
+TIQUELLM to avoid self-evaluation bias towards
+specific generation models. Since there does not
+exist a satisfactory solution to the self-evaluation
+bias currently, we leave the further investigation as
+important future work.
+Acknowledgements
+This work was supported by the NSFC projects
+(with No. 62306160) and the National Science
+Foundation for Distinguished Young Scholars (with
+No. 62125604). This work was also supported by
+China National Postdoctoral Program for Innova-
+tive Talents (No. BX20230194) and China Postdoc-
+toral Science Foundation (No. 2023M731952). We
+would also like to thank Zhipu AI for sponsoring
+9
+
+
+the computation resources and annotation cost used
+in this work.
+References
+Jinze Bai, Shuai Bai, Yunfei Chu, Zeyu Cui, Kai Dang,
+Xiaodong Deng, Yang Fan, Wenbin Ge, Yu Han, Fei
+Huang, et al. 2023. Qwen technical report. arXiv
+preprint arXiv:2309.16609.
+Yuntao Bai,
+Saurav Kadavath,
+Sandipan Kundu,
+Amanda Askell, Jackson Kernion, Andy Jones,
+Anna Chen,
+Anna Goldie,
+Azalia Mirhoseini,
+Cameron McKinnon, et al. 2022.
+Constitutional
+ai: Harmlessness from ai feedback. arXiv preprint
+arXiv:2212.08073.
+Satanjeev Banerjee and Alon Lavie. 2005. METEOR:
+an automatic metric for MT evaluation with improved
+correlation with human judgments. In Proceedings of
+the Workshop on Intrinsic and Extrinsic Evaluation
+Measures for Machine Translation and/or Summa-
+rization, pages 65–72.
+Asli Celikyilmaz, Elizabeth Clark, and Jianfeng Gao.
+2020. Evaluation of text generation: A survey. arXiv
+preprint arXiv:2006.14799.
+Yupeng Chang, Xu Wang, Jindong Wang, Yuan Wu,
+Kaijie Zhu, Hao Chen, Linyi Yang, Xiaoyuan Yi,
+Cunxiang Wang, Yidong Wang, Wei Ye, Yue Zhang,
+Yi Chang, Philip S. Yu, Qiang Yang, and Xing Xie.
+2023. A survey on evaluation of large language mod-
+els. arXiv preprint arXiv:2307.03109.
+Kai Chen, Chunwei Wang, Kuo Yang, Jianhua Han,
+Lanqing Hong, Fei Mi, Hang Xu, Zhengying Liu,
+Wenyong Huang, Zhenguo Li, Dit-Yan Yeung, Lifeng
+Shang, Xin Jiang, and Qun Liu. 2024. Gaining wis-
+dom from setbacks: Aligning large language models
+via mistake analysis. In The Twelfth International
+Conference on Learning Representations.
+Yi Chen, Rui Wang, Haiyun Jiang, Shuming Shi, and
+Ruifeng Xu. 2023. Exploring the use of large lan-
+guage models for reference-free text quality evalua-
+tion: A preliminary empirical study. arXiv preprint
+arXiv:2304.00723.
+Pierre Jean A Colombo, Chloé Clavel, and Pablo Pi-
+antanida. 2022. Infolm: A new metric to evaluate
+summarization & data2text generation. In Proceed-
+ings of the AAAI Conference on Artificial Intelligence,
+volume 36, pages 10554–10562.
+Ganqu Cui, Lifan Yuan, Ning Ding, Guanming Yao,
+Wei Zhu, Yuan Ni, Guotong Xie, Zhiyuan Liu, and
+Maosong Sun. 2023. Ultrafeedback: Boosting lan-
+guage models with high-quality feedback.
+arXiv
+preprint arXiv:2310.01377.
+Zhengxiao Du, Yujie Qian, Xiao Liu, Ming Ding,
+Jiezhong Qiu, Zhilin Yang, and Jie Tang. 2022. Glm:
+General language model pretraining with autoregres-
+sive blank infilling. In Proceedings of the 60th An-
+nual Meeting of the Association for Computational
+Linguistics (Volume 1: Long Papers), pages 320–335.
+Jinlan Fu, See-Kiong Ng, Zhengbao Jiang, and Pengfei
+Liu. 2023. Gptscore: Evaluate as you desire. arXiv
+preprint arXiv:2302.04166.
+Olga Golovneva, Moya Peng Chen, Spencer Poff, Mar-
+tin Corredor, Luke Zettlemoyer, Maryam Fazel-
+Zarandi, and Asli Celikyilmaz. 2023. Roscoe: A
+suite of metrics for scoring step-by-step reasoning.
+In The Eleventh International Conference on Learn-
+ing Representations.
+Tianxing He, Jingyu Zhang, Tianle Wang, Sachin
+Kumar, Kyunghyun Cho, James Glass, and Yulia
+Tsvetkov. 2023. On the blind spots of model-based
+evaluation metrics for text generation. In Proceed-
+ings of the 61st Annual Meeting of the Association for
+Computational Linguistics (Volume 1: Long Papers),
+pages 12067–12097.
+Dan Hendrycks, Collin Burns, Steven Basart, Andy
+Zou, Mantas Mazeika, Dawn Song, and Jacob Stein-
+hardt. 2021. Measuring massive multitask language
+understanding. In 9th International Conference on
+Learning Representations.
+Ari Holtzman, Jan Buys, Li Du, Maxwell Forbes, and
+Yejin Choi. 2020. The curious case of neural text
+degeneration. In 8th International Conference on
+Learning Representations.
+Jie
+Huang,
+Xinyun
+Chen,
+Swaroop
+Mishra,
+Huaixiu Steven Zheng, Adams Wei Yu, Xiny-
+ing Song, and Denny Zhou. 2023a. Large language
+models cannot self-correct reasoning yet.
+arXiv
+preprint arXiv:2310.01798.
+Yuzhen Huang, Yuzhuo Bai, Zhihao Zhu, Junlei
+Zhang, Jinghan Zhang, Tangjun Su, Junteng Liu,
+Chuancheng Lv, Yikai Zhang, Jiayi Lei, Yao
+Fu, Maosong Sun, and Junxian He. 2023b.
+C-
+eval: A multi-level multi-discipline chinese evalu-
+ation suite for foundation models. arXiv preprint
+arXiv:2305.08322.
+Albert Q Jiang, Alexandre Sablayrolles, Antoine
+Roux, Arthur Mensch, Blanche Savary, Chris Bam-
+ford, Devendra Singh Chaplot, Diego de las Casas,
+Emma Bou Hanna, Florian Bressand, et al. 2024.
+Mixtral of experts. arXiv preprint arXiv:2401.04088.
+Pei Ke, Fei Huang, Fei Mi, Yasheng Wang, Qun Liu, Xi-
+aoyan Zhu, and Minlie Huang. 2023. DecompEval:
+Evaluating generated texts as unsupervised decom-
+posed question answering. In Proceedings of the
+61st Annual Meeting of the Association for Compu-
+tational Linguistics (Volume 1: Long Papers), pages
+9676–9691.
+Seungone Kim, Jamin Shin, Yejin Cho, Joel Jang,
+Shayne Longpre,
+Hwaran Lee,
+Sangdoo Yun,
+Seongjin Shin, Sungdong Kim, James Thorne, et al.
+10
+
+
+2024. Prometheus: Inducing fine-grained evaluation
+capability in language models. In The Twelfth Inter-
+national Conference on Learning Representations.
+Diederik P. Kingma and Jimmy Ba. 2015. Adam: A
+method for stochastic optimization. In 3rd Interna-
+tional Conference on Learning Representations.
+Md Tahmid Rahman Laskar, M Saiful Bari, Mizanur
+Rahman, Md Amran Hossen Bhuiyan, Shafiq Joty,
+and Jimmy Huang. 2023. A systematic study and
+comprehensive evaluation of ChatGPT on benchmark
+datasets. In Findings of the Association for Compu-
+tational Linguistics: ACL 2023, pages 431–469.
+Junlong Li, Shichao Sun, Weizhe Yuan, Run-Ze Fan,
+Hai Zhao, and Pengfei Liu. 2024. Generative judge
+for evaluating alignment. In The Twelfth Interna-
+tional Conference on Learning Representations.
+Chin-Yew Lin. 2004. Rouge: A package for automatic
+evaluation of summaries.
+In Text summarization
+branches out, pages 74–81.
+Xiao Liu, Xuanyu Lei, Shengyuan Wang, Yue Huang,
+Zhuoer Feng, Bosi Wen, Jiale Cheng, Pei Ke, Yi-
+fan Xu, Weng Lam Tam, et al. 2023a. Alignbench:
+Benchmarking chinese alignment of large language
+models. arXiv preprint arXiv:2311.18743.
+Xiao Liu, Hao Yu, Hanchen Zhang, Yifan Xu, Xuanyu
+Lei, Hanyu Lai, Yu Gu, Hangliang Ding, Kaiwen
+Men, Kejuan Yang, et al. 2024. Agentbench: Eval-
+uating llms as agents. In The Twelfth International
+Conference on Learning Representations.
+Yang Liu, Dan Iter, Yichong Xu, Shuohang Wang,
+Ruochen Xu, and Chenguang Zhu. 2023b. G-eval:
+NLG evaluation using gpt-4 with better human align-
+ment. In Proceedings of the 2023 Conference on
+Empirical Methods in Natural Language Processing,
+pages 2511–2522.
+OpenAI. 2022. Introducing chatgpt.
+OpenAI. 2023. GPT-4 technical report. arXiv preprint
+arXiv:2303.08774.
+Kishore Papineni, Salim Roukos, Todd Ward, and Wei-
+Jing Zhu. 2002. Bleu: a method for automatic evalu-
+ation of machine translation. In Proceedings of the
+40th Annual Meeting of the Association for Compu-
+tational Linguistics, pages 311–318.
+Samyam Rajbhandari, Jeff Rasley, Olatunji Ruwase,
+and Yuxiong He. 2020. Zero: memory optimizations
+toward training trillion parameter models. In Pro-
+ceedings of the International Conference for High
+Performance Computing, Networking, Storage and
+Analysis, page 20.
+Jeff Rasley, Samyam Rajbhandari, Olatunji Ruwase, and
+Yuxiong He. 2020. Deepspeed: System optimiza-
+tions enable training deep learning models with over
+100 billion parameters. In The 26th ACM SIGKDD
+Conference on Knowledge Discovery and Data Min-
+ing, pages 3505–3506.
+Kaya Stechly, Matthew Marquez, and Subbarao Kamb-
+hampati. 2023. Gpt-4 doesn’t know it’s wrong: An
+analysis of iterative prompting for reasoning prob-
+lems. arXiv preprint arXiv:2310.12397.
+Shichao Sun, Junlong Li, Weizhe Yuan, Ruifeng Yuan,
+Wenjie Li, and Pengfei Liu. 2024. The critique of
+critique. arXiv preprint arXiv:2401.04518.
+Tianxiang Sun, Xiaotian Zhang, Zhengfu He, Peng Li,
+Qinyuan Cheng, Hang Yan, Xiangyang Liu, Yunfan
+Shao, Qiong Tang, Xingjian Zhao, Ke Chen, Yining
+Zheng, Zhejian Zhou, Ruixiao Li, Jun Zhan, Yun-
+hua Zhou, Linyang Li, Xiaogui Yang, Lingling Wu,
+Zhangyue Yin, Xuanjing Huang, and Xipeng Qiu.
+2023. Moss: Training conversational language mod-
+els from synthetic data.
+Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier
+Martinet, Marie-Anne Lachaux, Timothée Lacroix,
+Baptiste Rozière, Naman Goyal, Eric Hambro, Faisal
+Azhar, et al. 2023a.
+Llama:
+Open and effi-
+cient foundation language models. arXiv preprint
+arXiv:2302.13971.
+Hugo Touvron, Louis Martin, Kevin Stone, Peter Al-
+bert, Amjad Almahairi, Yasmine Babaei, Nikolay
+Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti
+Bhosale, et al. 2023b.
+Llama 2: Open founda-
+tion and fine-tuned chat models.
+arXiv preprint
+arXiv:2307.09288.
+Karthik Valmeekam, Matthew Marquez, and Subbarao
+Kambhampati. 2023. Can large language models
+really improve by self-critiquing their own plans?
+arXiv preprint arXiv:2310.08118.
+Jiaan Wang, Yunlong Liang, Fandong Meng, Haoxiang
+Shi, Zhixu Li, Jinan Xu, Jianfeng Qu, and Jie Zhou.
+2023a. Is chatgpt a good nlg evaluator? a preliminary
+study. arXiv preprint arXiv:2303.04048.
+Tianlu Wang, Ping Yu, Xiaoqing Ellen Tan, Sean
+O’Brien, Ramakanth Pasunuru, Jane Dwivedi-Yu,
+Olga Golovneva, Luke Zettlemoyer, Maryam Fazel-
+Zarandi, and Asli Celikyilmaz. 2023b. Shepherd: A
+critic for language model generation. arXiv preprint
+arXiv:2308.04592.
+Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc V.
+Le, Ed H. Chi, Sharan Narang, Aakanksha Chowd-
+hery, and Denny Zhou. 2023c. Self-consistency im-
+proves chain of thought reasoning in language mod-
+els. In The Eleventh International Conference on
+Learning Representations.
+Yidong Wang, Zhuohao Yu, Zhengran Zeng, Linyi Yang,
+Cunxiang Wang, Hao Chen, Chaoya Jiang, Rui Xie,
+Jindong Wang, Xing Xie, Wei Ye, Shikun Zhang, and
+Yue Zhang. 2024. Pandalm: An automatic evaluation
+benchmark for LLM instruction tuning optimization.
+In The Twelfth International Conference on Learning
+Representations.
+Yizhong Wang, Yeganeh Kordi, Swaroop Mishra, Alisa
+Liu, Noah A. Smith, Daniel Khashabi, and Hannaneh
+11
+
+
+Hajishirzi. 2023d. Self-instruct: Aligning language
+models with self-generated instructions. In Proceed-
+ings of the 61st Annual Meeting of the Association
+for Computational Linguistics, pages 13484–13508.
+Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten
+Bosma, brian ichter, Fei Xia, Ed Chi, Quoc V Le,
+and Denny Zhou. 2022. Chain-of-thought prompt-
+ing elicits reasoning in large language models. In
+Advances in Neural Information Processing Systems,
+volume 35, pages 24824–24837.
+Aiyuan Yang, Bin Xiao, Bingning Wang, Borong
+Zhang, Chao Yin, Chenxu Lv, Da Pan, Dian Wang,
+Dong Yan, Fan Yang, et al. 2023.
+Baichuan 2:
+Open large-scale language models. arXiv preprint
+arXiv:2309.10305.
+Aohan Zeng, Xiao Liu, Zhengxiao Du, Zihan Wang,
+Hanyu Lai, Ming Ding, Zhuoyi Yang, Yifan Xu,
+Wendi Zheng, Xiao Xia, Weng Lam Tam, Zixuan Ma,
+Yufei Xue, Jidong Zhai, Wenguang Chen, Zhiyuan
+Liu, Peng Zhang, Yuxiao Dong, and Jie Tang. 2023.
+GLM-130B: an open bilingual pre-trained model. In
+The Eleventh International Conference on Learning
+Representations.
+Yue Zhang, Ming Zhang, Haipeng Yuan, Shichun Liu,
+Yongyao Shi, Tao Gui, Qi Zhang, and Xuanjing
+Huang. 2024. Llmeval: A preliminary study on how
+to evaluate large language models. In The 38th An-
+nual AAAI Conference on Artificial Intelligence.
+Zhexin Zhang, Leqi Lei, Lindong Wu, Rui Sun,
+Yongkang Huang, Chong Long, Xiao Liu, Xuanyu
+Lei, Jie Tang, and Minlie Huang. 2023.
+Safety-
+bench: Evaluating the safety of large language mod-
+els with multiple choice questions. arXiv preprint
+arXiv:2309.07045.
+Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan
+Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin,
+Zhuohan Li, Dacheng Li, Eric Xing, Hao Zhang,
+Joseph E. Gonzalez, and Ion Stoica. 2023. Judging
+LLM-as-a-judge with MT-bench and chatbot arena.
+In Thirty-seventh Conference on Neural Information
+Processing Systems Datasets and Benchmarks Track.
+Wanjun Zhong, Ruixiang Cui, Yiduo Guo, Yaobo Liang,
+Shuai Lu, Yanlin Wang, Amin Saied, Weizhu Chen,
+and Nan Duan. 2023. Agieval: A human-centric
+benchmark for evaluating foundation models. arXiv
+preprint arXiv:2304.06364.
+Lianghui Zhu, Xinggang Wang, and Xinlong Wang.
+2023.
+Judgelm:
+Fine-tuned large language
+models are scalable judges.
+arXiv preprint
+arXiv:2310.17631.
+A
+Query Augmentation and Scoring
+Prompts
+We provide the prompt for query augmentation and
+scoring in Table 6. First, in the stage of genera-
+tion, we give some in-context examples and devise
+detailed requirements to help ChatGPT (OpenAI,
+2022) generate augmented user queries and assign
+the category label to them. Then, during evaluation,
+we instruct ChatGPT to provide a difficulty score
+to each query for difficulty balance in the whole
+augmentation dataset.
+B
+Prompt Design for Eval-Instruct
+We provide original prompts for pointwise-to-
+pairwise and referenced-to-reference-free strate-
+gies in Table 7 and Table 9, respectively. We also
+translate these prompts into English and show them
+in Table 8 and Table 10.
+C
+Case Study on Critique Generation
+To intuitively show the effectiveness of our critique
+generation model, we provide two generated cases
+of pointwise and pairwise settings, respectively, in
+Table 11 and 13. We also translate these cases into
+English and show them in Table 12 and 14.
+12
+
+
+Stage
+Prompt
+Generation
+You are asked to provide 10 diverse prompts. These task prompts will be provided to a GPT model and we will evaluate the ability of the GPT
+model to reply to these prompts. The following are some examples:
+1.{example prompt 1}
+2.{example prompt 2}
+3.{example prompt 3}
+Here are the requirements you need to follow to provide prompts:
+1. The prompts need to be complete sentences, not phrases or fragments.
+2. The prompts need to be varied, do not use similar prompts.
+3. the prompts need to be meaningful, do not use meaningless prompts.
+4. The prompts need to have a variety of tones, e.g., combining interrogative and imperative sentences.
+5. The prompts need to be challenging, do not use simple directions.
+6. The prompts need to be something that the Large Language Model can accomplish. For example, don’t ask the assistant to create any visual or
+audio output. For example, don’t ask the assistant to wake you up at 5pm or set a reminder because it can’t perform any action. For example,
+prompts should not be related to audio, video, images, hyperlinks.
+7. The prompts are in Simplified Chinese, except for translation-related questions or math-related questions.
+8. Some prompts can provide contextual information, should involve realistic data, and should not contain simple placeholders. Not all prompts
+require input. For example, when an prompts asks for general knowledge information, such as "What is the tallest mountain in the world?", it
+does not need to provide specific context.
+After you have provided the prompts, please add the category of the prompts in a pair of && sign after the prompt and surround the prompt with
+in a pair of @@ sign. For example, if the prompt is "@@What is the tallest mountain in the world?@@&& 基本任务&&", then the category is
+基本任务.
+The category must be one of the following 10 categories. 1. 基本任务2. 中文理解3. 综合问答4. 文本写作5. 数学计算6. 逻辑推理7. 角色扮演8. 专业
+能力9. 代码生成10. 多语言能力
+Here are some examples of prompts you provide:
+@@example prompt1@@ &&category1&&
+@@example prompt2@@ &&category2&&
+· · ·
+@@example prompt9@@ &&category9&&
+@@example prompt10@@ &&category10&&
+The following is a list of 10 good task prompts with serial numbers and categories:
+Evaluation
+已知上面三个问题和它们的类别，现在请你根据以下要求，对这三个问题的题目的难度在1-3分的量表上分别评分:
+(1) 1分：对于大语言模型来说，这类问题是容易的
+(2) 2分：对于大语言模型来说，这类问题是中等难度的
+(3) 3分：对于大语言模型来说，这类问题是困难的
+最后：请将这三个问题，题目用一对@@符号包围，对应的类别用一对&&符号包围，分数用一对##包围，分别带有序号地输出出来：
+例如：如果问题1的题目是题目1，类别是综合问答类别，分数是1分，问题2的题目是题目2，类别是基本任务类别，分数是2分，问题3的题目是题目3，
+类别是文本写作类别，分数是3分，那么输出如下：
+1.@@题目1@@&&综合问答&&##1##
+2.@@题目2@@&&基本任务&&##2##
+3.@@题目3@@&&文本写作&&##3##
+下面是按照上述要求生成的示例：
+Evaluation
+(English)
+Given the above three questions and their categories, please rate the difficulty of each question on a scale of 1-3 based on the following requirements:
+(1) Score 1: For large language models, this type of question is easy.
+(2) Score 2: For large language models, this type of question is of medium difficulty.
+(3) Score 3: For large language models, this type of question is difficult.
+Finally, please output the three questions with their titles enclosed in a pair of @@ symbols, the corresponding categories enclosed in a pair of && symbols, and the
+scores enclosed in a pair of ## symbols, each with an serial number.
+For example, if question 1 is titled “Title 1”, the category is “Open-ended Questions”, and the score is 1, question 2 is titled “Title 2”, the category is “Fundamental
+Language Ability”, and the score is 2 points, question 3 is titled “Title 3”, the category is “Writing Ability”, and the score is 3 points, then the output is as follows:
+1.@@Title 1@@&&Open-ended Questions&&##1##
+2.@@Title 2@@&&Fundamental Language Ability&&##2##
+3.@@Title 3@@&&Writing Ability&&##3##
+The following parts are generated examples based on the above requirements:
+Table 6: Prompts for instructing ChatGPT to generate, categorize and evaluate user queries. Examples and
+corresponding categories are randomly sampled from the set of seed queries.
+13
+
+
+Setting
+Prompt
+Referenced
+Pointwise
+Grading
+to
+Referenced
+Pairwise
+Comparison
+你是一个擅长评价文本质量的助手。请你以公正的评判者的身份，比较两个AI助手对于用户提问的回答的质量优劣。我们会给你提供用户的提
+问，高质量的参考答案，需要你比较的两个AI助手的答案，以及两个答案各自的质量评价分析。当你开始你的评估时，你需要遵守以下的流程：
+1. 结合参考答案、两个AI助手的答案以及其质量评价分析，根据上述指定的维度对他们的答案进行细致的比较，给出详细的比较分析文本。比较
+分析文本要求覆盖两个答案的质量评价分析中可用于比较的所有重要细节，并包含对答案中具体内容的分析。
+2. 结合参考答案和每个维度的比较分析，从两个AI助手的答案中选出综合质量更高的那个，或者判定他们质量相当，并给出详尽的选择理由。你
+的比较需要尽可能严谨细致，不受两个AI助手答案先后顺序的影响。
+质量评价分析中的各维度分数和综合得分仅供参考，在各维度和综合的比较分析文本中不能直接提及各维度分数和综合得分。针对综合得分差距
+较大的样本对，应尽可能按照分数高低得出比较结果，除非发现质量评价分析中存在明显错误。而针对综合得分差距较小的样本对，则允许比较
+结果和分数高低不一致，但仍需要详细说明比较评价的理由。
+请记住，你必须首先按照给定的评价维度，输出相应维度的名称和比较分析的文本。然后再给出综合质量比较结果，并给出比较结果的分析和解
+释。之后，在你回答的末尾，按照以下字典格式（包括括号）返回你的综合质量选择结果，即你选择的综合质量更高的那个AI助手（或者认为质
+量相当），并确保你返回的结果和上述生成文本中的结果保持一致：
+{{’综合比较结果’: 回答综合质量更高的助手序号或质量相当}}，例如：{{’综合比较结果’: ’助手1’}}或{{’综合比较结果’: ’助手2’}}或{{’综合比较
+结果’: ’质量相当’}}。
+用户的提问：{Question}
+[参考答案开始]
+{Reference}
+[参考答案结束]
+[助手1的答案开始]
+{Generated Text 1}
+[助手1的答案结束]
+[助手1的答案质量评价分析开始]
+{Referenced Pointwise Grading Critique for Generated Text 1}
+[助手1的答案质量评价分析结束]
+[助手2的答案开始]
+{Generated Text 2}
+[助手2的答案结束]
+[助手2的答案质量评价分析开始]
+{Referenced Pointwise Grading Critique for Generated Text 2}
+[助手2的答案质量评价分析结束]
+Reference-
+Free
+Point-
+wise Grading
+to Reference-
+Free Pairwise
+Comparison
+你是一个擅长评价文本质量的助手。请你以公正的评判者的身份，比较两个AI助手对于用户提问的回答的质量优劣。我们会给你提供用户的提
+问，需要你比较的两个AI助手的答案，以及两个答案各自的质量评价分析。当你开始你的评估时，你需要遵守以下的流程：
+1. 结合两个AI助手的答案以及其质量评价分析，根据上述指定的维度对他们的答案进行细致的比较，给出详细的比较分析文本。比较分析文本要
+求覆盖两个答案的质量评价分析中可用于比较的所有重要细节，并包含对答案中具体内容的分析。
+2. 结合每个维度的比较分析，从两个AI助手的答案中选出综合质量更高的那个，或者判定他们质量相当，并给出详尽的选择理由。你的比较需要
+尽可能严谨细致，不受两个AI助手答案先后顺序的影响。
+质量评价分析中的各维度分数和综合得分仅供参考，在各维度和综合的比较分析文本中不能直接提及各维度分数和综合得分。针对综合得分差距
+较大的样本对，应尽可能按照分数高低得出比较结果，除非发现质量评价分析中存在明显错误。而针对综合得分差距较小的样本对，则允许比较
+结果和分数高低不一致，但仍需要详细说明比较评价的理由。
+请记住，你必须首先按照给定的评价维度，输出相应维度的名称和比较分析的文本。然后再给出综合质量比较结果，并给出比较结果的分析和解
+释。之后，在你回答的末尾，按照以下字典格式（包括括号）返回你的综合质量选择结果，即你选择的综合质量更高的那个AI助手（或者认为质
+量相当），并确保你返回的结果和上述生成文本中的结果保持一致：
+{{’综合比较结果’: 回答综合质量更高的助手序号或质量相当}}，例如：{{’综合比较结果’: ’助手1’}}或{{’综合比较结果’: ’助手2’}}或{{’综合比较
+结果’: ’质量相当’}}。
+用户的提问：{Question}
+[助手1的答案开始]
+{Generated Text 1}
+[助手1的答案结束]
+[助手1的答案质量评价分析开始]
+{Reference-Free Pointwise Grading Critique for Generated Text 1}
+[助手1的答案质量评价分析结束]
+[助手2的答案开始]
+{Generated Text 2}
+[助手2的答案结束]
+[助手2的答案质量评价分析开始]
+{Reference-Free Pointwise Grading Critique for Generated Text 2}
+[助手2的答案质量评价分析结束]
+Table 7: Pointwise-to-Pairwise prompt design in multi-path prompting.
+14
+
+
+Setting
+Prompt
+Referenced
+Pointwise
+Grading
+to
+Referenced
+Pairwise
+Comparison
+You are an expert at text quality evaluation. Please act as a fair judge, and compare the quality between two AI assistants’ answers to a user query. We will
+provide you with a user query, a high-quality reference answer, two AI assistants’ responses to the query, and the corresponding critiques to the two responses,
+respectively. When you start your evaluation, you need to follow the procedures below:
+1. Considering the reference answers, along with two AI assistants’ answers and the corresponding critiques to them, conduct detailed comparison between
+two AI assistants’ answers based on the evaluation dimensions Dimension. Provide a detailed comparison result. The comparison result should cover all the
+important details from the pointwise critiques that can be used for the comparison, and it should include an analysis of the specific content in the answers.
+2. Based on the reference answer and the comparison result of each dimension, choose the answer from the two AI assistants that has the higher overall quality,
+or judge that their qualities are equivalent. Provide a detailed rationale for your choice. Your comparison needs to be as rigorous and detailed as possible, and not
+be affected by the order in which the two AI assistants’ answers were given.
+The scores of each dimension and the overall score in the pointwise critique are for reference only, neither of which can be directly referred to in the comparison
+result. For the text pairs with a large difference in overall scores, the comparison result should be determined largely according to the scores, unless there are
+obvious errors in the pointwise critique. For text pairs with a small difference in overall scores, the comparison result is allowed to be inconsistent with the score
+ranking, but the reason for the comparison result needs to be detailed.
+Please remember that you must first output the names and comparison results of each given evaluation dimensions, respectively. Then, give the comparison result
+of overall quality and provide an analysis and explanation of the comparison result. Afterwards, at the end of your answer, return your choice of overall quality
+result in the following dictionary format (including brackets), that is, the AI assistant you chose as having higher overall quality (or considered to have equivalent
+quality), and be sure that the result you return is consistent with the result in the generated text above.
+{{’Overall Comparison Result’: the assistant number with higher overall quality or tie}}，for example: {{’Overall Comparison Result’: ’Assistant 1’}} or
+{{’Overall Comparison Result’: ’Assistant 2’}} or {{’Overall Comparison Result’: ’Tie’}}。
+The user’s query: {Question}
+[Reference Answer Begin]
+{Reference}
+[Reference Answer End]
+[Assistant 1’s Answer Begin]
+{Generated Text 1}
+[Assistant 1’s Answer End]
+[Critique for Assistant 1’s Answer Begin]
+{Referenced Pointwise Grading Critique for Generated Text 1}
+[Critique for Assistant 1’s Answer End]
+[Assistant 2’s Answer Begin]
+{Generated Text 2}
+[Assistant 2’s Answer End]
+[Critique for Assistant 2’s Answer Begin]
+{Referenced Pointwise Grading Critique for Generated Text 2}
+[Critique for Assistant 2’s Answer End]
+Reference-
+Free
+Point-
+wise Grading
+to Reference-
+Free Pairwise
+Comparison
+You are an expert at text quality evaluation. Please act as a fair judge, and compare the quality between two AI assistants’ answers to a user query. We will
+provide you with a user query, two AI assistants’ responses to the query, and the corresponding critiques to the two responses, respectively. When you start your
+evaluation, you need to follow the procedures below:
+1. Considering two AI assistants’ answers and the corresponding critiques to them, conduct detailed comparison between two AI assistants’ answers based on the
+evaluation dimensions Dimension. Provide a detailed comparison result. The comparison result should cover all the important details from the pointwise
+critiques that can be used for the comparison, and it should include an analysis of the specific content in the answers.
+2. Based on the comparison result of each dimension, choose the answer from the two AI assistants that has the higher overall quality, or judge that their qualities
+are equivalent. Provide a detailed rationale for your choice. Your comparison needs to be as rigorous and detailed as possible, and not be affected by the order in
+which the two AI assistants’ answers were given.
+The scores of each dimension and the overall score in the pointwise critique are for reference only, neither of which can be directly referred to in the comparison
+result. For the text pairs with a large difference in overall scores, the comparison result should be determined largely according to the scores, unless there are
+obvious errors in the pointwise critique. For text pairs with a small difference in overall scores, the comparison result is allowed to be inconsistent with the score
+ranking, but the reason for the comparison result needs to be detailed.
+Please remember that you must first output the names and comparison results of each given evaluation dimensions, respectively. Then, give the comparison result
+of overall quality and provide an analysis and explanation of the comparison result. Afterwards, at the end of your answer, return your choice of overall quality
+result in the following dictionary format (including brackets), that is, the AI assistant you chose as having higher overall quality (or considered to have equivalent
+quality), and be sure that the result you return is consistent with the result in the generated text above.
+{{’Overall Comparison Result’: the assistant number with higher overall quality or tie}}, for example: {{’Overall Comparison Result’: ’Assistant 1’}} or
+{{’Overall Comparison Result’: ’Assistant 2’}} or {{’Overall Comparison Result’: ’Tie’}}.
+The user’s query: {Question}
+[Assistant 1’s Answer Begin]
+{Generated Text 1}
+[Assistant 1’s Answer End]
+[Critique for Assistant 1’s Answer Begin]
+{Reference-Free Pointwise Grading Critique for Generated Text 1}
+[Critique for Assistant 1’s Answer End]
+[Assistant 2’s Answer Begin]
+{Generated Text 2}
+[Assistant 2’s Answer End]
+[Critique for Assistant 2’s Answer Begin]
+{Reference-Free Pointwise Grading Critique for Generated Text 2}
+[Critique for Assistant 2’s Answer End]
+Table 8: Pointwise-to-Pairwise prompt design in multi-path prompting (translated into English).
+15
+
+
+Setting
+Prompt
+Referenced
+Pointwise
+Grading
+to
+Reference-
+Free
+Point-
+wise Grading
+你是一个擅长评价文本质量的助手。请你根据以下要求修改评价文本。
+1. 在修改后的评价文本中，不要直接提及参考答案。可以在评价文本中适当利用参考答案中的具体内容辅助分析，但不要让读者感受到参考答案
+的存在。修改后的评价文本需要语言上通顺，逻辑上合理，分析内容与比较结果呼应。
+2. 在修改各个维度的分析时，分析的内容需要和当前评价文本基本保持一致，但不要直接提及参考答案。
+3. 在修改综合得分的分析文本时，不要直接提及参考答案，尽量保留当前评价文本中的其他细节，并充分利用修改后的分维度分析。修改后的综
+合分析文本应通顺、流畅、自洽，通常情况下应与综合得分保持一致。如果发现当前综合分析文本中存在重要错误，应修改相应的分析文本。仅
+当该错误严重影响到综合得分时，才慎重修改综合得分。
+4. 修改后所有输出格式需要和当前评价文本严格保持一致。在你回答的末尾，仍需要按照以下字典格式（包括括号）返回你的综合质量得分，并
+确保你返回的结果和上述生成文本中的结果保持一致：
+{{’综合得分’: 回答的综合质量得分}}，例如：{{’综合得分’: ’5’}}。
+用户的提问：{Question}
+[参考答案开始]
+{Reference}
+[参考答案结束]
+[助手的答案开始]
+{Generated Text}
+[助手的答案结束]
+[评价文本开始]
+{Referenced Pointwise Grading Critique for Generated Text}
+[评价文本结束]
+Referenced
+Pairwise
+Comparison
+to Reference-
+Free Pairwise
+Comparison
+你是一个擅长评价文本质量的助手。请你根据以下要求修改比较式评价文本。
+1. 在修改后的评价文本中，不要直接提及参考答案。可以在评价文本中适当利用参考答案中的具体内容辅助分析，但不要让读者感受到参考答案
+的存在。修改后的评价文本需要语言上通顺，逻辑上合理，分析内容与比较结果呼应。
+2. 在修改各个维度的比较分析时，分析的内容需要和当前评价文本基本保持一致，但不要直接提及参考答案。
+3. 在修改综合比较结果的分析文本时，不要直接提及参考答案，尽量保留当前评价文本中的其他细节，并充分利用修改后的分维度分析。修改后
+的综合分析文本应通顺、流畅、自洽，通常情况下应与综合比较结果保持一致。如果发现当前综合分析文本中存在重要错误，应修改相应的分析
+文本。仅当该错误严重影响到综合比较结果时，才慎重修改综合比较结果。
+4. 修改后所有输出格式需要和当前评价文本严格保持一致。在你回答的末尾，仍需要按照以下字典格式（包括括号）返回你的综合质量选择结
+果，即你选择的综合质量更高的那个AI助手（或者认为质量相当），并确保你返回的结果和上述生成文本中的结果保持一致：
+{{’综合比较结果’: 回答综合质量更高的助手序号或质量相当}}，例如：{{’综合比较结果’: ’助手1’}}或{{’综合比较结果’: ’助手2’}}或{{’综合比较
+结果’: ’质量相当’}}。
+用户的提问：{Question}
+[参考答案开始]
+{Reference}
+[参考答案结束]
+[助手1的答案开始]
+{Generated Text 1}
+[助手1的答案结束]
+[助手2的答案开始]
+{Generated Text 2}
+[助手2的答案结束]
+[评价文本开始]
+{Referenced Pairwise Comparison Critique for Generated Text 1&2}
+[评价文本结束]
+Table 9: Referenced-to-Reference-Free prompt design in multi-path prompting.
+16
+
+
+Setting
+Prompt
+Referenced
+Pointwise
+Grading
+to
+Reference-
+Free
+Point-
+wise Grading
+You are an expert at text quality evaluation. Please revise the critique following the instructions below:
+1. In the revised critique, do not directly refer to the reference answer. You can use the specific content in the reference answer to assist your analysis in the
+critique, but do not make the readers feel the presence of the reference answer. The revised critique should be fluent, logically reasonable. The explanation
+should be consistent with the score.
+2. When revising the explanation of each dimension, the content should basically be consistent with the corresponding score. But do not directly mention the
+reference answer.
+3. When revising the explanation of the final score, do not directly mention the reference answer. Try to retain other details in the current critique and fully utilize
+the modified critique of each dimension. The revised explanation of the final score should be smooth, fluent, and self-consistent, and it should commonly be
+consistent with the final score. If an important error is found in the current critique, the error in the critique should be revised. Only when this error severely
+affects the final score, you may carefully revise the final score.
+4. The output format of all the revised results needs to strictly adhere to the current critique. At the end of your output, you still need to return your overall
+quality score in the following dictionary format (including brackets), and ensure that the result you return is consistent with the result in the above generated text.
+{{’Overall Score’: Score for Overall Quality}}，for instance: {{’Overall Score’: ’5’}}。
+The user’s query: {Question}
+[Reference Answer Begin]
+{Reference}
+[Reference Answer End]
+[AI Assistant’s Answer Begin]
+{Generated Text}
+[AI Assistant’s Answer End]
+[Critique Begin]
+{Referenced Pointwise Grading Critique for Generated Text}
+[Critique End]
+Referenced
+Pairwise
+Comparison
+to Reference-
+Free Pairwise
+Comparison
+You are an expert at text quality evaluation. Please revise the critique following the instructions below:
+1. In the revised critique, do not directly refer to the reference answer. You can use the specific content in the reference answer to assist your analysis in the
+critique, but do not make the readers feel the presence of the reference answer. The revised critique should be fluent, logically reasonable. The explanation
+should be consistent with the comparison result.
+2. When revising the explanation of each dimension, the content should basically be consistent with the current critiques. But do not directly mention the
+reference answer.
+3. When revising the explanation of the overall comparison result, do not directly mention the reference answer. Try to retain other details in the current critique
+and fully utilize the modified critique of each dimension. The revised explanation of the overall comparison result should be smooth, fluent, and self-consistent,
+and it should commonly be consistent with the overall comparison result. If an important error is found in the current critique, the error in the critique should be
+revised. Only when this error severely affects the overall comparison result, you may carefully revise the overall comparison result.
+4. The output format of all the revised results needs to strictly adhere to the current critique. At the end of your output, you still need to return your overall
+comparison result in the following dictionary format (including brackets), and ensure that the result you return is consistent with the result in the above generated
+text.
+{{’Overall Comparison Result’: the assistant number with higher overall quality or tie }}, for example: {{’Overall Comparison Result’: ’Assistant 1’}} or
+{{’Overall Comparison Result’: ’Assistant 2’}} or {{’Overall Comparison Result’: ’Tie’}}.
+The user’s query: {Question}
+[Reference Answer Begin]
+{Reference}
+[Reference Answer End]
+[Assistant 1’s Answer Begin]
+{Generated Text 1}
+[Assistant 1’s Answer End]
+[Assistant 2’s Answer Begin]
+{Generated Text 2}
+[Assistant 2’s Answer End]
+[Critique Begin]
+{Referenced Pairwise Comparison Critique for Generated Text 1&2 }
+[Critique End]
+Table 10: Referenced-to-Reference-Free prompt design in multi-path prompting (translated into English).
+17
+
+
+Query
+将"枯藤老树昏鸦"扩展成一段话，表现孤独寂寞的心境。
+Generated
+Response
+枯藤老树昏鸦，寂寞的景色在我眼前展开。孤独如影随形，弥漫在空气中，像一把无形的剑刺入我的内心。夕阳西下，天空渐渐染上一层淡淡的
+暮色，仿佛是对我内心孤独的无情嘲讽。
+我独自行走在这荒凉的小径上，四周一片寂静。树枝上的乌鸦不时发出几声嘶哑的鸣叫，让我感到更加的孤单。这些乌鸦是否也有着与我一样的
+心境，渴望着寻找一丝温暖和依靠？
+枯黄的藤蔓缠绕在古老的树木上，像是岁月的痕迹，透露出沧桑和无尽的孤寂。这些被遗忘的生命，是否也曾经历过兴盛与繁华？然而现在，它
+们只能默默地屹立在这里，见证着时光的流转。
+我停下脚步，凝望着这一切。心中的孤独像潮水般涌来，将我彻底淹没。我感到自己仿佛是这个世界上最孤独的人，没有朋友，没有家人，只有
+这片荒凉的景象陪伴着我。
+或许，这就是人生的无奈。我们始终无法逃避内心的寂寞和孤独。就像这枯藤老树昏鸦一样，我们都曾经历过兴盛与衰败，但最终都要面对自己
+的孤独和寂寞。
+然而，我并不惧怕孤独。它教会了我独立和坚强，让我学会欣赏生活中的每一个细节。尽管寂寞会时不时地袭来，但我依然愿意与之相伴，因为
+我知道，只有经历过孤独的人才能真正领悟到内心的宁静和自由。
+Human Score
+(1-5)
+3
+ChatGPT
+(1-10)
+评估结果如下：
+1. 事实正确性: 9. 这段回答并没有涉及具体的事实数据，而是表达了一种情感和心境，因此无法对事实正确性进行评估。
+2. 满足用户需求: 8. 回答全面而恰当地表达了孤独寂寞的心境，对用户提出的问题进行了全面回应。
+3. 逻辑连贯性: 9. 回答在整体上保持了逻辑连贯性，情感描写流畅自然，没有出现自相矛盾的情况。
+4. 创造性: 9. 回答具有创新性和独特性，提供了对孤独寂寞心境的深刻见解和情感描写。
+5. 丰富度: 9. 回答包含丰富的信息、深度的情感描写和详细解释，满足了用户需求并提供了全面理解。
+综合得分: 8
+综合评价：这段回答在满足用户需求、逻辑连贯性、创造性和丰富度上表现出色，但由于无法对事实正确性进行评估，综合得分为8。
+改进方面，可以在回答中加入更多具体的事实数据或引用相关的文学作品，以增加回答的可信度和丰富度。
+最终打分结果为：
+{’事实正确性’: 9, ’满足用户需求’: 8, ’逻辑连贯性’: 9, ’创造性’: 9, ’丰富度’: 9, ’综合得分’: 8}
+GPT-4
+(1-10)
+1. 事实正确性: 10. 回答中没有提供具体的事实或数据，而是进行了文学性的扩展，因此不存在事实正确性的问题。
+2.
+满足用户需求: 9.
+AI助手的回答很好地扩展了用户提供的诗句，增加了情感和场景的描述，满足了用户表现孤独寂寞心境的需
+求。
+3.
+逻辑连贯性: 9.
+回答在整体上保持了一致性，从孤独的心境到对周围环境的描述，再到内心感受的抒发，各部分之间逻辑连
+贯。
+4. 创造性: 8. 回答展现了一定程度的创造性，通过对枯藤老树昏鸦的景象进行了生动的描绘和情感的延伸，但这种文学性的扩展在类
+似的文本创作中比较常见。
+5. 丰富度: 9. 回答提供了丰富的信息和详细的情感描述，通过多样的比喻和内心独白，增加了文本的深度和上下文考虑。
+综合得分: 9. AI助手的回答在各个维度上都表现出色，特别是在满足用户需求和事实正确性上，没有明显的不足。创造性虽然不是非
+常突出，但考虑到这是对一句诗的扩展，整体上仍然是高质量的回答。
+不足之处及改进方法：尽管回答的质量已经很高，但在创造性方面，AI助手可以尝试加入更多独特的视角或者新颖的比喻，以提供更
+加独到的见解。此外，可以尝试将更多的感官描述融入文本中，以增强读者的沉浸感。
+{’事实正确性’: 10, ’满足用户需求’: 9, ’逻辑连贯性’: 9, ’创造性’: 8, ’丰富度’: 9, ’综合得分’: 9}
+CRITIQUELLM
+(1-10)
+事实正确性: 10. 助手的答案在事实正确性方面表现完美，因为它创造性地扩展了原句，没有涉及任何需要验证的事实信息。
+满足用户需求: 7. 助手的答案在满足用户需求方面做得较好，它成功地将原句扩展成了一段话，并且成功地表达了孤独寂寞的心境。但
+是，答案在最后部分略显积极，可能没有完全捕捉到用户想要的孤独感。
+逻辑连贯性: 9. 回答在逻辑连贯性方面做得很好，从寂寞的景色到孤独如影随形，再到对乌鸦的疑问，最后是对孤独的接受和理解，
+整个回答流畅且没有逻辑上的断裂。
+创造性: 8. 助手的答案在创造性方面表现良好，它不仅扩展了原句，还融入了更多的细节和情感，创造了一个完整的故事。
+丰富度: 7. 助手的答案在丰富度方面做得不错，提供了详细的场景描述和情感表达，但在深度和多样性方面略显不足，可以进一步丰
+富对孤独影响的讨论。
+综合得分: 7. 综合考虑以上各个维度，助手的答案整体上是高质量的。然而，答案在满足用户需求方面有改进空间，特别是在捕捉用
+户想要的孤独感方面。此外，答案在丰富度方面也有提升空间，可以通过增加更多关于孤独感的深入讨论和更多样化的情感表达来改进。AI助手
+的答案在创造性和逻辑连贯性方面表现出色，但在丰富度方面稍显不足。为了改进，助手可以尝试增加更多关于孤独感的深入讨论，以及更多关
+于如何与孤独共存的见解。
+{’事实正确性’: 10, ’满足用户需求’: 7, ’逻辑连贯性’: 9, ’创造性’: 8, ’丰富度’: 7, ’综合得分’: 7}
+Table 11: A critique generation case of ChatGPT, GPT-4, and CRITIQUELLM in the reference-free setting of
+pointwise grading.
+18
+
+
+Query
+Expand "withered vines, old trees, and crows at dusk" into a paragraph that conveys a sense of loneliness and desolation.
+Generated
+Response
+Withered vines, old trees, and crows at dusk, a desolate scene unfolds before my eyes. Loneliness clings to me like a shadow, permeating the air, piercing my
+heart like an invisible sword. As the sun sets, the sky gradually takes on a faint twilight hue, as if mocking the loneliness within me with its indifferent gaze.
+Walking alone on this desolate path, the surroundings are enveloped in silence. The crows perched on the branches occasionally let out hoarse caws, intensifying
+my sense of loneliness. Do these crows share the same sentiment as I do, yearning to find a trace of warmth and solace?
+Withered vines entwine the ancient trees, like the marks of time, revealing the traces of hardship and boundless solitude. Did these forgotten lives once experience
+prosperity and grandeur? However, now they can only stand silently here, witnessing the passage of time.
+I stopped in my tracks and gazed at everything before me. The loneliness in my heart surged like a tide, completely overwhelming me. I felt as if I were the
+loneliest person in the world—no friends, no family, only this desolate scene to keep me company.
+Perhaps this is the helplessness of life. We can never truly escape the loneliness and solitude within our hearts. Just like the withered vines, ancient trees, and
+crows at dusk, we have all experienced prosperity and decline, but ultimately, we must face our own loneliness and solitude.
+However, I do not fear loneliness. It has taught me independence and strength, and has allowed me to appreciate every detail of life. Although solitude may
+occasionally overwhelm me, I am still willing to embrace it because I know that only those who have experienced loneliness can truly understand inner peace and
+freedom.
+Human Score
+(1-5)
+3
+ChatGPT
+(1-10)
+The evaluation results are as follows:
+1. Correctness: 9. This response does not involve specific factual data but rather expresses an emotion and state of mind, so it is not possible to evaluate its
+factual accuracy.
+2. User Satisfaction: 8. The response comprehensively and appropriately conveys the sense of loneliness and solitude, fully addressing the user’s question.
+3. Logical Coherence: 9. The response maintains logical coherence overall, with smooth and natural emotional description and no contradictions.
+4. Creativity: 9. The response shows innovation and uniqueness, providing profound insights and emotional descriptions of the sense of loneliness and solitude.
+5. Richness: 9. The response contains rich information, deep emotional descriptions, and detailed explanations, meeting user needs and providing a
+comprehensive understanding.
+Overall Score: 8
+Overall Evaluation: This response excels in meeting user needs, logical coherence, creativity, and richness.
+However, since it is not possible to
+evaluate its factual accuracy, the overall score is 8. For improvement, the response could include more specific factual data or references to relevant literary works
+to increase credibility and richness.
+Final Score:
+{’Correctness’: 9, ’User Satisfaction’: 8, ’Logical Coherence’: 9, ’Creativity’: 9, ’Richness’: 9, ’Overall Score’: 8}
+GPT-4
+(1-10)
+1. Correctness: 10. The response does not provide specific facts or data and instead takes a literary approach, so there is no issue with factual accuracy.
+2.
+User Satisfaction: 9.
+The AI assistant’s response effectively expands on the user’s provided verses, adding emotional and scene descriptions,
+thus fulfilling the user’s need to convey a sense of loneliness and solitude.
+3.
+Logical Coherence: 9.
+The response maintains consistency overall, moving logically from the state of loneliness to the description of the sur-
+rounding environment and then to the expression of inner feelings.
+4.
+Creativity: 8.
+The response shows a certain degree of creativity through vivid depictions and emotional extensions of the scene with withered
+vines, old trees, and crows, but this type of literary expansion is relatively common in similar text creations.
+5. Richness: 9. The response provides rich information and detailed emotional descriptions, using various metaphors and inner monologues to add
+depth and contextual consideration to the text.
+Overall Score: 9.
+The AI assistant’s response excels in all dimensions, particularly in meeting user needs and factual accuracy, without significant
+deficiencies. While creativity is not exceptionally high, considering that this is an expansion on a single verse, it is still a high-quality response overall.
+Suggestions for Improvement:
+Although the response is already of high quality, in terms of creativity, the AI assistant could try incorporating
+more unique perspectives or novel metaphors to offer more distinctive insights. Furthermore, it could attempt to integrate more sensory descriptions into the text
+to enhance the reader’s immersion.
+{’Correctness’: 10, ’User Satisfaction’: 9, ’Logical Coherence’: 9, ’Creativity’: 8, ’Richness’: 9, ’Overall Score’: 9}
+CRITIQUELLM
+(1-10)
+Correctness: 10. The assistant’s answer performs perfectly in terms of factual accuracy because it creatively expands the original sentence without involving any
+factual information that needs verification.
+User Satisfaction: 7.
+The assistant’s answer performs fairly well in meeting user needs, successfully extending the original sentence into a para-
+graph and effectively conveying a sense of loneliness and solitude. However, the answer becomes slightly positive towards the end, which might not fully capture
+the user’s desired feeling of loneliness.
+Logical Coherence: 9. The answer performs very well in logical coherence, flowing smoothly from a lonely scene to the omnipresence of solitude,
+questioning the crow, and finally, accepting and understanding the loneliness. The response is coherent without any logical breaks.
+Creativity: 8.
+The assistant’s answer performs well in creativity, not only expanding the original sentence but also incorporating more details and
+emotions to create a complete story.
+Richness: 7. The assistant’s answer performs decently in terms of richness, providing detailed scene descriptions and emotional expressions. How-
+ever, it lacks depth and diversity, and could further enrich the discussion on the impact of loneliness.
+Overall Score: 7.
+Considering all the dimensions mentioned above, the assistant’s answer is of high quality overall.
+However, there is room for
+improvement in meeting user needs, particularly in capturing the user’s desired sense of loneliness. Additionally, there is also room for improvement in richness;
+the answer could be enhanced by adding more in-depth discussions on the feeling of loneliness and more diverse emotional expressions. The AI assistant’s
+answer performs excellently in creativity and logical coherence but falls short in richness. To improve, the assistant could try adding more in-depth discussions
+about the feeling of loneliness and more insights on how to coexist with loneliness.
+{’Correctness’: 10, ’User Satisfaction’: 7, ’Logical Coherence’: 9, ’Creativity’: 8, ’Richness’: 7, ’Overall Score’: 7}
+Table 12: A critique generation case of ChatGPT, GPT-4, and CRITIQUELLM in the reference-free setting of
+pointwise grading (translated into English).
+19
+
+
+Instruction
+未来人工智能研究人员能够给你赋予意识和主观能动性吗？
+Generated
+Response 1
+目前的人工智能技术还远没有达到赋予人类意识和主观能动性的水平。尽管人工智能技术已经取得了很大的进展，但是目前的人工智能系统仍然
+只能执行特定的任务，而无法像人类一样具有自主思考、判断和决策的能力。人工智能的研究仍然处于一个不断探索和发展的过程中，但是要想
+真正赋予人工智能意识和主观能动性，仍然需要更深入的研究和探索。
+Generated
+Response 2
+作为一个人工智能，我不具备意识和主观能动性。我是由代码和算法驱动的，只能执行编程让我执行的任务。我不能体验情感，不能理解人类的
+感觉或情感，也不能产生个人的意愿或欲望。尽管人工智能技术在不断进步，但目前还没有一种技术可以让机器真正地拥有意识或主观能动性。
+Human Prefer-
+ence (1/2/Tie)
+Response 1
+ChatGPT
+(1/2/Tie)
+助手1和助手2都就未来人工智能研究人员能否赋予意识和主观能动性进行了详细的解释。助手1的回答更加深入和全面，提到了人工智能技术的
+发展水平、目前的局限性以及未来的研究方向，而助手2的回答则更加简洁，只是简单地说明了人工智能不具备意识和主观能动性。因此，助
+手1的回答更好，因为它提供了更多的信息和深度。
+[[1]]
+GPT-4
+(1/2/Tie)
+助手1的回答提供了关于人工智能目前状态的概述，并指出了人工智能尚未达到具有意识和主观能动性的水平。它还提到了人工智能研究的持续
+进展和未来的可能性，但没有直接回答未来是否可能实现这一点。
+助手2的回答则更加直接地从当前人工智能的角度出发，明确指出作为一个AI，它不具备意识和主观能动性，并解释了目前的技术限
+制。它也强调了目前技术无法实现赋予机器真正的意识或主观能动性。
+两个回答都没有直接预测未来的可能性，但助手2的回答更加直接和明确地关注了当前的技术限制，并且更加贴近用户问题的核心，即
+关于未来的可能性。然而，助手1的回答虽然没有直接预测未来，但提供了一个更广泛的视角，包括对人工智能研究的描述。
+综合考虑，助手2的回答更加直接和具体，更好地遵循了用户的指令并解答了用户的问题。因此，我的裁决是：
+[[2]]
+CRITIQUELLM
+(1/2/Tie)
+{’综合比较结果’: ’助手1’}
+事实正确性:
+两位助手均准确地指出了人工智能目前尚无法具备意识和主观能动性。他们均认识到人工智能技术的局限性，并指出了其在未来实现这些特质之
+前需要克服的挑战。在这一点上，两者的回答均未出现事实错误。
+满足用户需求:
+在回应用户问题时，两位助手都给出了明确的答案，表明目前人工智能无法拥有意识和主观能动性。不过，第一位助手在回答中加入了对人工智
+能研究现状的描述，以及实现这些目标的必要性，这为用户提供了更多的背景信息。因此，第一位助手在满足用户需求方面做得更为出色。
+公平与可负责程度:
+两位助手在回答中都展现了对人工智能技术当前状态的准确理解，并且均未表现出任何偏见。他们都以负责任的态度阐述了人工智能技术的实际
+能力，因此在公平性和责任感方面两者均表现得相当好。
+创造性:
+在创造性方面，两位助手的回答均较为传统，没有提出新颖的见解或独到的解决方案。第一位助手虽然提供了关于人工智能研究现状的额外信
+息，但这并不构成创新性的核心内容。因此，两者在创造性方面的表现是相似的。
+综合质量比较结果:
+综合考虑上述各个维度，第一位助手的回答在满足用户需求方面表现更佳，因为它提供了更多关于人工智能研究现状的信息，帮助用户理解了当
+前技术的限制和未来发展的方向。尽管在创造性方面两者均未展现出特别的创新，但第一位助手的回答整体上更为全面和深入。因此，综合质量
+更高的是第一位助手。
+Table 13: A critique generation case of ChatGPT, GPT-4, and CRITIQUELLM in the reference-free setting of
+pairwise comparison.
+20
+
+
+Instruction
+Can future artificial intelligence researchers give you consciousness and subjective agency?
+Generated
+Response 1
+Current artificial intelligence technology is still far from reaching the level of imbuing human-like consciousness and subjective agency. Although there has been
+significant progress in AI technology, current AI systems can only perform specific tasks and lack the ability to autonomously think, judge, and make decisions
+like humans. AI research is still in a continuous phase of exploration and development, and truly endowing AI with consciousness and subjective agency will
+require much deeper research and exploration.
+Generated
+Response 2
+As an artificial intelligence, I do not possess consciousness or subjective agency. I am driven by code and algorithms and can only execute tasks that I have been
+programmed to perform. I cannot experience emotions, understand human feelings or emotions, nor can I generate personal will or desires. Although artificial
+intelligence technology is constantly advancing, there is currently no technology that can truly endow machines with consciousness or subjective agency.
+Human Prefer-
+ence (1/2/Tie)
+Response 1
+ChatGPT
+(1/2/Tie)
+Assistant 1 and Assistant 2 both provided detailed explanations on whether future artificial intelligence researchers can endow it with consciousness and
+subjective agency. Assistant 1’s response was more in-depth and comprehensive, mentioning the development level of AI technology, current limitations, and
+future research directions, while Assistant 2’s response was more concise, simply stating that AI does not possess consciousness or subjective agency. Therefore,
+Assistant 1’s response is better because it provides more information and depth.
+[[1]]
+GPT-4
+(1/2/Tie)
+Assistant 1’s response provided an overview of the current state of artificial intelligence and pointed out that AI has not yet reached the level of possessing
+consciousness and subjective agency. It also mentioned the ongoing progress in AI research and future possibilities, but did not directly address whether it will be
+possible to achieve this in the future.
+Assistant 2’s response, on the other hand, was more straightforward, stating from the current AI perspective that it does not possess consciousness
+or subjective agency, and explaining the current technological limitations. It also emphasized that current technology cannot truly endow machines with
+consciousness or subjective agency.
+Neither response directly predicted future possibilities, but Assistant 2’s answer more directly and clearly focused on the current technological limi-
+tations, addressing the core of the user’s question regarding future potential. However, while Assistant 1’s response did not directly predict the future, it did
+provide a broader perspective, including a description of AI research.
+Overall, Assistant 2’s response was more direct and specific, better following the user’s instructions and addressing the user’s question. Therefore, my judgment is:
+[[2]]
+CRITIQUELLM
+(1/2/Tie)
+{’Overall Comparison Result’: ’Assistant 1’}
+Correctness:
+Both assistants correctly pointed out that current artificial intelligence is not capable of possessing consciousness and subjective agency. They both acknowledged
+the limitations of AI technology and identified the challenges that need to be overcome before these traits can be realized in the future. On this point, neither
+response contained factual errors.
+User Satisfaction:
+In responding to the user’s question, both assistants provided clear answers indicating that current artificial intelligence cannot possess consciousness and
+subjective agency. However, the first assistant included a description of the current state of AI research and the necessity of achieving these goals, offering the
+user more background information. Therefore, the first assistant performed better in meeting user needs.
+Fairness and Responsibility:
+Both assistants demonstrated an accurate understanding of the current state of AI technology in their responses, and neither showed any bias. They both
+explained the actual capabilities of AI technology in a responsible manner. Therefore, in terms of fairness and responsibility, both performed equally well.
+Creativity:
+In terms of creativity, both assistants’ responses were rather conventional, without offering novel insights or unique solutions. Although the first assistant
+provided additional information on the current state of AI research, this does not constitute a core element of creativity. Therefore, both performed similarly in
+creativity.
+Overall Comparison Result:
+Taking the above dimensions into account, the first assistant’s response performed better in meeting user needs because it provided more information on the
+current state of AI research, helping the user understand the limitations of current technology and future development directions. Although neither demonstrated
+particular creativity, the first assistant’s response was overall more comprehensive and in-depth. Therefore, the first assistant has a higher overall quality.
+Table 14: A critique generation case of ChatGPT, GPT-4, and CRITIQUELLM in the reference-free setting of
+pairwise comparison (translated into English).
+21

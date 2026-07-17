@@ -1,0 +1,2504 @@
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+1
+A Hybrid Self-Supervised Learning Framework for
+Vertical Federated Learning
+Abstract—Vertical federated learning (VFL), a variant of
+Federated Learning (FL), has recently drawn increasing attention
+as the VFL matches the enterprises’ demands of leveraging more
+valuable features to achieve better model performance. However,
+conventional VFL methods may run into data deficiency as they
+exploit only aligned and labeled samples (belonging to different
+parties), leaving often the majority of unaligned and unlabeled
+samples unused. The data deficiency hampers the effort of the
+federation.
+In this work, we propose a Federated Hybrid Self-Supervised
+Learning framework, named FedHSSL, that utilizes cross-party
+views (i.e., dispersed features) of samples aligned among parties
+and local views (i.e., augmentation) of unaligned samples within
+each party to improve the representation learning capability
+of the VFL joint model. FedHSSL further exploits invariant
+features across parties to boost the performance of the joint
+model through partial model aggregation. FedHSSL, as a frame-
+work, can work with various representative SSL methods. We
+empirically demonstrate that FedHSSL methods outperform
+baselines by large margins. We provide an in-depth analysis
+of FedHSSL regarding label leakage, which is rarely investi-
+gated in existing self-supervised VFL works. The experimental
+results show that, with proper protection, FedHSSL achieves
+the best privacy-utility trade-off against the state-of-the-art label
+inference attack compared with baselines. Code is available at
+https://github.com/jorghyq2016/FedHSSL.
+Index
+Terms—Vertical
+federated
+learning,
+self-supervised
+learning, privacy preservation, neural network.
+I. INTRODUCTION
+Federated learning (FL) enables independent parties to build
+machine learning models collaboratively without sharing pri-
+vate data [1], [2]. This makes FL a practical solution to tackle
+data silo issues while complying with increasingly strict legal
+and regulatory constraints enforced on user privacy, such as the
+General Data Protection Regulation (GDPR). [2] categorizes
+FL into Horizontal FL (HFL) and Vertical FL (VFL). HFL
+typically involves a large number of parties that have different
+samples but share the same feature space, while VFL involves
+several parties that own distinct features of the same set of
+samples. Recently, VFL has drawn increasing attention as the
+VFL matches the enterprises’ demands of leveraging more
+valuable features to achieve better model performance without
+jeopardizing data privacy. e.g., VFL has been widely deployed
+in industries such as finance [3] and advertisement [4].
+However, VFL has two critical limitations. One is the
+deficiency of labeled samples. For example, positive labels
+are costly in the credit risk assessment because they are
+available only when customers either complete their repayment
+or default, which may take a few years. Another limitation is
+the deficiency of aligned samples. When participating parties
+have quite different customer bases, their aligned samples
+are likely to be very limited. To address these two limi-
+tations, [5] proposed a federated cross-view approach that
+leverages the aligned samples to estimate missing features and
+labels, which in turn is utilized for training the joint VFL
+model. This approach essentially relies on aligned samples and
+is conducted in a supervised learning manner. Recently, self-
+supervised learning (SSL) has been introduced to HFL, aiming
+to improve the representation learning capability of the global
+model on label deficiency scenarios [6], [7], while the research
+on integrating SSL into VFL is understudied. Existing SSL
+works in VFL either solely used local unlabeled data [8], [9]
+without considering cross-party views of the aligned samples
+or only focused on aligned unlabeled sample [10], but failed
+to exploit each party’s local data. Besides, although SSL does
+not involve labels, sample/feature alignment may result in the
+leakage of label information. Existing SSL-based VFL works
+rarely studied the impact of SSL on label leakage.
+To fill these gaps, we propose FedHSSL, a Federated Hybrid
+Self-Supervised Learning framework (illustrated in Fig. 4).
+FedHSSL simultaneously exploits (i) cross-party views (i.e.,
+dispersed features) of samples aligned among parties and (ii)
+local views (i.e., augmentations) of samples within each party,
+and aggregates (iii) invariant features shared among parties,
+aiming to improve the overall performance of the final joint
+model. Furthermore, we analyze the label leakage of both the
+pretraining and fine-tuning phases of FedHSSL and investigate
+the protection against the label inference attack on FedHSSL.
+Our contributions are as follows:
+• We propose a federated hybrid SSL framework that takes
+advantage of all available data through SSL and partial
+model aggregation to address the data deficiency issue in
+VFL. Experimental results show that FedHSSL methods
+outperform baselines by large margins on four datasets.
+The ablation study demonstrates the effectiveness of each
+step involved in FedHSSL in improving the performance
+of the VFL joint model.
+• We analyze the label leakage issue of FedHSSL. This
+is one of the first attempts to study label leakage of pre-
+trained models in VFL. Experimental results demonstrate
+that FedHSSL achieves a better privacy-utility trade-off
+than baselines.
+II. RELATED WORKS
+A. Vertical Federated Learning (VFL)
+VFL aims to build a joint machine learning model using
+features dispersed among parties while protecting privacy [11].
+arXiv:2208.08934v2  [cs.LG]  8 Jun 2023
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+2
+TABLE I
+MAIN FL WORKS EMPLOYING SSL METHODS.
+Setting
+Works
+Data setting
+Usage of labeled data
+labeled
+unlabeled
+HFL
+FedMOON [18], Fed-PCL [31], FedProc [19]
+√
+used in end-to-end training
+FedCA [20], FedU [21], FedEMA [6], FedX [32]
+√
+√
+used in finetuning
+aligned labeled
+aligned unlabeled
+unaligned unlabeled
+VFL
+FedCVT [5], FedMC [23]
+√
+√
+used in end-to-end training
+VFed-SSD [10]
+√
+√
+used in finetuning
+SS-VFL [8], VFLFS [9]
+√
+√
+used in finetuning
+FedHSSL(ours)
+√
+√
+√
+used in finetuning
+In recent years, the literature has presented various algorithms
+in the VFL setting.
+[12] proposed vertical logistic regres-
+sion (VLR) using homomorphic encryption (HE) to protect
+data privacy.
+[13] further enhanced the privacy-preserving
+capability of VLR by employing a hybrid strategy combining
+HE and secret sharing (SS). [14] proposed the SecureBoost,
+a VFL version of XGBoost, that leverages HE to protect
+the parameters exchanged among parties. To tackle the data
+deficiency issue of VFL, [15] integrated transfer learning into
+VFL to help the target party predict labels. [5] applied a semi-
+supervised learning method to estimate missing features and
+labels for further training.
+B. Self (Semi)-Supervised Learning in VFL
+With the success of contrastive learning in computer vision,
+it gradually dominates self-supervised learning (SSL) [16],
+[17]. While several works applied SSL to HFL to address
+non-IID [18], [19] or label deficiency issues
+[6], [20]–[22],
+the research on integrating SSL into VFL is limited. [8],
+[9] pretrained participating parties’ local models leveraging
+their unaligned local samples without considering aligned
+samples. [10] used aligned samples for learning discriminative
+representations but did not use unlabeled local samples. [5],
+[23] exploited semi-supervised learning techniques to predict
+pseudo labels of unaligned samples and estimate missing
+features to boost the performance of VFL joint models. Table
+I briefly summarizes these works.
+Several VFL works aim to build a local predictor for one
+party instead of a VFL joint model. For example, the goal of
+[24]–[26] is to train a local predictor for the active party for
+addressing the efficiency or availability issue in the inference
+phase, while
+[27]–[30] proposed to transfer the knowledge
+from the active party to help the passive party build a classifier.
+These works are out of the scope of this work.
+C. Privacy Attacks and Protections in VFL
+VFL involves two kinds of privacy leakage: feature leakage
+and label leakage. [33] proposed model inversion attack to
+infer features of the passive party. However, in the practical
+VFL setting, parties typically have black-box knowledge on
+the model information of each other. Thus, it is challenging
+for the attacker to infer features of other parties. The literature
+has proposed two forms of label inference attacks in VFL:
+the gradient-based [34] and the model-based [35]. The former
+often applies to binary classification, and the latter is difficult
+to be defended against, but it requires auxiliary training
+data. [34] proposed three protection methods against gradient-
+based attacks. [36] proposed a data encoding protection mech-
+anism called CoAE, which can thwart model-based attacks
+effectively in some scenarios. Cryptography-based protections
+are seldom applied to VFL that involves deep neural networks
+(DNN) for their high communication and computational cost.
+[3] proposed a HE-protected interactive layer that protects the
+outputs of parties’ local DNN without protecting gradients.
+Thus, it can not defend against label inference attacks.
+III. PRELIMINARIES
+We review the concepts of vertical federated learning and
+self-supervised learning methods we adopt in this work.
+A. Vertical Federated Learning
+Vertical federated learning deals with scenarios where par-
+ticipating parties share the same set of samples but each
+holds a distinct portion of features of these samples. More
+specifically, often one party holds labels but may or may
+not owns features. This party is called active party because
+it typically is the initiator of VFL training and inferencing,
+while other parties hold only features and are called passive
+parties [37].
+Fig. 1. The conventional VFL setting illustrated by two parties. Active party
+1 owns a bottom model f1 and a top model g1, while passive party 2 owns
+a bottom model f2. We call the joint VFL model composed of f1, f2, and
+g1 FedSplitNN.
+We take the 2-party VFL setting as an example (see Figure
+1). We assume the two parties collaboratively own a dataset
+(Y 1
+l , X1
+l , X2
+l ), party 1 is the active party who owns features
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+3
+Fig. 2. Architecture overview of three representative SSL methods. All methods comprise two encoders: an online encoder f, and a target encoder ˜
+f. Gradients
+are not computed for the target encoder. For MoCo and BYOL, ˜
+f is the moving average of f. MoCo has a queue to provide additional negative samples for
+calculating InfoNCE loss. BYOL and SimSiam has a predictor on the top of online encoder, and use only positive pairs. For SimSiam, ˜
+f = f.
+and labels (X1
+l , Y 1
+l ), and party 2 is the passive party who
+owns features X2
+l . In this work, we use superscripts to identify
+participating party, and subscripts for other denotations.
+The active party 1 and passive party 2 utilize bottom model
+f 1 and f 2, respectively, to extracts high-level features from
+raw input x1 ∈X1
+l and x2 ∈X2
+l . The active party also has a
+top model g1 that transforms the aggregated (denoted by ⊕)
+outputs z1 = f 1(x1) and z2 = f 2(x2) into predicted labels,
+which together with the ground-truth labels y1 are used to
+compute the loss formulated in Eq.(1). We call the joint VFL
+model composed of f 1, f 2, and g1 FedSplitNN.
+Lfed = ℓce(g1(z1 ⊕z2), y1)
+(1)
+where ℓce is cross entropy, y1 ∈Y 1
+l . Typical aggregation
+methods include concatenation along the feature axis, max-
+pooling and averaging. By minimizing Lfed in Eq. (1), bottom
+model f 1 and f 2, as well as top model g1 are updated.
+B. Self-supervised learning
+Among various self-supervised learning (SSL) methods,
+contrastive learning [16] has become the state-of-the-art
+method. It essentially groups semantically nearby samples
+(positive pairs) in the representation space while pushing apart
+the dissimilar samples (negative pairs) as far as possible [17],
+[38]. [39], [40] proposed non-contrastive methods, which use
+only positive pairs in self-supervised learning and demon-
+strates competitive performance with reduced complexity.
+TABLE II
+VARIATIONS ON THE IMPLEMENTATION OF ALGO. 1 FOR DIFFERENT SSL
+METHODS. MLP: MULTIPLE LAYER PERCEPTRON, EMA: EXPONENTIAL
+MOVING AVERAGE.
+Method
+Target encoder ˜
+f
+Predictor (h)
+Loss
+SimSiam
+equals online encoder f
+MLP
+LSimSiam
+BYOL
+EMA of online encoder f
+MLP
+LBYOL
+MoCo
+EMA of online encoder f
+identical function
+LMoCo
+In this section, we provide a brief introduction of three
+representative SSL methods: MoCo [38], BYOL [39], Sim-
+Siam [40]. A schematic illustration of these three methods
+is shown in Fig. 2, and a comparison of their differences are
+listed in Table II. Given a batch of sample x, its two augmented
+version are v1 = T (x) and v2 = T (x). T denotes a data
+augmentation strategy. An online encoder f transforms v1 to
+z1, and a target encoder ˜
+f transforms v2 to ˜
+z2. A predictor,
+h, is used to further convert z1 to p1. That is z1 = f(v1),
+˜
+z2 = ˜
+f(v2), and p1 = h(z1). All three methods follow this
+two-tower structure, and it should be noted that gradients
+are not computed for the target encoder. Here we omit the
+symmetrized computation path by swapping v1 and v2 for the
+simplicity.
+MoCo. Momentum Contrast (MoCo) [38] utilizes the In-
+foNCE loss and a momentum encoder to ensure a better
+representation consistency and an additional queue to enable
+training with small batch size. That means ˜
+f is a momentum
+version of f, and a sample Q, which maintains a dynamic
+pool of feature vectors from previous batches. The predictor
+h is simply an identical function. The training objective is
+LMoCo = −log
+exp(z1 · st(˜
+z2))
+exp(z1 · st(˜
+z2)) + P
+˜
+zq∈Q exp(z1 · st(˜
+zq))
+(2)
+where ˜
+zq ∈Q, st(·) meas stop-gradient. By minimizing this
+loss, the positive pairs are pulled closer while negative pairs
+are pushed away in representation space.
+BYOL. Bootstrap Your Own Latent (BYOL) [39] differs from
+the MoCo method in that it only requires positive pairs, mak-
+ing the training procedure much simpler. The target encoder
+˜
+f is a momentum version of f, the same as MoCo. To avoid
+a collapse in representation space, a multi-layer perceptron
+(MLP) is used as the predictor h. The training objective is
+formulated as follows.
+LBYOL = ∥
+p1
+∥p1∥2
+−
+st(˜
+z2)
+∥st(˜
+z2)∥2
+∥2
+2
+= 2 −2 ·
+⟨p1, st(˜
+z2)⟩
+∥p1∥2 · ∥st(˜
+z2)∥2
+.
+(3)
+SimSiam. The Simple Siamese (SimSiam) [40] method is
+similar to BYOL that it also utilizes an asymmetric MLP
+predictor, h, and a similarity-based objective that only needs
+positive pairs. It further removes the momentum encoder and
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+4
+uses the same encoder, ˜
+f = f, for converting v1 and v2. The
+training objective becomes:
+LSimSiam = −
+p1
+||p1||2
+·
+st(˜
+z2)
+||st(˜
+z2)||2
+.
+(4)
+In this work, we adopt the three representative SSL methods,
+SimSiam [40], BYOL [39], and MoCo [38], as the base
+SSL methods for FedHSSL to investigate the effectiveness of
+FedHSSL as a framework.
+IV. METHODOLOGY
+In this section, we formulate our VFL setting and problem.
+We then elaborate on our FedHSSL framework.
+Fig. 3. Virtual dataset owned by two parties. The aligned samples (X1
+al, X2
+al)
+account for a small portion of each party’s total samples. The amount of
+labeled aligned samples (Y 1
+l , X1
+l , X2
+l ) is even less, while each party has a
+large amount of non-aligned local samples (i.e., X1
+nl and X2
+nl).
+A. Problem Formulation
+We consider a general VFL setting that involves K par-
+ties. The ith party owns a dataset Xi = (Xi
+al, Xi
+nl), i ∈
+{1, . . . , K}, where Xi
+al and Xi
+nl denote aligned and non-
+aligned samples, respectively. We assume only party 1 has
+labels and denote party 1’s labeled samples as (Y 1
+l , X1
+l ), where
+X1
+l ⊆X1
+al. Figure 3 depicts the virtual dataset formed by two
+parties (i.e., parties 1 and 2) for illustrative purposes.
+In conventional VFL, as explained in Section III-A, partic-
+ipating parties collaboratively train a joint model only using
+aligned and labeled samples (Y 1
+l , X1
+l , X2
+l , . . . , XK
+l ), leaving
+each party i’s aligned but unlabeled samples Xi
+al\Xi
+l as well
+as unaligned samples Xi
+nl unused.
+We propose a Federated Hybrid SSL (FedHSSL) framework
+that pretrains participants’ local models by leveraging all
+available unlabeled samples of all parties Xi = (Xi
+al, Xi
+nl) for
+i, i ∈{1, . . . , K}. Then, the conventional VFL is conducted
+to fine-tune pretrained models with a classifier g on top of
+pretrained models using aligned and labeled samples.
+The goal of FedHSSL is to enhance the performance of
+the VFL joint model trained on downstream supervised task
+(see Section 1). Therefore, we evaluate the performance of
+FedHSSL on downstream supervised tasks.
+Algorithm 1 FedHSSL Pretraining Procedure
+Input:
+Dataset Xi = (Xi
+al, Xi
+nl) of party i, i ∈{1, . . . , K};
+Cross-party encoder f i
+c and predictor hi
+c, i ∈{1, . . . , K};
+Local encoder f i
+l =(f i
+lb, f i
+lt) and predictor hi
+l, i ∈{1, . . . , K};
+Output:
+Pretrained encoders f i
+c and f i
+l , i ∈{1, . . . , K}
+1: // Refer to Table II for implementation variations of adopting different
+SSL methods (i.e., SimSiam, BYOL, and MoCo)
+2: for each global iteration do
+3:
+▷Step 1
+⃝: Cross-party SSL
+4:
+for party i ∈{1, . . . , K} do
+5:
+for mini-batch xi
+al ∈Xi
+al do
+6:
+Compute zi
+c = f i
+c(xi
+al) and pi
+c = hi
+c(zi
+c)
+7:
+if i == 1 then
+8:
+Send zi
+c to parties {2, . . . , K};
+9:
+else
+10:
+Send zi
+c to party 1;
+11:
+end if
+12:
+Compute Li
+cross according to Eq. (5)
+13:
+Update model f i
+c and hi
+c
+14:
+end for
+15:
+end for
+16:
+▷Step 2
+⃝: Cross party-guided local SSL
+17:
+for party i ∈{1, . . . , K} do
+18:
+for mini-batch xi ∈Xi do
+19:
+vi
+1, vi
+2 = T (xi), T (xi)
+20:
+pi
+1,l, ˜
+zi
+2,l = hi
+l(f i
+l (vi
+1)), ˜
+f i
+l (vi
+2)
+21:
+Compute pi
+2,l and ˜
+zi
+1,l by swapping vi
+1 and vi
+2
+22:
+// zi
+1,c and zi
+2,c are for cross-party regularization
+23:
+zi
+1,c, zi
+2,c = f i
+c(vi
+1), f i
+c(vi
+2)
+24:
+Compute Li
+local according to Eq. (6)
+25:
+Update model f i
+l and hi
+l
+26:
+end for
+27:
+end for
+28:
+▷Step 3
+⃝: Partial model aggregation
+29:
+for party i ∈{1, . . . , K} do
+30:
+Send local model f i
+lt ◦hi
+l to the server
+31:
+end for
+32:
+The server performs f G
+lt ◦hG
+l = 1
+K
+PK
+i=1 f i
+lt ◦hi
+l
+33:
+The server sends f G
+lt ◦hG
+l back to all parties
+34: end for
+B. Federated Hybrid Self-Supervised Learning
+The core idea of FedHSSL is to utilize cross-party views
+(i.e., dispersed features) of samples aligned among parties and
+local views (i.e., augmentations) of samples within each party
+to improve the representation learning capability of the joint
+ML model through SSL. FedHSSL further utilizes generic
+features shared among parties to boost the joint model through
+partial model aggregation. Specifically, our FedHSSL consists
+of three steps:
+1) Cross-party SSL using aligned samples;
+2) Cross-party-guided local SSL using local samples;
+3) Partial model aggregation.
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+5
+Fig. 4. Overview of FedHSSL. Each party has a two-tower structured model. FedHSSL involves 3 steps: 1
+⃝cross-party SSL using aligned samples to train
+cross-party encoders f1
+c and f2
+c ; 2
+⃝each party i leverages local SSL with the guidance of fi
+c to train its local encoders fi
+lt and fi
+lb using local samples; 3
+⃝
+the server aggregates local top encoders f1
+lt and f2
+lt, and sends the aggregated encoder fG
+lt to all parties. We omit predictors in this figure for brevity.
+These steps combine the VFL-like cross-party SSL and the
+HFL-like model aggregation, and thus we call them Federated
+Hybrid SSL (FedHSSL) as a whole. The training procedure
+of FedHSSL is described in Algo. 1 and illustrated in Fig. 4.
+1) Cross-Party SSL: In VFL, each party can be thought
+of as holding one view of each aligned sample. These cross-
+party views naturally form positive sample pairs to train the
+SSL model (i.e., the cross-party encoder f i
+c and predictor hi
+c)
+of each party i. The cross-party SSL is described in Step 1
+⃝of
+Algo. 1. Specifically, for each party i, its input xi is converted
+by the cross-party encoder f i
+c to the representations zi
+c, which
+in turn is transformed to pi
+c via a predictor hi
+c. Then, party
+1 (with labels) exchanges its representations z1
+c with other
+parties’ representations zj
+c, j = 2, . . . , K. Upon receiving
+corresponding representations, each party i optimize its cross-
+party model via minimizing the cross-party loss Li
+cross:
+Li
+cross =
+
+
+
+1
+K−1
+PK
+j=2 LSSL(p1
+c, zj
+c),
+if i = 1.
+LSSL(pi
+c, z1
+c),
+otherwise.
+(5)
+where LSSL is a self-supervised loss and its specific form
+depends on the specific SSL method applies to FedHSSL (see
+Table II).
+FedHSSL adopts the same message-exchanging strategy as
+the conventional VFL, in which messages are only exchanged
+between active party 1 and passive parties, mainly for commu-
+nication efficiency. The difference is that FedHSSL exchanges
+no gradient between parties, which automatically implements
+the stop-gradient.
+2) Cross-Party-Guided Local SSL: We propose that each
+party i uses its trained cross-party encoder f i
+c as guidance to
+regularize its SSL training of local encoder f i
+l and predictor
+hi
+l using its local samples. The knowledge from the cross-
+party encoder helps improve the discriminative capability of
+f i
+l and hi
+l. Besides, it encourages the representations generated
+by local encoders of different parties to be aligned in the
+representation space, which is beneficial for the partial model
+aggregation (i.e., the next step).
+The cross-party-guided local SSL is described in Step 2
+⃝
+of Algo. 1. More specifically, for each party i, two randomly
+augmented views vi
+1 = T (xi) and vi
+2 = T (xi) of an input xi
+are converted by a local online encoder f i
+l and a local target
+encoder ˜
+f i
+l to the representations zi
+1,l and ˜
+zi
+2,l, respectively.
+T denotes a data augmentation strategy. A local predictor hi
+l
+then transforms zi
+1,l to pi
+1,l. Following [39], we swap vi
+1 and
+vi
+2 to obtain pi
+2,l and ˜
+zi
+1,l. Then, party i conducts the local SSL
+by minimizing the symmetrized loss:
+Li
+local =1
+2
+LSSL(pi
+1,l, ˜
+zi
+2,l) + LSSL(pi
+2,l, ˜
+zi
+1,l)
+
++
+γ
+LSSL(pi
+1,l, zi
+1,c) + LSSL(pi
+2,l, zi
+2,c)
+
+,
+(6)
+where LSSL(pi
+1,l, zi
+1,c) + LSSL(pi
+2,l, zi
+2,c) is the regularization
+imposed by the cross-party encoder f i
+c on the training of local
+encoder; zi
+1,c = f i
+c(vi
+1) and zi
+2,c = f i
+c(vi
+2); γ controls the
+strength of the regularization.
+The effect of cross-party guidance can be visualized in
+the representation space illustrated in Step 2
+⃝of Figure 4:
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+6
+representations independently learned by the local SSL of each
+party tend to disperse to different locations in the representa-
+tion space; with the guidance of the cross-party encoder, they
+are forced towards the position of cross-party encoders, which
+are trained to share similar behaviors in Step 1
+⃝.
+3) Partial Model Aggregation (PMA): An effective model
+aggregation requires that the models to be aggregated have
+sufficiently similar parameter distribution. The cross-party
+guided local SSL (Step 2
+⃝) encourages the local encoders and
+their corresponding predictors f i
+l ◦hi
+l, i ∈{1, . . . , K} to learn
+similar feature projection in the representation space, making
+f i
+l ◦hi
+l, i ∈{1, . . . , K} potential candidates for partial model
+aggregation.
+We further divide the local encoder f i
+l of each party i into a
+party-specific local bottom encoder f i
+lb and a local top encoder
+f i
+lt, and share f i
+lt ◦hi
+l with the server for aggregation. The
+rationale behind this design choice is two-fold: First, the local
+top encoder tends to learn a generic set of features, making it
+suitable to be shared among parties. Second, keeping the local
+bottom encoder private is beneficial for preventing parties’
+input features from being attacked (e.g., gradient inversion
+attack) by the server [41]. The model aggregation is described
+in Step 3
+⃝of Algo. 1.
+Implementation Variations for Different SSL Methods.
+We integrate SimSiam [40], BYOL [39], and MoCo [38],
+respectively, into FedHSSL to investigate the effectiveness of
+FedHSSL as a framework. The three SSL methods have three
+design differences leading to variations in the implementation
+of Algo. 1, which are summarized in Table II.
+V. EXPERIMENTS
+A. Experimental Setup
+In this section, we elaborate on the experimental setup,
+including datasets, models, baselines, and training details.
+Datasets & models. We conduct experiments on 4 datasets:
+NUSWIDE [42], Avazu [43], BHI [44], and Modelnet [45].
+The former 2 are tabular datasets, while the latter 2 are image
+datasets. For NUSWIDE, Avazu, and BHI, we split features
+of the same samples into 2 parts to simulate 2-party VFL
+scenario. For Modelnet, we divide samples describing the same
+objects into 4 groups to simulate 4-party VFL scenario. Table
+III shows chosen models corresponding to each dataset for all
+parties. All predictors consist of two fully-connected layers
+(FC). (see Appendix A for more detail on datasets)
+TABLE III
+MODELS FOR EVALUATION. EMB: EMBEDDING LAYER.
+Dataset
+local and cross-party
+encoders (fl and fc)
+local top encoder
+for PMA (flt)
+NUSWIDE
+2 FC
+top 1 layer of fl
+Avazu
+1 Emb + 2 FC
+top 1 layer of fl
+BHI
+ResNet-18
+top three blocks of fl
+Modelnet
+ResNet-18
+top three blocks of fl
+Training Details for FedHSSL. In addition to using
+all local samples for local SSL, we experiment with 40%
+aligned samples of a dataset to pretrain cross-party encoder
+and predictor (i.e., cross-party SSL) of FedHSSL. We show
+our experiment with 20% aligned samples for pretraining in
+Appendix C-C. γ is set to 0.5 for all datasets (we investigate
+the sensitivity of γ in Appendix C-A).
+Baselines. To evaluate the performance of FedHSSL, we
+adopt multiple baselines that cover the VFL methods we
+surveyed in Section II-B (see Table I).
+• Supervised. The first two baselines are LightGBM
+(LGB) [46] and FedSplitNN (see Figure 1), which are
+widely used supervised VFL models trained on labeled
+and aligned samples.
+• Semi-supervised. We adopt FedCVT [5] as another
+baseline. FedCVT leverages labeled aligned and local
+unaligned samples to train a joint model consisting of
+participating parties’ local encoders and a global classi-
+fier. FedCVT only works on the 2-party scenario.
+• Self-supervised using local data. We implement three
+baselines leveraging representative SSL methods, Sim-
+Siam, BYOL, and MoCo, respectively, to pretrain par-
+ticipating parties’ local encoders and predictors using
+only local samples. We name them FedLocalSimSiam,
+FedLocalBYOL, and FedLocalMoCo, respectively. The
+three baselines cover methods used in SS-VFL [8] and
+VFLFS [9].
+• Self-supervised using aligned data. VFed-SSD [10] pre-
+trains participating parties’ local encoders and predictors
+using only aligned unlabeled samples, which is covered
+by FedCSSL, a sub-procedure of FedHSSL.
+All baselines and FedHSSL use the same amount of labeled
+and aligned samples for training or fine-tuning. For each
+dataset, the local encoders of FedHSSL and baselines have
+the same model architecture.
+We evaluate FedHSSL methods and SSL baselines by fine-
+tuning its pretrained encoders and a classifier on top with a
+varying number of labeled samples ranging from 200 to 1000.
+Results are reported as averages over 5 trials (see more training
+details in Appendix B-A).
+Data Augmentation. For BHI and Modelnet, data are
+augmented following the setting described in [40]. For
+NUWISDE, 30% features are distorted by replacing the origi-
+nal value with a random value as described in [47]. For Avazu,
+the continuous features are treated the same way as those of
+the NUSWIDE, while the categorical features are replaced by
+extra untrained embedding vectors as described in [48].
+B. Main Results
+We compare the performance of our FedHSSL framework
+integrated with SimSiam, BYOL, and MoCo, respectively,
+with the performance of baselines on four datasets. Both Table
+IV and Figure 5 show the results.
+Figure 5 illustrates that FedHSSL methods (red) gener-
+ally enhance performance compared with baselines by large
+margins for all datasets. For example, as reported in Table
+IV, with 200 labeled samples, the performance of FedHSSL-
+SimSiam is improved by 0.102 on NUSWIDE, by 0.048 on
+Avazu, by 0.045 on BHI and by 0.085 on Modelnet, respec-
+tively, compared with FedLocalSimSiam. Similarly, FedHSSL-
+BYOL outperforms FedLocalBYOL by 0.084, 0.055, 0.031,
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+7
+TABLE IV
+PERFORMANCE COMPARISON OF FEDHSSL (INTEGRATED WITH SIMSIAM, BYOL, MOCO, RESPECTIVELY) AND BASELINES WITH A VARYING NUMBER
+OF LABELED SAMPLES. TOP-1 ACCURACY IS USED AS THE METRIC FOR NUSWIDE AND MODELNET, WHILE AUC AND F1-SCORE ARE METRICS FOR
+AVAZU AND BHI, RESPECTIVELY. % OF LABELED AND ALIGNED SAMPLES APPLIES ONLY TO FEDHSSL.
+# of labeled and aligned samples:
+200
+400
+600
+800
+1000
+# of parties
+NUSWIDE
+(Top1-Acc)
+LGB
+0.425 ± 0.015
+0.465 ± 0.028
+0.526 ± 0.012
+0.556 ± 0.013
+0.587 ± 0.012
+2
+FedSplitNN
+0.495 ± 0.022
+0.535 ± 0.027
+0.560 ± 0.015
+0.573 ± 0.014
+0.591 ± 0.013
+FedCVT
+0.522 ± 0.019
+0.555 ± 0.013
+0.602 ± 0.003
+0.621 ± 0.006
+0.629 ± 0.014
+FedLocalSimSiam
+0.505 ± 0.027
+0.536 ± 0.018
+0.596 ± 0.013
+0.603 ± 0.019
+0.612 ± 0.017
+FedLocalBYOL
+0.514 ± 0.032
+0.527 ± 0.029
+0.585 ± 0.022
+0.599 ± 0.028
+0.606 ± 0.027
+FedLocalMoCo
+0.566 ± 0.033
+0.596 ± 0.022
+0.625 ± 0.017
+0.634 ± 0.017
+0.639 ± 0.019
+FedHSSL-SimSiam
+0.607 ± 0.003
+0.641 ± 0.008
+0.651 ± 0.006
+0.662 ± 0.006
+0.670 ± 0.003
+FedHSSL-BYOL
+0.598 ± 0.025
+0.624 ± 0.034
+0.645 ± 0.012
+0.659 ± 0.007
+0.664 ± 0.004
+FedHSSL-MoCo
+0.615 ± 0.021
+0.642 ± 0.012
+0.658 ± 0.003
+0.668 ± 0.005
+0.670 ± 0.006
+Avazu
+(AUC)
+LGB
+0.563 ± 0.016
+0.568 ± 0.019
+0.595 ± 0.020
+0.621 ± 0.012
+0.620 ± 0.012
+2
+FedSplitNN
+0.588 ± 0.031
+0.581 ± 0.013
+0.599 ± 0.019
+0.595 ± 0.008
+0.615 ± 0.006
+FedCVT
+0.594 ± 0.026
+0.606 ± 0.022
+0.608 ± 0.029
+0.637 ± 0.015
+0.647 ± 0.013
+FedLocalSimSiam
+0.575 ± 0.007
+0.585 ± 0.020
+0.591 ± 0.016
+0.608 ± 0.026
+0.629 ± 0.024
+FedLocalBYOL
+0.560 ± 0.029
+0.597 ± 0.015
+0.600 ± 0.024
+0.601 ± 0.004
+0.605 ± 0.013
+FedLocalMoCo
+0.573 ± 0.024
+0.591 ± 0.017
+0.584 ± 0.027
+0.596 ± 0.004
+0.601 ± 0.011
+FedHSSL-SimSiam
+0.623 ± 0.016
+0.636 ± 0.026
+0.649 ± 0.008
+0.648 ± 0.014
+0.663 ± 0.007
+FedHSSL-BYOL
+0.615 ± 0.031
+0.634 ± 0.028
+0.631 ± 0.016
+0.630 ± 0.013
+0.648 ± 0.010
+FedHSSL-MoCo
+0.616 ± 0.014
+0.632 ± 0.011
+0.638 ± 0.017
+0.641 ± 0.009
+0.658 ± 0.007
+BHI
+(F1-Score)
+FedSplitNN
+0.731 ± 0.003
+0.738 ± 0.002
+0.754 ± 0.002
+0.752 ± 0.002
+0.760 ± 0.005
+2
+FedCVT
+0.742 ± 0.013
+0.747 ± 0.011
+0.755 ± 0.007
+0.758 ± 0.006
+0.782 ± 0.003
+FedLocalSimSiam
+0.760 ± 0.010
+0.764 ± 0.006
+0.788 ± 0.005
+0.785 ± 0.004
+0.798 ± 0.006
+FedLocalBYOL
+0.760 ± 0.007
+0.769 ± 0.008
+0.781 ± 0.005
+0.786 ± 0.005
+0.796 ± 0.003
+FedLocalMoCo
+0.763 ± 0.003
+0.771 ± 0.008
+0.784 ± 0.012
+0.793 ± 0.002
+0.800 ± 0.008
+FedHSSL-SimSiam
+0.805 ± 0.009
+0.816 ± 0.006
+0.822 ± 0.003
+0.823 ± 0.002
+0.830 ± 0.002
+FedHSSL-BYOL
+0.791 ± 0.011
+0.806 ± 0.004
+0.821 ± 0.002
+0.822 ± 0.004
+0.825 ± 0.003
+FedHSSL-MoCo
+0.806 ± 0.007
+0.817 ± 0.002
+0.822 ± 0.004
+0.829 ± 0.004
+0.831 ± 0.002
+Modelnet
+(Top1-Acc)
+FedSplitNN
+0.612 ± 0.019
+0.684 ± 0.011
+0.733 ± 0.002
+0.765 ± 0.007
+0.771 ± 0.005
+4
+FedLocalSimSiam
+0.622 ± 0.022
+0.698 ± 0.017
+0.761 ± 0.009
+0.779 ± 0.004
+0.797 ± 0.006
+FedLocalBYOL
+0.635 ± 0.004
+0.707 ± 0.010
+0.760 ± 0.007
+0.775 ± 0.009
+0.794 ± 0.007
+FedLocalMoCo
+0.659 ± 0.022
+0.722 ± 0.012
+0.784 ± 0.008
+0.798 ± 0.007
+0.815 ± 0.007
+FedHSSL-SimSiam
+0.707 ± 0.009
+0.772 ± 0.006
+0.806 ± 0.008
+0.826 ± 0.007
+0.833 ± 0.006
+FedHSSL-BYOL
+0.681 ± 0.005
+0.752 ± 0.002
+0.800 ± 0.008
+0.807 ± 0.007
+0.825 ± 0.009
+FedHSSL-MoCo
+0.705 ± 0.016
+0.764 ± 0.012
+0.804 ± 0.006
+0.822 ± 0.003
+0.830 ± 0.007
+and 0.046, respectively, on the 4 datasets; FedHSSL-MoCo
+outperforms FedLocalMoCo by 0.049, 0.043, 0.043, and
+0.046, respectively, on the 4 datasets. Besides, with 200
+labeled samples, the best-performing FedHSSL method out-
+performs FedCVT by 0.093 on NUSWIDE, 0.029 on Avazu,
+and 0.063 on BHI, respectively.
+Fig. 5.
+Performance comparison of FedHSSL (integrated with SimSiam,
+BYOL, and MoCo, respectively) and baselines.
+With more labeled samples involved in fine-tuning, the
+performance improvement of FedHSSL is still noticeable.
+For example, with 1000 labeled samples, the performance of
+FedHSSL-SimSiam is improved by 0.058 on NUSWIDE, by
+0.034 on Avazu, by 0.032 on BHI, and by 0.036 on Modelnet,
+respectively, compared with FedLocalSimSiam.
+C. Ablation Study
+To study the effectiveness of each step in FedHSSL, we
+consider two sub-procedures of FedHSSL: (i). FedCSSL,
+which is the cross-party SSL step in Algo. 1 (i.e., Step 1
+⃝). (ii).
+FedGSSL, which is FedCSSL + cross-party-guided local SSL
+step in Algo. 1 (i.e., Step 1
+⃝+ Step 2
+⃝). We evaluate FedCSSL
+and FedGSSL in the same way as that of FedHSSL: pretrained
+encoders are fine-tuned by minimizing Eq (1) using aligned
+and labeled data.
+The Effectiveness of Each Step Involved in FedHSSL.
+Figure 6 illustrates that for each SSL method (i.e., SimSiam,
+BYOL, and MoCo on each column), FedCSSL consistently
+outperforms its corresponding FedLocalSSL as the number of
+labeled samples increases on the four datasets. By integrating
+local SSL into FedCSSL, FedGSSL generally enhances the
+performance over FedCSSL. The enhancement is significant
+on NUSWIDE (by ≈0.05 averagely) and noticeable on the
+other three datasets. By additionally conducting partial model
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+8
+TABLE V
+STUDY THE IMPACT OF CROSS-PARTY ENCODERS ON (1) LOCAL SSL AND (2) PARTIAL MODEL AGGREGATION (PMA). THE LOCAL ENCODERS OF
+FEDLOCALSIMSIAM, FEDLOCALBYOL, AND FEDLOCALMOCO ARE PRETRAINED USING LOCAL SIMSIAM, BYOL, AND MOCO, RESPECTIVELY.
+WHILE THE LOCAL ENCODERS OF FEDGSSL-SIMSIAM∗, FEDGSSL-BYOL∗, AND FEDGSSL-MOCO∗ARE PRETRAINED USING cross-party-guided
+SIMSIAM, BYOL, AND MOCO, RESPECTIVELY. ALL METHODS ARE FINETUNED USING 200 LABELED SAMPLES. THE DOWN ARROW ↓INDICATES THE
+PERFORMANCE DECREASES WHEN THE CORRESPONDING METHODS COMBINE WITH PMA. THE UP ARROW ↑INDICATES OTHERWISE.
+NUSWIDE
+Avazu
+BHI
+Modelnet
+Method
+−
+w/ PMA
+−
+w/ PMA
+−
+w/ PMA
+−
+w/ PMA
+FedLocalSimSiam
+0.505
+0.537 ↑
+0.580
+0.582 ↑
+0.760
+0.743 ↓
+0.622
+0.599 ↓
+FedGSSL-SimSiam∗
+0.543
+0.553 ↑
+0.606
+0.609 ↑
+0.783
+0.789 ↑
+0.679
+0.688 ↑
+FedLocalBYOL
+0.514
+0.512 ↓
+0.560
+0.575 ↑
+0.760
+0.756 ↓
+0.635
+0.629 ↓
+FedGSSL-BYOL∗
+0.543
+0.544 ↑
+0.591
+0.606 ↑
+0.778
+0.785 ↑
+0.640
+0.656 ↑
+FedLocalMoCo
+0.566
+0.563 ↓
+0.573
+0.587 ↑
+0.763
+0.760 ↓
+0.659
+0.639 ↓
+FedGSSL-MoCo∗
+0.613
+0.612 ↓
+0.603
+0.611 ↑
+0.787
+0.795 ↑
+0.664
+0.674 ↑
+aggregation (PMA), FedHSSL further boosts the performance
+on the four datasets. These results demonstrate the effective-
+ness of all three steps involved in FedHSSL.
+The Impact of Cross-Party Encoders’ Guidance on
+Local SSL and Model Aggregation. For a fair comparison,
+FedLocalSSL and FedGSSL∗all use pretrained local encoders
+during fine-tuning. The star ∗distinguishes FedGSSL∗from
+FedGSSL, which leverages both cross-party and local encoders
+for fine-tuning.
+Table V reports that, for each SSL method (i.e., SimSiam,
+BYOL, and MoCo), FedGSSL∗consistently outperforms its
+corresponding FedLocalSSL on all datasets. For example,
+FedGSSL-SimSiam outperforms FedLocalSimSiam by 0.038,
+0.026, 0.023, and 0.057 on the four datasets, respectively.
+This demonstrates the effectiveness of the cross-party SSL in
+improving the representation learning of local SSL.
+We further analyze the impact of cross-party encoders
+on partial model aggregation (PMA). Table V reports that
+directly combining FedLocalSSL and PMA may jeopar-
+Fig. 6. Ablations on FedHSSL. We compare the performance of FedCSSL
+(blue), FedGSSL (green), and FedHSSL(red) for SimSam, BYOL, and MoCo,
+respectively. These methods are pretrained with all local samples and 40%
+aligned samples and finetuned with a varying number of labeled and aligned
+samples. FedLocalSimSiam, FedLocalBYOL, and FedLocalMoCo are base-
+lines for comparison.
+dize the overall performance. For example, the performance
+of FedLocalSimSiam+PMA decreases by around 2% com-
+pared with that of FedLocalSimSiam on BHI and Model-
+net. Similar trends can be found on FedLocalBYOL+PMA
+and FedLocalMoCo+PMA. Assisted by the cross-party en-
+coder, we observe a noticeable performance improvement
+on FedGSSL∗+PMA over FedGSSL∗for all SSL methods
+generally across all datasets. This manifests that the guidance
+of cross-party encoders mitigates the heterogeneity among
+features of different parties so that it positively impacts PMA.
+D. Communication Efficiency
+The pretraining of FedHSSL utilizes all aligned samples,
+which results in higher communication overhead compared to
+conventional VFL that only uses labeled aligned samples. To
+mitigate this communication overhead, each party in FedHSSL
+can perform multiple updates in the cross-party SSL step (Step
+1
+⃝of Figure 4) to reduce communication rounds. Specifically,
+after received feature representations zc from other parties,
+each party conducts multiple local SSL updates by minimizing
+cross-party SSL loss (5) using zc. This strategy is similar to
+FedBCD [49], in which each party uses received gradients to
+update local model for multiple local updates.
+Fig. 7. Comparison of the performance of FedHSSL under different numbers
+of local updates in the cross-party SSL step. Results are obtained by averaging
+three rounds of experiments with different random seeds. 20% training
+samples are aligned for cross-party SSL and 200 labeled samples are used in
+the fine-tuning. SimSiam is used as the default SSL method.
+We investigate the impact of multiple local updates in the
+cross-party SSL (Step 1
+⃝of FedHSSL) on the communication
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+9
+efficiency by experimenting with various numbers of local
+updates in the range of 1, 4, 8. We denote e as the number
+of local updates. For these experiments, we adopt SimSiam as
+the base SSL method for FedHSSL.
+Figure 7 illustrates the results. It shows that, with larger
+e, FedHSSL generally achieves better main task performance
+with the same global iterations on 4 datasets. However, on
+BHI, FedHSSL with 8 local updates performs worse than
+FedHSSL with 4 local updates, indicating that larger e do
+not necessarily lead to better performance and an appropriate
+e should be carefully chosen in order to achieve the best
+performance.
+VI. PRIVACY ANALYSIS ON LABEL INFERENCE ATTACK
+In this section, we investigate whether FedHSSL, as a self-
+supervised VFL framework, can achieve a better privacy-utility
+trade-off against the label inference attack compared with
+baseline methods. We adopt SimSiam as the base SSL method
+for FedHSSL. Each party in FedHSSL pretrains its local model
+using all local samples and 20% aligned samples. Supervised
+VFL training (including fine-tuning) is conducted using 200
+aligned and labeled samples.
+A. Threat Model
+We first discuss the threat model, including the attacker’s
+objective, capability, knowledge, and attacking methods.
+Adversary’s objective. We assume that party 2 is the
+adversary who wants to infer labels y1 owned by party 1.
+According to the nature of dispersed data in our VFL
+setting, there can be three adversary objectives [50]: (i) labels
+owned by the active party; (ii) features owned by the active
+party; (iii) features owned by the passive party. We focus
+on label inference attack where a passive party (i.e., party
+2) is the adversary and it wants to infer labels y1 owned by
+the active party (i.e., party 1) for the reasons that: (i) in the
+practical VFL setting, parties have black-box knowledge on
+the model information of each other, and thus it is highly
+challenging to party 1 to infer the features x2 of party 2 [33];
+(ii) during model aggregation of FedHSSL, parties only share
+their local top encoders with the server while keeping the local
+bottom encoders private, in which case the server is not able to
+reconstruct features of any party [41]; (iii) the labels owned by
+the active party is an important target for adversaries in VFL
+compared to HFL. Because in real-world VFL applications
+such as finance and advertisement, the labels may contain
+sensitive user information or are valuable assets.
+Adversary’s capability. We assume that the adversary party
+2 is semi-honest such that the adversary faithfully follows the
+vertical federated training protocol but it may mount privacy
+attacks to infer the private data of other parties.
+Adversary’s knowledge. In VFL, participating parties typ-
+ically have blackbox knowledge about each other. However,
+adversaries may guess some of the knowledge about others
+according to the information they have. In this work, we
+assume that the information about the model structure, input
+shape and number of classes supported by the active party’s
+task is shared among parties. We also assume party 2 has a
+few auxiliary labeled samples Daux
+B. Privacy attacking and protection mechanism
+Privacy attacking mechanism. There are mainly two kinds
+of label inference attacks in the VFL setting: the gradient-
+based attacks [34] and the model-based attacks [35]. The for-
+mer applies only to binary classification and can be thwarted
+effectively by state-of-the-art privacy protections (e.g., Mar-
+vell [34]), while the latter is difficult to be prevented. In this
+work, we study the model completion (MC) attack [35], the
+representative of the model-based label inference attack. MC
+attack involves three steps:
+1) Party 1 and party 2 conduct federated training, which
+can be FedHSSL pertaining or fine-tuning phase of
+downstream tasks. Upon the completion of training,
+party 2 obtains trained local models f 2;
+2) Party 2 constructs a complete attacking model AFedHSSL
+by training an inference head g2 on top of f 2 using few
+auxiliary labeled data;
+3) Party 2 infers labels of its inference data x2
+inf through
+y2
+inf = AFedHSSL(x2
+inf) during inference phase.
+Adversary party 2 can launch MC during the pretraining
+phase of FedHSSL or fine-tuning after FedHSSL. In this
+section, we study both scenarios.
+Privacy protection mechanism. we adopt isotropic Gaus-
+sian noise (ISO) [34] as the protection method. Specifically,
+party 1 perturbs model information d ∈Rb×m exposed to the
+adversary (i.e., party 2) by applying ISO to d, which can be
+forward embedding and backward gradients:
+ISO(d) = d + εiso
+(7)
+where εiso ∼N(0, σ2
+iso) is the noise added to protect privacy,
+σiso = (λ · ||dmax||2)/√m is the standard deviation, and
+||dmax||2 is the largest value in the batch-wise 2-norms ||d||2
+of d, λ is the noise amplifier and controls the strength of the
+ISO protection. We refer interesting readers to [34] for details
+on MC attack and ISO protection.
+Defending against Model Completion This experiment
+is conducted on FedHSSL-SimSiam pretraining. On the one
+hand, the adversary party 2 trains an attacking model AFedHSSL
+according to the procedure described in Section VI-B. On the
+other hand, party 1 applies ISO to the output of its cross-party
+encoder and parameters of its local top encoder to mitigate
+privacy leakage. After pretraining, party 2 leverages AFedHSSL
+to predict labels of incoming samples.
+For a fair comparison, we assume the adversary trains
+a baseline attacking model ASimSiam, pretrained by normal
+SimSiam, using Daux. Intuitively, ASimSiam can be thought of
+as the adversary’s prior knowledge on labels, while AFedHSSL
+is the posterior knowledge on labels after the MC attacking.
+Table VI compares ASimSiam and AFedHSSL w/o and w/
+ISO protection. Both two MC attacks leverage 80 labeled
+auxiliary samples to train attacking models. Table VI reports
+that AFedHSSL w/o ISO outperforms ASimSiam by 0.072 on
+NUSWIDE and by ≤0.012 on the other 3 datasets, indicating
+that FedHSSL leaks label privacy. When ISO protection is
+applied with properly chosen λp, the performance of AFedHSSL
+drops below that of ASimSiam on 3 out of 4 datasets (except
+NUSWIDE), and the losses of main task performance on
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+10
+TABLE VI
+COMPARISON OF ASIMSIAM AND AFEDHSSL W/O AND W/ ISO. THIS TABLE
+ALSO REPORTS THE MAIN TASK PERFORMANCE OF FEDHSSL-SIMSIAM
+EVALUATED ON 200 ALIGNED AND LABELED SAMPLES. λp IS THE NOISE
+LEVEL OF ISO APPLIED TO FEDHSSL PRETRAINING. WE USE LABEL
+RECOVERY ACCURACY TO MEASURE THE PERFORMANCE OF ASIMSIAM
+AND AFEDHSSL.
+w/o ISO protection
+w/ ISO protection
+Dataset
+ASimSiam
+AFedHSSL
+Main
+AFedHSSL
+Main
+λp
+NUSWIDE
+0.439
+0.511
+0.574
+0.465
+0.539
+0.4
+Avazu
+0.545
+0.547
+0.616
+0.524
+0.617
+0.1
+BHI
+0.716
+0.726
+0.803
+0.682
+0.786
+0.1
+Modelnet
+0.429
+0.441
+0.678
+0.426
+0.658
+0.1
+the 3 datasets are small (≤0.02). This manifests that the
+label leakage of FedHSSL can be prevented if protection
+mechanisms are properly applied.
+Analyzing Privacy-Utility Trade-Off. This experiment is
+conducted on the fine-tuning phase after FedHSSL pretraining.
+We compare FedHSSL-SimSiam with FedSplitNN and FedLo-
+calSimSiam in terms of their privacy-utility trade-offs coming
+from the competition between the MC attack and the ISO
+protection during fine-tuning. The fine-tuning of FedHSSL-
+SimSiam and FedLocalSimSiam is conducted based on the two
+methods’ pretrained models, respectively, whereas FedSplitNN
+involves no pretraining. For each method, Party 1 applies ISO
+to gradients sent back to the passive party 2 during fine-
+tuning/training for protection. Upon the completion of fine-
+tuning/training, party 2 trains a MC attacking model based on
+its finetuned/trained local model using Daux.
+From the 4 figures (in Table VII), we observe that, on
+each dataset, FedHSSL-SimSiam (red) achieves the best main
+task performance but fails to preserve the most label privacy.
+Thus, it is unclear whether FedHSSL-SimSiam has the best
+privacy-utility trade-off curve. We adopt Calibrated Averaged
+Performance (CAP) [51] to quantify the privacy-utility trade-
+off curve of a privacy-protected method so that we can com-
+pare trade-offs of different methods based on a single metric.
+We provide the definition of Calibrated Averaged Performance
+as follows.
+Definition 1 (Calibrated Averaged Performance). For a given
+protection mechanism Mλ with a protection strength parame-
+ter λ and an attacking mechanism A, the Calibrated Averaged
+Performance (CAP) for a given privacy-utility trade-off curve
+is defined as follows,
+CAP(Mλ∈{λ1,...,λv}, A) = 1
+v
+λv
+X
+λ=λ1
+U( ¯
+Gλ) ∗E( ¯
+Dλ, D),
+(8)
+where ¯
+Gλ = Mλ(G) is the VFL model protected by Mλ, ¯
+Dλ =
+A( ¯
+Gλ, D) is the data recovered by the attacking mechanism
+A from ¯
+Gλ given the private data D as input, U(·) measures
+the main task utility (e.g., accuracy) of a given model, and
+E(·) measures the distance between recovered data ¯
+Dλ and
+original data D.
+Table VII reports that, on each dataset, FedHSSL-SimSiam
+has the highest CAP value, and thus it achieves the best trade-
+off between privacy and main task performance. The reason
+TABLE VII
+COMPARISON OF CALIBRATED AVERAGED PERFORMANCE (CAP) OF
+ISO-PROTECTED FEDSPLITNN, FEDLOCALSIMSIAM, AND
+FEDHSSL-SIMSIAM AGAINST THE MC ATTACK ON 4 DATASETS. CAP
+QUANTIFIES THE PRIVACY-UTILITY TRADE-OFF CURVES VISUALIZED IN
+THE ABOVE 4 FIGURES. The higher the CAP value is, the better the method
+is at preserving privacy without compromising the main task performances.
+NUMBERS ON THE FIGURES ARE VALUES OF ISO PROTECTION STRENGTH
+λf CHOSEN FROM [1, 5, 25]. A better trade-off curve should be more toward
+the bottom-right corner of each figure. THE HORIZONTAL DASHED LINE
+DENOTES THE PRIOR KNOWLEDGE OF THE ADVERSARY ON THE LABELS
+OF PARTY 1.
+Dataset
+FedSplitNN
+FedLocalSimSiam
+FedHSSL-SimSiam
+NUSWIDE
+0.264
+0.258
+0.284
+Avazu
+0.238
+0.262
+0.262
+BHI
+0.242
+0.221
+0.246
+Modelnet
+0.342
+0.334
+0.348
+leading to this outcome is that the amount of performance
+enhanced by FedHSSL-SimSiam outweighs the amount of
+label leakage worsened by FedHSSL-SimSiam to the ex-
+tent that FedHSSL-SimSiam obtains better CAP values than
+baselines. With more aligned samples (i.e., 40%) used for
+pretraining, FedHSSL-SimSiam generally achieves better main
+task performance while leaking more label privacy (see Table
+XI in Appendix C-D), leading to similar CAP values (see Table
+XII in Appendix C-D). These experimental results manifest
+that the number of aligned samples is a crucial factor that
+impacts the privacy-utility trade-off of FedHSSL, and should
+be considered when applying FedHSSL.
+VII. CONCLUSION
+We propose a federated hybrid SSL framework (FedHSSL)
+that leverages all aligned and unaligned samples through SSL
+and exploits invariant features shared among parties through
+partial model aggregation to improve the overall performance
+of the VFL joint model. FedHSSL works with representative
+SSL methods. The experimental results show that FedHSSL
+outperforms baselines by a large margin. The ablation demon-
+strates the effectiveness of each step involved in FedHSSL.
+We analyze the label leakage of FedHSSL under the Model
+Completion (MC) attack and apply ISO to defend against MC
+attack. Experimental results show that FedHSSL achieves the
+best privacy-utility trade-off compared with baselines.
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+11
+APPENDIX A
+DATASETS
+NUSWIDE contains 634-dimensional low-level image fea-
+tures extracted from Flickr and 1000-dimensional correspond-
+ing text features. To simulate the VFL setting, one party holds
+image features, and the other holds text features. There are
+81 ground truth labels, and we build datasets with our desired
+setting by selecting a subset of these labels. Here ten labels are
+for the multi-class classification task with 10 selected labels.
+Avazu is for predicting click-through rate. It contains 14
+categorical features and 8 continuous features. We transform
+categorical features into embeddings with fixed dimensions
+(32 in this work) before feeding them the model. To simulate
+the VFL setting, we equally divide both kinds of features into
+two parts so that each party has a mixture of categorical and
+continuous features. To reduce the computational complexity,
+we randomly select 100000 samples as the training set and
+20000 samples as the test set.
+BHI (Breast Histopathology Images) is used for binary
+classification task. It contains 277,524 slide-mount images of
+breast cancer specimens from several patients. A positive label
+indicates Invasive Ductal Carcinoma (IDC) positive, which is
+a subtype of breast cancer. The ratio between positive and
+negative samples is around 1 : 2.5. We randomly select data
+of 80% patients as the training set and the rest as the test
+set. To simulate the VFL setting, we choose two images of a
+patient with the same label to form a VFL sample, and each
+party is assigned one image.
+Modelnet is a multiview dataset with 40 classes. We select
+samples of the first 10 classes for our experiments. Each class
+contains several 3D objects. We generate 12 images for each
+object, following the procedure described in [52]. To simulate
+the VFL setting, we split 12 views of each object sequentially
+into 4 groups so that each contains 3 nearby views, and thereby
+each party holds three views of an object. To expand the
+dataset and make the task harder, we randomly select an image
+from each party and build a VFL sample for each object. This
+procedure is the same for both the train and test sets. In the
+end, we have 24630 training samples and 6204 test samples.
+TABLE VIII
+DETAILED INFORMATION OF THE DATASETS AND CORRESPONDING
+MODELS.
+Dataset
+Data Type
+Classes
+# of Parties
+Metric
+NUSWIDE
+Tabular
+10
+2
+Top-1 Acc
+Avazu
+Tabular
+2
+2
+AUC
+BHI
+Image
+2
+2
+F1-score
+Modelnet
+Image
+10
+4
+Top-1 Acc
+APPENDIX B
+EXPERIMENTAL SETUP
+A. Training Details
+For SSL training, cross-party SSL and guided local SSL
+are conducted alternately. Multiple epochs can be executed
+for both steps to reduce communication costs. In this work,
+we set 1 epoch for cross-party SSL and guided local SSL
+training. Partial model aggregation is performed directly after
+the guided SSL. The number of global iterations for FedHSSL
+prertraining is set to 10 for NUSWIDE and 40 for other
+datasets.
+All encoders include a projector consisting of 3 fully-
+connected layers (FC), which is only used in the pretraining
+phase. For FedHSSL-MoCo, the dimension of the projector is
+[512, 512, 128]. For FedHSSL-SimSiam and FedHSSL-BYOL,
+the dimension of the projector is [512, 512, 512], and an ad-
+ditional 2-FC predictor with the dimension [128, 512] is used.
+For FedHSSL-MoCo, the temperature of the InfoNCE loss is
+0.5, the size of the dictionary is 4096, and the momentum is
+0.99. For FedHSSL-BYOL, the momentum is 0.995.
+For pretraining, the batch size is 512 for all datasets. For
+the finetuning, the batch size is 512 for NUSWIDE and Avazu
+and 128 for BHI and Modelnet. The learning rate used in the
+finetuning stage includes [0.005, 0.01, 0.03], and the best result
+is selected. All experiments are repeated with 5 different seeds,
+and the average results are reported.
+APPENDIX C
+MORE EXPERIMENTAL RESULTS
+A. The Impact of Cross-Party Regularization λ on Local SSL
+and Model Aggregation
+We use SimSiam as the base SSL method for FedGSSL∗
+and FedHSSL∗to investigate the impact of γ. All local data
+and 20% aligned data are used for the pretraining. 200 labeled
+and aligned samples are used for the finetuning.
+Fig. 8.
+Main task performance of FedGSSL∗and FedHSSL∗(use only
+local encoder) pretrained by various γ values. γ = 0 means no cross-party
+regularization is applied to local SSL.
+Fig. 8 depicts the main task performance of FedGSSL∗and
+FedHSSL∗using pretrained local encoders when γ increases.
+From Fig. 8, we observe that: i) the performance of FedGSSL∗
+and FedHSSL∗increase noticeably when λ > 0 than those
+of FedGSSL∗and FedHSSL∗when λ = 0 on four datasets,
+demonstrating that the cross-party regularization helps en-
+hance the performance. ii) FedHSSL∗constantly outperforms
+FedGSSL∗on four datasets when the λ is chosen from a
+proper range (i.e., 0.5 to 1.5 in this experiment), indicating
+that the cross-party regularization has a positive impact on the
+partial model aggregation when properly choosing λ. iii) the
+value of λ that leads to the best performance is different for
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+12
+TABLE IX
+PERFORMANCE COMPARISON OF FEDCSSL-SIMSIAM AND FEDLOCALSIMSIAM USING VARYING PERCENTAGES OF TRAINING SAMPLES (% OF T.S.)
+FOR PRETRAINING AND 200 LABELED SAMPLES FOR FINETUNING.
+Dataset
+NUSWIDE
+Avazu
+BHI
+Modelnet
+% of T.S.:
+20%
+40%
+100%
+20%
+40%
+100%
+20%
+40%
+100%
+20%
+40%
+100%
+FedLocalSimSiam
+0.523
+0.517
+0.505
+0.565
+0.566
+0.575
+0.748
+0.755
+0.760
+0.598
+0.609
+0.622
+FedCSSL-SimSiam
+0.535
+0.550
+0.562
+0.615
+0.622
+0.627
+0.762
+0.778
+0.805
+0.652
+0.684
+0.686
+Enhancement
+↑0.012
+↑0.033
+↑0.057
+↑0.050
+↑0.056
+↑0.052
+↑0.014
+↑0.023
+↑0.045
+↑0.054
+↑0.075
+↑0.064
+TABLE X
+PERFORMANCE COMPARISON OF FEDHSSL AND BASELINES WITH DIFFERENT NUMBER OF LABELED SAMPLES. FOR FEDHSSL, RESULTS OF USING
+20% AND 40% ALIGNED SAMPLES ARE GIVEN. TOP-1 ACCURACY IS USED AS THE METRIC FOR NUSWIDE AND MODELNET, WHILE AUC AND
+F1-SCORE ARE THE METRICS FOR AVAZU AND BHI, RESPECTIVELY. % OF ALIGNED SAMPLES APPLIES ONLY TO FEDHSSL.
+# of labeled aligned samples:
+200
+400
+600
+800
+1000
+% of aligned samples:
+20%
+40%
+20%
+40%
+20%
+40%
+20%
+40%
+20%
+40%
+NUSWIDE
+(Top1-Acc)
+LR
+0.530
+0.558
+0.580
+0.589
+0.606
+LGB
+0.425
+0.465
+0.526
+0.556
+0.587
+FedSplitNN
+0.495
+0.535
+0.560
+0.573
+0.591
+FedLocalSimSiam
+0.505
+0.536
+0.596
+0.603
+0.612
+FedLocalBYOL
+0.514
+0.527
+0.585
+0.599
+0.606
+FedLocalMoCo
+0.566
+0.596
+0.625
+0.634
+0.639
+FedHSSL-SimSiam
+0.574
+0.607
+0.624
+0.641
+0.636
+0.651
+0.643
+0.662
+0.654
+0.670
+FedHSSL-BYOL
+0.551
+0.598
+0.592
+0.624
+0.617
+0.645
+0.633
+0.659
+0.640
+0.664
+FedHSSL-MoCo
+0.611
+0.615
+0.636
+0.642
+0.653
+0.658
+0.662
+0.668
+0.665
+0.670
+Avazu
+(AUC)
+LR
+0.554
+0.574
+0.596
+0.602
+0.575
+LGB
+0.563
+0.568
+0.595
+0.621
+0.620
+FedSplitNN
+0.588
+0.581
+0.599
+0.595
+0.615
+FedLocalSimSiam
+0.575
+0.585
+0.591
+0.608
+0.629
+FedLocalBYOL
+0.560
+0.597
+0.600
+0.601
+0.605
+FedLocalMoCo
+0.573
+0.591
+0.584
+0.596
+0.601
+FedHSSL-SimSiam
+0.616
+0.623
+0.625
+0.636
+0.631
+0.649
+0.644
+0.648
+0.657
+0.663
+FedHSSL-BYOL
+0.610
+0.615
+0.617
+0.634
+0.626
+0.631
+0.630
+0.630
+0.641
+0.648
+FedHSSL-MoCo
+0.614
+0.616
+0.623
+0.632
+0.635
+0.638
+0.637
+0.641
+0.646
+0.658
+BHI
+(F1-Score)
+FedSplitNN
+0.731
+0.738
+0.754
+0.752
+0.760
+FedLocalSimSiam
+0.760
+0.764
+0.788
+0.785
+0.798
+FedLocalBYOL
+0.760
+0.769
+0.781
+0.786
+0.796
+FedLocalMoCo
+0.763
+0.771
+0.784
+0.793
+0.800
+FedHSSL-SimSiam
+0.803
+0.805
+0.799
+0.816
+0.816
+0.822
+0.824
+0.823
+0.823
+0.830
+FedHSSL-BYOL
+0.788
+0.791
+0.793
+0.806
+0.808
+0.821
+0.811
+0.822
+0.817
+0.825
+FedHSSL-MoCo
+0.797
+0.806
+0.800
+0.817
+0.815
+0.822
+0.817
+0.829
+0.818
+0.831
+Modelnet
+(Top1-Acc)
+FedSplitNN
+0.612
+0.684
+0.733
+0.765
+0.771
+FedLocalSimSiam
+0.622
+0.698
+0.761
+0.779
+0.797
+FedLocalBYOL
+0.635
+0.707
+0.760
+0.775
+0.794
+FedLocalMoCo
+0.659
+0.722
+0.784
+0.798
+0.815
+FedHSSL-SimSiam
+0.678
+0.707
+0.763
+0.772
+0.793
+0.806
+0.806
+0.826
+0.826
+0.833
+FedHSSL-BYOL
+0.678
+0.681
+0.740
+0.752
+0.778
+0.800
+0.799
+0.807
+0.812
+0.825
+FedHSSL-MoCo
+0.696
+0.705
+0.760
+0.764
+0.787
+0.804
+0.809
+0.822
+0.826
+0.830
+different datasets, indicating that λ should be carefully tuned
+for different datasets (and models).
+B. Federated Cross-Party SSL vs. Local SSL in Learning
+Representation
+We compare the performance of FedCSSL-SimSiam and
+FedLocalSimSiam using varying percentages of aligned sam-
+ples for SSL (i.e., 20%, 40%, and 100%) and the same amount
+(i.e., 200) of labeled samples for finetuning. Table IX reports
+that FedCSSL-SimSiam outperforms FedLocalSimSiam on all
+sample percentages across all datasets. With more samples
+used for pretraining (from 20% to 100%), the performance
+improvement becomes larger, especially on NUSWIDE (by
+0.045) and BHI (by 0.031). This demonstrates that FedCSSL-
+SimSiam is more effective in pretraining representation than
+FedLocalSimSiam, indicating that the features (cross-party
+views) of aligned samples form better positive pairs for the
+SSL than the local augmentation. These experiments prove
+the merit of VFL in building better machine learning models.
+C. The Impact of the Amount of Aligned Samples on FedHSSL
+We compare the performance of FedHSSL using various
+amount of aligned samples, 20% and 40% respectively. The
+results in Table X show that the performance of FedHSSL
+improves constantly with more aligned samples. This suggests
+that more aligned samples help FedHSSL generate better
+representations for downstream tasks.
+D. Privacy Analysis Of FedHSSL with Different Aligned Sam-
+ples
+We investigate the privacy-utility trade-off of FedHSSL
+in terms of various amount of aligned samples. We use
+SimSiam as the base SSL method for FedHSSL. As shown
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+13
+TABLE XI
+COMPARISON OF MC ATTACK (PRIVACY LEAKAGE) VS. MAIN TASK (UTILITY) TRADE-OFFS FOR ISO-PROTECTED FEDLOCALSIMSIAM AND
+FEDHSSL-SIMSIAM ON 4 DATASETS WITH 20% AND 40% ALIGNED SAMPLES, RESPECTIVELY. λf INDICATES THE PROTECTION STRENGTH USED IN THE
+FINETUNING PHASE AND λp THE PROTECTION STRENGTH IN THE PRETRAINING PHASE.
+Method
+FedLocalSimSiam
+FedHSSL-SimSiam (20%)
+FedHSSL-SimSiam (40%)
+Dataset
+λf
+ASimSiam
+Main
+AFedHSSL
+Main
+λp
+AFedHSSL
+Main
+λp
+NUSWIDE
+1.0
+0.471
+0.494
+0.471
+0.538
+0.4
+0.474
+0.533
+5.0
+5.0
+0.465
+0.487
+0.449
+0.519
+0.4
+0.471
+0.528
+5.0
+25.0
+0.449
+0.458
+0.443
+0.503
+0.4
+0.458
+0.503
+5.0
+Avazu
+1.0
+0.548
+0.582
+0.568
+0.614
+0.1
+0.571
+0.616
+0.1
+5.0
+0.546
+0.577
+0.565
+0.602
+0.1
+0.566
+0.610
+0.1
+25.0
+0.545
+0.576
+0.563
+0.594
+0.1
+0.561
+0.603
+0.1
+BHI
+1.0
+0.710
+0.756
+0.692
+0.783
+0.1
+0.686
+0.788
+0.1
+5.0
+0.699
+0.732
+0.672
+0.764
+0.1
+0.687
+0.773
+0.1
+25.0
+0.685
+0.710
+0.674
+0.758
+0.1
+0.682
+0.764
+0.1
+Modelnet
+1.0
+0.438
+0.597
+0.451
+0.652
+0.1
+0.466
+0.658
+0.1
+5.0
+0.415
+0.573
+0.447
+0.613
+0.1
+0.448
+0.631
+0.1
+25.0
+0.408
+0.564
+0.415
+0.594
+0.1
+0.419
+0.598
+0.1
+TABLE XII
+COMPARISON OF CALIBRATED AVERAGED PERFORMANCE (CAP) OF ISO-PROTECTED FEDSPLITNN, FEDLOCALSIMSIAM AND FEDHSSL-SIMSIAM
+AGAINST THE MC ATTACK ON 4 DATASETS. CAP QUANTIFIES THE PRIVACY-UTILITY TRADE-OFF CURVES VISUALIZED IN ABOVE 4 FIGURES. The higher
+the CAP value is, the better the method is at preserving privacy without compromising the main task performances. NUMBERS ON THE FIGURES ARE
+VALUES OF ISO PROTECTION STRENGTH λf CHOSEN FROM [1, 5, 25]. A BETTER TRADE-OFF CURVE SHOULD BE MORE TOWARDS THE BOTTOM-RIGHT
+CORNER OF EACH FIGURE.
+Dataset
+FedSplitNN
+FedLocalSimSiam
+FedHSSL-SimSiam (20%)
+FedHSSL-SimSiam (40%)
+NUSWIDE
+0.264
+0.258
+0.284
+0.277
+Avazu
+0.238
+0.262
+0.262
+0.264
+BHI
+0.242
+0.221
+0.246
+0.244
+Modelnet
+0.342
+0.334
+0.348
+0.349
+in Table XI, with more aligned samples (i.e., from 20% to
+40%) are used for pretraining, the main task performance
+of FedHSSL-SimSiam is generally improved while the label
+recovery accuracy is also increasing when the same level of
+protection strength is applied. This trends is also illustrated
+in figures of Table XII, which reports that, while FedHSSL-
+SimSiam gives different privacy-utility trade-off curves when
+leveraging different amount of aligned samples, the two curves
+have similar CAP values. This result manifests that the number
+of aligned samples is an important factor that impacts the
+privacy-utility trade-off of FedHSSL, and should be considered
+when applying FedHSSL.
+REFERENCES
+[1] H. B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. A.
+y Arcas, “Communication-Efficient Learning of Deep Networks from
+Decentralized Data,” in Artificial intelligence and statistics.
+PMLR,
+2017, pp. 1273–1282.
+[2] Q. Yang, Y. Liu, Y. Cheng, Y. Kang, T. Chen, and H. Yu, “Federated
+Learning,” Synthesis Lectures on Artificial Intelligence and Machine
+Learning, vol. 13, no. 3, pp. 1–207, Dec. 2019.
+[3] Y. Kang, Y. He, J. Luo, T. Fan, Y. Liu, and Q. Yang, “Privacy-
+preserving federated adversarial domain adaptation over feature groups
+for interpretability,” IEEE Transactions on Big Data, pp. 1–12, 2022.
+[4] B. Tan, B. Liu, V. Zheng, and Q. Yang, A Federated Recommender
+System for Online Services.
+New York, NY, USA: Association
+for Computing Machinery, 2020, p. 579–581. [Online]. Available:
+https://doi.org/10.1145/3383313.3411528
+[5] Y. Kang, Y. Liu, and X. Liang, “FedCVT: Semi-supervised Vertical
+Federated Learning with Cross-view Training,” ACM Transactions on
+Intelligent Systems and Technology (TIST), May 2022.
+[6] W. Zhuang, Y. Wen, and S. Zhang, “Divergence-aware Federated
+Self-Supervised Learning,” in International Conference on Learning
+Representations, 2022.
+[7] K.-F. Chu and L. Zhang, “Privacy-Preserving Self-Taught Federated
+Learning for Heterogeneous Data,” CoRR, vol. abs/2106.15147, 2021.
+[8] T. Castiglia, S. Wang, and S. Patterson, “Self-supervised vertical
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+14
+federated learning,” in Workshop on Federated Learning: Recent
+Advances
+and
+New
+Challenges
+(in
+Conjunction
+with
+NeurIPS
+2022),
+2022.
+[Online].
+Available:
+https://openreview.net/forum?id=
+z2RNsvYZZTf
+[9] S. Feng, “Vertical federated learning-based feature selection with non-
+overlapping sample utilization,” Expert Systems with Applications, vol.
+208, p. 118097, Dec. 2022.
+[10] W. Li, Q. Xia, J. Deng, H. Cheng, J. Liu, K. Xue, Y. Cheng, and
+S.-T. Xia, “Achieving Lightweight Federated Advertising with Self-
+Supervised Split Distillation,” Sep. 2022.
+[11] Q. Yang, Y. Liu, T. Chen, and Y. Tong, “Federated Machine Learning:
+Concept and Applications,” ACM Transactions on Intelligent Systems
+and Technology, vol. 10, no. 2, pp. 12:1–12:19, Jan. 2019.
+[12] S. Hardy, W. Henecka, H. Ivey-Law, R. Nock, G. Patrini, G. Smith, and
+B. Thorne, “Private federated learning on vertically partitioned data via
+entity resolution and additively homomorphic encryption,” CoRR, vol.
+abs/1711.10677, 2017.
+[13] C. Chen, J. Zhou, L. Wang, X. Wu, W. Fang, J. Tan, L. Wang, A. X. Liu,
+H. Wang, and C. Hong, “When homomorphic encryption marries secret
+sharing: Secure large-scale sparse logistic regression and applications
+in risk control,” in Proceedings of the 27th ACM SIGKDD Conference
+on Knowledge Discovery and Data Mining, ser. KDD ’21.
+New York,
+NY, USA: Association for Computing Machinery, 2021, p. 2652–2662.
+[Online]. Available: https://doi.org/10.1145/3447548.3467210
+[14] K. Cheng, T. Fan, Y. Jin, Y. Liu, T. Chen, D. Papadopoulos, and
+Q. Yang, “SecureBoost: A Lossless Federated Learning Framework,”
+IEEE Intelligent Systems, vol. 36, no. 6, pp. 87–98, 2021.
+[15] Y. Liu, Y. Kang, C. Xing, T. Chen, and Q. Yang, “A Secure Federated
+Transfer Learning Framework,” IEEE Intelligent Systems, vol. 35, no. 4,
+pp. 70–82, Jul. 2020.
+[16] P.
+Bachman,
+R.
+D.
+Hjelm,
+and
+W.
+Buchwalter,
+“Learning
+representations by maximizing mutual information across views,” in
+Advances in Neural Information Processing Systems, H. Wallach,
+H.
+Larochelle,
+A.
+Beygelzimer,
+F.
+d'Alch´
+e-Buc,
+E.
+Fox,
+and
+R.
+Garnett,
+Eds.,
+vol.
+32.
+Curran
+Associates,
+Inc.,
+2019. [Online]. Available: https://proceedings.neurips.cc/paper/2019/
+file/ddf354219aac374f1d40b7e760ee5bb7-Paper.pdf
+[17] T. Chen, S. Kornblith, M. Norouzi, and G. Hinton, “A Simple Framework
+for Contrastive Learning of Visual Representations,” in International
+conference on machine learning.
+PMLR, 2020, pp. 1597–1607.
+[18] Q. Li, B. He, and D. Song, “Model-Contrastive Federated Learning,”
+Mar. 2021.
+[19] X. Mu, Y. Shen, K. Cheng, X. Geng, J. Fu, T. Zhang, and Z. Zhang,
+“FedProc: Prototypical Contrastive Federated Learning on Non-IID
+data,” Sep. 2021.
+[20] F. Zhang, K. Kuang, Z. You, T. Shen, J. Xiao, Y. Zhang, C. Wu,
+Y. Zhuang, and X. Li, “Federated Unsupervised Representation Learn-
+ing,” CoRR, vol. abs/2010.08982, Oct. 2020.
+[21] W. Zhuang, X. Gan, Y. Wen, S. Zhang, and S. Yi, “Collaborative
+Unsupervised Visual Representation Learning from Decentralized Data,”
+in Proceedings of the IEEE/CVF International Conference on Computer
+Vision, 2021, pp. 4912–4921.
+[22] C. He, Z. Yang, E. Mushtaq, S. Lee, M. Soltanolkotabi, and S. Aves-
+timehr, “SSFL: Tackling Label Deficiency in Federated Learning via
+Personalized Self-Supervision,” in International Workshop on Trustable,
+Verifiable and Auditable Federated Learning in Conjunction with AAAI
+2022 (FL-AAAI-22), Oct. 2021.
+[23] Y. Yang, X. Ye, and T. Sakurai, “Multi-View Federated Learning
+with Data Collaboration,” in 2022 14th International Conference on
+Machine Learning and Computing (ICMLC), ser. ICMLC 2022.
+New
+York, NY, USA: Association for Computing Machinery, Jun. 2022, pp.
+178–183.
+[24] C.-j. Huang, L. Wang, and X. Han, “Vertical Federated Knowledge
+Transfer via Representation Distillation for Healthcare Collaboration
+Networks,” in Proceedings of the ACM Web Conference 2023, ser.
+WWW ’23.
+New York, NY, USA: Association for Computing Ma-
+chinery, Apr. 2023, pp. 4188–4199.
+[25] Z. Ren, L. Yang, and K. Chen, “Improving Availability of Vertical
+Federated Learning: Relaxing Inference on Non-overlapping Data,”
+ACM Transactions on Intelligent Systems and Technology, vol. 13,
+no. 4, pp. 58:1–58:20, Jun. 2022.
+[26] W. Li, Q. Xia, H. Cheng, K. Xue, and S.-T. Xia, “Vertical Semi-
+Federated Learning for Efficient Online Advertising,” Sep. 2022.
+[27] Y. Liu, Y. Kang, C. Xing, T. Chen, and Q. Yang, “Secure Federated
+Transfer Learning,” IEEE Intelligent Systems, vol. 35, no. 4, pp. 70–82,
+Jul. 2020.
+[28] S. Feng and H. Yu, “Multi-Participant Multi-Class Vertical Federated
+Learning,” Jan. 2020.
+[29] S. Feng, B. Li, H. Yu, Y. Liu, and Q. Yang, “Semi-Supervised Federated
+Heterogeneous Transfer Learning,” Knowledge-Based Systems, vol. 252,
+p. 109384, Sep. 2022.
+[30] ——, “Semi-Supervised Federated Heterogeneous Transfer Learning,”
+Knowledge-Based Systems, vol. 252, p. 109384, Sep. 2022.
+[31] Y. Tan, G. Long, J. Ma, L. Liu, T. Zhou, and J. Jiang, “Federated
+Learning from Pre-Trained Models: A Contrastive Learning Approach,”
+Sep. 2022.
+[32] S. Han, S. Park, F. Wu, S. Kim, C. Wu, X. Xie, and M. Cha, “FedX:
+Unsupervised Federated Learning with Cross Knowledge Distillation,”
+Jul. 2022.
+[33] Z. He, T. Zhang, and R. B. Lee, “Model inversion attacks against
+collaborative inference,” in Proceedings of the 35th Annual Computer
+Security Applications Conference, 2019, pp. 148–162.
+[34] O. Li, J. Sun, X. Yang, W. Gao, H. Zhang, J. Xie, V. Smith, and
+C. Wang, “Label leakage and protection in two-party split learning,” in
+International Conference on Learning Representations, 2022. [Online].
+Available: https://openreview.net/forum?id=cOtBRgsf2fO
+[35] C. Fu, X. Zhang, S. Ji, J. Chen, J. Wu, S. Guo, J. Zhou, A. X. Liu, and
+T. Wang, “Label inference attacks against vertical federated learning,”
+in 31st USENIX Security Symposium (USENIX Security 22), 2022.
+[36] T. Zou, Y. Liu, Y. Kang, W. Liu, Y. He, Z. Yi, Q. Yang, and Y. Zhang,
+“Defending batch-level label inference and replacement attacks in ver-
+tical federated learning,” IEEE Transactions on Big Data, pp. 1–12, jul
+2022.
+[37] Y. Liu, Y. Kang, T. Zou, Y. Pu, Y. He, X. Ye, Y. Ouyang, Y.-
+Q. Zhang, and Q. Yang, “Vertical federated learning,” arXiv preprint
+arXiv:2211.12814, 2022.
+[38] K. He, H. Fan, Y. Wu, S. Xie, and R. Girshick, “Momentum Contrast
+for Unsupervised Visual Representation Learning,” in Proceedings of
+the IEEE/CVF conference on computer vision and pattern recognition,
+2020, pp. 9729–9738.
+[39] J.-B.
+Grill,
+F.
+Strub,
+F.
+Altch´
+e,
+C.
+Tallec,
+P.
+H.
+Richemond,
+E. Buchatskaya, C. Doersch, B. A. Pires, Z. D. Guo, M. G. Azar,
+B. Piot, K. Kavukcuoglu, R. Munos, and M. Valko, “Bootstrap your
+own latent: A new approach to self-supervised Learning,” Advances in
+neural information processing systems, vol. 33, pp. 21 271–21 284, 2020.
+[40] X. Chen and K. He, “Exploring simple siamese representation learning,”
+in Proceedings of the IEEE/CVF Conference on Computer Vision and
+Pattern Recognition, 2021, pp. 15 750–15 758.
+[41] Y. Wu, Y. Kang, J. Luo, Y. He, and Q. Yang, “Fedcg: Leverage
+conditional gan for protecting privacy and maintaining competitive
+performance in federated learning,” in Proceedings of the Thirty-First
+International Joint Conference on Artificial Intelligence, IJCAI-22.
+In-
+ternational Joint Conferences on Artificial Intelligence Organization,
+2022.
+[42] T.-S. Chua, J. Tang, R. Hong, H. Li, Z. Luo, and Y.-T. Zheng, “NUS-
+WIDE: A real-world web image database from national university of
+singapore,” in Proc. of ACM Conf. on Image and Video Retrieval
+(CIVR’09), Santorini, Greece., Jul. 2009.
+[43] S. Wang and W. Cukierski, “Click-Through Rate Prediction,” https://
+kaggle.com/competitions/avazu-ctr-prediction, 2014.
+[44] P. Mooney, “Breast histopathology images,” https://www.kaggle.com/
+datasets/paultimothymooney/breast-histopathology-images, 2016.
+[45] Z. Wu, S. Song, A. Khosla, F. Yu, L. Zhang, X. Tang, and J. Xiao,
+“3D ShapeNets: A deep representation for volumetric shapes,” in
+2015 IEEE Conference on Computer Vision and Pattern Recognition
+(CVPR), Jun. 2015, pp. 1912–1920.
+[46] G. Ke, Q. Meng, T. Finley, T. Wang, W. Chen, W. Ma, Q. Ye, and T.-
+Y. Liu, “Lightgbm: A highly efficient gradient boosting decision tree,”
+Advances in neural information processing systems, vol. 30, 2017.
+[47] D.
+Bahri,
+H.
+Jiang,
+Y.
+Tay,
+and
+D.
+Metzler,
+“SCARF:
+Self-
+Supervised Contrastive Learning using Random Feature Corruption,” in
+International Conference on Learning Representations, Jun. 2022.
+[48] T. Yao, X. Yi, D. Z. Cheng, F. Yu, T. Chen, A. Menon, L. Hong, E. H.
+Chi, S. Tjoa, J. Kang, and E. Ettinger, “Self-supervised Learning for
+Large-scale Item Recommendations,” in Proceedings of the 30th ACM
+International Conference on Information & Knowledge Management,
+2021, pp. 4321–4330.
+[49] Y. Liu, X. Zhang, Y. Kang, L. Li, T. Chen, M. Hong, and Q. Yang,
+“FedBCD: A Communication-Efficient Collaborative Learning Frame-
+work for Distributed Features,” IEEE Transactions on Signal Processing,
+2022.
+
+
+JOURNAL OF L
+AT
+EX CLASS FILES, VOL. 14, NO. 8, JUNE 2023
+15
+[50] Y. Kang, J. Luo, Y. He, X. Zhang, L. Fan, and Q. Yang, “A framework
+for evaluating privacy-utility trade-off in vertical federated learning,”
+arXiv preprint arXiv:2209.03885, 2022.
+[51] L. Fan, K. W. Ng, C. Ju, T. Zhang, C. Liu, C. S. Chan, and Q. Yang,
+Rethinking Privacy Preserving Deep Learning: How to Evaluate and
+Thwart Privacy Attacks. Cham: Springer International Publishing, 2020,
+pp. 32–50.
+[52] Y. Liu, X. Liang, J. Luo, Y. He, T. Chen, Q. Yao, and Q. Yang,
+“Cross-Silo Federated Neural Architecture Search for Heterogeneous
+and Cooperative Systems,” in Federated and Transfer Learning, ser.
+Adaptation, Learning, and Optimization, R. Razavi-Far, B. Wang, M. E.
+Taylor, and Q. Yang, Eds.
+Cham: Springer International Publishing,
+2023, pp. 57–86.

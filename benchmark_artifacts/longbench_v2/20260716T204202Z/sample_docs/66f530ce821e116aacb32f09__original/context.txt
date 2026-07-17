@@ -1,0 +1,4793 @@
+# 使用方法
+在 /root/ComfyUI/MYROUTER 目录下执行以下命令：
+```shell
+python model_server.py
+```
+
+# 目前已集成的功能
+
+## 1. product_photography: 产品拍摄
+
+## 2. product_enhancement: 给产品换背景
+
+
+## 3. dress_try : 衣服试穿
+
+## 4. flux_generation: 文生图模型
+
+
+
+
+from routers import swagger_monkey_patch, add_comfyui_directory_to_sys_path, import_custom_nodes
+
+add_comfyui_directory_to_sys_path()
+import_custom_nodes()
+
+from fastapi import applications
+applications.get_swagger_ui_html  = swagger_monkey_patch
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware 
+app = FastAPI() # 配置 CORS
+app.add_middleware( CORSMiddleware, allow_origins=["*"], # 允许的源 
+                    allow_credentials=True, allow_methods=["*"], # 允许的 HTTP 方法 
+                    allow_headers=["*"], # 允许的 HTTP 头 
+                    )
+
+from routers import file_model_server, comicper_realvision,story_diffusion,style_transfer, user_model
+app.include_router(file_model_server.router)
+app.include_router(comicper_realvision.router)
+app.include_router(story_diffusion.router)
+app.include_router(style_transfer.router)
+app.include_router(user_model.router)
+
+
+# 之后可以使用
+# app.include_router(
+#     admin.router,
+#     prefix="/admin",
+#     tags=["admin"],
+#     dependencies=[Depends(get_token_header)],
+#     responses={418: {"description": "I'm a teapot"}},
+# )
+
+
+@app.get("/")
+async def root():
+    return {"message": "Hello Bigger Applications!"}
+
+if __name__ == '__main__':
+    import uvicorn, argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--host", default="127.0.0.1", type=str)
+    parser.add_argument("--port", default=6006, type=int)
+    uvicorn.run(app, host="127.0.0.1", port=6006)
+
+
+from routers import text2text
+# person_img_description = "a young, East Asian man with a short, close-cropped haircut, wearing a plain white T-shirt. The image is captured against a plain, light-colored background, providing minimal distractions and focusing the viewer's attention on the subject. His expression is neutral, with slightly parted lips and a calm,"
+# en_prompts ="he wake up in the bed. he go to run in the park. he eat a hamburger in the restaurant. he play basketball in the playground."
+# prompt = f"person apearance: {person_img_description}. four actions: {en_prompts}. please generate four detailed prompts  without title containing the person appearance, action and environment"
+# prompt = text2text(prompt=prompt)
+# print(f"zhipu prompt: {prompt}")
+# prompt_ls = prompt.split("\n")
+# print(len(prompt_ls))
+# print(prompt_ls)
+
+en_prompts ="he wake up in the bed. he go to run in the park. he eat a hamburger in the restaurant. he play basketball in the playground."
+prompt = f"{en_prompts}. please expand four prompts with action and environment details. separate each prompt with a new line"
+prompt = text2text(prompt=prompt)
+print(f"zhipu prompt: {prompt}")
+prompt_ls = prompt.split("\n")
+print(len(prompt_ls))
+print(prompt_ls)
+
+# 阅读该网址 https://support.huaweicloud.com/sdk-python-devg-obs/obs_22_0400.html
+# 安装sdk pip install esdk-obs-python --trusted-host pypi.org
+
+from obs import ObsClient
+from obs import PutObjectHeader, GetObjectHeader
+import traceback
+import os
+
+ak = "IZ96BHBOQCLE3R4M8N2F"
+sk = "YppiRBPqirMpgDw9hJuNrLhLy6hwiQylnWwXUJPg"
+
+#  server填写Bucket对应的Endpoint, 这里以华北-北京四为例，其他地区请按实际情况填写。
+server = "obs.cn-north-4.myhuaweicloud.com"
+obsClient = ObsClient(access_key_id=ak, secret_access_key=sk, server=server)
+# 推荐通过环境变量获取AKSK，这里也可以使用其他外部引入方式传入，如果使用硬编码可能会存在泄露风险。
+# 您可以登录访问管理控制台获取访问密钥AK/SK，获取方式请参见https://support.huaweicloud.com/usermanual-ca/ca_01_0003.html。
+# ak = os.getenv("AccessKeyID")
+# sk = os.getenv("SecretAccessKey")
+
+
+def obs_upload_file(file_path:str, dir:str):
+
+    # 创建obsClient实例
+    # 如果使用临时AKSK和SecurityToken访问OBS，需要在创建实例时通过security_token参数指定securityToken值
+    try:
+        # ！！！！！！！！！！！注意，上传对象的附加头域，支持公开读，否则链接无法直接访问
+        headers = PutObjectHeader(acl="public-read")
+        bucketName = "zoomglass"
+        # 【可选】待上传对象的MIME类型
+        # headers.contentType = "image/png"
+        # 对象名，即上传后的文件名
+        # objectKey = "test/test.txt"
+        # 待上传文件/文件夹的完整路径，如aa/bb.txt，或aa/
+        # file_path = "./test.txt"
+        # 上传文件的自定义元数据
+        metadata = {"meta1": "value1", "meta2": "value2"}
+        # 文件上传
+        objectKey = f"models/{dir}/{os.path.basename(file_path)}"
+        resp = obsClient.putFile(bucketName, objectKey, file_path, metadata, headers)
+        # 返回码为2xx时，接口调用成功，否则接口调用失败
+        if resp.status < 300:
+            print("Put File Succeeded")
+            return f"https://zoomglass.obs.cn-north-4.myhuaweicloud.com/{objectKey}"
+            
+        else:
+            print("Put File Failed", resp.status)
+            print("requestId:", resp.requestId)
+            print("errorCode:", resp.errorCode)
+            print("errorMessage:", resp.errorMessage)
+    except:
+        print("Put File Failed")
+        print(traceback.format_exc())
+        raise Exception("obs Put File Failed")
+
+def obs_download_file(file_path:str, dir:str):
+    bucketName = "zoomglass"
+    objectKey = f"models/{dir}/{os.path.basename(file_path)}"
+    downloadPath = file_path
+    try:
+        headers = GetObjectHeader()
+        resp = obsClient.getObject(bucketName, objectKey, downloadPath, headers=headers)
+        if resp.status < 300:
+            print("Download File Succeeded")
+        else:
+            print("Download File Failed", resp.status)
+            print("requestId:", resp.requestId)
+            print("errorCode:", resp.errorCode)
+            print("errorMessage:", resp.errorMessage)
+    except:
+        print("Download File Failed")
+        print(traceback.format_exc())
+        raise Exception("obs Download File Failed")
+
+
+def get_path_from_url(url: str, split_by:str="story_diffusion"):
+    x = url.split(f"{split_by}/")[1]
+    task_id = x.split("/")[0]
+    filename = x.split("/")[1]
+    return task_id, filename
+
+
+import os
+import shutil
+import random
+from datetime import datetime
+from models import obs_client
+from fastapi import UploadFile
+
+
+"""
+server_url = "https://u447318-bf7d-c7ca5acc.bjc1.seetacloud.com:8443"
+之间的方法，用来将图片上传到本地服务器，从本地文件夹中查找
+def split_file_url(url: str):
+    x = url.split("task_id=")[1]
+    task_id = x.split("&")[0]
+    filename = x.split("&")[1].replace("filename=", "")
+    return task_id, filename
+
+
+def get_file_from_url(task_id: str, filename: str):
+    print(task_id,filename)
+    url_format = '{http}/file_model/get_file_from_url?task_id={task_id}&filename={filename}'
+    return url_format.format(http=server_url, task_id=task_id, filename=filename)
+"""
+
+
+def upload_file(file: UploadFile, current_model: str):
+    task_id = datetime.now().strftime("%Y%m%d_%H%M%S_")+str(random.randint(1,1000))
+    save_path = f'/root/autodl-tmp/data_store/{current_model}/{task_id}/'
+
+    suffix = file.filename.split('.')[-1]
+    os.makedirs(os.path.join(save_path), exist_ok=True)
+    while True:
+        time_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{time_suffix}.{suffix}"
+        path = os.path.join(save_path, filename)
+        if not os.path.exists(path):
+            break
+    with open(path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    user_image_url = obs_client.obs_upload_file(path, f"{current_model}/{task_id}")
+    return user_image_url
+
+
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+import datetime
+import base64
+import hmac
+import json
+from hashlib import sha256 as sha256
+import requests
+
+pid = '81000745'
+secret_key = b'J/YToXmmxEvbB61BdTqIIrvHPkd7gQldNQqhhH5BvSw='
+endpoint_host = 'isafe.ilivedata.com'
+endpoint_path = '/api/v1/image/check'
+endpoint_url = 'https://isafe.ilivedata.com/api/v1/image/check'
+
+def check_image_safety(image, type):
+    now_date = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+    params = {
+        "type": type,
+        "image": image
+    }
+
+    query_body = json.dumps(params)
+    parameter = "POST\n"
+    parameter += endpoint_host + "\n"
+    parameter += endpoint_path + '\n'
+    parameter += sha256(query_body.encode('utf-8')).hexdigest() + "\n"
+    parameter += "X-AppId:" + pid + "\n"
+    parameter += "X-TimeStamp:" + now_date
+
+    signature = base64.b64encode(
+        hmac.new(secret_key, parameter.encode('utf-8'), digestmod=sha256).digest())
+
+    headers = {
+        "X-AppId": pid,
+        "X-TimeStamp": now_date,
+        "Content-type": "application/json",
+        "Authorization": signature,
+        "Host": endpoint_host,
+        "Connection": "keep-alive"
+    }
+
+    # querystring = parse.urlencode(params)
+    resp = requests.post(endpoint_url, query_body, headers=headers)
+    print(resp.text)
+    if resp.status_code != 200:
+        raise Exception("图片审核调用失败：", resp.text)
+    return resp.json()
+
+if __name__ == '__main__':
+    # ！！！两种方式
+  
+# 1. 上传base64
+    # with open('yellow.png',"rb") as f:
+    #     image_base64 = base64.b64encode(f.read()).decode('utf-8')
+    #     response = check_image_safety(image_base64, 2)
+    #     print(response)
+
+    #     if response["result"] == 2:
+    #         print("不安全内容", response["imageSpams"])
+    #     elif response["result"] == 1:
+    #         print("建议审核")
+    #     else:
+    #         print("图片正常，继续执行")
+      
+# 2. 上传url
+    image_url = "https://zoomglass.obs.cn-north-4.myhuaweicloud.com/models/story_diffusion/20240926_013639813/20240926_013639.jpg"
+    response = check_image_safety(image_url, 1)
+    print(response)
+
+    if response["result"] == 2:
+        print("不安全内容", response["imageSpams"])
+    elif response["result"] == 1:
+        print("建议审核")
+    else:
+        print("图片正常，继续执行")
+
+
+import os
+import random
+import torch
+import json
+import shutil
+from datetime import datetime
+from fastapi import APIRouter
+
+from models import obs_client
+from routers import get_value_at_index
+from routers import ImageResponse
+from routers import SAVE_PATH, OUTPUT_PATH,CURRENT_MODEL, logger
+
+from nodes import (
+    LoraLoaderModelOnly,
+    LoadImage,
+    SaveImage,
+    NODE_CLASS_MAPPINGS,
+    CLIPTextEncode,
+    RepeatLatentBatch,
+    VAEDecode,
+    VAEEncode,
+    VAELoader,
+    CheckpointLoaderSimple,
+    CLIPVisionLoader,
+    KSampler,
+)
+
+with torch.inference_mode():
+    loadimage = LoadImage()
+
+    cliptextencode = CLIPTextEncode()
+    
+    checkpointloadersimple = CheckpointLoaderSimple()
+    checkpointloadersimple_159 = checkpointloadersimple.load_checkpoint(
+        ckpt_name="cartoonish_v1.safetensors"
+    )
+
+    imagescaletototalpixels = NODE_CLASS_MAPPINGS["ImageScaleToTotalPixels"]()
+    getimagesizeandcount = NODE_CLASS_MAPPINGS["GetImageSizeAndCount"]()
+    layermask_maskgrow = NODE_CLASS_MAPPINGS["LayerMask: MaskGrow"]()
+    invertmask = NODE_CLASS_MAPPINGS["InvertMask"]()
+    maskimage = NODE_CLASS_MAPPINGS["MaskImage"]()
+    image_batch = NODE_CLASS_MAPPINGS["Image Batch"]()
+    wd14taggerpysssss = NODE_CLASS_MAPPINGS["WD14Tagger|pysssss"]()
+    
+    powerpaintcliploader = NODE_CLASS_MAPPINGS["PowerPaintCLIPLoader"]()
+    powerpaintcliploader_121 = powerpaintcliploader.ppclip_loading(
+        base="clip_l.safetensors", powerpaint="pytorch_model.bin"
+    )
+    vaeloader = VAELoader()
+    vaeloader_161 = vaeloader.load_vae(
+        vae_name="vaeFtMse840000EmaPruned_vaeFtMse840k.safetensors"
+    )  
+    vaeencode = VAEEncode()
+
+    ipadaptermodelloader = NODE_CLASS_MAPPINGS["IPAdapterModelLoader"]()
+    ipadaptermodelloader_176 = ipadaptermodelloader.load_ipadapter_model(
+        ipadapter_file="ip-adapter-faceid-plusv2_sd15.bin"
+    )
+
+    clipvisionloader = CLIPVisionLoader()
+    clipvisionloader_178 = clipvisionloader.load_clip(
+        clip_name="ViT-H-14-laion2B-s32B-b79K.safetensors"
+    )
+
+    ipadapterinsightfaceloader = NODE_CLASS_MAPPINGS["IPAdapterInsightFaceLoader"]()
+    ipadapterinsightfaceloader_177 = ipadapterinsightfaceloader.load_insightface(
+        provider="CUDA", model_name="buffalo_l"
+    )
+    saveimage = SaveImage()
+
+
+router = APIRouter(
+    prefix="/img2img",
+    tags=["cartoonish"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+@router.post("/cartoonish")
+def comicper_realvision(image_urls: list[str]):
+    with torch.inference_mode():
+        try:
+            try:
+                load_origin_images = []
+                global task_id
+                for temp_image_url in image_urls:
+                    task_id, filename = obs_client.get_path_from_url(url=temp_image_url, split_by=CURRENT_MODEL)
+                    image_path = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id,filename)
+                    if not os.path.exists(image_path):
+                        resp = obs_client.obs_download_file(file_path=image_path, dir=f"{CURRENT_MODEL}/{task_id}")
+                    loadimage = LoadImage()
+                    loadimage_1 = loadimage.load_image(image=image_path)
+                    load_origin_images.append(loadimage_1)
+                
+                image_batch_63 = image_batch.image_batch(
+                    image_1=get_value_at_index(load_origin_images[0], 0),
+                    image_2=get_value_at_index(load_origin_images[1], 0),
+                    image_3=get_value_at_index(load_origin_images[2], 0),
+                    image_4=get_value_at_index(load_origin_images[3], 0),
+                )
+            except Exception as e:
+                logger.error(f"Error loading images: {e}")
+                raise Exception(f"Error loading images: {e}")
+    
+            imagescaletototalpixels_102 = imagescaletototalpixels.upscale(
+                upscale_method="nearest-exact",
+                megapixels=0.4,
+                image=get_value_at_index(image_batch_63, 0),
+            )
+            
+            getimagesizeandcount_61 = getimagesizeandcount.getsize(
+                image=get_value_at_index(imagescaletototalpixels_102, 0)
+            )
+
+            cliptextencode_160 = cliptextencode.encode(
+                text="3D,text, watermark,embedding:verybadimagenegative_v1.3, ",
+                clip=get_value_at_index(checkpointloadersimple_159, 1),
+            )
+
+            vaeencode_164 = vaeencode.encode(
+                pixels=get_value_at_index(getimagesizeandcount_61, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            try:
+                wd14taggerpysssss_167 = wd14taggerpysssss.tag(
+                    model="wd-v1-4-vit-tagger-v2",
+                    threshold=0.35,
+                    character_threshold=0.85,
+                    replace_underscore=True,
+                    trailing_comma=True,
+                    exclude_tags="",
+                    image=get_value_at_index(getimagesizeandcount_61, 0),
+                )
+                wd14taggerpysssss_text_list_167 = get_value_at_index(wd14taggerpysssss_167, 0)
+                text_1 = " ".join(wd14taggerpysssss_text_list_167)
+                text_2 = "Asian,portrait,colorful,Fashion, bust, art,solo, avatar, solid color simple background, best quality, high resolution, clear, masterpiece, ultra high resolution, 8k, quhanlora (viewers: 1.2)，jewelry, earrings, simple background, jacket, colorful background, Smiling, cool, big eyes,trendy,High gloss, smooth,"
+
+                text_concatenate_168 = text_1 + "," + text_2
+            except Exception as e:
+                logger.error(f"wd14_167 tagger Error: {e}")
+                raise Exception(f"wd14_167 tagger Error: {e}")
+
+            cliptextencode_166 = cliptextencode.encode(
+                text=get_value_at_index(text_concatenate_168, 0),
+                clip=get_value_at_index(checkpointloadersimple_159, 1),
+            )
+
+            loraloadermodelonly = LoraLoaderModelOnly()
+            loraloadermodelonly_175 = loraloadermodelonly.load_lora_model_only(
+                lora_name="ip-adapter-faceid-plusv2_sd15_lora.safetensors",
+                strength_model=1,
+                model=get_value_at_index(checkpointloadersimple_159, 0),
+            )
+            try:
+                ipadapterfaceid = NODE_CLASS_MAPPINGS["IPAdapterFaceID"]()
+                ipadapterfaceid_173 = ipadapterfaceid.apply_ipadapter(
+                    weight=0.9,
+                    weight_faceidv2=1,
+                    weight_type="linear",
+                    combine_embeds="concat",
+                    start_at=0,
+                    end_at=1,
+                    embeds_scaling="V only",
+                    model=get_value_at_index(loraloadermodelonly_175, 0),
+                    ipadapter=get_value_at_index(ipadaptermodelloader_176, 0),
+                    image=get_value_at_index(getimagesizeandcount_61, 0),
+                    clip_vision=get_value_at_index(clipvisionloader_178, 0),
+                    insightface=get_value_at_index(ipadapterinsightfaceloader_177, 0),
+                )
+            except Exception as e:
+                logger.error(f"ipadapterfaceid_173 Error: {e}")
+                raise Exception(f"ipadapterfaceid_173 Error: {e}")
+
+            repeatlatentbatch = RepeatLatentBatch()
+            repeatlatentbatch_169 = repeatlatentbatch.repeat(
+                amount=1, samples=get_value_at_index(vaeencode_164, 0)
+            )
+
+            try:
+                ksampler = KSampler()
+                ksampler_162 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=25,
+                    cfg=8,
+                    sampler_name="euler_ancestral",
+                    scheduler="normal",
+                    denoise=0.4,
+                    model=get_value_at_index(ipadapterfaceid_173, 0),
+                    positive=get_value_at_index(cliptextencode_166, 0),
+                    negative=get_value_at_index(cliptextencode_160, 0),
+                    latent_image=get_value_at_index(repeatlatentbatch_169, 0),
+                )
+            except Exception as e:
+                logger.error(f"ksampler_162 Error: {e}")
+                raise Exception(f"ksampler_162 Error: {e}")
+
+            vaedecode = VAEDecode()
+            vaedecode_163 = vaedecode.decode(
+                samples=get_value_at_index(ksampler_162, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            vaeencode_171 = vaeencode.encode(
+                pixels=get_value_at_index(vaedecode_163, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            try:
+                ksampler_170 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=25,
+                    cfg=8,
+                    sampler_name="euler_ancestral",
+                    scheduler="normal",
+                    denoise=0.4,
+                    model=get_value_at_index(checkpointloadersimple_159, 0),
+                    positive=get_value_at_index(cliptextencode_166, 0),
+                    negative=get_value_at_index(cliptextencode_160, 0),
+                    latent_image=get_value_at_index(vaeencode_171, 0),
+                )
+            except Exception as e:
+                logger.error(f"ksampler_170 Error: {e}")
+                raise Exception(f"ksampler_170 Error: {e}")
+
+            vaedecode_172 = vaedecode.decode(
+                samples=get_value_at_index(ksampler_170, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            time_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+            saveimage_180 = saveimage.save_images(
+                filename_prefix=f"comicper_realvision_{time_suffix}",
+                images=get_value_at_index(vaedecode_172, 0),
+            )
+            print(saveimage_180)
+            result_image_urls = []
+            for i in range(4):
+                filename = saveimage_180['ui']['images'][i]['filename']
+                temp_image_url = obs_client.obs_upload_file(os.path.join(OUTPUT_PATH, filename), dir=f"{CURRENT_MODEL}/{task_id}")
+                shutil.move(os.path.join(OUTPUT_PATH, filename), os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, filename))
+                result_image_urls.append(temp_image_url)
+            
+            json_file = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, f"real_comic_imgs_{time_suffix}.json")
+            with open(json_file, "w") as f:
+                image_data = {
+                        "real_images": image_urls,
+                        "result_images": result_image_urls,
+                    }
+                json.dump(image_data, f, indent=4, ensure_ascii=False)
+            
+            image_info = obs_client.obs_upload_file(file_path=json_file, dir=f"{CURRENT_MODEL}/{task_id}")
+            print(f"Saved image info to {image_info}")
+            torch.cuda.empty_cache()
+            return ImageResponse(code=200, message="success", data=result_image_urls)
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return ImageResponse(code=500, message=f"Internal Server Error:{e}")
+
+
+if __name__ == "__main__":
+    pass
+
+
+import os
+import random
+import torch
+import json
+import shutil
+from datetime import datetime
+from fastapi import APIRouter
+
+from models import obs_client
+from routers import get_value_at_index
+from routers import ImageResponse
+from routers import SAVE_PATH, OUTPUT_PATH,CURRENT_MODEL, logger
+
+from nodes import (
+    LoraLoaderModelOnly,
+    LoadImage,
+    SaveImage,
+    NODE_CLASS_MAPPINGS,
+    CLIPTextEncode,
+    RepeatLatentBatch,
+    VAEDecode,
+    VAEEncode,
+    VAELoader,
+    CheckpointLoaderSimple,
+    CLIPVisionLoader,
+    KSampler,
+)
+
+with torch.inference_mode():
+    loadimage = LoadImage()
+
+    brushnetloader = NODE_CLASS_MAPPINGS["BrushNetLoader"]()
+    brushnetloader_113 = brushnetloader.brushnet_loading(
+        brushnet="diffusion_pytorch_model.safetensors", dtype="float16"
+    )
+    cliptextencode = CLIPTextEncode()
+    
+    checkpointloadersimple = CheckpointLoaderSimple()
+    checkpointloadersimple_114 = checkpointloadersimple.load_checkpoint(
+        ckpt_name="majicMIX realistic 麦橘写实_v7.safetensors"
+    )
+    checkpointloadersimple_159 = checkpointloadersimple.load_checkpoint(
+        ckpt_name="cartoonish_v1.safetensors"
+    )
+
+    imagescaletototalpixels = NODE_CLASS_MAPPINGS["ImageScaleToTotalPixels"]()
+    getimagesizeandcount = NODE_CLASS_MAPPINGS["GetImageSizeAndCount"]()
+    birefnet_hugo = NODE_CLASS_MAPPINGS["BiRefNet_Hugo"]()
+    layermask_maskgrow = NODE_CLASS_MAPPINGS["LayerMask: MaskGrow"]()
+    invertmask = NODE_CLASS_MAPPINGS["InvertMask"]()
+    maskimage = NODE_CLASS_MAPPINGS["MaskImage"]()
+    wd14taggerpysssss = NODE_CLASS_MAPPINGS["WD14Tagger|pysssss"]()
+    
+    powerpaintcliploader = NODE_CLASS_MAPPINGS["PowerPaintCLIPLoader"]()
+    powerpaintcliploader_121 = powerpaintcliploader.ppclip_loading(
+        base="clip_l.safetensors", powerpaint="pytorch_model.bin"
+    )
+    vaeloader = VAELoader()
+    vaeloader_161 = vaeloader.load_vae(
+        vae_name="vaeFtMse840000EmaPruned_vaeFtMse840k.safetensors"
+    )  
+    vaeencode = VAEEncode()
+
+    ipadaptermodelloader = NODE_CLASS_MAPPINGS["IPAdapterModelLoader"]()
+    ipadaptermodelloader_176 = ipadaptermodelloader.load_ipadapter_model(
+        ipadapter_file="ip-adapter-faceid-plusv2_sd15.bin"
+    )
+
+    clipvisionloader = CLIPVisionLoader()
+    clipvisionloader_178 = clipvisionloader.load_clip(
+        clip_name="ViT-H-14-laion2B-s32B-b79K.safetensors"
+    )
+
+    ipadapterinsightfaceloader = NODE_CLASS_MAPPINGS["IPAdapterInsightFaceLoader"]()
+    ipadapterinsightfaceloader_177 = ipadapterinsightfaceloader.load_insightface(
+        provider="CUDA", model_name="buffalo_l"
+    )
+    powerpaint = NODE_CLASS_MAPPINGS["PowerPaint"]()
+    layerutility_imageblend = NODE_CLASS_MAPPINGS["LayerUtility: ImageBlend"]()
+    saveimage = SaveImage()
+
+
+router = APIRouter(
+    prefix="/img2img",
+    tags=["comicper_realvision"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+@router.get("/comicper_realvision")
+def comicper_realvision(image_url: str):
+    task_id, filename = obs_client.get_path_from_url(image_url, CURRENT_MODEL)
+    image_path = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, filename)
+    if not os.path.exists(image_path):
+        resp = obs_client.obs_download_file(file_path=image_path, dir=f"{CURRENT_MODEL}/{task_id}")
+    
+    with torch.inference_mode():
+        try:
+            loadimage_63 = loadimage.load_image(image=image_path)
+    
+            imagescaletototalpixels_102 = imagescaletototalpixels.upscale(
+                upscale_method="nearest-exact",
+                megapixels=0.4,
+                image=get_value_at_index(loadimage_63, 0),
+            )
+            
+            getimagesizeandcount_61 = getimagesizeandcount.getsize(
+                image=get_value_at_index(imagescaletototalpixels_102, 0)
+            )
+            
+            birefnet_hugo_123 = birefnet_hugo.background_remove(
+                background_color_name="transparency",
+                device="auto",
+                image=get_value_at_index(getimagesizeandcount_61, 0),
+            )
+
+            layermask_maskgrow_124 = layermask_maskgrow.mask_grow(
+                invert_mask=False,
+                grow=17,
+                blur=12,
+                mask=get_value_at_index(birefnet_hugo_123, 1),
+            )
+
+            invertmask_126 = invertmask.invert(
+                mask=get_value_at_index(layermask_maskgrow_124, 0)
+            )
+
+            maskimage_127 = maskimage.main(
+                image=get_value_at_index(getimagesizeandcount_61, 0),
+                mask=get_value_at_index(invertmask_126, 0),
+            )
+            try:
+                wd14taggerpysssss_125 = wd14taggerpysssss.tag(
+                    model="wd-v1-4-moat-tagger-v2",
+                    threshold=0.35,
+                    character_threshold=1,
+                    replace_underscore=False,
+                    trailing_comma=False,
+                    exclude_tags="1girl, solo, short_hair, dress,standing, monochrome,1boy ",
+                    image=get_value_at_index(maskimage_127, 0),
+                )
+                wd14taggerpysssss_text_list_125 = get_value_at_index(wd14taggerpysssss_125, 0)
+                text_125 = " ".join(wd14taggerpysssss_text_list_125)
+            except Exception as e:
+                logger.error(f"wd14_125 tagger Error: {e}")
+                raise Exception(f"wd14_125 tagger Error: {e}")
+            
+            cliptextencode_115 = cliptextencode.encode(
+                text= text_125,
+                clip=get_value_at_index(checkpointloadersimple_114, 1),
+            )
+
+            cliptextencode_116 = cliptextencode.encode(
+                text="human", clip=get_value_at_index(checkpointloadersimple_114, 1)
+            )
+
+            cliptextencode_160 = cliptextencode.encode(
+                text="3D,text, watermark,embedding:verybadimagenegative_v1.3, ",
+                clip=get_value_at_index(checkpointloadersimple_159, 1),
+            )
+
+            vaeencode_164 = vaeencode.encode(
+                pixels=get_value_at_index(getimagesizeandcount_61, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            try:
+                wd14taggerpysssss_167 = wd14taggerpysssss.tag(
+                    model="wd-v1-4-vit-tagger-v2",
+                    threshold=0.35,
+                    character_threshold=0.85,
+                    replace_underscore=True,
+                    trailing_comma=True,
+                    exclude_tags="",
+                    image=get_value_at_index(getimagesizeandcount_61, 0),
+                )
+                wd14taggerpysssss_text_list_167 = get_value_at_index(wd14taggerpysssss_167, 0)
+                text_1 = " ".join(wd14taggerpysssss_text_list_167)
+                text_2 = "Asian,portrait,colorful,Fashion, bust, art,solo, avatar, solid color simple background, best quality, high resolution, clear, masterpiece, ultra high resolution, 8k, quhanlora (viewers: 1.2)，jewelry, earrings, simple background, jacket, colorful background, Smiling, cool, big eyes,trendy,High gloss, smooth,"
+
+                text_concatenate_168 = text_1 + "," + text_2
+            except Exception as e:
+                logger.error(f"wd14_167 tagger Error: {e}")
+                raise Exception(f"wd14_167 tagger Error: {e}")
+
+            cliptextencode_166 = cliptextencode.encode(
+                text=get_value_at_index(text_concatenate_168, 0),
+                clip=get_value_at_index(checkpointloadersimple_159, 1),
+            )
+
+            loraloadermodelonly = LoraLoaderModelOnly()
+            loraloadermodelonly_175 = loraloadermodelonly.load_lora_model_only(
+                lora_name="ip-adapter-faceid-plusv2_sd15_lora.safetensors",
+                strength_model=1,
+                model=get_value_at_index(checkpointloadersimple_159, 0),
+            )
+            try:
+                ipadapterfaceid = NODE_CLASS_MAPPINGS["IPAdapterFaceID"]()
+                ipadapterfaceid_173 = ipadapterfaceid.apply_ipadapter(
+                    weight=0.9,
+                    weight_faceidv2=1,
+                    weight_type="linear",
+                    combine_embeds="concat",
+                    start_at=0,
+                    end_at=1,
+                    embeds_scaling="V only",
+                    model=get_value_at_index(loraloadermodelonly_175, 0),
+                    ipadapter=get_value_at_index(ipadaptermodelloader_176, 0),
+                    image=get_value_at_index(getimagesizeandcount_61, 0),
+                    clip_vision=get_value_at_index(clipvisionloader_178, 0),
+                    insightface=get_value_at_index(ipadapterinsightfaceloader_177, 0),
+                )
+            except Exception as e:
+                logger.error(f"ipadapterfaceid_173 Error: {e}")
+                raise Exception(f"ipadapterfaceid_173 Error: {e}")
+
+            repeatlatentbatch = RepeatLatentBatch()
+            repeatlatentbatch_169 = repeatlatentbatch.repeat(
+                amount=1, samples=get_value_at_index(vaeencode_164, 0)
+            )
+
+            try:
+                ksampler = KSampler()
+                ksampler_162 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=25,
+                    cfg=8,
+                    sampler_name="euler_ancestral",
+                    scheduler="normal",
+                    denoise=0.4,
+                    model=get_value_at_index(ipadapterfaceid_173, 0),
+                    positive=get_value_at_index(cliptextencode_166, 0),
+                    negative=get_value_at_index(cliptextencode_160, 0),
+                    latent_image=get_value_at_index(repeatlatentbatch_169, 0),
+                )
+            except Exception as e:
+                logger.error(f"ksampler_162 Error: {e}")
+                raise Exception(f"ksampler_162 Error: {e}")
+
+            vaedecode = VAEDecode()
+            vaedecode_163 = vaedecode.decode(
+                samples=get_value_at_index(ksampler_162, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            vaeencode_171 = vaeencode.encode(
+                pixels=get_value_at_index(vaedecode_163, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            try:
+                ksampler_170 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=25,
+                    cfg=8,
+                    sampler_name="euler_ancestral",
+                    scheduler="normal",
+                    denoise=0.4,
+                    model=get_value_at_index(checkpointloadersimple_159, 0),
+                    positive=get_value_at_index(cliptextencode_166, 0),
+                    negative=get_value_at_index(cliptextencode_160, 0),
+                    latent_image=get_value_at_index(vaeencode_171, 0),
+                )
+            except Exception as e:
+                logger.error(f"ksampler_170 Error: {e}")
+                raise Exception(f"ksampler_170 Error: {e}")
+
+            vaedecode_172 = vaedecode.decode(
+                samples=get_value_at_index(ksampler_170, 0),
+                vae=get_value_at_index(vaeloader_161, 0),
+            )
+
+            birefnet_hugo_66 = birefnet_hugo.background_remove(
+                background_color_name="transparency",
+                device="auto",
+                image=get_value_at_index(vaedecode_172, 0),
+            )
+
+            invertmask_88 = invertmask.invert(
+                mask=get_value_at_index(birefnet_hugo_66, 1)
+            )
+
+            try:
+                powerpaint_120 = powerpaint.model_update(
+                    fitting=1,
+                    function="object removal",
+                    scale=1,
+                    start_at=0,
+                    end_at=9999,
+                    save_memory="none",
+                    model=get_value_at_index(checkpointloadersimple_114, 0),
+                    vae=get_value_at_index(checkpointloadersimple_114, 2),
+                    image=get_value_at_index(getimagesizeandcount_61, 0),
+                    mask=get_value_at_index(layermask_maskgrow_124, 0),
+                    powerpaint=get_value_at_index(brushnetloader_113, 0),
+                    clip=get_value_at_index(powerpaintcliploader_121, 0),
+                    positive=get_value_at_index(cliptextencode_115, 0),
+                    negative=get_value_at_index(cliptextencode_116, 0),
+                )
+
+                ksampler_117 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=20,
+                    cfg=7.5,
+                    sampler_name="euler",
+                    scheduler="normal",
+                    denoise=1,
+                    model=get_value_at_index(powerpaint_120, 0),
+                    positive=get_value_at_index(powerpaint_120, 1),
+                    negative=get_value_at_index(powerpaint_120, 2),
+                    latent_image=get_value_at_index(powerpaint_120, 3),
+                )
+            except Exception as e:
+                logger.error(f"powerpaint or ksampler_117 Error: {e}")
+                raise Exception(f"powerpaint or ksampler_117 Error: {e}")
+
+            vaedecode_118 = vaedecode.decode(
+                samples=get_value_at_index(ksampler_117, 0),
+                vae=get_value_at_index(checkpointloadersimple_114, 2),
+            )
+
+            layerutility_imageblend_89 = layerutility_imageblend.image_blend(
+                invert_mask=True,
+                blend_mode="normal",
+                opacity=100,
+                background_image=get_value_at_index(vaedecode_118, 0),
+                layer_image=get_value_at_index(birefnet_hugo_66, 0),
+                layer_mask=get_value_at_index(invertmask_88, 0),
+            )
+
+            time_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+            saveimage_180 = saveimage.save_images(
+                filename_prefix=f"comicper_realvision_{time_suffix}",
+                images=get_value_at_index(layerutility_imageblend_89, 0),
+            )
+            print(saveimage_180)
+            filename = saveimage_180['ui']['images'][0]['filename']
+            result_image_url = obs_client.obs_upload_file(file_path=os.path.join(OUTPUT_PATH, filename), dir=f"{CURRENT_MODEL}/{task_id}")
+            shutil.move(os.path.join(OUTPUT_PATH, filename), os.path.join(SAVE_PATH,CURRENT_MODEL, task_id, filename))
+
+            json_file = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, f"real_comic_imgs_{time_suffix}.json")
+            with open(json_file, "w") as f:
+                image_data = {
+                        "real_image": image_url,
+                        "result_image": result_image_url,
+                    }
+                json.dump(image_data, f, indent=4, ensure_ascii=False)
+
+            image_info = obs_client.obs_upload_file(file_path=json_file, dir=f"{CURRENT_MODEL}/{task_id}")
+            
+            print(f"Saved image info to {image_info}")
+            torch.cuda.empty_cache()
+            return ImageResponse(code=200, message="success", data=result_image_url)
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return ImageResponse(code=500, message=f"Internal Server Error:{e}")
+
+
+if __name__ == "__main__":
+    pass
+
+
+import os 
+from routers import SAVE_PATH,ImageResponse
+from fastapi import APIRouter, UploadFile, File
+
+router = APIRouter(prefix="/user",
+            tags=["user"],
+            dependencies=[],
+            responses={404: {"description": "Not found"}}, )
+
+@router.get("/current_image_url")
+def get_current_image_url():
+    try:
+        with open(os.path.join(SAVE_PATH,"log.txt"), "r") as f:
+            url = f.read()
+        return ImageResponse(code=200,message="success",data=url)
+    except Exception as e:
+        return ImageResponse(code=500,message="error to find the newest url",data=str(e))
+
+import os
+import json
+import random
+import shutil
+import torch
+from datetime import datetime
+from fastapi import APIRouter
+
+from models import fileModel, obs_client
+from routers import ImageResponse, get_value_at_index, trans_zh2en, text2text
+from routers import SAVE_PATH, OUTPUT_PATH,CURRENT_MODEL, logger
+# 原先用的风格转换方法
+# from routers.InstantStyle.infer_style_controlnet import style_transfer
+
+from nodes import (
+    VAEDecode,
+    CLIPTextEncode,
+    UNETLoader,
+    DualCLIPLoader,
+    NODE_CLASS_MAPPINGS,
+    SaveImage,
+    EmptyLatentImage,
+    VAELoader,
+    LoadImage,
+    LoraLoader,
+)
+
+with torch.inference_mode():
+    try:
+        emptylatentimage = EmptyLatentImage()
+        emptylatentimage_1 = emptylatentimage.generate(
+            width=512, height=512, batch_size=1
+        )
+
+        joy_caption_load = NODE_CLASS_MAPPINGS["Joy_caption_load"]()
+        joy_caption_load_144 = joy_caption_load.gen(
+            model="unsloth/Meta-Llama-3.1-8B-bnb-4bit"
+        )
+        
+        faceanalysismodels = NODE_CLASS_MAPPINGS["FaceAnalysisModels"]()
+        faceanalysismodels_1 = faceanalysismodels.load_models(
+            library="insightface", provider="CUDA"
+        )
+
+        facesegmentation = NODE_CLASS_MAPPINGS["FaceSegmentation"]()
+
+        dualcliploader = DualCLIPLoader()
+        dualcliploader_61 = dualcliploader.load_clip(
+            clip_name1="t5xxl_fp8_e4m3fn.safetensors",
+            clip_name2="clip_l.safetensors",
+            type="flux",
+        )
+
+        cliptextencode = CLIPTextEncode()
+
+        vaeloader = VAELoader()
+        vaeloader_10 = vaeloader.load_vae(vae_name="ae.safetensors")
+
+        unetloader = UNETLoader()
+        unetloader_12 = unetloader.load_unet(
+            unet_name="flux1-schnell-fp8-e4m3fn.safetensors", weight_dtype="fp8_e4m3fn"
+        )
+        loraloader = LoraLoader()
+        loraloader_1 = loraloader.load_lora(
+            lora_name="boreal-v2.safetensors",
+            strength_model=1,
+            strength_clip=1,
+            model=get_value_at_index(unetloader_12, 0),
+            clip=get_value_at_index(dualcliploader_61, 0),
+        )
+
+        ksamplerselect = NODE_CLASS_MAPPINGS["KSamplerSelect"]()
+        randomnoise = NODE_CLASS_MAPPINGS["RandomNoise"]()
+        # fluxpromptenhance = NODE_CLASS_MAPPINGS["FluxPromptEnhance"]()
+
+        loadimage = LoadImage()
+        joy_caption = NODE_CLASS_MAPPINGS["Joy_caption"]()
+        stringfunctionpysssss = NODE_CLASS_MAPPINGS["StringFunction|pysssss"]()
+
+        basicguider = NODE_CLASS_MAPPINGS["BasicGuider"]()
+        basicscheduler = NODE_CLASS_MAPPINGS["BasicScheduler"]()
+        samplercustomadvanced = NODE_CLASS_MAPPINGS["SamplerCustomAdvanced"]()
+        latent_batch = NODE_CLASS_MAPPINGS["Latent Batch"]()
+        vaedecode = VAEDecode()
+        reactorfaceswap = NODE_CLASS_MAPPINGS["ReActorFaceSwap"]()
+        showtextpysssss = NODE_CLASS_MAPPINGS["ShowText|pysssss"]()
+        saveimage = SaveImage()
+
+    except Exception as e:
+        logger.error(f"Model Loading Error: {e}")
+
+
+router = APIRouter(
+    prefix="/img",
+    tags=["story_diffusion"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+
+@router.get("/story_diffusion")
+async def flux_story_diffusion(image_url:str, zh_prompts:str="她早上从床上醒来。|她去公园晨跑。|她在街上走路。|她在办公室工作。") -> ImageResponse:
+    task_id, filename = obs_client.get_path_from_url(image_url, CURRENT_MODEL)
+    image_path = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, filename)
+    if not os.path.exists(image_path):
+        resp = obs_client.obs_download_file(file_path=image_path, dir=f"{CURRENT_MODEL}/{task_id}")
+    en_prompts = trans_zh2en(zh_prompts.replace("|", " "))
+    with torch.inference_mode():
+        try:
+            loadimage_1 = loadimage.load_image(image=image_path)
+            facesegmentation_1 = facesegmentation.segment(
+                area="face",
+                grow=70,
+                grow_tapered=False,
+                blur=1,
+                analysis_models=get_value_at_index(faceanalysismodels_1, 0),
+                image=get_value_at_index(loadimage_1, 0),
+            )
+            try:
+                joy_caption_1 = joy_caption.gen(
+                    prompt="This is a high-resolution image of",
+                    max_new_tokens=60,
+                    temperature=1,
+                    cache=True,
+                    joy_pipeline=get_value_at_index(joy_caption_load_144, 0),
+                    image=get_value_at_index(facesegmentation_1, 3),
+                )
+                person_img_description = get_value_at_index(joy_caption_1, 0)
+                print(f"[person_img_description]: {person_img_description}")
+                # prompt = f"person apearance: {person_img_description}. four actions: {en_prompts}. please generate four prompts containing the person appearance, action and environment without title"
+                prompt = f"{en_prompts}. please expand four prompts with action and environment details. separate each prompt with a new line"
+                prompt = text2text(prompt=prompt)
+                prompt_ls = prompt.split("\n")
+                prompt_ls = [prom for prom in prompt_ls if prom]
+                image_ask ="This is a photograph taken from a distance, showing the upper half of the frame."
+                torch.cuda.empty_cache()
+                samplercustomadvanced_1_list = []
+            except Exception as e:
+                logger.error(f"Prompt handling Error: {e}")
+                raise Exception(f"Prompt handling Error: {e}")
+            
+            randomnoise_1 = randomnoise.get_noise(noise_seed=random.randint(1, 2**64))
+            ksamplerselect_1 = ksamplerselect.get_sampler(sampler_name="euler")
+
+            for prompt in prompt_ls:
+                new_prompt = prompt + person_img_description + image_ask
+                print("new prompt:",new_prompt)
+                cliptextencode_1 = cliptextencode.encode(
+                    text = new_prompt,
+                    clip=get_value_at_index(loraloader_1, 1),
+                )
+                basicscheduler_1 = basicscheduler.get_sigmas(
+                    scheduler="simple",
+                    steps=3,
+                    denoise=1,
+                    model=get_value_at_index(loraloader_1, 0),
+                )
+
+                basicguider_1 = basicguider.get_guider(
+                    model=get_value_at_index(loraloader_1, 0),
+                    conditioning=get_value_at_index(cliptextencode_1, 0),
+                )
+                try:
+                    samplercustomadvanced_1 = samplercustomadvanced.sample(
+                        noise=get_value_at_index(randomnoise_1, 0),
+                        guider=get_value_at_index(basicguider_1, 0),
+                        sampler=get_value_at_index(ksamplerselect_1, 0),
+                        sigmas=get_value_at_index(basicscheduler_1, 0),
+                        latent_image=get_value_at_index(emptylatentimage_1, 0),
+                    )
+                    samplercustomadvanced_1_list.append(get_value_at_index(samplercustomadvanced_1,0))
+                except Exception as e:
+                    logger.error(f"Sampling Error: {e}")
+                    raise Exception(f"Sampling Error: {e}")
+
+            torch.cuda.empty_cache()
+            latent_batch_1 = latent_batch.latent_batch(
+                latent_1=samplercustomadvanced_1_list[0],
+                latent_2=samplercustomadvanced_1_list[1],
+                latent_3=samplercustomadvanced_1_list[2],
+                latent_4=samplercustomadvanced_1_list[3],
+            )
+
+            vaedecode_1 = vaedecode.decode(
+                samples=get_value_at_index(latent_batch_1, 0),
+                vae=get_value_at_index(vaeloader_10, 0),
+            )
+            try:
+                reactorfaceswap_1 = reactorfaceswap.execute(
+                    enabled=True,
+                    swap_model="inswapper_128.onnx",
+                    facedetection="retinaface_resnet50",
+                    face_restore_model="GFPGANv1.4.pth",
+                    face_restore_visibility=1,
+                    codeformer_weight=0.5,
+                    detect_gender_input="no",
+                    detect_gender_source="no",
+                    input_faces_index="0",
+                    source_faces_index="0",
+                    console_log_level=1,
+                    input_image=get_value_at_index(vaedecode_1, 0),
+                    source_image=get_value_at_index(loadimage_1, 0),
+                )
+            except Exception as e:
+                logger.error(f"Reactor Face Swap Error: {e}")
+                raise Exception(f"Reactor Face Swap Error: {e}")
+            
+            time_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+            saveimage_1 = saveimage.save_images(
+                filename_prefix=f"real_vision_{time_suffix}",
+                images=get_value_at_index(reactorfaceswap_1, 0),
+            )
+            print(f"saveimage_1: {saveimage_1}")
+            real_image_urls = []
+            for i in range(4):
+                filename = saveimage_1['ui']['images'][i]['filename']
+                temp_image_url = obs_client.obs_upload_file(file_path=os.path.join(OUTPUT_PATH, filename), dir = f"{CURRENT_MODEL}/{task_id}")
+                shutil.move(os.path.join(OUTPUT_PATH, filename), os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, filename))
+                real_image_urls.append(temp_image_url)
+            
+            json_file = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, f"images_prompts_{time_suffix}.json")
+            with open(json_file, "w") as f:
+                image_data = {
+                        "person_img_description": person_img_description,
+                        "chinese_prompts": zh_prompts,
+                        "prompts": prompt_ls,
+                        "user_image": image_url,
+                        "images_without_styles": real_image_urls, 
+                    }
+                json.dump(image_data, f, indent=4, ensure_ascii=False)
+            image_info = obs_client.obs_upload_file(file_path=json_file, dir=f"{CURRENT_MODEL}/{task_id}")
+            print(f"Saved image info to {image_info}")
+
+            torch.cuda.empty_cache()
+            return ImageResponse(code=200, message="success", data=real_image_urls)
+        
+        except Exception as e:
+            logger.error(f"Error: {e}")
+            return ImageResponse(code=500, message=f"Internal Server Error:{e}")
+
+if __name__ == "__main__":
+    zh_prompts = "她早上从床上醒来。|她去公园晨跑。|她在街上走路。|她在办公室工作。"
+    flux_story_diffusion(prompts=zh_prompts)
+
+
+import os
+import shutil
+import uuid
+
+from fastapi import APIRouter, UploadFile, File, requests
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from starlette.responses import StreamingResponse
+
+import models.fileModel as fileModel
+from routers import ImageResponse, CURRENT_MODEL,SAVE_PATH
+
+router = APIRouter(prefix="/file_model",
+                   tags=["file_model"],
+                   dependencies=[],
+                   responses={404: {"description": "Not found"}}, )
+
+@router.post("/uploadFile")
+async def updateFile(file: UploadFile):
+    url = fileModel.upload_file(file, current_model=CURRENT_MODEL)
+    with open(os.path.join(SAVE_PATH,"log.txt"), "w") as f:
+        f.write(url)
+    response = ImageResponse(code=200, data=url, message="success")
+    return response
+
+
+import os
+import random
+import json
+import shutil
+import torch
+from datetime import datetime
+from fastapi import APIRouter
+
+from models import fileModel, obs_client
+from routers import ImageResponse, get_value_at_index
+from routers import OUTPUT_PATH, SAVE_PATH,CURRENT_MODEL, style_image_list, logger, image_style
+
+from nodes import (
+    KSampler,
+    CLIPTextEncode,
+    ControlNetApply,
+    NODE_CLASS_MAPPINGS,
+    VAEDecode,
+    LoadImage,
+    EmptyLatentImage,
+    ControlNetLoader,
+    CheckpointLoaderSimple,
+    SaveImage,
+)
+
+with torch.inference_mode():
+    try:
+        loadimage = LoadImage()
+
+        checkpointloadersimple = CheckpointLoaderSimple()
+        checkpointloadersimple_166 = checkpointloadersimple.load_checkpoint(
+            ckpt_name="sd_xl_base_1.0.safetensors"
+        )
+        cliptextencode = CLIPTextEncode()
+
+        controlnetloader = ControlNetLoader()
+        controlnetloader_174 = controlnetloader.load_controlnet(
+            control_net_name="diffusers-controlnet-canny-sdxl-1.safetensors"
+        )
+
+        controlnetloader_175 = controlnetloader.load_controlnet(
+            control_net_name="diffusers-controlnet-depth-sdxl-1.safetensors"
+        )
+
+        ipadapterunifiedloader = NODE_CLASS_MAPPINGS["IPAdapterUnifiedLoader"]()
+        imagebatchmultiple = NODE_CLASS_MAPPINGS["ImageBatchMultiple+"]()
+        ipadapteradvanced = NODE_CLASS_MAPPINGS["IPAdapterAdvanced"]()
+        image_batch = NODE_CLASS_MAPPINGS["Image Batch"]()
+        cannyedgepreprocessor = NODE_CLASS_MAPPINGS["CannyEdgePreprocessor"]()
+        controlnetapply = ControlNetApply()
+        aio_preprocessor = NODE_CLASS_MAPPINGS["AIO_Preprocessor"]()
+        emptylatentimage = EmptyLatentImage()
+        ksampler = KSampler()
+        vaedecode = VAEDecode()
+        imageluminancedetector = NODE_CLASS_MAPPINGS["ImageLuminanceDetector"]()
+        saveimage = SaveImage()
+    except Exception as e:
+        logger.error(f"Error loading nodes: {e}")
+
+
+
+router = APIRouter(
+    prefix="/img",
+    tags=["style_transfer"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+
+@router.post("/style_transfer")
+async def style_transfer(image_urls:list[str], style:str="Line Art")-> ImageResponse:
+    with torch.inference_mode():
+        try:
+            try:
+                load_origin_images = []
+                global task_id
+                for temp_image_url in image_urls:
+                    task_id, filename = obs_client.get_path_from_url(url=temp_image_url, split_by=CURRENT_MODEL)
+                    image_path = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id,filename)
+                    if not os.path.exists(image_path):
+                        resp = obs_client.obs_download_file(file_path=image_path, dir=f"{CURRENT_MODEL}/{task_id}")
+                    loadimage = LoadImage()
+                    loadimage_1 = loadimage.load_image(image=image_path)
+                    load_origin_images.append(loadimage_1)
+
+                load_style_images = []
+                for image_name in style_image_list[style]:
+                    loadimage = LoadImage()
+                    loadimage_1 = loadimage.load_image(image=image_name)
+                    load_style_images.append(loadimage_1)
+            except Exception as e:
+                logger.error(f"Error loading images: {e}")
+                raise Exception(f"Error loading images: {e}")
+
+            style_description=image_style[style]
+            negative_description="nsfw, lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry, artist name"
+
+            cliptextencode_169 = cliptextencode.encode(
+                text=style_description,
+                clip=get_value_at_index(checkpointloadersimple_166, 1),
+            )
+
+            cliptextencode_170 = cliptextencode.encode(
+                text=negative_description,
+                clip=get_value_at_index(checkpointloadersimple_166, 1),
+            )
+
+            ipadapterunifiedloader_38 = ipadapterunifiedloader.load_models(
+                preset="PLUS (high strength)",
+                model=get_value_at_index(checkpointloadersimple_166, 0),
+            )
+
+            imagebatchmultiple_45 = imagebatchmultiple.execute(
+                method="nearest-exact",
+                image_1=get_value_at_index(load_style_images[0], 0),
+                image_2=get_value_at_index(load_style_images[1], 0),
+                image_3=get_value_at_index(load_style_images[2], 0),
+                image_4=get_value_at_index(load_style_images[3], 0),
+            )
+
+            ipadapteradvanced_37 = ipadapteradvanced.apply_ipadapter(
+                weight=1,
+                weight_type="style transfer precise",
+                combine_embeds="concat",
+                start_at=0,
+                end_at=1,
+                embeds_scaling="V only",
+                model=get_value_at_index(ipadapterunifiedloader_38, 0),
+                ipadapter=get_value_at_index(ipadapterunifiedloader_38, 1),
+                image=get_value_at_index(imagebatchmultiple_45, 0),
+            )
+
+            image_batch_230 = image_batch.image_batch(
+                image_1=get_value_at_index(load_origin_images[0], 0),
+                image_2=get_value_at_index(load_origin_images[1], 0),
+                image_3=get_value_at_index(load_origin_images[2], 0),
+                image_4=get_value_at_index(load_origin_images[3], 0),
+            )
+
+            cannyedgepreprocessor_177 = cannyedgepreprocessor.execute(
+                low_threshold=50,
+                high_threshold=200,
+                resolution=512,
+                image=get_value_at_index(image_batch_230, 0),
+            )
+
+            controlnetapply_172 = controlnetapply.apply_controlnet(
+                strength=0.5,
+                conditioning=get_value_at_index(cliptextencode_169, 0),
+                control_net=get_value_at_index(controlnetloader_174, 0),
+                image=get_value_at_index(cannyedgepreprocessor_177, 0),
+            )
+
+            aio_preprocessor_176 = aio_preprocessor.execute(
+                preprocessor="DepthAnythingV2Preprocessor",
+                resolution=512,
+                image=get_value_at_index(image_batch_230, 0),
+            )
+
+            controlnetapply_173 = controlnetapply.apply_controlnet(
+                strength=0.55,
+                conditioning=get_value_at_index(controlnetapply_172, 0),
+                control_net=get_value_at_index(controlnetloader_175, 0),
+                image=get_value_at_index(aio_preprocessor_176, 0),
+            )
+
+            emptylatentimage_167 = emptylatentimage.generate(
+                width=512,
+                height=512,
+                batch_size=4,
+            )
+            torch.cuda.empty_cache()
+            try:
+                ksampler_1 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=25,
+                    cfg=7,
+                    sampler_name="euler",
+                    scheduler="karras",
+                    denoise=1,
+                    model=get_value_at_index(ipadapteradvanced_37, 0),
+                    positive=get_value_at_index(controlnetapply_173, 0),
+                    negative=get_value_at_index(cliptextencode_170, 0),
+                    latent_image=get_value_at_index(emptylatentimage_167, 0),
+                )
+
+                vaedecode_1 = vaedecode.decode(
+                    samples=get_value_at_index(ksampler_1, 0),
+                    vae=get_value_at_index(checkpointloadersimple_166, 2),
+                )
+            except Exception as e:
+                logger.error(f"ksampler or vaedecode Error: {e}")
+                raise Exception(f"ksampler or vaedecode Error: {e}")
+
+            if style == "Line Art":
+                imageluminancedetector_1 = imageluminancedetector.execute(
+                    gamma_correction=1,
+                    resolution=512,
+                    image=get_value_at_index(vaedecode_1, 0),
+                )
+                wait_to_save = imageluminancedetector_1
+            else:
+                wait_to_save = vaedecode_1
+
+            time_suffix = datetime.now().strftime("%Y%m%d_%H%M%S")
+            saveimage_1 = saveimage.save_images(
+                filename_prefix=f"style_vision_{time_suffix}",
+                images=get_value_at_index(wait_to_save, 0),
+            )
+            style_image_urls = []
+            for i in range(4):
+                filename = saveimage_1['ui']['images'][i]['filename']
+                temp_image_url = obs_client.obs_upload_file(os.path.join(OUTPUT_PATH, filename), dir=f"{CURRENT_MODEL}/{task_id}")
+                shutil.move(os.path.join(OUTPUT_PATH, filename), os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, filename))
+                style_image_urls.append(temp_image_url)
+
+            json_file = os.path.join(SAVE_PATH, CURRENT_MODEL, task_id, f"images_style_{time_suffix}.json")
+            with open(json_file, "w") as f:
+                image_data = {
+                    "style": style +":"+style_description,
+                    "style_negative": "negative:"+negative_description,
+                    "style_image_list": style_image_list[style],
+                    "image_with_style": image_urls,
+                    "style_image_urls": style_image_urls
+                }
+                json.dump(image_data, f, indent=4, ensure_ascii=False) 
+            image_info = obs_client.obs_upload_file(file_path=json_file, dir=f"{CURRENT_MODEL}/{task_id}")
+            print(f"Saved image info to {image_info}")
+
+            torch.cuda.empty_cache()
+            return ImageResponse(code=200, message="success", data=style_image_urls)
+        
+        except Exception as e:
+            logger.error(f"Style Transfer Error: {e}")
+            return ImageResponse(code=500, message=f"error:{e}", data=[])
+
+
+if __name__ == "__main__":
+    style_transfer()
+
+
+import sys, os
+from pydantic import BaseModel
+from typing import Any, Mapping, Sequence, Union, List
+
+import inspect
+import os, sys
+import logging
+from argostranslate import translate
+from openai import OpenAI, BadRequestError
+from fastapi.openapi.docs import get_swagger_ui_html
+
+INPUT_PATH = "/root/ComfyUI/input"
+OUTPUT_PATH = "/root/ComfyUI/output"
+SAVE_PATH = "/root/autodl-tmp/data_store"
+CURRENT_MODEL = "story_diffusion"
+os.makedirs(SAVE_PATH, exist_ok=True)
+
+
+# 配置日志记录
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+# 添加文件处理器
+log_file_path = "/root/ComfyUI_Story/MYROUTER/logfile.log"
+file_handler = logging.FileHandler(log_file_path)
+file_handler.setLevel(logging.INFO)
+# 创建日志格式器并将其添加到文件处理器
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+# 将文件处理器添加到日志记录器
+logger.addHandler(file_handler)
+
+class ImageResponse(BaseModel):
+    code: int = 0
+    data: Union[str, List[str]] = []
+    message: str = ""
+
+
+image_style = {
+    "Anime Style": "Anime style, key visual, vibrant, studio anime, highly detailed, intricate character design, dynamic poses, vivid color palette, expressive facial expressions, cinematic lighting, sharp line art, atmospheric background, stylized effects, fluid motion, intense emotions, high contrast shading, elaborate costume details, fantasy elements, glowing accents, epic scene composition",
+    "Photographic": "35mm photograph,film,bokeh,professional,4k,highly detailed",
+    "Digital Art": "Digital artwork,illustrative,painterly,matte painting,highly detailed",
+    "Comic Book": "Graphic illustration, comic art, graphic novel art, vibrant, highly detailed, bold line work, dynamic panel composition, exaggerated perspectives, expressive character designs, vivid color schemes, dramatic shading, textured backgrounds, action-packed scenes, stylized typography, narrative storytelling elements, contrasting shadows, impactful visual effects, onomatopoeic sound words, superhero themes, intricate costume designs, classic comic book aesthetics",
+    "Fantasy Art": "magnificent,celestial,ethereal,painterly,epic,majestic,magical,fantasy art,cover art,dreamy",
+    "Analog Film": "faded film,desaturated,35mm photo,grainy,vignette,vintage,Kodachrome,Lomography,stained,highly detailed,found footage",
+    "Neon Punk": "cyberpunk,vaporwave,neon,vibes,vibrant,stunningly beautiful,crisp,detailed,sleek,ultramodern,magenta highlights,dark purple shadows,high contrast,cinematic,ultra detailed,intricate,professional",
+    "Isometric": "vibrant, beautiful, crisp, detailed, ultra detailed, intricate",
+    "Low Poly": "low-poly game art, polygon mesh, jagged, blocky, wireframe edges,centered composition",
+    "Line Art": "professional, sleek, modern, minimalist, graphic, line art,vector graphics",
+    "Cinematic": "shallow depth of field, vignette, highly detailed, high budget Hollywood movie, bokeh, cinemascope, moody, epic, gorgeous, film grain, grainy",
+    "3D Model": "Octane render, highly detailed, volumetric, dramatic lighting, hyper-realistic textures, photorealistic materials, intricate geometry, complex surface detailing, cinematic depth of field, dynamic shadows, subsurface scattering, physically accurate reflections, precise caustics, atmospheric fog, soft gradients, high dynamic range, seamless integration, immersive environment, high-resolution rendering, polished finish, professional studio quality",
+    "Graffiti Style": "Street art, vibrant, urban, detailed, tag, mural, bold color contrasts, dynamic spray paint textures, intricate line work, expressive lettering, graffiti characters, distressed surfaces, raw urban aesthetic, layered paint strokes, mixed media elements, grunge textures, abstract shapes, exaggerated proportions, vibrant neon highlights, chaotic composition, street culture vibe, wall textures, concrete backgrounds, rebellious theme, hip-hop influence",
+    "Advertising Poster": "Professional, modern, product-focused, commercial,eye-catching, highly detailed",
+    "Craft Clay": "Sculpture, clay art, centered composition, claymation, handcrafted texture, detailed sculpting, organic shapes, soft earthy tones, subtle imperfections, realistic clay surface, artisan craftsmanship, smooth curves, vibrant glaze accents, tactile feel, fine detailing, whimsical character designs, playful expressions, layered modeling, animated poses, lifelike contours, warm lighting, studio setting, cozy atmosphere, artisanal quality",
+    "Pixel Art": "low-res, blocky, pixel art style,8-bit graphics, pixel art 4k wallpaper. Incredible pixel art details. Pixel art. Steam waves. Detailed unreal engine pixel art.",
+    "Oil Painting": "Create a vibrant impressionist painting that captures the essence of a sunlit garden in spring. Use loose brushstrokes to convey the play of light and shadow on colorful flowers and lush greenery. Incorporate soft, swirling colors to evoke a sense of movement and tranquility, reminiscent of Monet's style.",
+}
+
+style_image_list = {
+    "Anime Style" : ["anime0.png", "anime1.png", "anime2.png", "anime3.png"],
+    "Comic Book" : ["comic0.png", "comic1.png", "comic2.png", "comic3.png"],
+    "Line Art": ["lineart0.png", "lineart1.png", "lineart2.png", "lineart3.png"],
+    "Craft Clay": ["clay0.png", "clay1.png", "clay2.png", "clay3.png"],
+    "Neon Punk": ["neon0.png", "neon1.png", "neon2.png", "neon3.png"],
+    "Graffiti Style": ["graffiti0.png", "graffiti1.png", "graffiti2.png", "graffiti3.png"],
+    "3D Model": ["threed0.png", "threed1.png", "threed2.png", "threed3.png"],
+    "Oil Painting": ["oil0.png", "oil1.png", "oil2.png", "oil3.png"],
+    "Pixel Art": ["pixart0.png", "pixart1.png", "pixart2.png", "pixart3.png"],
+}
+
+def trans_zh2en(prompt):
+    translation = translate.get_translation_from_codes("zh", "en")
+    return translation.translate(prompt)
+
+client = OpenAI(
+    api_key="5f8d4b0d8aae79363f13773256f216aa.hAUYfEWDW2qg7G8o",
+    base_url="https://open.bigmodel.cn/api/paas/v4/"
+)
+
+def text2text(prompt):
+    completion = client.chat.completions.create(
+        model="glm-4",
+        messages=[
+            {"role": "user", "content": prompt}
+        ],
+        top_p=0.7,
+        temperature=0.9
+    )
+
+    return completion.choices[0].message.content
+
+# FastAPI的一些函数
+def get_function_default_args(func):
+    '''获取函数默认参数'''
+    sign = inspect.signature(func)
+    return {
+        k: v.default
+        for k, v in sign.parameters.items()
+        if v.default is not inspect.Parameter.empty
+    }
+
+def swagger_monkey_patch(*args, **kwargs):
+    """
+    Wrap the function which is generating the HTML for the /docs endpoint and
+    overwrite the default values for the swagger js and css.
+    """
+    param_dict = get_function_default_args(get_swagger_ui_html)
+    swagger_js_url = param_dict['swagger_js_url'].replace('https://cdn.jsdelivr.net/npm/', 'https://unpkg.com/')
+    swagger_css_url = param_dict['swagger_css_url'].replace('https://cdn.jsdelivr.net/npm/', 'https://unpkg.com/')
+    return get_swagger_ui_html(
+        *args, **kwargs,
+        swagger_js_url=swagger_js_url,
+        swagger_css_url=swagger_css_url
+    )
+
+
+# Comfyui的组件和节点函数
+def get_value_at_index(obj: Union[Sequence, Mapping], index: int) -> Any:
+    """Returns the value at the given index of a sequence or mapping.
+
+    If the object is a sequence (like list or string), returns the value at the given index.
+    If the object is a mapping (like a dictionary), returns the value at the index-th key.
+
+    Some return a dictionary, in these cases, we look for the "results" key
+
+    Args:
+        obj (Union[Sequence, Mapping]): The object to retrieve the value from.
+        index (int): The index of the value to retrieve.
+
+    Returns:
+        Any: The value at the given index.
+
+    Raises:
+        IndexError: If the index is out of bounds for the object and the object is not a mapping.
+    """
+    try:
+        return obj[index]
+    except KeyError:
+        return obj["result"][index]
+
+def find_path(name: str, path: str = None) -> str:
+    """
+    Recursively looks at parent folders starting from the given path until it finds the given name.
+    Returns the path as a Path object if found, or None otherwise.
+    """
+    # If no path is given, use the current working directory
+    if path is None:
+        path = os.getcwd()
+
+    # Check if the current directory contains the name
+    if name in os.listdir(path):
+        path_name = os.path.join(path, name)
+        print(f"{name} found: {path_name}")
+        return path_name
+
+    # Get the parent directory
+    parent_directory = os.path.dirname(path)
+
+    # If the parent directory is the same as the current directory, we've reached the root and stop the search
+    if parent_directory == path:
+        return None
+
+    # Recursively call the function with the parent directory
+    return find_path(name, parent_directory)
+
+
+def add_comfyui_directory_to_sys_path() -> None:
+    """
+    Add 'ComfyUI' to the sys.path
+    """
+    comfyui_path = find_path("ComfyUI")
+    if comfyui_path is not None and os.path.isdir(comfyui_path):
+        sys.path.append(comfyui_path)
+        print(f"'{comfyui_path}' added to sys.path")
+
+def import_custom_nodes() -> None:
+    """Find all custom nodes in the custom_nodes folder and add those node objects to NODE_CLASS_MAPPINGS
+
+    This function sets up a new asyncio event loop, initializes the PromptServer,
+    creates a PromptQueue, and initializes the custom nodes.
+    """
+    import asyncio
+    import execution
+    from nodes import init_extra_nodes
+    import server
+
+    # Creating a new event loop and setting it as the default loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Creating an instance of PromptServer with the loop
+    server_instance = server.PromptServer(loop)
+    execution.PromptQueue(server_instance)
+
+    # Initializing custom nodes
+    init_extra_nodes()
+
+import torch
+from diffusers import StableDiffusionXLInpaintPipeline
+from PIL import Image
+
+from ip_adapter import IPAdapterXL
+
+base_model_path = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
+image_encoder_path = "sdxl_models/image_encoder"
+ip_ckpt = "sdxl_models/ip-adapter_sdxl.bin"
+device = "cuda"
+
+# load SDXL pipeline
+pipe = StableDiffusionXLInpaintPipeline.from_pretrained(
+    base_model_path,
+    torch_dtype=torch.float16,
+    variant="fp16",
+    use_safetensors=True,
+)
+pipe.enable_vae_tiling()
+
+# load ip-adapter
+# target_blocks=["block"] for original IP-Adapter
+# target_blocks=["up_blocks.0.attentions.1"] for style blocks only
+# target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1"])
+
+image = "./assets/5.jpg"
+image = Image.open(image)
+image.resize((512, 512))
+
+init_image = Image.open("./assets/overture-creations-5sI6fQgYIuo.png").convert("RGB")
+mask_image = Image.open("./assets/overture-creations-5sI6fQgYIuo_mask_inverse.png").convert("RGB")
+
+# generate image
+images = ip_model.generate(pil_image=image,
+                            prompt="a dog sitting on, masterpiece, best quality, high quality",
+                            negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                            scale=2.0,
+                            guidance_scale=8,
+                            num_samples=1,
+                            num_inference_steps=30, 
+                            image=init_image,
+                            mask_image=mask_image,
+                            strength=0.99
+                            )
+
+images[0].save("result.png")
+
+import torch
+from diffusers import StableDiffusionPipeline, UniPCMultistepScheduler
+from PIL import Image
+
+from ip_adapter import IPAdapter
+
+base_model_path = "runwayml/stable-diffusion-v1-5"
+image_encoder_path = "models/image_encoder"
+ip_ckpt = "models/ip-adapter_sd15.bin"
+device = "cuda"
+
+# load SDXL pipeline
+pipe = StableDiffusionPipeline.from_pretrained(
+    base_model_path,
+    torch_dtype=torch.float16,
+)
+pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+pipe.enable_vae_tiling()
+
+# load ip-adapter
+# target_blocks=["block"] for original IP-Adapter
+# target_blocks=["up_blocks.1"] for style blocks only (experimental, not obvious as SDXL)
+# target_blocks = ["down_blocks.2", "mid_block", "up_blocks.1"] # for style+layout blocks (experimental, not obvious as SDXL)
+ip_model = IPAdapter(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["block"])
+
+image = "./assets/3.jpg"
+image = Image.open(image)
+image.resize((512, 512))
+
+# set negative content
+neg_content = "a girl"
+neg_content_scale = 0.8
+if neg_content is not None:
+    from transformers import CLIPTextModelWithProjection, CLIPTokenizer
+    text_encoder = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K").to(pipe.device, 
+                                                                                                           dtype=pipe.dtype)
+    tokenizer = CLIPTokenizer.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+
+    tokens = tokenizer([neg_content], return_tensors='pt').to(pipe.device)
+    neg_content_emb = text_encoder(**tokens).text_embeds
+    neg_content_emb *= neg_content_scale
+else:
+    neg_content_emb = None
+
+# generate image with content subtraction
+images = ip_model.generate(pil_image=image,
+                           prompt="a cat, masterpiece, best quality, high quality",
+                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                           scale=1.0,
+                           guidance_scale=5,
+                           num_samples=1,
+                           num_inference_steps=30, 
+                           seed=42,
+                           neg_content_emb=neg_content_emb,
+                          )
+
+images[0].save("result.png")
+
+'down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor',
+'down_blocks.1.attentions.0.transformer_blocks.0.attn2.processor',
+'down_blocks.1.attentions.0.transformer_blocks.1.attn1.processor',
+'down_blocks.1.attentions.0.transformer_blocks.1.attn2.processor',
+'down_blocks.1.attentions.1.transformer_blocks.0.attn1.processor',
+'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor',
+'down_blocks.1.attentions.1.transformer_blocks.1.attn1.processor', 
+'down_blocks.1.attentions.1.transformer_blocks.1.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.0.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.0.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.1.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.1.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.2.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.2.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.3.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.3.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.4.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.4.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.5.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.5.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.6.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.6.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.7.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.7.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.8.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.8.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.9.attn1.processor',
+'down_blocks.2.attentions.0.transformer_blocks.9.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.0.attn1.processor',
+'down_blocks.2.attentions.1.transformer_blocks.0.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.1.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.1.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.2.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.2.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.3.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.3.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.4.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.4.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.5.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.5.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.6.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.6.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.7.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.7.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.8.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.8.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.9.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.9.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.0.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.0.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.1.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.1.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.2.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.2.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.3.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.3.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.4.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.4.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.5.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.5.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.6.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.6.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.7.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.7.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.8.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.8.attn2.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.9.attn1.processor', 
+'up_blocks.0.attentions.0.transformer_blocks.9.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.0.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.0.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.1.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.1.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.2.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.2.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.3.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.3.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.4.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.4.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.5.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.5.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.6.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.6.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.7.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.7.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.8.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.8.attn2.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.9.attn1.processor', 
+'up_blocks.0.attentions.1.transformer_blocks.9.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.0.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.0.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.1.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.1.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.2.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.2.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.3.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.3.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.4.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.4.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.5.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.5.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.6.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.6.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.7.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.7.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.8.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.8.attn2.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.9.attn1.processor', 
+'up_blocks.0.attentions.2.transformer_blocks.9.attn2.processor', 
+'up_blocks.1.attentions.0.transformer_blocks.0.attn1.processor', 
+'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor', 
+'up_blocks.1.attentions.0.transformer_blocks.1.attn1.processor', 
+'up_blocks.1.attentions.0.transformer_blocks.1.attn2.processor', 
+'up_blocks.1.attentions.1.transformer_blocks.0.attn1.processor', 
+'up_blocks.1.attentions.1.transformer_blocks.0.attn2.processor', 
+'up_blocks.1.attentions.1.transformer_blocks.1.attn1.processor', 
+'up_blocks.1.attentions.1.transformer_blocks.1.attn2.processor', 
+'up_blocks.1.attentions.2.transformer_blocks.0.attn1.processor', 
+'up_blocks.1.attentions.2.transformer_blocks.0.attn2.processor', 
+'up_blocks.1.attentions.2.transformer_blocks.1.attn1.processor', 
+'up_blocks.1.attentions.2.transformer_blocks.1.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.0.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.0.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.1.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.1.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.2.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.2.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.3.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.3.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.4.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.4.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.5.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.5.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.6.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.6.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.7.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.7.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.8.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.8.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.9.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.9.attn2.processor'
+
+import torch
+from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
+
+import cv2
+import os
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+from PIL import Image
+
+from .ip_adapter import IPAdapterXL
+
+base_model_path = "/root/autodl-tmp/InstantStyle_Model/stabilityai/stable-diffusion-xl-base-1.0" # "stabilityai/stable-diffusion-xl-base-1.0"
+image_encoder_path ="/root/autodl-tmp/InstantStyle_Model/sdxl_models/image_encoder" # "sdxl_models/image_encoder"
+ip_ckpt = "/root/autodl-tmp/InstantStyle_Model/sdxl_models/ip-adapter_sdxl.bin" #"sdxl_models/ip-adapter_sdxl.bin"
+device = "cuda"
+
+controlnet_path ="/root/autodl-tmp/InstantStyle_Model/diffusers/controlnet-canny-sdxl-1.0" # "diffusers/controlnet-canny-sdxl-1.0"
+controlnet = ControlNetModel.from_pretrained(controlnet_path, use_safetensors=False, torch_dtype=torch.float16).to(device)
+
+# load SDXL pipeline
+pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+    base_model_path,
+    controlnet=controlnet,
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+)
+pipe.enable_xformers_memory_efficient_attention()
+
+
+# load ip-adapter
+target_blocks=["block"] # for original IP-Adapter
+# target_blocks=["up_blocks.0.attentions.1"] # for style blocks only
+# target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=target_blocks)
+
+
+def style_transfer(image_paths:list[str], style_image_path:str):
+    # style image
+    if style_image_path is None:
+        style_image = "/root/ComfyUI/MYROUTER/routers/InstantStyle/assets/style/R.jpg"
+    else:
+        style_image = style_image_path
+    style_image = Image.open(style_image)
+    style_image.resize((720, 720))
+
+    # 加载和处理图像
+    target_images = image_paths # ["./assets/test/ComfyUI_00492_.png","./assets/test/ComfyUI_00493_.png","./assets/test/ComfyUI_00494_.png", "./assets/test/ComfyUI_00495_.png"]
+    canny_maps = [Image.fromarray(cv2.cvtColor(cv2.Canny(cv2.imread(img), 30, 200), cv2.COLOR_BGR2RGB)) for img in target_images]
+    # style_images = ["/root/InstantStyle/assets/style/H.jpg", "/root/InstantStyle/assets/style/R.jpg", "/root/InstantStyle/assets/style/R.jpg", "/root/InstantStyle/assets/style/L.jpg"]
+    # style_image = [Image.open(img) for img in style_images]
+    # generate image
+    images = ip_model.generate(pil_image=style_image,
+                            prompt=None,
+                            negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                            scale=1.0,
+                            guidance_scale=5,
+                            num_samples=4,
+                            num_inference_steps=35, 
+                            seed=42,
+                            image=canny_maps,
+                            controlnet_conditioning_scale=0.6,
+                            )
+
+    images[0].save("result.png")
+    images[1].save("result1.png")
+    images[2].save("result2.png")
+    images[3].save("result3.png")
+
+if __name__ == "__main__":
+    pass
+
+import torch
+from diffusers import StableDiffusionXLPipeline
+from PIL import Image
+
+from ip_adapter import IPAdapterPlusXL
+
+base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
+image_encoder_path = "models/image_encoder"
+ip_ckpt = "sdxl_models/ip-adapter-plus_sdxl_vit-h.bin"
+device = "cuda"
+
+# load SDXL pipeline
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    base_model_path,
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+)
+pipe.enable_vae_tiling()
+
+# load ip-adapter
+# target_blocks=["block"] for original IP-Adapter
+# target_blocks=["up_blocks.0.attentions.1"] for style blocks only
+# target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+ip_model = IPAdapterPlusXL(pipe, image_encoder_path, ip_ckpt, device, num_tokens=16, target_blocks=["up_blocks.0.attentions.1"])
+
+image = "./assets/0.jpg"
+image = Image.open(image)
+image.resize((512, 512))
+
+# generate image
+images = ip_model.generate(pil_image=image,
+                           prompt="a cat, masterpiece, best quality, high quality",
+                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                           scale=1.0,
+                           guidance_scale=5,
+                           num_samples=1,
+                           num_inference_steps=30, 
+                           seed=42,
+                          )
+
+images[0].save("result.png")
+
+<div align="center">
+<h1>InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation</h1>
+
+[**Haofan Wang**](https://haofanwang.github.io/)<sup>*</sup> · [**Matteo Spinelli**](https://github.com/cubiq) · [**Qixun Wang**](https://github.com/wangqixun) · [**Xu Bai**](https://huggingface.co/baymin0220) · [**Zekui Qin**](https://github.com/ZekuiQin) · [**Anthony Chen**](https://antonioo-c.github.io/)
+
+InstantX Team 
+
+<sup>*</sup>corresponding authors
+
+<a href='https://instantstyle.github.io/'><img src='https://img.shields.io/badge/Project-Page-green'></a>
+<a href='https://arxiv.org/abs/2404.02733'><img src='https://img.shields.io/badge/Technique-Report-red'></a>
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-red)](https://huggingface.co/spaces/InstantX/InstantStyle)
+[![ModelScope](https://img.shields.io/badge/ModelScope-Studios-blue)](https://modelscope.cn/studios/instantx/InstantStyle/summary)
+[![GitHub](https://img.shields.io/github/stars/InstantStyle/InstantStyle?style=social)](https://github.com/InstantStyle/InstantStyle)
+
+</div>
+
+InstantStyle is a general framework that employs two straightforward yet potent techniques for achieving an effective disentanglement of style and content from reference images.
+
+<!-- <img src='assets/pipe.png'> -->
+
+<div align="center">
+<img src='assets/page0.png' width = 900 >
+</div>
+
+
+## Principle
+
+Separating Content from Image. Benefit from the good characterization of CLIP global features, after subtracting the content text fea- tures from the image features, the style and content can be explicitly decoupled. Although simple, this strategy is quite effective in mitigating content leakage.
+<p align="center">
+  <img src="assets/subtraction.png">
+</p>
+
+Injecting into Style Blocks Only. Empirically, each layer of a deep network captures different semantic information the key observation in our work is that there exists two specific attention layers handling style. Specifically, we find up blocks.0.attentions.1 and down blocks.2.attentions.1 capture style (color, material, atmosphere) and spatial layout (structure, composition) respectively.
+<p align="center">
+  <img src="assets/tree.png">
+</p>
+
+## Release
+- [2024/07/06] 🔥 We release [CSGO](https://github.com/instantX-research/CSGO) page for content-style composition. Code will be released soon.
+- [2024/07/01] 🔥 We release [InstantStyle-Plus](https://instantstyle-plus.github.io/) report for content preserving.
+- [2024/04/29] 🔥 We support InstantStyle natively in diffusers, usage can be found [here](https://github.com/InstantStyle/InstantStyle?tab=readme-ov-file#use-in-diffusers)
+- [2024/04/24] 🔥 InstantStyle for fast generation, find demos at [InstantStyle-SDXL-Lightning](https://huggingface.co/spaces/radames/InstantStyle-SDXL-Lightning) and [InstantStyle-Hyper-SDXL](https://huggingface.co/spaces/radames/InstantStyle-Hyper-SDXL).
+- [2024/04/24] 🔥 We support [HiDiffusion](https://github.com/megvii-research/HiDiffusion) for generating highres images, find more information [here](https://github.com/InstantStyle/InstantStyle/tree/main?tab=readme-ov-file#high-resolution-generation).
+- [2024/04/23] 🔥 InstantStyle has been natively supported in diffusers, more information can be found [here](https://github.com/huggingface/diffusers/pull/7668).
+- [2024/04/20] 🔥 InstantStyle is supported in [Mikubill/sd-webui-controlnet](https://github.com/Mikubill/sd-webui-controlnet/discussions/2770).
+- [2024/04/11] 🔥 We add the experimental distributed inference feature. Check it [here](https://github.com/InstantStyle/InstantStyle?tab=readme-ov-file#distributed-inference).
+- [2024/04/10] 🔥 We support an [online demo](https://modelscope.cn/studios/instantx/InstantStyle/summary) on ModelScope.
+- [2024/04/09] 🔥 We support an [online demo](https://huggingface.co/spaces/InstantX/InstantStyle) on Huggingface.
+- [2024/04/09] 🔥 We support SDXL-inpainting, more information can be found [here](https://github.com/InstantStyle/InstantStyle/blob/main/infer_style_inpainting.py).
+- [2024/04/08] 🔥 InstantStyle is supported in [AnyV2V](https://tiger-ai-lab.github.io/AnyV2V/) for stylized video-to-video editing, demo can be found [here](https://twitter.com/vinesmsuic/status/1777170927500787782).
+- [2024/04/07] 🔥 We support image-based stylization, more information can be found [here](https://github.com/InstantStyle/InstantStyle/blob/main/infer_style_controlnet.py).
+- [2024/04/07] 🔥 We support an experimental version for SD1.5, more information can be found [here](https://github.com/InstantStyle/InstantStyle/blob/main/infer_style_sd15.py).
+- [2024/04/03] 🔥 InstantStyle is supported in [ComfyUI_IPAdapter_plus](https://github.com/cubiq/ComfyUI_IPAdapter_plus) developed by our co-author.
+- [2024/04/03] 🔥 We release the [technical report](https://arxiv.org/abs/2404.02733).
+
+## Demos
+
+### Stylized Synthesis
+
+<p align="center">
+  <img src="assets/example1.png">
+  <img src="assets/example2.png">
+</p>
+
+### Image-based Stylized Synthesis
+
+<p align="center">
+  <img src="assets/example3.png">
+</p>
+
+### Comparison with Previous Works
+
+<p align="center">
+  <img src="assets/comparison.png">
+</p>
+
+## Download
+Follow [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter?tab=readme-ov-file#download-models) to download pre-trained checkpoints from [here](https://huggingface.co/h94/IP-Adapter).
+
+```
+git clone https://github.com/InstantStyle/InstantStyle.git
+cd InstantStyle
+
+# download the models
+git lfs install
+git clone https://huggingface.co/h94/IP-Adapter
+mv IP-Adapter/models models
+mv IP-Adapter/sdxl_models sdxl_models
+```
+
+## Usage
+
+Our method is fully compatible with [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter). For feature subtraction, it only works for global feature instead of patch features. For SD1.5, you can find a demo at [infer_style_sd15.py](https://github.com/InstantStyle/InstantStyle/blob/main/infer_style_sd15.py), but we find that SD1.5 has weaker perception and understanding of style information, thus this demo is experimental only. All block names can be found in [attn_blocks.py](https://github.com/InstantStyle/InstantStyle/blob/main/attn_blocks.py) and [attn_blocks_sd15.py](https://github.com/InstantStyle/InstantStyle/blob/main/attn_blocks_sd15.py) for SDXL and SD1.5 respectively.
+
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline
+from PIL import Image
+
+from ip_adapter import IPAdapterXL
+
+base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
+image_encoder_path = "sdxl_models/image_encoder"
+ip_ckpt = "sdxl_models/ip-adapter_sdxl.bin"
+device = "cuda"
+
+# load SDXL pipeline
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    base_model_path,
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+)
+
+# reduce memory consumption
+pipe.enable_vae_tiling()
+
+# load ip-adapter
+# target_blocks=["block"] for original IP-Adapter
+# target_blocks=["up_blocks.0.attentions.1"] for style blocks only
+# target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1"])
+
+image = "./assets/0.jpg"
+image = Image.open(image)
+image.resize((512, 512))
+
+# generate image variations with only image prompt
+images = ip_model.generate(pil_image=image,
+                            prompt="a cat, masterpiece, best quality, high quality",
+                            negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                            scale=1.0,
+                            guidance_scale=5,
+                            num_samples=1,
+                            num_inference_steps=30, 
+                            seed=42,
+                            #neg_content_prompt="a rabbit",
+                            #neg_content_scale=0.5,
+                          )
+
+images[0].save("result.png")
+```
+
+## Use in diffusers
+InstantStyle has already been integrated into [diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/ip_adapter#style--layout-control) (please make sure that you have installed diffusers>=0.28.0.dev0), making the usage significantly simpler. You can now control the per-transformer behavior of each IP-Adapter with the set_ip_adapter_scale() method, using a configuration dictionary as shown below:
+
+```python
+from diffusers import StableDiffusionXLPipeline
+from PIL import Image
+import torch
+
+# load SDXL pipeline
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+)
+
+# load ip-adapter
+pipe.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
+pipe.enable_vae_tiling()
+
+# configure ip-adapter scales.
+scale = {
+    "down": {"block_2": [0.0, 1.0]},
+    "up": {"block_0": [0.0, 1.0, 0.0]},
+}
+pipeline.set_ip_adapter_scale(scale)
+```
+
+In this example. We set ```scale=1.0``` for IP-Adapter in the second transformer of down-part, block 2, and the second in up-part, block 0. Note that there are 2 transformers in down-part block 2 so the list is of length 2, and so do the up-part block 0. The rest IP-Adapter will have a zero scale which means disable them in all the other layers.
+
+With the help of ```set_ip_adapter_scale()```, we can now configure IP-Adapters without a need of reloading them everytime we want to test the IP-Adapter behaviors.
+
+```python
+# for original IP-Adapter
+scale = 1.0
+pipeline.set_ip_adapter_scale(scale)
+
+# for style blocks only
+scale = {
+    "up": {"block_0": [0.0, 1.0, 0.0]},
+}
+pipeline.set_ip_adapter_scale(scale)
+```
+
+### Multiple IP-Adapter images with masks
+You can also load multiple IP-Adapters, together with multiple IP-Adapter images with masks for more precisely layout control just as that in [IP-Adapter](https://huggingface.co/docs/diffusers/main/en/using-diffusers/ip_adapter#ip-adapter-masking) do.
+
+```python
+from diffusers import StableDiffusionXLPipeline
+from diffusers.image_processor import IPAdapterMaskProcessor
+from transformers import CLIPVisionModelWithProjection
+from PIL import Image
+import torch
+
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", subfolder="models/image_encoder", torch_dtype=torch.float16
+).to("cuda")
+
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    "RunDiffusion/Juggernaut-XL-v9", torch_dtype=torch.float16, image_encoder=image_encoder, variant="fp16"
+).to("cuda")
+
+pipe.load_ip_adapter(
+    ["ostris/ip-composition-adapter", "h94/IP-Adapter"],
+    subfolder=["", "sdxl_models"],
+    weight_name=[
+        "ip_plus_composition_sdxl.safetensors",
+        "ip-adapter_sdxl_vit-h.safetensors",
+    ],
+    image_encoder_folder=None,
+)
+
+scale_1 = {
+    "down": [[0.0, 0.0, 1.0]],
+    "mid": [[0.0, 0.0, 1.0]],
+    "up": {"block_0": [[0.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 0.0, 1.0]], "block_1": [[0.0, 0.0, 1.0]]},
+}
+# activate the first IP-Adapter in everywhere in the model,
+# configure the second one for precise style control to each masked input.
+pipe.set_ip_adapter_scale([1.0, scale_1])
+
+processor = IPAdapterMaskProcessor()
+female_mask = Image.open("./assets/female_mask.png")
+male_mask = Image.open("./assets/male_mask.png")
+background_mask = Image.open("./assets/background_mask.png")
+composition_mask = Image.open("./assets/composition_mask.png")
+mask1 = processor.preprocess([composition_mask], height=1024, width=1024)
+mask2 = processor.preprocess([female_mask, male_mask, background_mask], height=1024, width=1024)
+mask2 = mask2.reshape(1, mask2.shape[0], mask2.shape[2], mask2.shape[3])   # output -> (1, 3, 1024, 1024)
+
+ip_female_style = Image.open("./assets/ip_female_style.png")
+ip_male_style = Image.open("./assets/ip_male_style.png")
+ip_background = Image.open("./assets/ip_background.png")
+ip_composition_image = Image.open("./assets/ip_composition_image.png")
+
+image = pipe(
+    prompt="high quality, cinematic photo, cinemascope, 35mm, film grain, highly detailed",
+    negative_prompt="",
+    ip_adapter_image=[ip_composition_image, [ip_female_style, ip_male_style, ip_background]],
+    cross_attention_kwargs={"ip_adapter_masks": [mask1, mask2]},
+    guidance_scale=6.5,
+    num_inference_steps=25,
+).images[0]
+image
+
+```
+
+<p align="center">
+  <img src="assets/multi_instantstyle.png">
+</p>
+
+## High Resolution Generation
+We employ [HiDiffusion](https://github.com/megvii-research/HiDiffusion) to seamlessly generate high-resolution images, you can install via `pip install hidiffusion`.
+
+```python
+from hidiffusion import apply_hidiffusion, remove_hidiffusion
+
+# reduce memory consumption
+pipe.enable_vae_tiling()
+
+# apply hidiffusion with a single line of code.
+apply_hidiffusion(pipe)
+
+...
+
+# generate image at higher resolution
+images = ip_model.generate(pil_image=image,
+                           prompt="a cat, masterpiece, best quality, high quality",
+                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                           scale=1.0,
+                           guidance_scale=5,
+                           num_samples=1,
+                           num_inference_steps=30, 
+                           seed=42,
+                           height=2048,
+                           width=2048
+                          )
+```
+
+## Distributed Inference
+On distributed setups, you can run inference across multiple GPUs with 🤗 Accelerate or PyTorch Distributed, which is useful for generating with multiple prompts in parallel, in case you have limited VRAM on each GPU. More information can be found [here](https://huggingface.co/docs/diffusers/main/en/training/distributed_inference#device-placement). Make sure you have installed diffusers from the source and the lastest accelerate.
+
+```python
+max_memory = {0:"10GB", 1:"10GB"}
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    base_model_path,
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+    device_map="balanced",
+    max_memory=max_memory
+)
+```
+
+## Start a local gradio demo <a href='https://github.com/gradio-app/gradio'><img src='https://img.shields.io/github/stars/gradio-app/gradio'></a>
+Run the following command:
+```sh
+git clone https://github.com/InstantStyle/InstantStyle.git
+cd ./InstantStyle/gradio_demo/
+pip install -r requirements.txt
+python app.py
+```
+
+## Resources
+- [InstantStyle for WebUI](https://github.com/Mikubill/sd-webui-controlnet/discussions/2770)
+- [InstantStyle for ComfyUI](https://github.com/cubiq/ComfyUI_IPAdapter_plus)
+- [InstantID](https://github.com/InstantID/InstantID)
+
+## Disclaimer
+The pretrained checkpoints follow the license in [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter?tab=readme-ov-file#download-models). Users are granted the freedom to create images using this tool, but they are obligated to comply with local laws and utilize it responsibly. The developers will not assume any responsibility for potential misuse by users.
+
+## Acknowledgements
+InstantStyle is developed by the InstantX team and is highly built on [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter), which has been unfairly compared by many other works. We at InstantStyle make IP-Adapter great again. Additionally, we acknowledge [Hu Ye](https://github.com/xiaohu2015) for his valuable discussion.
+
+## Star History
+[![Star History Chart](https://api.star-history.com/svg?repos=InstantStyle/InstantStyle&type=Date)](https://star-history.com/#InstantStyle/InstantStyle&Date)
+
+## Cite
+If you find InstantStyle useful for your research and applications, please cite us using this BibTeX:
+
+```bibtex
+@article{wang2024instantstyle,
+  title={InstantStyle-Plus: Style Transfer with Content-Preserving in Text-to-Image Generation},
+  author={Wang, Haofan and Xing, Peng and Huang, Renyuan and Ai, Hao and Wang, Qixun and Bai, Xu},
+  journal={arXiv preprint arXiv:2407.00788},
+  year={2024}
+}
+
+@article{wang2024instantstyle,
+  title={InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation},
+  author={Wang, Haofan and Wang, Qixun and Bai, Xu and Qin, Zekui and Chen, Anthony},
+  journal={arXiv preprint arXiv:2404.02733},
+  year={2024}
+}
+```
+
+For any question, feel free to contact us via haofanwang.ai@gmail.com.
+
+
+'down_blocks.0.attentions.0.transformer_blocks.0.attn1.processor',
+'down_blocks.0.attentions.0.transformer_blocks.0.attn2.processor', 
+'down_blocks.0.attentions.1.transformer_blocks.0.attn1.processor', 
+'down_blocks.0.attentions.1.transformer_blocks.0.attn2.processor', 
+'down_blocks.1.attentions.0.transformer_blocks.0.attn1.processor', 
+'down_blocks.1.attentions.0.transformer_blocks.0.attn2.processor', 
+'down_blocks.1.attentions.1.transformer_blocks.0.attn1.processor', 
+'down_blocks.1.attentions.1.transformer_blocks.0.attn2.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.0.attn1.processor', 
+'down_blocks.2.attentions.0.transformer_blocks.0.attn2.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.0.attn1.processor', 
+'down_blocks.2.attentions.1.transformer_blocks.0.attn2.processor', 
+'up_blocks.1.attentions.0.transformer_blocks.0.attn1.processor', 
+'up_blocks.1.attentions.0.transformer_blocks.0.attn2.processor', 
+'up_blocks.1.attentions.1.transformer_blocks.0.attn1.processor', 
+'up_blocks.1.attentions.1.transformer_blocks.0.attn2.processor', 
+'up_blocks.1.attentions.2.transformer_blocks.0.attn1.processor', 
+'up_blocks.1.attentions.2.transformer_blocks.0.attn2.processor', 
+'up_blocks.2.attentions.0.transformer_blocks.0.attn1.processor', 
+'up_blocks.2.attentions.0.transformer_blocks.0.attn2.processor', 
+'up_blocks.2.attentions.1.transformer_blocks.0.attn1.processor',
+'up_blocks.2.attentions.1.transformer_blocks.0.attn2.processor', 
+'up_blocks.2.attentions.2.transformer_blocks.0.attn1.processor', 
+'up_blocks.2.attentions.2.transformer_blocks.0.attn2.processor', 
+'up_blocks.3.attentions.0.transformer_blocks.0.attn1.processor', 
+'up_blocks.3.attentions.0.transformer_blocks.0.attn2.processor', 
+'up_blocks.3.attentions.1.transformer_blocks.0.attn1.processor', 
+'up_blocks.3.attentions.1.transformer_blocks.0.attn2.processor', 
+'up_blocks.3.attentions.2.transformer_blocks.0.attn1.processor', 
+'up_blocks.3.attentions.2.transformer_blocks.0.attn2.processor', 
+'mid_block.attentions.0.transformer_blocks.0.attn1.processor', 
+'mid_block.attentions.0.transformer_blocks.0.attn2.processor'
+
+import torch
+from diffusers import StableDiffusionXLPipeline
+from PIL import Image
+
+from ip_adapter import IPAdapterXL
+
+base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
+image_encoder_path = "sdxl_models/image_encoder"
+ip_ckpt = "sdxl_models/ip-adapter_sdxl.bin"
+device = "cuda"
+
+# load SDXL pipeline
+pipe = StableDiffusionXLPipeline.from_pretrained(
+    base_model_path,
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+)
+pipe.enable_vae_tiling()
+
+# load ip-adapter
+# target_blocks=["block"] for original IP-Adapter
+# target_blocks=["up_blocks.0.attentions.1"] for style blocks only
+# target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1"])
+
+image = "./assets/0.jpg"
+image = Image.open(image)
+image.resize((512, 512))
+
+# generate image
+images = ip_model.generate(pil_image=image,
+                           prompt="a cat, masterpiece, best quality, high quality",
+                           negative_prompt= "text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+                           scale=1.0,
+                           guidance_scale=5,
+                           num_samples=1,
+                           num_inference_steps=30, 
+                           seed=42,
+                           #neg_content_prompt="a rabbit",
+                           #neg_content_scale=0.5,
+                          )
+
+images[0].save("result.png")
+
+title: InstantStyle
+emoji: 👁
+colorFrom: blue
+colorTo: purple
+sdk: gradio
+sdk_version: 4.26.0
+app_file: app.py
+pinned: false
+license: apache-2.0
+
+diffusers>=0.25.1
+torch>=2.0.0
+torchvision>=0.15.1
+transformers>=4.37.1
+accelerate
+safetensors
+einops
+spaces>=0.19.4
+omegaconf
+peft
+huggingface-hub>=0.20.2
+opencv-python
+gradio
+controlnet_aux
+gdown
+peft
+
+import sys
+sys.path.append('../')
+
+import os 
+import cv2
+import torch
+import random
+import numpy as np
+from PIL import Image
+from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline
+
+import gradio as gr
+
+from ip_adapter import IPAdapterXL
+
+# global variable
+MAX_SEED = np.iinfo(np.int32).max
+device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = torch.float16 if str(device).__contains__("cuda") else torch.float32
+
+# initialization
+base_model_path = "stabilityai/stable-diffusion-xl-base-1.0"
+image_encoder_path = "sdxl_models/image_encoder"
+ip_ckpt = "sdxl_models/ip-adapter_sdxl.bin"
+
+controlnet_path = "diffusers/controlnet-canny-sdxl-1.0"
+controlnet = ControlNetModel.from_pretrained(controlnet_path, use_safetensors=False, torch_dtype=torch.float16).to(device)
+
+# load SDXL pipeline
+pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+    base_model_path,
+    controlnet=controlnet,
+    torch_dtype=torch.float16,
+    add_watermarker=False,
+)
+pipe.enable_vae_tiling()
+
+# load ip-adapter
+# target_blocks=["block"] for original IP-Adapter
+# target_blocks=["up_blocks.0.attentions.1"] for style blocks only
+# target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1"])
+
+def randomize_seed_fn(seed: int, randomize_seed: bool) -> int:
+    if randomize_seed:
+        seed = random.randint(0, MAX_SEED)
+    return seed
+
+def resize_img(
+    input_image,
+    max_side=1280,
+    min_side=1024,
+    size=None,
+    pad_to_max_side=False,
+    mode=Image.BILINEAR,
+    base_pixel_number=64,
+):
+    w, h = input_image.size
+    if size is not None:
+        w_resize_new, h_resize_new = size
+    else:
+        ratio = min_side / min(h, w)
+        w, h = round(ratio * w), round(ratio * h)
+        ratio = max_side / max(h, w)
+        input_image = input_image.resize([round(ratio * w), round(ratio * h)], mode)
+        w_resize_new = (round(ratio * w) // base_pixel_number) * base_pixel_number
+        h_resize_new = (round(ratio * h) // base_pixel_number) * base_pixel_number
+    input_image = input_image.resize([w_resize_new, h_resize_new], mode)
+
+    if pad_to_max_side:
+        res = np.ones([max_side, max_side, 3], dtype=np.uint8) * 255
+        offset_x = (max_side - w_resize_new) // 2
+        offset_y = (max_side - h_resize_new) // 2
+        res[
+            offset_y : offset_y + h_resize_new, offset_x : offset_x + w_resize_new
+        ] = np.array(input_image)
+        input_image = Image.fromarray(res)
+    return input_image
+
+def get_example():
+    case = [
+        [
+            "./assets/0.jpg",
+            None,
+            "a cat, masterpiece, best quality, high quality",
+            1.0,
+            0.0
+        ],
+        [
+            "./assets/1.jpg",
+            None,
+            "a cat, masterpiece, best quality, high quality",
+            1.0,
+            0.0
+        ],
+        [
+            "./assets/2.jpg",
+            None,
+            "a cat, masterpiece, best quality, high quality",
+            1.0,
+            0.0
+        ],
+        [
+            "./assets/3.jpg",
+            None,
+            "a cat, masterpiece, best quality, high quality",
+            1.0,
+            0.0
+        ],
+        [
+            "./assets/2.jpg",
+            "./assets/yann-lecun.jpg",
+            "a man, masterpiece, best quality, high quality",
+            1.0,
+            0.6
+        ],
+    ]
+    return case
+
+def run_for_examples(style_image, source_image, prompt, scale, control_scale):
+
+    return create_image(
+        image_pil=style_image,
+        input_image=source_image,
+        prompt=prompt,
+        n_prompt="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry",
+        scale=scale,
+        control_scale=control_scale,
+        guidance_scale=5,
+        num_samples=1,
+        num_inference_steps=20,
+        seed=42,
+        target="Load only style blocks",
+        neg_content_prompt="",
+        neg_content_scale=0,
+    )
+
+def create_image(image_pil,
+                 input_image,
+                 prompt,
+                 n_prompt,
+                 scale, 
+                 control_scale, 
+                 guidance_scale,
+                 num_samples,
+                 num_inference_steps,
+                 seed,
+                 target="Load only style blocks",
+                 neg_content_prompt=None,
+                 neg_content_scale=0):
+
+    if target =="Load original IP-Adapter":
+        # target_blocks=["blocks"] for original IP-Adapter
+        ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["blocks"])
+    elif target=="Load only style blocks":
+        # target_blocks=["up_blocks.0.attentions.1"] for style blocks only
+        ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1"])
+    elif target == "Load style+layout block":
+        # target_blocks = ["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"] # for style+layout blocks
+        ip_model = IPAdapterXL(pipe, image_encoder_path, ip_ckpt, device, target_blocks=["up_blocks.0.attentions.1", "down_blocks.2.attentions.1"])
+    
+    if input_image is not None:
+        input_image = resize_img(input_image, max_side=1024)
+        cv_input_image = pil_to_cv2(input_image)
+        detected_map = cv2.Canny(cv_input_image, 50, 200)
+        canny_map = Image.fromarray(cv2.cvtColor(detected_map, cv2.COLOR_BGR2RGB))
+    else:
+        canny_map = Image.new('RGB', (1024, 1024), color=(255, 255, 255))
+        control_scale = 0
+
+    if float(control_scale) == 0:
+        canny_map = canny_map.resize((1024,1024))
+    
+    if len(neg_content_prompt) > 0 and neg_content_scale != 0:
+        images = ip_model.generate(pil_image=image_pil,
+                                prompt=prompt,
+                                negative_prompt=n_prompt,
+                                scale=scale,
+                                guidance_scale=guidance_scale,
+                                num_samples=num_samples,
+                                num_inference_steps=num_inference_steps, 
+                                seed=seed,
+                                image=canny_map,
+                                controlnet_conditioning_scale=float(control_scale),
+                                neg_content_prompt=neg_content_prompt,
+                                neg_content_scale=neg_content_scale
+                                )
+    else:
+        images = ip_model.generate(pil_image=image_pil,
+                                prompt=prompt,
+                                negative_prompt=n_prompt,
+                                scale=scale,
+                                guidance_scale=guidance_scale,
+                                num_samples=num_samples,
+                                num_inference_steps=num_inference_steps, 
+                                seed=seed,
+                                image=canny_map,
+                                controlnet_conditioning_scale=float(control_scale),
+                                )
+    return images
+
+def pil_to_cv2(image_pil):
+    image_np = np.array(image_pil)
+    image_cv2 = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+    return image_cv2
+
+# Description
+title = r"""
+<h1 align="center">InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation</h1>
+"""
+
+description = r"""
+<b>Official 🤗 Gradio demo</b> for <a href='https://github.com/InstantStyle/InstantStyle' target='_blank'><b>InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation</b></a>.<br>
+How to use:<br>
+1. Upload a style image.
+2. Set stylization mode, only use style block by default.
+2. Enter a text prompt, as done in normal text-to-image models.
+3. Click the <b>Submit</b> button to begin customization.
+4. Share your stylized photo with your friends and enjoy! 😊
+Advanced usage:<br>
+1. Click advanced options.
+2. Upload another source image for image-based stylization using ControlNet.
+3. Enter negative content prompt to avoid content leakage.
+"""
+
+article = r"""
+---
+📝 **Citation**
+<br>
+If our work is helpful for your research or applications, please cite us via:
+```bibtex
+@article{wang2024instantstyle,
+  title={InstantStyle: Free Lunch towards Style-Preserving in Text-to-Image Generation},
+  author={Wang, Haofan and Wang, Qixun and Bai, Xu and Qin, Zekui and Chen, Anthony},
+  journal={arXiv preprint arXiv:2404.02733},
+  year={2024}
+}
+```
+📧 **Contact**
+<br>
+If you have any questions, please feel free to open an issue or directly reach us out at <b>haofanwang.ai@gmail.com</b>.
+"""
+
+block = gr.Blocks(css="footer {visibility: hidden}").queue(max_size=10, api_open=False)
+with block:
+    
+    # description
+    gr.Markdown(title)
+    gr.Markdown(description)
+    
+    with gr.Tabs():
+        with gr.Row():
+            with gr.Column():
+                
+                with gr.Row():
+                    with gr.Column():
+                        image_pil = gr.Image(label="Style Image", type='pil')
+                
+                target = gr.Radio(["Load only style blocks", "Load style+layout block", "Load original IP-Adapter"], 
+                                  value="Load only style blocks",
+                                  label="Style mode")
+                
+                prompt = gr.Textbox(label="Prompt",
+                                    value="a cat, masterpiece, best quality, high quality")
+                
+                scale = gr.Slider(minimum=0,maximum=2.0, step=0.01,value=1.0, label="Scale")
+                
+                with gr.Accordion(open=False, label="Advanced Options"):
+                    
+                    with gr.Column():
+                        src_image_pil = gr.Image(label="Source Image (optional)", type='pil')
+                    control_scale = gr.Slider(minimum=0,maximum=1.0, step=0.01,value=0.5, label="Controlnet conditioning scale")
+                    
+                    n_prompt = gr.Textbox(label="Neg Prompt", value="text, watermark, lowres, low quality, worst quality, deformed, glitch, low contrast, noisy, saturation, blurry")
+                    
+                    neg_content_prompt = gr.Textbox(label="Neg Content Prompt", value="")
+                    neg_content_scale = gr.Slider(minimum=0, maximum=1.0, step=0.01,value=0.5, label="Neg Content Scale")
+
+                    guidance_scale = gr.Slider(minimum=1,maximum=15.0, step=0.01,value=5.0, label="guidance scale")
+                    num_samples= gr.Slider(minimum=1,maximum=4.0, step=1.0,value=1.0, label="num samples")
+                    num_inference_steps = gr.Slider(minimum=5,maximum=50.0, step=1.0,value=20, label="num inference steps")
+                    seed = gr.Slider(minimum=-1000000,maximum=1000000,value=1, step=1, label="Seed Value")
+                    randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
+                    
+                generate_button = gr.Button("Generate Image")
+                
+            with gr.Column():
+                generated_image = gr.Gallery(label="Generated Image")
+
+        generate_button.click(
+            fn=randomize_seed_fn,
+            inputs=[seed, randomize_seed],
+            outputs=seed,
+            queue=False,
+            api_name=False,
+        ).then(
+            fn=create_image,
+            inputs=[image_pil,
+                    src_image_pil,
+                    prompt,
+                    n_prompt,
+                    scale, 
+                    control_scale, 
+                    guidance_scale,
+                    num_samples,
+                    num_inference_steps,
+                    seed,
+                    target,
+                    neg_content_prompt,
+                    neg_content_scale], 
+            outputs=[generated_image])
+    
+    gr.Examples(
+        examples=get_example(),
+        inputs=[image_pil, src_image_pil, prompt, scale, control_scale],
+        fn=run_for_examples,
+        outputs=[generated_image],
+        cache_examples=True,
+    )
+    
+    gr.Markdown(article)
+
+block.launch()
+
+
+# modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class AttnProcessor(nn.Module):
+    r"""
+    Default processor for performing attention-related computations.
+    """
+
+    def __init__(
+        self,
+        hidden_size=None,
+        cross_attention_dim=None,
+    ):
+        super().__init__()
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class IPAttnProcessor(nn.Module):
+    r"""
+    Attention processor for IP-Adapater.
+    Args:
+        hidden_size (`int`):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`):
+            The number of channels in the `encoder_hidden_states`.
+        scale (`float`, defaults to 1.0):
+            the weight scale of image prompt.
+        num_tokens (`int`, defaults to 4 when do ip_adapter_plus it should be 16):
+            The context length of the image features.
+    """
+
+    def __init__(self, hidden_size, cross_attention_dim=None, scale=1.0, num_tokens=4, skip=False):
+        super().__init__()
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.scale = scale
+        self.num_tokens = num_tokens
+        self.skip = skip
+
+        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        else:
+            # get encoder_hidden_states, ip_hidden_states
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens
+            encoder_hidden_states, ip_hidden_states = (
+                encoder_hidden_states[:, :end_pos, :],
+                encoder_hidden_states[:, end_pos:, :],
+            )
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        if not self.skip:
+            # for ip-adapter
+            ip_key = self.to_k_ip(ip_hidden_states)
+            ip_value = self.to_v_ip(ip_hidden_states)
+
+            ip_key = attn.head_to_batch_dim(ip_key)
+            ip_value = attn.head_to_batch_dim(ip_value)
+
+            ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
+            self.attn_map = ip_attention_probs
+            ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
+            ip_hidden_states = attn.batch_to_head_dim(ip_hidden_states)
+
+            hidden_states = hidden_states + self.scale * ip_hidden_states
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class AttnProcessor2_0(torch.nn.Module):
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    """
+
+    def __init__(
+        self,
+        hidden_size=None,
+        cross_attention_dim=None,
+    ):
+        super().__init__()
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class IPAttnProcessor2_0(torch.nn.Module):
+    r"""
+    Attention processor for IP-Adapater for PyTorch 2.0.
+    Args:
+        hidden_size (`int`):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`):
+            The number of channels in the `encoder_hidden_states`.
+        scale (`float`, defaults to 1.0):
+            the weight scale of image prompt.
+        num_tokens (`int`, defaults to 4 when do ip_adapter_plus it should be 16):
+            The context length of the image features.
+    """
+
+    def __init__(self, hidden_size, cross_attention_dim=None, scale=1.0, num_tokens=4, skip=False):
+        super().__init__()
+
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.scale = scale
+        self.num_tokens = num_tokens
+        self.skip = skip
+
+        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        else:
+            # get encoder_hidden_states, ip_hidden_states
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens
+            encoder_hidden_states, ip_hidden_states = (
+                encoder_hidden_states[:, :end_pos, :],
+                encoder_hidden_states[:, end_pos:, :],
+            )
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        if not self.skip:
+            # for ip-adapter
+            ip_key = self.to_k_ip(ip_hidden_states)
+            ip_value = self.to_v_ip(ip_hidden_states)
+
+            ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+            # the output of sdp = (batch, num_heads, seq_len, head_dim)
+            # TODO: add support for attn.scale when we move to Torch 2.1
+            ip_hidden_states = F.scaled_dot_product_attention(
+                query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+            )
+            with torch.no_grad():
+                self.attn_map = query @ ip_key.transpose(-2, -1).softmax(dim=-1)
+                #print(self.attn_map.shape)
+
+            ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            ip_hidden_states = ip_hidden_states.to(query.dtype)
+
+            hidden_states = hidden_states + self.scale * ip_hidden_states
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+## for controlnet
+class CNAttnProcessor:
+    r"""
+    Default processor for performing attention-related computations.
+    """
+
+    def __init__(self, num_tokens=4):
+        self.num_tokens = num_tokens
+
+    def __call__(self, attn, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        else:
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens
+            encoder_hidden_states = encoder_hidden_states[:, :end_pos]  # only use text
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class CNAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    """
+
+    def __init__(self, num_tokens=4):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
+        self.num_tokens = num_tokens
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        else:
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens
+            encoder_hidden_states = encoder_hidden_states[:, :end_pos]  # only use text
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+import torch
+import torch.nn.functional as F
+import numpy as np
+from PIL import Image
+
+attn_maps = {}
+def hook_fn(name):
+    def forward_hook(module, input, output):
+        if hasattr(module.processor, "attn_map"):
+            attn_maps[name] = module.processor.attn_map
+            del module.processor.attn_map
+
+    return forward_hook
+
+def register_cross_attention_hook(unet):
+    for name, module in unet.named_modules():
+        if name.split('.')[-1].startswith('attn2'):
+            module.register_forward_hook(hook_fn(name))
+
+    return unet
+
+def upscale(attn_map, target_size):
+    attn_map = torch.mean(attn_map, dim=0)
+    attn_map = attn_map.permute(1,0)
+    temp_size = None
+
+    for i in range(0,5):
+        scale = 2 ** i
+        if ( target_size[0] // scale ) * ( target_size[1] // scale) == attn_map.shape[1]*64:
+            temp_size = (target_size[0]//(scale*8), target_size[1]//(scale*8))
+            break
+
+    assert temp_size is not None, "temp_size cannot is None"
+
+    attn_map = attn_map.view(attn_map.shape[0], *temp_size)
+
+    attn_map = F.interpolate(
+        attn_map.unsqueeze(0).to(dtype=torch.float32),
+        size=target_size,
+        mode='bilinear',
+        align_corners=False
+    )[0]
+
+    attn_map = torch.softmax(attn_map, dim=0)
+    return attn_map
+def get_net_attn_map(image_size, batch_size=2, instance_or_negative=False, detach=True):
+
+    idx = 0 if instance_or_negative else 1
+    net_attn_maps = []
+
+    for name, attn_map in attn_maps.items():
+        attn_map = attn_map.cpu() if detach else attn_map
+        attn_map = torch.chunk(attn_map, batch_size)[idx].squeeze()
+        attn_map = upscale(attn_map, image_size) 
+        net_attn_maps.append(attn_map) 
+
+    net_attn_maps = torch.mean(torch.stack(net_attn_maps,dim=0),dim=0)
+
+    return net_attn_maps
+
+def attnmaps2images(net_attn_maps):
+
+    #total_attn_scores = 0
+    images = []
+
+    for attn_map in net_attn_maps:
+        attn_map = attn_map.cpu().numpy()
+        #total_attn_scores += attn_map.mean().item()
+
+        normalized_attn_map = (attn_map - np.min(attn_map)) / (np.max(attn_map) - np.min(attn_map)) * 255
+        normalized_attn_map = normalized_attn_map.astype(np.uint8)
+        #print("norm: ", normalized_attn_map.shape)
+        image = Image.fromarray(normalized_attn_map)
+
+        #image = fix_save_attn_map(attn_map)
+        images.append(image)
+
+    #print(total_attn_scores)
+    return images
+def is_torch2_available():
+    return hasattr(F, "scaled_dot_product_attention")
+
+def get_generator(seed, device):
+
+    if seed is not None:
+        if isinstance(seed, list):
+            generator = [torch.Generator(device).manual_seed(seed_item) for seed_item in seed]
+        else:
+            generator = torch.Generator(device).manual_seed(seed)
+    else:
+        generator = None
+
+    return generator
+
+import os
+from typing import List
+
+import torch
+from diffusers import StableDiffusionPipeline
+from diffusers.pipelines.controlnet import MultiControlNetModel
+from PIL import Image
+from safetensors import safe_open
+from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
+
+from .utils import is_torch2_available, get_generator
+
+if is_torch2_available():
+    from .attention_processor import (
+        AttnProcessor2_0 as AttnProcessor,
+    )
+    from .attention_processor import (
+        CNAttnProcessor2_0 as CNAttnProcessor,
+    )
+    from .attention_processor import (
+        IPAttnProcessor2_0 as IPAttnProcessor,
+    )
+else:
+    from .attention_processor import AttnProcessor, CNAttnProcessor, IPAttnProcessor
+from .resampler import Resampler
+
+
+class ImageProjModel(torch.nn.Module):
+    """Projection Model"""
+
+    def __init__(self, cross_attention_dim=1024, clip_embeddings_dim=1024, clip_extra_context_tokens=4):
+        super().__init__()
+
+        self.generator = None
+        self.cross_attention_dim = cross_attention_dim
+        self.clip_extra_context_tokens = clip_extra_context_tokens
+        self.proj = torch.nn.Linear(clip_embeddings_dim, self.clip_extra_context_tokens * cross_attention_dim)
+        self.norm = torch.nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds):
+        embeds = image_embeds
+        clip_extra_context_tokens = self.proj(embeds).reshape(
+            -1, self.clip_extra_context_tokens, self.cross_attention_dim
+        )
+        clip_extra_context_tokens = self.norm(clip_extra_context_tokens)
+        return clip_extra_context_tokens
+
+
+class MLPProjModel(torch.nn.Module):
+    """SD model with image prompt"""
+    def __init__(self, cross_attention_dim=1024, clip_embeddings_dim=1024):
+        super().__init__()
+        
+        self.proj = torch.nn.Sequential(
+            torch.nn.Linear(clip_embeddings_dim, clip_embeddings_dim),
+            torch.nn.GELU(),
+            torch.nn.Linear(clip_embeddings_dim, cross_attention_dim),
+            torch.nn.LayerNorm(cross_attention_dim)
+        )
+        
+    def forward(self, image_embeds):
+        clip_extra_context_tokens = self.proj(image_embeds)
+        return clip_extra_context_tokens
+
+
+class IPAdapter:
+    def __init__(self, sd_pipe, image_encoder_path, ip_ckpt, device, num_tokens=4, target_blocks=["block"]):
+        self.device = device
+        self.image_encoder_path = image_encoder_path
+        self.ip_ckpt = ip_ckpt
+        self.num_tokens = num_tokens
+        self.target_blocks = target_blocks
+
+        self.pipe = sd_pipe.to(self.device)
+        self.set_ip_adapter()
+
+        # load image encoder
+        self.image_encoder = CLIPVisionModelWithProjection.from_pretrained(self.image_encoder_path).to(
+            self.device, dtype=torch.float16
+        )
+        self.clip_image_processor = CLIPImageProcessor()
+        # image proj model
+        self.image_proj_model = self.init_proj()
+
+        self.load_ip_adapter()
+
+    def init_proj(self):
+        image_proj_model = ImageProjModel(
+            cross_attention_dim=self.pipe.unet.config.cross_attention_dim,
+            clip_embeddings_dim=self.image_encoder.config.projection_dim,
+            clip_extra_context_tokens=self.num_tokens,
+        ).to(self.device, dtype=torch.float16)
+        return image_proj_model
+
+    def set_ip_adapter(self):
+        unet = self.pipe.unet
+        attn_procs = {}
+        for name in unet.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = unet.config.block_out_channels[block_id]
+            if cross_attention_dim is None:
+                attn_procs[name] = AttnProcessor()
+            else:
+                selected = False
+                for block_name in self.target_blocks:
+                    if block_name in name:
+                        selected = True
+                        break
+                if selected:
+                    attn_procs[name] = IPAttnProcessor(
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
+                        scale=1.0,
+                        num_tokens=self.num_tokens,
+                    ).to(self.device, dtype=torch.float16)
+                else:
+                    attn_procs[name] = IPAttnProcessor(
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
+                        scale=1.0,
+                        num_tokens=self.num_tokens,
+                        skip=True
+                    ).to(self.device, dtype=torch.float16)
+        unet.set_attn_processor(attn_procs)
+        if hasattr(self.pipe, "controlnet"):
+            if isinstance(self.pipe.controlnet, MultiControlNetModel):
+                for controlnet in self.pipe.controlnet.nets:
+                    controlnet.set_attn_processor(CNAttnProcessor(num_tokens=self.num_tokens))
+            else:
+                self.pipe.controlnet.set_attn_processor(CNAttnProcessor(num_tokens=self.num_tokens))
+
+    def load_ip_adapter(self):
+        if os.path.splitext(self.ip_ckpt)[-1] == ".safetensors":
+            state_dict = {"image_proj": {}, "ip_adapter": {}}
+            with safe_open(self.ip_ckpt, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    if key.startswith("image_proj."):
+                        state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
+                    elif key.startswith("ip_adapter."):
+                        state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
+        else:
+            state_dict = torch.load(self.ip_ckpt,weights_only=True, map_location="cuda" if torch.cuda.is_available() else "cpu")
+        self.image_proj_model.load_state_dict(state_dict["image_proj"])
+        ip_layers = torch.nn.ModuleList(self.pipe.unet.attn_processors.values())
+        ip_layers.load_state_dict(state_dict["ip_adapter"], strict=False)
+
+    @torch.inference_mode()
+    def get_image_embeds(self, pil_image=None, clip_image_embeds=None, content_prompt_embeds=None):
+        if pil_image is not None:
+            if isinstance(pil_image, Image.Image):
+                pil_image = [pil_image]
+            clip_image = self.clip_image_processor(images=pil_image, return_tensors="pt").pixel_values
+            clip_image_embeds = self.image_encoder(clip_image.to(self.device, dtype=torch.float16)).image_embeds
+        else:
+            clip_image_embeds = clip_image_embeds.to(self.device, dtype=torch.float16)
+        
+        if content_prompt_embeds is not None:
+            clip_image_embeds = clip_image_embeds - content_prompt_embeds
+
+        image_prompt_embeds = self.image_proj_model(clip_image_embeds)
+        uncond_image_prompt_embeds = self.image_proj_model(torch.zeros_like(clip_image_embeds))
+        return image_prompt_embeds, uncond_image_prompt_embeds
+
+    def set_scale(self, scale):
+        for attn_processor in self.pipe.unet.attn_processors.values():
+            if isinstance(attn_processor, IPAttnProcessor):
+                attn_processor.scale = scale
+
+    def generate(
+        self,
+        pil_image=None,
+        clip_image_embeds=None,
+        prompt=None,
+        negative_prompt=None,
+        scale=1.0,
+        num_samples=4,
+        seed=None,
+        guidance_scale=7.5,
+        num_inference_steps=30,
+        neg_content_emb=None,
+        **kwargs,
+    ):
+        self.set_scale(scale)
+
+        if pil_image is not None:
+            num_prompts = 1 if isinstance(pil_image, Image.Image) else len(pil_image)
+        else:
+            num_prompts = clip_image_embeds.size(0)
+
+        if prompt is None:
+            prompt = "best quality, high quality"
+        if negative_prompt is None:
+            negative_prompt = "monochrome, lowres, bad anatomy, worst quality, low quality"
+
+        if not isinstance(prompt, List):
+            prompt = [prompt] * num_prompts
+        if not isinstance(negative_prompt, List):
+            negative_prompt = [negative_prompt] * num_prompts
+
+        image_prompt_embeds, uncond_image_prompt_embeds = self.get_image_embeds(
+            pil_image=pil_image, clip_image_embeds=clip_image_embeds, content_prompt_embeds=neg_content_emb
+        )
+        bs_embed, seq_len, _ = image_prompt_embeds.shape
+        image_prompt_embeds = image_prompt_embeds.repeat(1, num_samples, 1)
+        image_prompt_embeds = image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
+        uncond_image_prompt_embeds = uncond_image_prompt_embeds.repeat(1, num_samples, 1)
+        uncond_image_prompt_embeds = uncond_image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
+
+        with torch.inference_mode():
+            prompt_embeds_, negative_prompt_embeds_ = self.pipe.encode_prompt(
+                prompt,
+                device=self.device,
+                num_images_per_prompt=num_samples,
+                do_classifier_free_guidance=True,
+                negative_prompt=negative_prompt,
+            )
+            prompt_embeds = torch.cat([prompt_embeds_, image_prompt_embeds], dim=1)
+            negative_prompt_embeds = torch.cat([negative_prompt_embeds_, uncond_image_prompt_embeds], dim=1)
+
+        generator = get_generator(seed, self.device)
+
+        images = self.pipe(
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps,
+            generator=generator,
+            **kwargs,
+        ).images
+
+        return images
+
+
+class IPAdapterXL(IPAdapter):
+    """SDXL"""
+
+    def generate(
+        self,
+        pil_image,
+        prompt=None,
+        negative_prompt=None,
+        scale=1.0,
+        num_samples=4,
+        seed=None,
+        num_inference_steps=30,
+        neg_content_emb=None,
+        neg_content_prompt=None,
+        neg_content_scale=1.0,
+        **kwargs,
+    ):
+        self.set_scale(scale)
+
+        num_prompts = 1 if isinstance(pil_image, Image.Image) else len(pil_image)
+
+        if prompt is None:
+            prompt = "best quality, high quality"
+        if negative_prompt is None:
+            negative_prompt = "monochrome, lowres, bad anatomy, worst quality, low quality"
+
+        if not isinstance(prompt, List):
+            prompt = [prompt] * num_prompts
+        if not isinstance(negative_prompt, List):
+            negative_prompt = [negative_prompt] * num_prompts
+        
+        if neg_content_emb is None:
+            if neg_content_prompt is not None:
+                with torch.inference_mode():
+                    (
+                        prompt_embeds_, # torch.Size([1, 77, 2048])
+                        negative_prompt_embeds_,
+                        pooled_prompt_embeds_, # torch.Size([1, 1280])
+                        negative_pooled_prompt_embeds_,
+                    ) = self.pipe.encode_prompt(
+                        neg_content_prompt,
+                        num_images_per_prompt=num_samples,
+                        do_classifier_free_guidance=True,
+                        negative_prompt=negative_prompt,
+                    )
+                    pooled_prompt_embeds_ *= neg_content_scale
+            else:
+                pooled_prompt_embeds_ = neg_content_emb
+        else:
+            pooled_prompt_embeds_ = None
+
+        image_prompt_embeds, uncond_image_prompt_embeds = self.get_image_embeds(pil_image, content_prompt_embeds=pooled_prompt_embeds_)
+        bs_embed, seq_len, _ = image_prompt_embeds.shape
+        image_prompt_embeds = image_prompt_embeds.repeat(1, num_samples, 1)
+        image_prompt_embeds = image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
+        uncond_image_prompt_embeds = uncond_image_prompt_embeds.repeat(1, num_samples, 1)
+        uncond_image_prompt_embeds = uncond_image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
+
+        with torch.inference_mode():
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            ) = self.pipe.encode_prompt(
+                prompt,
+                num_images_per_prompt=num_samples,
+                do_classifier_free_guidance=True,
+                negative_prompt=negative_prompt,
+            )
+            prompt_embeds = torch.cat([prompt_embeds, image_prompt_embeds], dim=1)
+            negative_prompt_embeds = torch.cat([negative_prompt_embeds, uncond_image_prompt_embeds], dim=1)
+
+        self.generator = get_generator(seed, self.device)
+        
+        images = self.pipe(
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            num_inference_steps=num_inference_steps,
+            generator=self.generator,
+            **kwargs,
+        ).images
+
+        return images
+
+
+class IPAdapterPlus(IPAdapter):
+    """IP-Adapter with fine-grained features"""
+
+    def init_proj(self):
+        image_proj_model = Resampler(
+            dim=self.pipe.unet.config.cross_attention_dim,
+            depth=4,
+            dim_head=64,
+            heads=12,
+            num_queries=self.num_tokens,
+            embedding_dim=self.image_encoder.config.hidden_size,
+            output_dim=self.pipe.unet.config.cross_attention_dim,
+            ff_mult=4,
+        ).to(self.device, dtype=torch.float16)
+        return image_proj_model
+
+    @torch.inference_mode()
+    def get_image_embeds(self, pil_image=None, clip_image_embeds=None):
+        if isinstance(pil_image, Image.Image):
+            pil_image = [pil_image]
+        clip_image = self.clip_image_processor(images=pil_image, return_tensors="pt").pixel_values
+        clip_image = clip_image.to(self.device, dtype=torch.float16)
+        clip_image_embeds = self.image_encoder(clip_image, output_hidden_states=True).hidden_states[-2]
+        image_prompt_embeds = self.image_proj_model(clip_image_embeds)
+        uncond_clip_image_embeds = self.image_encoder(
+            torch.zeros_like(clip_image), output_hidden_states=True
+        ).hidden_states[-2]
+        uncond_image_prompt_embeds = self.image_proj_model(uncond_clip_image_embeds)
+        return image_prompt_embeds, uncond_image_prompt_embeds
+
+
+class IPAdapterFull(IPAdapterPlus):
+    """IP-Adapter with full features"""
+
+    def init_proj(self):
+        image_proj_model = MLPProjModel(
+            cross_attention_dim=self.pipe.unet.config.cross_attention_dim,
+            clip_embeddings_dim=self.image_encoder.config.hidden_size,
+        ).to(self.device, dtype=torch.float16)
+        return image_proj_model
+
+
+class IPAdapterPlusXL(IPAdapter):
+    """SDXL"""
+
+    def init_proj(self):
+        image_proj_model = Resampler(
+            dim=1280,
+            depth=4,
+            dim_head=64,
+            heads=20,
+            num_queries=self.num_tokens,
+            embedding_dim=self.image_encoder.config.hidden_size,
+            output_dim=self.pipe.unet.config.cross_attention_dim,
+            ff_mult=4,
+        ).to(self.device, dtype=torch.float16)
+        return image_proj_model
+
+    @torch.inference_mode()
+    def get_image_embeds(self, pil_image):
+        if isinstance(pil_image, Image.Image):
+            pil_image = [pil_image]
+        clip_image = self.clip_image_processor(images=pil_image, return_tensors="pt").pixel_values
+        clip_image = clip_image.to(self.device, dtype=torch.float16)
+        clip_image_embeds = self.image_encoder(clip_image, output_hidden_states=True).hidden_states[-2]
+        image_prompt_embeds = self.image_proj_model(clip_image_embeds)
+        uncond_clip_image_embeds = self.image_encoder(
+            torch.zeros_like(clip_image), output_hidden_states=True
+        ).hidden_states[-2]
+        uncond_image_prompt_embeds = self.image_proj_model(uncond_clip_image_embeds)
+        return image_prompt_embeds, uncond_image_prompt_embeds
+
+    def generate(
+        self,
+        pil_image,
+        prompt=None,
+        negative_prompt=None,
+        scale=1.0,
+        num_samples=4,
+        seed=None,
+        num_inference_steps=30,
+        **kwargs,
+    ):
+        self.set_scale(scale)
+
+        num_prompts = 1 if isinstance(pil_image, Image.Image) else len(pil_image)
+
+        if prompt is None:
+            prompt = "best quality, high quality"
+        if negative_prompt is None:
+            negative_prompt = "monochrome, lowres, bad anatomy, worst quality, low quality"
+
+        if not isinstance(prompt, List):
+            prompt = [prompt] * num_prompts
+        if not isinstance(negative_prompt, List):
+            negative_prompt = [negative_prompt] * num_prompts
+
+        image_prompt_embeds, uncond_image_prompt_embeds = self.get_image_embeds(pil_image)
+        bs_embed, seq_len, _ = image_prompt_embeds.shape
+        image_prompt_embeds = image_prompt_embeds.repeat(1, num_samples, 1)
+        image_prompt_embeds = image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
+        uncond_image_prompt_embeds = uncond_image_prompt_embeds.repeat(1, num_samples, 1)
+        uncond_image_prompt_embeds = uncond_image_prompt_embeds.view(bs_embed * num_samples, seq_len, -1)
+
+        with torch.inference_mode():
+            (
+                prompt_embeds,
+                negative_prompt_embeds,
+                pooled_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            ) = self.pipe.encode_prompt(
+                prompt,
+                num_images_per_prompt=num_samples,
+                do_classifier_free_guidance=True,
+                negative_prompt=negative_prompt,
+            )
+            prompt_embeds = torch.cat([prompt_embeds, image_prompt_embeds], dim=1)
+            negative_prompt_embeds = torch.cat([negative_prompt_embeds, uncond_image_prompt_embeds], dim=1)
+
+        generator = get_generator(seed, self.device)
+
+        images = self.pipe(
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
+            num_inference_steps=num_inference_steps,
+            generator=generator,
+            **kwargs,
+        ).images
+
+        return images
+
+
+# modified from https://github.com/mlfoundations/open_flamingo/blob/main/open_flamingo/src/helpers.py
+# and https://github.com/lucidrains/imagen-pytorch/blob/main/imagen_pytorch/imagen_pytorch.py
+
+import math
+
+import torch
+import torch.nn as nn
+from einops import rearrange
+from einops.layers.torch import Rearrange
+
+
+# FFN
+def FeedForward(dim, mult=4):
+    inner_dim = int(dim * mult)
+    return nn.Sequential(
+        nn.LayerNorm(dim),
+        nn.Linear(dim, inner_dim, bias=False),
+        nn.GELU(),
+        nn.Linear(inner_dim, dim, bias=False),
+    )
+
+
+def reshape_tensor(x, heads):
+    bs, length, width = x.shape
+    # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
+    x = x.view(bs, length, heads, -1)
+    # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
+    x = x.transpose(1, 2)
+    # (bs, n_heads, length, dim_per_head) --> (bs*n_heads, length, dim_per_head)
+    x = x.reshape(bs, heads, length, -1)
+    return x
+
+
+class PerceiverAttention(nn.Module):
+    def __init__(self, *, dim, dim_head=64, heads=8):
+        super().__init__()
+        self.scale = dim_head**-0.5
+        self.dim_head = dim_head
+        self.heads = heads
+        inner_dim = dim_head * heads
+
+        self.norm1 = nn.LayerNorm(dim)
+        self.norm2 = nn.LayerNorm(dim)
+
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_kv = nn.Linear(dim, inner_dim * 2, bias=False)
+        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+
+    def forward(self, x, latents):
+        """
+        Args:
+            x (torch.Tensor): image features
+                shape (b, n1, D)
+            latent (torch.Tensor): latent features
+                shape (b, n2, D)
+        """
+        x = self.norm1(x)
+        latents = self.norm2(latents)
+
+        b, l, _ = latents.shape
+
+        q = self.to_q(latents)
+        kv_input = torch.cat((x, latents), dim=-2)
+        k, v = self.to_kv(kv_input).chunk(2, dim=-1)
+
+        q = reshape_tensor(q, self.heads)
+        k = reshape_tensor(k, self.heads)
+        v = reshape_tensor(v, self.heads)
+
+        # attention
+        scale = 1 / math.sqrt(math.sqrt(self.dim_head))
+        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
+        weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
+        out = weight @ v
+
+        out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
+
+        return self.to_out(out)
+
+
+class Resampler(nn.Module):
+    def __init__(
+        self,
+        dim=1024,
+        depth=8,
+        dim_head=64,
+        heads=16,
+        num_queries=8,
+        embedding_dim=768,
+        output_dim=1024,
+        ff_mult=4,
+        max_seq_len: int = 257,  # CLIP tokens + CLS token
+        apply_pos_emb: bool = False,
+        num_latents_mean_pooled: int = 0,  # number of latents derived from mean pooled representation of the sequence
+    ):
+        super().__init__()
+        self.pos_emb = nn.Embedding(max_seq_len, embedding_dim) if apply_pos_emb else None
+
+        self.latents = nn.Parameter(torch.randn(1, num_queries, dim) / dim**0.5)
+
+        self.proj_in = nn.Linear(embedding_dim, dim)
+
+        self.proj_out = nn.Linear(dim, output_dim)
+        self.norm_out = nn.LayerNorm(output_dim)
+
+        self.to_latents_from_mean_pooled_seq = (
+            nn.Sequential(
+                nn.LayerNorm(dim),
+                nn.Linear(dim, dim * num_latents_mean_pooled),
+                Rearrange("b (n d) -> b n d", n=num_latents_mean_pooled),
+            )
+            if num_latents_mean_pooled > 0
+            else None
+        )
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        PerceiverAttention(dim=dim, dim_head=dim_head, heads=heads),
+                        FeedForward(dim=dim, mult=ff_mult),
+                    ]
+                )
+            )
+
+    def forward(self, x):
+        if self.pos_emb is not None:
+            n, device = x.shape[1], x.device
+            pos_emb = self.pos_emb(torch.arange(n, device=device))
+            x = x + pos_emb
+
+        latents = self.latents.repeat(x.size(0), 1, 1)
+
+        x = self.proj_in(x)
+
+        if self.to_latents_from_mean_pooled_seq:
+            meanpooled_seq = masked_mean(x, dim=1, mask=torch.ones(x.shape[:2], device=x.device, dtype=torch.bool))
+            meanpooled_latents = self.to_latents_from_mean_pooled_seq(meanpooled_seq)
+            latents = torch.cat((meanpooled_latents, latents), dim=-2)
+
+        for attn, ff in self.layers:
+            latents = attn(x, latents) + latents
+            latents = ff(latents) + latents
+
+        latents = self.proj_out(latents)
+        return self.norm_out(latents)
+
+
+def masked_mean(t, *, dim, mask=None):
+    if mask is None:
+        return t.mean(dim=dim)
+
+    denom = mask.sum(dim=dim, keepdim=True)
+    mask = rearrange(mask, "b n -> b n 1")
+    masked_t = t.masked_fill(~mask, 0.0)
+
+    return masked_t.sum(dim=dim) / denom.clamp(min=1e-5)
+
+
+from .ip_adapter import IPAdapter, IPAdapterPlus, IPAdapterPlusXL, IPAdapterXL, IPAdapterFull
+
+__all__ = [
+    "IPAdapter",
+    "IPAdapterPlus",
+    "IPAdapterPlusXL",
+    "IPAdapterXL",
+    "IPAdapterFull",
+]
+
+
+import os
+import random
+import sys
+from typing import Sequence, Mapping, Any, Union, List
+import torch
+from fastapi import APIRouter, UploadFile, File
+from fastapi.responses import FileResponse
+
+import os
+from routers import ImageResponse, SAVE_PATH, OUTPUT_PATH
+from routers import get_value_at_index
+
+
+
+
+from nodes import SaveImage, LoadImage, NODE_CLASS_MAPPINGS
+
+router = APIRouter(
+    prefix="/product",
+    tags=["dress_try"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+
+@router.post("/dress_try")
+# NOTE:ch_type: "Half body" or "Full body"
+# NOTE:ch_category: "Upper body" or "Lower body" or "Full body"
+async def dress_try(ch_type: str="Half body", ch_category: str="Upper body", modelimage: UploadFile = File(...), clothimage: UploadFile = File(...)):
+    if ch_type not in ["Half body", "Full body"]:
+        result = ImageResponse()
+        result.data = []
+        result.code = 400
+        result.message = "Invalid ch_type!"
+        return result
+
+    if ch_category not in ["Upper body", "Lower body", "Full body"]:
+        result = ImageResponse()
+        result.data = []
+        result.code = 400
+        result.message = "Invalid ch_category!"
+        return result
+    
+    if ch_type == "Half body" and ch_category != "Upper body":
+        result = ImageResponse()
+        result.data = []
+        result.code = 400
+        result.message = "Half body (hd) model type can only be used with upperbody category!"
+        return result
+    
+    # 将上传的图片保存到本地
+    model_image_path = os.path.join(SAVE_PATH, modelimage.filename)
+    with open(model_image_path, "wb") as buffer:
+        buffer.write(modelimage.file.read())
+    
+    cloth_image_path = os.path.join(SAVE_PATH, clothimage.filename)
+    with open(cloth_image_path, "wb") as buffer:
+        buffer.write(clothimage.file.read())
+    
+    with torch.inference_mode():
+        loadimage = LoadImage()
+        loadimage_1 = loadimage.load_image(image=modelimage.filename)
+
+        loadimage_4 = loadimage.load_image(image=clothimage.filename)
+
+        loadootdpipeline = NODE_CLASS_MAPPINGS["LoadOOTDPipeline"]()
+        loadootdpipeline_11 = loadootdpipeline.load(
+            type=ch_type, path="/root/ComfyUI/models/OOTDiffusion"
+        )
+
+        ootdgenerate = NODE_CLASS_MAPPINGS["OOTDGenerate"]()
+        saveimage = SaveImage()
+
+        try:
+            img_paths = []
+            for q in range(1):
+                ootdgenerate_3 = ootdgenerate.generate(
+                    seed=random.randint(1, 2**64),
+                    steps=20,
+                    cfg=2.0300000000000002,
+                    category=ch_category,
+                    pipe=get_value_at_index(loadootdpipeline_11, 0),
+                    cloth_image=get_value_at_index(loadimage_4, 0),
+                    model_image=get_value_at_index(loadimage_1, 0),
+                )
+
+                saveimage_12 = saveimage.save_images(
+                    filename_prefix="ComfyUI", images=get_value_at_index(ootdgenerate_3, 0)
+                )
+                img_paths.append(saveimage_12['ui']['images'][0]['filename'])
+                
+                # 将生成的图片路径转换为 FileResponse 列表
+                file_responses: List[FileResponse] = []
+
+                for path in img_paths:
+                    save_path = os.path.join(OUTPUT_PATH, path)
+                    file_responses.append(FileResponse(save_path))
+                return file_responses[0]
+            
+        except:
+            result = ImageResponse()
+            result.data = []
+            result.code = 500
+            result.message = "Model inference Error!"
+            return result
+
+
+
+import os
+import shutil
+import random
+import asyncio
+from typing import  List, AsyncGenerator
+import torch
+
+from fastapi import APIRouter, UploadFile, File
+from fastapi.responses import FileResponse, StreamingResponse
+
+import ast
+import uuid
+
+import models.fileModel as fileModel
+from routers import ImageResponse, SAVE_PATH, OUTPUT_PATH
+from routers import  get_value_at_index
+from routers import image_style
+
+from nodes import (
+    NODE_CLASS_MAPPINGS,
+    EmptyLatentImage,
+    UNETLoader,
+    SaveImage,
+    VAEDecode,
+    CLIPTextEncode,
+    DualCLIPLoader,
+    VAELoader,
+)
+
+with torch.no_grad():
+    dualcliploader = DualCLIPLoader()
+    dualcliploader_61 = dualcliploader.load_clip(
+        clip_name1="t5xxl_fp8_e4m3fn.safetensors",
+        clip_name2="clip_l.safetensors",
+        type="flux",
+    )
+
+    vaeloader = VAELoader()
+    vaeloader_10 = vaeloader.load_vae(vae_name="ae.safetensors")
+
+    unetloader = UNETLoader()
+    unetloader_12 = unetloader.load_unet(
+        unet_name="flux1-dev.safetensors", weight_dtype="default"
+    )
+
+    ksamplerselect = NODE_CLASS_MAPPINGS["KSamplerSelect"]()
+    ksamplerselect_16 = ksamplerselect.get_sampler(sampler_name="euler")
+
+    randomnoise = NODE_CLASS_MAPPINGS["RandomNoise"]()
+    randomnoise_25 = randomnoise.get_noise(noise_seed=random.randint(1, 2**64))
+
+    basicguider = NODE_CLASS_MAPPINGS["BasicGuider"]()
+    basicscheduler = NODE_CLASS_MAPPINGS["BasicScheduler"]()
+    samplercustomadvanced = NODE_CLASS_MAPPINGS["SamplerCustomAdvanced"]()
+    vaedecode = VAEDecode()
+    saveimage = SaveImage()
+
+router = APIRouter(
+    prefix="/img",
+    tags=["flux_generation"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+
+@router.get("/flux_generation")
+async def flux_generation(user_id:str="zxcvbnm", prompt:str="a cute cat", size_str: str="(1024,1024)", samples: int=4, style: str="Anime Style") -> ImageResponse:
+    async def image_streamer(user_id:str, prompt:str, size_str:str, samples:int, style:str) -> AsyncGenerator[bytes, None]:
+        # try:
+        save_path_format = '/root/autodl-tmp/flux_data/user/{user_id}/txt2img/'
+        save_path = save_path_format.format(user_id=user_id)
+        os.makedirs(os.path.join(save_path), exist_ok=True)
+        img_names = await generate_image(save_path, prompt, size_str, samples, style)
+        images_url: List[str] = []
+        for name in img_names:
+            url = fileModel.get_type_file_url(user_id=user_id, fileType="txt2img", filename=name)
+            images_url.append(url)
+        result = ImageResponse()
+        result.data = images_url
+        result.code = 200
+        result.message = "success"
+        return result
+        # except:
+        #     result = ImageResponse()
+        #     result.data = []
+        #     result.code = 500
+        #     result.message = "Model inference Error!"
+        #     return result
+
+
+    return await image_streamer(user_id, prompt, size_str, samples, style)
+
+async def generate_image(save_path:str, prompt:str, size_str:str, samples:int, style:str) -> List[str]:
+    prompt = prompt + "," + image_style[style]
+    size = ast.literal_eval(size_str)
+    # 在这里调用你的图像生成逻辑
+    with torch.no_grad():
+        emptylatentimage = EmptyLatentImage()
+        emptylatentimage_5 = emptylatentimage.generate(
+            width=size[0], height=size[1], batch_size=samples
+        )
+
+        string_literal = NODE_CLASS_MAPPINGS["String Literal"]()
+        string_literal_28 = string_literal.get_string(string=prompt)
+
+        cliptextencode = CLIPTextEncode()
+        cliptextencode_6 = cliptextencode.encode(
+            text=get_value_at_index(string_literal_28, 0),
+            clip=get_value_at_index(dualcliploader_61, 0),
+        )
+
+        basicguider_22 = basicguider.get_guider(
+            model=get_value_at_index(unetloader_12, 0),
+            conditioning=get_value_at_index(cliptextencode_6, 0),
+        )
+
+        basicscheduler_17 = basicscheduler.get_sigmas(
+            scheduler="simple",
+            steps=20,
+            denoise=1,
+            model=get_value_at_index(unetloader_12, 0),
+        )
+
+        samplercustomadvanced_13 = samplercustomadvanced.sample(
+            noise=get_value_at_index(randomnoise_25, 0),
+            guider=get_value_at_index(basicguider_22, 0),
+            sampler=get_value_at_index(ksamplerselect_16, 0),
+            sigmas=get_value_at_index(basicscheduler_17, 0),
+            latent_image=get_value_at_index(emptylatentimage_5, 0),
+        )
+
+        vaedecode_8 = vaedecode.decode(
+            samples=get_value_at_index(samplercustomadvanced_13, 0),
+            vae=get_value_at_index(vaeloader_10, 0),
+        )
+        unique_id = uuid.uuid4()
+        saveimage_9 = saveimage.save_images(
+            filename_prefix=f"{unique_id}", images=get_value_at_index(vaedecode_8, 0)
+        )
+
+        img_names = []
+        for i in range(samples):
+            img_name = saveimage_9['ui']['images'][i]['filename']
+            origin_save_path = os.path.join(OUTPUT_PATH, img_name)
+            shutil.move(origin_save_path, save_path)
+            
+            img_names.append(img_name) 
+        return img_names
+
+
+"""
+@router.get("/flux_generation")
+async def flux_generation(prompt: str="a cat in the forest"):
+    with torch.no_grad():
+        string_literal = NODE_CLASS_MAPPINGS["String Literal"]()
+        string_literal_28 = string_literal.get_string(
+            string=prompt # "a naked beauty is showerning in the bathroom"
+        )
+        cliptextencode = CLIPTextEncode()
+        cliptextencode_6 = cliptextencode.encode(
+            text=get_value_at_index(string_literal_28, 0),
+            clip=get_value_at_index(dualcliploader_61, 0),
+        )
+
+        try:
+            img_paths = []
+            for q in range(1):
+                basicguider_22 = basicguider.get_guider(
+                    model=get_value_at_index(unetloader_12, 0),
+                    conditioning=get_value_at_index(cliptextencode_6, 0),
+                )
+
+                basicscheduler_17 = basicscheduler.get_sigmas(
+                    scheduler="simple",
+                    steps=25,
+                    denoise=1,
+                    model=get_value_at_index(unetloader_12, 0),
+                )
+
+                samplercustomadvanced_13 = samplercustomadvanced.sample(
+                    noise=get_value_at_index(randomnoise_25, 0),
+                    guider=get_value_at_index(basicguider_22, 0),
+                    sampler=get_value_at_index(ksamplerselect_16, 0),
+                    sigmas=get_value_at_index(basicscheduler_17, 0),
+                    latent_image=get_value_at_index(emptylatentimage_5, 0),
+                )
+
+                vaedecode_8 = vaedecode.decode(
+                    samples=get_value_at_index(samplercustomadvanced_13, 0),
+                    vae=get_value_at_index(vaeloader_10, 0),
+                )
+
+
+                saveimage_9 = saveimage.save_images(
+                    filename_prefix="MarkuryFLUX", images=get_value_at_index(vaedecode_8, 0)
+                )
+
+                torch.cuda.empty_cache()
+
+                print(f"saveimage_9: {saveimage_9}")
+                # saveimage_9: {'ui': {'images': [{'filename': 'ComfyUI_00015_.png', 'subfolder': '', 'type': 'output'}]}}
+                img_paths.append(saveimage_9['ui']['images'][0]['filename'])
+                # 将生成的图片路径转换为 FileResponse 列表
+                file_responses: List[FileResponse] = []
+
+                for path in img_paths:
+                    save_path = os.path.join(OUTPUT_PATH, path)
+                    file_responses.append(FileResponse(save_path))
+            print(img_paths)
+            return file_responses[0]
+            
+        except:
+            result = ImageResponse()
+            result.data = []
+            result.code = 500
+            result.message = "Model inference Error!"
+            return result
+        
+        
+"""
+"""
+if __name__ == "__main__":
+    main()
+"""
+
+import json
+import torch
+import random
+import os
+from typing import List
+from fastapi import APIRouter, UploadFile, File
+from fastapi.responses import FileResponse
+
+import os
+from routers import ImageResponse, SAVE_PATH, OUTPUT_PATH
+from routers import get_value_at_index
+
+
+from nodes import (
+    CheckpointLoaderSimple,
+    CLIPTextEncode,
+    NODE_CLASS_MAPPINGS,
+    LoadImage,
+    KSampler,
+    SaveImage,
+    VAEEncode,
+    VAEDecode,
+)
+router = APIRouter(
+    prefix="/product",
+    tags=["photography"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+
+@router.post("/product_photography")
+async def photography(prompt: str, myimage: UploadFile = File(...)):
+    # 将上传的图片保存到本地
+    if not os.path.exists(SAVE_PATH):
+        os.makedirs(SAVE_PATH)
+    temp_image_path = os.path.join(SAVE_PATH, myimage.filename)
+    with open(temp_image_path, "wb") as buffer:
+        buffer.write(myimage.file.read())
+
+    with torch.inference_mode():
+        checkpointloadersimple = CheckpointLoaderSimple()
+        checkpointloadersimple_4 = checkpointloadersimple.load_checkpoint(
+            ckpt_name="epicrealism_naturalSinRC1VAE.safetensors"
+        )
+
+        cliptextencode = CLIPTextEncode()
+        cliptextencode_6 = cliptextencode.encode(
+            text= prompt, # "in a stone on the beach",
+            clip=get_value_at_index(checkpointloadersimple_4, 1),
+        )
+
+        cliptextencode_7 = cliptextencode.encode(
+            text="text, watermark", clip=get_value_at_index(checkpointloadersimple_4, 1)
+        )
+
+        loadimage = LoadImage()
+        loadimage_15 = loadimage.load_image(image=myimage.filename)
+
+        imageresize = NODE_CLASS_MAPPINGS["ImageResize+"]()
+        imageresize_16 = imageresize.execute(
+            width=1000,
+            height=600,
+            interpolation="nearest",
+            method="stretch",
+            condition="always",
+            multiple_of=0,
+            image=get_value_at_index(loadimage_15, 0),
+        )
+
+        vaeencode = VAEEncode()
+        vaeencode_14 = vaeencode.encode(
+            pixels=get_value_at_index(imageresize_16, 0),
+            vae=get_value_at_index(checkpointloadersimple_4, 2),
+        )
+
+        iclightconditioning = NODE_CLASS_MAPPINGS["ICLightConditioning"]()
+        iclightconditioning_12 = iclightconditioning.encode(
+            multiplier=0.18215,
+            positive=get_value_at_index(cliptextencode_6, 0),
+            negative=get_value_at_index(cliptextencode_7, 0),
+            vae=get_value_at_index(checkpointloadersimple_4, 2),
+            foreground=get_value_at_index(vaeencode_14, 0),
+        )
+
+        createshapemask = NODE_CLASS_MAPPINGS["CreateShapeMask"]()
+        createshapemask_17 = createshapemask.createshapemask(
+            shape="circle",
+            frames=1,
+            location_x=850,
+            location_y=125,
+            grow=0,
+            frame_width=get_value_at_index(imageresize_16, 1),
+            frame_height=get_value_at_index(imageresize_16, 2),
+            shape_width=256,
+            shape_height=512,
+        )
+
+        growmaskwithblur = NODE_CLASS_MAPPINGS["GrowMaskWithBlur"]()
+        growmaskwithblur_18 = growmaskwithblur.expand_mask(
+            expand=0,
+            incremental_expandrate=0,
+            tapered_corners=True,
+            flip_input=False,
+            blur_radius=12,
+            lerp_alpha=1,
+            decay_factor=1,
+            fill_holes=False,
+            mask=get_value_at_index(createshapemask_17, 0),
+        )
+
+        remapmaskrange = NODE_CLASS_MAPPINGS["RemapMaskRange"]()
+        remapmaskrange_19 = remapmaskrange.remap(
+            min=0,
+            max=0.7000000000000001,
+            mask=get_value_at_index(growmaskwithblur_18, 0),
+        )
+
+        masktoimage = NODE_CLASS_MAPPINGS["MaskToImage"]()
+        masktoimage_20 = masktoimage.mask_to_image(
+            mask=get_value_at_index(remapmaskrange_19, 0)
+        )
+
+        vaeencode_21 = vaeencode.encode(
+            pixels=get_value_at_index(masktoimage_20, 0),
+            vae=get_value_at_index(checkpointloadersimple_4, 2),
+        )
+
+        loadandapplyiclightunet = NODE_CLASS_MAPPINGS["LoadAndApplyICLightUnet"]()
+        ksampler = KSampler()
+        vaedecode = VAEDecode()
+        saveimage = SaveImage()
+
+        try:
+            img_paths = []
+            for q in range(1):
+                loadandapplyiclightunet_13 = loadandapplyiclightunet.load(
+                    model_path="iclight_sd15_fc_unet_ldm.safetensors",
+                    model=get_value_at_index(checkpointloadersimple_4, 0),
+                )
+
+                ksampler_3 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=30,
+                    cfg=3,
+                    sampler_name="dpmpp_2m_sde",
+                    scheduler="karras",
+                    denoise=1,
+                    model=get_value_at_index(loadandapplyiclightunet_13, 0),
+                    positive=get_value_at_index(iclightconditioning_12, 0),
+                    negative=get_value_at_index(iclightconditioning_12, 1),
+                    latent_image=get_value_at_index(vaeencode_21, 0),
+                )
+
+                vaedecode_8 = vaedecode.decode(
+                    samples=get_value_at_index(ksampler_3, 0),
+                    vae=get_value_at_index(checkpointloadersimple_4, 2),
+                )
+
+                saveimage_9 = saveimage.save_images(
+                    filename_prefix="ComfyUI", images=get_value_at_index(vaedecode_8, 0)
+                )
+                # print(f"saveimage_9: {saveimage_9}")
+                # saveimage_9: {'ui': {'images': [{'filename': 'ComfyUI_00015_.png', 'subfolder': '', 'type': 'output'}]}}
+                img_paths.append(saveimage_9['ui']['images'][0]['filename'])
+            
+            # 将生成的图片路径转换为FileResponse列表
+            images_url: List[str] = []
+            # 将生成的图片路径转换为 FileResponse 列表
+            file_responses: List[FileResponse] = []
+
+            for path in img_paths:
+                save_path = os.path.join(OUTPUT_PATH, path)
+                file_responses.append(FileResponse(save_path))
+            #     url = f'https://u447318-95cc-7e79cc31.bjc1.seetacloud.com:8443/docs#/photography/photography_photography_product_photography_post?filename={save_path}'
+            #     images_url.append(url)
+            # result = ImageResponse()
+            # result.data = images_url
+            # result.code = 200
+            # result.message = "success"
+            # return result
+            return file_responses[0]
+            
+        except:
+            result = ImageResponse()
+            result.data = []
+            result.code = 500
+            result.message = "Model inference Error!"
+            return result
+
+
+
+import os
+import random
+import sys
+from typing import Sequence, Mapping, Any, Union, List
+import torch
+from fastapi import APIRouter, UploadFile, File
+from fastapi.responses import FileResponse
+
+import os
+from routers import ImageResponse, SAVE_PATH, OUTPUT_PATH
+from routers import  get_value_at_index
+
+
+from nodes import (
+    KSampler,
+    SaveImage,
+    NODE_CLASS_MAPPINGS,
+    VAEDecode,
+    CheckpointLoaderSimple,
+    EmptyLatentImage,
+    CLIPTextEncode,
+    LoadImage,
+)
+
+router = APIRouter(
+    prefix="/product",
+    tags=["enhancement"],
+    dependencies=[],
+    responses={404: {"description": "Not found"}},
+)
+
+@router.post("/product_enhancement")
+async def product_enhancement(prompt: str, myimage: UploadFile = File(...)):
+    # 将上传的图片保存到本地
+    if not os.path.exists(SAVE_PATH):
+        os.makedirs(SAVE_PATH)
+    temp_image_path = os.path.join(SAVE_PATH, myimage.filename)
+    with open(temp_image_path, "wb") as buffer:
+        buffer.write(myimage.file.read())
+       
+    with torch.inference_mode():
+        checkpointloadersimple = CheckpointLoaderSimple()
+        checkpointloadersimple_4 = checkpointloadersimple.load_checkpoint(
+            ckpt_name="epicrealism_naturalSinRC1VAE.safetensors"
+        )
+
+        cliptextencode = CLIPTextEncode()
+        cliptextencode_6 = cliptextencode.encode(
+            text= prompt, # "silk sheets, wooden, flowers, ",
+            clip=get_value_at_index(checkpointloadersimple_4, 1),
+        )
+
+        cliptextencode_7 = cliptextencode.encode(
+            text="lowres, bad anatomy, bad hands, cropped, worst quality",
+            clip=get_value_at_index(checkpointloadersimple_4, 1),
+        )
+
+        loadimage = LoadImage()
+        loadimage_11 = loadimage.load_image(image=myimage.filename)
+
+        imageresize = NODE_CLASS_MAPPINGS["ImageResize+"]()
+        imageresize_14 = imageresize.execute(
+            width=1024,
+            height=1024,
+            interpolation="nearest",
+            method="keep proportion",
+            condition="always",
+            multiple_of=0,
+            image=get_value_at_index(loadimage_11, 0),
+        )
+
+        easy_imagerembg = NODE_CLASS_MAPPINGS["easy imageRemBg"]()
+        easy_imagerembg_12 = easy_imagerembg.remove(
+            rem_mode="RMBG-1.4",
+            image_output="Preview",
+            save_prefix="ComfyUI",
+            torchscript_jit=False,
+            images=get_value_at_index(imageresize_14, 0),
+        )
+
+        iclightapplymaskgrey = NODE_CLASS_MAPPINGS["ICLightApplyMaskGrey"]()
+        iclightapplymaskgrey_41 = iclightapplymaskgrey.apply_mask(
+            image=get_value_at_index(easy_imagerembg_12, 0),
+            alpha=get_value_at_index(easy_imagerembg_12, 1),
+        )
+
+        vaeencodeargmax = NODE_CLASS_MAPPINGS["VAEEncodeArgMax"]()
+        vaeencodeargmax_24 = vaeencodeargmax.encode(
+            pixels=get_value_at_index(iclightapplymaskgrey_41, 0),
+            vae=get_value_at_index(checkpointloadersimple_4, 2),
+        )
+
+        emptylatentimage = EmptyLatentImage()
+        emptylatentimage_42 = emptylatentimage.generate(
+            width=get_value_at_index(imageresize_14, 1),
+            height=get_value_at_index(imageresize_14, 2),
+            batch_size=1,
+        )
+
+        vaedecode = VAEDecode()
+        vaedecode_43 = vaedecode.decode(
+            samples=get_value_at_index(emptylatentimage_42, 0),
+            vae=get_value_at_index(checkpointloadersimple_4, 2),
+        )
+
+        splitimagewithalpha = NODE_CLASS_MAPPINGS["SplitImageWithAlpha"]()
+        splitimagewithalpha_47 = splitimagewithalpha.split_image_with_alpha(
+            image=get_value_at_index(easy_imagerembg_12, 0)
+        )
+
+        imagecompositemasked = NODE_CLASS_MAPPINGS["ImageCompositeMasked"]()
+        imagecompositemasked_46 = imagecompositemasked.composite(
+            x=0,
+            y=0,
+            resize_source=False,
+            destination=get_value_at_index(vaedecode_43, 0),
+            source=get_value_at_index(splitimagewithalpha_47, 0),
+            mask=get_value_at_index(easy_imagerembg_12, 1),
+        )
+
+        vaeencodeargmax_37 = vaeencodeargmax.encode(
+            pixels=get_value_at_index(imagecompositemasked_46, 0),
+            vae=get_value_at_index(checkpointloadersimple_4, 2),
+        )
+
+        iclightconditioning = NODE_CLASS_MAPPINGS["ICLightConditioning"]()
+        iclightconditioning_62 = iclightconditioning.encode(
+            multiplier=0.18215,
+            positive=get_value_at_index(cliptextencode_6, 0),
+            negative=get_value_at_index(cliptextencode_7, 0),
+            vae=get_value_at_index(checkpointloadersimple_4, 2),
+            foreground=get_value_at_index(vaeencodeargmax_24, 0),
+        )
+
+        loadandapplyiclightunet = NODE_CLASS_MAPPINGS["LoadAndApplyICLightUnet"]()
+        easy_ipadapterapply = NODE_CLASS_MAPPINGS["easy ipadapterApply"]()
+        ksampler = KSampler()
+        saveimage = SaveImage()
+        detailtransfer = NODE_CLASS_MAPPINGS["DetailTransfer"]()
+
+        try:
+            img_paths = []
+            for q in range(1):
+                loadandapplyiclightunet_61 = loadandapplyiclightunet.load(
+                    model_path="iclight_sd15_fc_unet_ldm.safetensors",
+                    model=get_value_at_index(checkpointloadersimple_4, 0),
+                )
+
+                easy_ipadapterapply_58 = easy_ipadapterapply.apply(
+                    preset="PLUS (high strength)",
+                    lora_strength=0.6,
+                    provider="CPU",
+                    weight=1,
+                    weight_faceidv2=1,
+                    start_at=0,
+                    end_at=1,
+                    cache_mode="all",
+                    use_tiled=False,
+                    model=get_value_at_index(loadandapplyiclightunet_61, 0),
+                    image=get_value_at_index(imagecompositemasked_46, 0),
+                    attn_mask=get_value_at_index(easy_imagerembg_12, 1),
+                )
+
+                ksampler_16 = ksampler.sample(
+                    seed=random.randint(1, 2**64),
+                    steps=25,
+                    cfg=2,
+                    sampler_name="dpmpp_2m_sde",
+                    scheduler="karras",
+                    denoise=0.9,
+                    model=get_value_at_index(easy_ipadapterapply_58, 0),
+                    positive=get_value_at_index(iclightconditioning_62, 0),
+                    negative=get_value_at_index(iclightconditioning_62, 1),
+                    latent_image=get_value_at_index(vaeencodeargmax_37, 0),
+                )
+
+                vaedecode_17 = vaedecode.decode(
+                    samples=get_value_at_index(ksampler_16, 0),
+                    vae=get_value_at_index(checkpointloadersimple_4, 2),
+                )
+
+                saveimage_18 = saveimage.save_images(
+                    filename_prefix="ComfyUI", images=get_value_at_index(vaedecode_17, 0)
+                )
+
+                detailtransfer_51 = detailtransfer.process(
+                    mode="add",
+                    blur_sigma=1,
+                    blend_factor=1,
+                    target=get_value_at_index(vaedecode_17, 0),
+                    source=get_value_at_index(splitimagewithalpha_47, 0),
+                )
+
+                saveimage_52 = saveimage.save_images(
+                    filename_prefix="ComfyUI",
+                    images=get_value_at_index(detailtransfer_51, 0),
+                )
+                # print(f"saveimage_52: {saveimage_52}")
+                # saveimage_9: {'ui': {'images': [{'filename': 'ComfyUI_00015_.png', 'subfolder': '', 'type': 'output'}]}}
+                img_paths.append(saveimage_52['ui']['images'][0]['filename'])
+                
+                # 将生成的图片路径转换为 FileResponse 列表
+                file_responses: List[FileResponse] = []
+
+                for path in img_paths:
+                    save_path = os.path.join(OUTPUT_PATH, path)
+                    file_responses.append(FileResponse(save_path))
+                return file_responses[0]
+            
+        except:
+            result = ImageResponse()
+            result.data = []
+            result.code = 500
+            result.message = "Model inference Error!"
+            return result

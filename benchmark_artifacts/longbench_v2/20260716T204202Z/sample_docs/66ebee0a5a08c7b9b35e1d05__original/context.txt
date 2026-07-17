@@ -1,0 +1,2112 @@
+PHIDIAS: A GENERATIVE MODEL FOR CREATING 3D
+CONTENT FROM TEXT, IMAGE, AND 3D CONDITIONS
+WITH REFERENCE-AUGMENTED DIFFUSION
+
+ABSTRACT
+In 3D modeling, designers often use an existing 3D model as a reference to create
+new ones. This practice has inspired the development of Phidias, a novel gen-
+erative model that uses diffusion for reference-augmented 3D generation. Given
+an image, our method leverages a retrieved or user-provided 3D reference model
+to guide the generation process, thereby enhancing the generation quality, gen-
+eralization ability, and controllability. Our model integrates three key compo-
+nents: 1) meta-ControlNet that dynamically modulates the conditioning strength,
+2) dynamic reference routing that mitigates misalignment between the input image
+and 3D reference, and 3) self-reference augmentations that enable self-supervised
+training with a progressive curriculum. Collectively, these designs result in signif-
+icant generative improvements over existing methods. Phidias establishes a uni-
+fied framework for 3D generation using text, image, and 3D conditions, offering
+versatile applications. Demo videos are at: https://RAG-3D.github.io/.
+Figure 1: The proposed model, Phidias, can produce high-quality 3D assets given 3D references,
+which can be obtained via retrieval (top two rows) or specified by users (bottom row). It supports
+3D generation from a single image, a text prompt, or an existing 3D model.
+1
+INTRODUCTION
+The goal of 3D generative models is to empower artists and even beginners to effortlessly convert
+their design concepts into 3D models. Consider the input image in Fig. 1. A skilled craftsman can,
+through a blend of skills and creativity, convert a 2D concept image into an exquisite 3D model. This
+creative process can originate from artists’ pure imagination or, more commonly, through examining
+†Intern at Shanghai AI Lab. ∗Equal Contribution.
+1
+arXiv:2409.11406v1  [cs.CV]  17 Sep 2024
+
+
+one or more existing 3D models as a source of inspiration (Bob, 2022; Carvajal, 2023). Artists often
+refer to these pre-existing 3D models to improve the modeling quality. The question then arises:
+could we develop a reference-based 3D generative model that can replicate this capability?
+Over the years, a plethora of works (Wang et al., 2023; Liu et al., 2023b; Hong et al., 2023; Ben-
+sadoun et al., 2024) steadily expanded the frontiers of 3D generative models. These methods, while
+yielding stunning performance, still face several challenges. 1) Generation quality. A single im-
+age cannot furnish sufficient information for reconstructing a full 3D model, due to the ambiguity
+of this ill-posed task. This necessitates the generative model to “hallucinate” the unseen parts in a
+data-driven manner. However, this hallucination can lead to view inconsistency and imprecise ge-
+ometries that appear abrupt and unrealistic. 2) Generalization ability. These models often struggle
+with out-of-domain cases, such as atypical input views or objects, constrained by the data coverage
+of existing 3D datasets (Deitke et al., 2023). Also, the growing variety and quantity of object cate-
+gories exacerbate the difficulty for generative models to learn implicit shape priors, with a limited
+model capacity v.s. an infinitely diverse array of objects. 3) Controllability. Due to the ambiguity,
+one input image can produce several plausible 3D models, each differing in shape, geometric style,
+and local patterns. Existing methods are constrained by limited diversity and controllability, which
+hinders the ability to predictably generate the desired 3D models.
+To address these challenges, we propose to take 3D models as additional inputs to guide the gener-
+ation, inspired by the success in retrieval augmented generation (RAG) for language (Lewis et al.,
+2020) and image (Sheynin et al., 2022). Given an input image and a reference 3D model, we present
+Phidias, a novel reference-augmented diffusion model that unifies 3D generation from text, image,
+and 3D conditions. As shown in Fig. 1, the reference 3D model would help 1) improve quality
+by alleviating ambiguity with richer information for unseen views, 2) enhance generalization ca-
+pacity by serving as a shape template or an external memory for generative models, and 3) provide
+controllability by indicating desired shape patterns and geometric styles.
+Our method proposed a reference-augmented multi-view diffusion model, followed by sparse-view
+3D reconstruction. The goal is to produce 3D models faithful to the concept image with improved
+quality by incorporating relevant information from the 3D reference. However, it is non-trivial to
+learn such a generative model due to the Misalignment Dilemma, where the discrepancy between the
+concept image and the 3D reference can lead to conflicts in the generation process. This requires our
+model to utilize the misaligned 3D reference adaptively. To tackle this challenge, Phidias leverages
+three key designs outlined below.
+The first is meta-ControlNet. Consider 3D reference as conditions for diffusion models. Unlike
+previous image-to-image translation works (Zhang et al., 2023; Wang et al., 2022) that demand the
+generated images to closely follow the conditions, we treat reference model as auxiliary guidance to
+provide additional information. The generated multi-view images are expected to be consistent with
+the concept image, without requiring precise alignment with the reference model. To this end, we
+build our method on ControlNet and propose a meta-control network that dynamically modulates
+conditioning strength when it conflicts with the concept image, based on their similarity.
+The second design is dynamic reference routing for further alleviating the misalignment. Rather
+than using the same 3D reference for the full diffusion process, we adjust its resolution across
+denoise timesteps. This follows the dynamics of the reverse diffusion process (Balaji et al., 2022),
+which generates coarse structure in high-noised timesteps and details in low-noised timesteps. Thus,
+we can alleviate the generation conflicts by starting with a coarse 3D reference and progressively
+increasing its resolution as the reverse diffusion process goes on.
+The final key design is self-reference augmentations. It is not feasible to gather large sets of 3D
+models and their matching references. A practical solution is to use the 3D model itself as its own
+reference (i.e., self-reference) for self-supervised learning. The trained model, however, does not
+work well when the 3D reference does not align with the target image. To avoid overfitting to a
+trivial solution, we apply a variety of augmentations to 3D models that simulate this misalignment.
+Furthermore, we introduce a progressive augmentation approach that leverages curriculum learning
+for diffusion models to effectively utilize references that vary in similarity.
+Taken together, the above ingredients work in concert to enable Phidias to achieve stunning perfor-
+mance in 3D generation. Several application scenarios are thus supported: 1) Retrieval-augmented
+2
+
+
+Figure 2: Overview of the Phidias model. It generates a 3D model in two stages: (1) reference-
+augmented multi-view generation and (2) sparse-view 3D reconstruction.
+image-to-3D generation, 2) Retrieval-augmented text-to-3D generation, 3) Theme-aware 3D-to-3D
+generation, 4) Interactive 3D generation with coarse guidance, and 5) High-fidelity 3D completion.
+We summarize our contributions as follows: 1) We propose the first reference-based 3D-aware diffu-
+sion model. 2) We design our model with three key component designs to enhance the performance.
+3) Our model serves as a unified framework for 3D generation, which provides a variety of appli-
+cations with text, image, and 3D inputs. 4) Extensive experiments show our method outperforms
+existing approaches qualitatively and quantitatively.
+2
+RELATED WORKS
+Image to 3D. Pioneering works (Melas-Kyriazi et al., 2023; Tang et al., 2023; Chen et al., 2024b)
+perform 3D synthesis by distilling image diffusion priors (Poole et al., 2023), but are time-
+consuming. Recent advancements have leveraged feed-forward models with 3D datasets. Some
+works use diffusion models to generate points (Nichol et al., 2022), neural radiance fields (Wang
+et al., 2023; Jun & Nichol, 2023; Gupta et al., 2023; Hong et al., 2024), SDF (Cheng et al., 2023;
+Zhang et al., 2024b), and gaussian splatting (Zhang et al., 2024a). Another line of works uses trans-
+formers for auto-regressive generation (Siddiqui et al., 2023; Chen et al., 2024a) or sparse-view
+reconstruction (Hong et al., 2023; Tang et al., 2024; Zou et al., 2023; Wang et al., 2024a; Xu et al.,
+2024), which often rely on multi-view diffusion for better performance.
+Multi-View Diffusion Models. Multi-view models reduce the complexities of 3D synthesis to con-
+sistent 2D synthesis. Seminal works (Liu et al., 2023b) have shown novel view synthesis capabilities
+with pre-trained image diffusion models (Rombach et al., 2022). Later, a plethora of works explored
+multi-view diffusion models with better consistency (Shi et al., 2023a; Wang & Shi, 2023; Shi et al.,
+2023b; Long et al., 2023; Liu et al., 2023a) by introducing cross-view communication. More recent
+works (Voleti et al., 2024; Chen et al., 2024c; You et al., 2024; Han et al., 2024) leverage video pri-
+ors for multi-view generation by injecting cameras into video diffusion models. However, they still
+struggle with generalized and controllable generation due to the ill-posed nature of this problem.
+Reference-Augmented Generation. Retrieval-augmented generation (RAG) emerges to enhance
+the generation of both language (Lewis et al., 2020) and image (Sheynin et al., 2022; Blattmann
+et al., 2022) by incorporating relevant external information during the generation process. Under
+the context of 3D generation, the concept of reference-based generation is also widely applied.
+Some works (Chaudhuri et al., 2011; Kim et al., 2013; Schor et al., 2019) probe into the database for
+compatible parts and assemble them into 3D shapes. Some works refer to a 3D exemplar model (Wu
+& Zheng, 2022; Wang et al., 2024b) to produce customized 3D assets. Despite success in specific
+contexts, they are time-consuming with per-case optimization. In contrast, our method focuses on
+learning a generalized feed-forward model that applies to reference-augmented 3D generation.
+3
+APPROACH
+Given one concept image, we aim at leveraging an additional 3D reference model to alleviate 3D
+inconsistency issues and geometric ambiguity that exist in 3D generation. The 3D reference model
+can be either provided by the user or retrieved from a large 3D database for different applications.
+3
+
+
+Low Noise Levels
+3D Reference 
+Base ControlNet
+Multi-View CCM Image
+…
+Meta-Controller
+Concept
+Image
+Zero
+Convs
+Zero
+Convs
+Adaptive Control Signal
+Multi-Scale Alignment Features
+Zero Convs
+3D Reference
+Front-View 
+CCM
+Encoder
+Encoder
+(a) Meta-ControlNet
+(b) Dynamic Reference Routing
+…
+…
+…
+…
+Middle Noise Levels
+High Noise Levels
+…
+High Res. CCM
+Middle Res. CCM
+Low Res. CCM
+…
+…
+…
+…
+…
+…
+…
+𝑡!
+𝑡"
+𝑡#
+Figure 3: Architectural designs for meta-ControlNet (a) and dynamic reference routing (b).
+The overall pipeline of Phidias is shown in Fig. 2, which involves two stages: reference-augmented
+multi-view generation and sparse-view 3D reconstruction.
+3.1
+REFERENCE-AUGMENTED MULTI-VIEW DIFFUSION
+Multi-view diffusion models incorporate camera conditions into well-trained image diffusion mod-
+els for novel-view synthesis with supervised fine-tuning. We aim to weave additional 3D references
+into these multi-view models for better generation quality, generalization ability, and controllability.
+Our approach can be built on arbitrary multi-view diffusion models, enabling reference-augmented
+3D content creation from text, image, and 3D conditions. Specifically, we initialize our model with
+Zero123++ (Shi et al., 2023a), which simply tiles multi-view images for efficient generation condi-
+tioned on one input image cimage.
+To integrate 3D reference models cref into the diffusion process, we transform them into multi-view
+canonical coordinate maps (CCM) to condition the diffusion model. The choice of CCMs as the 3D
+representation is based on two reasons: 1) Multi-view images serve as more efficient and compatible
+inputs for diffusion models than meshes or voxels, as they have embedded camera viewing angles
+that correspond with the output images. 2) Reference models often share similar shapes with the
+concept image but vary significantly in texture details. By focusing on the geometry while omitting
+the texture, CCMs conditions can reduce generation conflicts arising from texture discrepancies. We
+add a conditioner branch to incorporate reference CCMs into the base multi-view diffusion model.
+The objective for training our diffusion model ϵθ can be then formulated as:
+L = Et,ϵ∼N (0,1)
+
+∥ϵ −ϵθ (xt, t, cimage, cref) ∥2
+(1)
+To leverage the powerful pertaining capability, only the additional conditioner for reference CCMs
+is trainable while the base multi-view diffusion is frozen. However, a challenge in our task is that the
+3D reference may not strictly align with the concept image or, more commonly, vary in most local
+parts. We found naive conditioner designs such as ControlNet (Zhang et al., 2023) tend to produce
+undesirable artifacts, as they were originally designed for image-to-image translation where the gen-
+erated images strictly align with the condition images. To mitigate this problem, we introduce three
+key designs for our reference-augmented diffusion model: (1) Meta-ControlNet for adaptive control
+of the conditioning strength (Sec. 3.2); (2) Dynamic Reference Routing for dynamic adjustment of
+the 3D reference (Sec. 3.3); (3) Self-Reference Augmentation for self-supervised training (Sec. 3.4).
+3.2
+META-CONTROLNET.
+ControlNet is designed to add additional controls to pre-trained diffusion models for image-to-image
+translation. The conditions are derived from the ground-truth images for self-supervised learning,
+and thus the generated images are expected to follow the conditions. However, in our settings, the
+conditions are from the reference model, which often misaligns with the target 3D models we want
+to generate. The vanilla ControlNet fails to handle such cases. This necessitates further architecture
+advancement to accordingly adjust conditioning strength when the reference conflicts with the con-
+cept image. To this end, we propose meta-ControlNet, as shown in Fig. 3 (a). Meta-ControlNet is
+comprised of two collaborative subnets, a base ControlNet and an additional meta-controller.
+4
+
+
+Base ControlNet is comprised of an image encoder, a trainable copy of down-sampling blocks and
+middle blocks of the base multi-view diffusion, denoted as Fbase
+Θ
+(·), and a series of 1 × 1 zero
+convolution layers (Zero Convs) Zbase
+Θ
+(·). It takes reference CCM maps cref as input to produce the
+control signal. To deal with misaligned 3D reference, we introduce an additional meta-controller to
+modulate the conditioning strength according to different similarity levels.
+Meta-controller shares a similar architecture but has different parameters Θ′. It works as a knob that
+dynamically modulates base ControlNet to generate adaptive control signals. Meta-controller takes a
+pair cpair of the concept image and the front-view reference CCM as input to produce meta-control
+signals based on their similarities. The meta-control signals are injected into diffusion models in
+two ways. On the one hand, meta-controller produces multi-scale alignment features ymeta1 =
+Zmeta1
+Θ′
+(Fmeta
+Θ′
+(zpair)) to be injected into base ControlNet. These features are applied to the down-
+sampling blocks of base ControlNet (Eq. 2) at each scale to guide the encoding of reference and help
+produce base-signals as:
+ybase = Zbase
+Θ
+Fbase
+Θ
+(ymeta1, zref)
+
+,
+(2)
+where zref and zpair are the feature maps of cref and cpair via the trainable encoders in Fig. 3 (a).
+On the other hand, meta-controller produces meta-signals ymeta2 = Zmeta2
+Θ′
+(Fmeta
+Θ′
+(zpair)) to
+be injected to the pretrained multi-view diffusion models. These features are added up to base-
+signal ybase to directly apply for the pretrained diffusion models. Totally, the final outputs of meta-
+ControlNet are adaptive control signals yadaptive based on the similarity between the concept image
+and the 3D reference, as:
+yadaptive = ybase + ymeta2.
+(3)
+3.3
+DYNAMIC REFERENCE ROUTING
+Reference models typically align roughly with the concept image in terms of coarse shape, but
+diverge significantly in local details. This misalignment can cause confusion and conflicts, as the
+generation process relies on both the image and reference model. To address this issue, we propose
+a dynamic reference routing strategy that adjusts the reference resolution across denoise timesteps,
+as shown in Fig. 3 (b). As widely observed during the reverse diffusion process, the coarse structure
+of a target image is determined in high-noised timesteps and fine details emerge later as the timestep
+goes on. This motivates us to start with low-resolution reference CCMs at high noise levels th. By
+lowering the resolution, reference models provide fewer details but exhibit smaller misalignment
+with the concept image. This enables reference models to assist in generating the global structure
+of 3D objects without significant conflicts. We then gradually increase the resolution of reference
+CCMs as the reverse diffusion process goes into middle noise levels tm and low noise levels tl to
+help refine local structures, e.g., progressively generating a curly tail from a straight one (Fig. 3 (b)).
+This design choice would ensure effective usage of both concept image and 3D reference during the
+multi-view image generation process while avoiding degraded generation caused by misalignment.
+3.4
+SELF-REFERENCE AUGMENTATION
+A good reference model should resemble the target 3D model (with varied details) to provide addi-
+tional geometric cues, but it is impractical to collect sufficient target-reference pairs for training. An
+intuitive solution is to retrieve a similar model from a large 3D database as the training reference.
+However, due to the limited variety in current databases, finding a perfect match is challenging. The
+retrieved reference can vary greatly in orientation, size and semantics. While this is a common situ-
+ation in inference scenarios, where a very similar reference is often unavailable, we found training
+with these challenging pairs fails to effectively use the 3D reference. We conjecture that the learning
+process struggles due to the significant differences between the reference and target 3D, leading the
+diffusion model to disregard the references. To avoid the ‘idleness’ of reference, we developed a
+self-reference scheme that uses the target model as its own reference by applying various augmen-
+tations to mimic misalignment (refer to Appendix A.4). This approach ensures that the reference
+models are somewhat aligned with the target and more compatible, alleviating the learning difficulty.
+We further design a curriculum training strategy, which begins with minimal augmentations (very
+similar references) to force the diffusion model to rely on the reference for enhancement. Over time,
+we gradually increase augmentation strength and incorporate retrieved references, challenging the
+5
+
+
+Input Image
+Retrieved
+3D Reference 1
+Generated Model 1
+Retrieved
+3D Reference 2
+Generated Model 2
+Figure 4: Diverse retrieval-augmented image-to-3D results. Phidias can generate diverse 3D models
+with different references for a single input image.
+diffusion model to learn from references that do not closely match the target. Once trained, our
+model performs well with a variety of references, even those retrieved ones that are not very similar.
+3.5
+SPARSE-VIEW 3D RECONSTRUCTION
+With multi-view images generated in the first stage, we can obtain final 3D models via sparse-
+view 3D reconstruction. This step can be built upon arbitrary sparse-view reconstruction models.
+Specifically, we finetune LGM (Tang et al., 2024) by expanding the number of input views from 4
+to 6 and the resolution of each view from 256 × 256 to 320 × 320 so that the trained reconstruction
+model aligns with the multi-view images generated in our first stage.
+4
+EXPERIMENTS
+In this section, we evaluate our method on image-to-3D generation, a significant area in 3D gen-
+eration research. For each image, we retrieve a 3D reference model from a 3D database based on
+similarity (Zhou et al., 2024). The database used is a subset of Objaverse, containing 40K models.
+We anticipate that performance could be further enhanced with a larger database in the future. For
+the rest of this section, we compare Phidias with state-of-the-art methods and conduct ablation anal-
+ysis. More results and implementation details can be found in Appendix. Results on text-to-3D and
+3D-to-3D generation can be found in Sec. 5.
+4.1
+COMPARISONS WITH STATE-OF-THE-ART METHODS
+We compare Phidias with five image-to-3D baselines: CRM (Wang et al., 2024a), LGM (Tang et al.,
+2024), InstantMesh (Xu et al., 2024), SV3D (Voleti et al., 2024), and OpenLRM (He & Wang, 2023).
+Qualitative Results. For visual diversity (Fig. 4), given the same concept image, Phidias can gener-
+ate diverse 3D assets that are both faithful to the concept image and conforming to a specific retrieved
+6
+
+
+Ours
+Input
+Image + 3D
+CRM
+LGM
+InstantMesh
+SV3D
+OpenLRM
+Figure 5: Qualitative comparisons on image-to-3D generation.
+Table 1: Quantitative comparison with baselines on image-to-3D synthesis.
+Method
+PSNR ↑
+SSIM ↑
+LPIPS ↓
+CLIP-P ↑
+CLIP-I ↑
+CD ↓
+F-Score ↑
+OpenLRM
+16.15
+0.843
+0.194
+0.866
+0.847
+0.0446
+0.805
+LGM
+14.80
+0.807
+0.219
+0.869
+0.871
+0.0398
+0.831
+CRM
+16.35
+0.841
+0.182
+0.855
+0.843
+0.0443
+0.796
+SV3D
+16.24
+0.838
+0.203
+0.879
+0.866
+-
+-
+InstantMesh
+14.63
+0.796
+0.235
+0.882
+0.880
+0.0450
+0.788
+Ours (GT Ref.)
+20.37
+0.870
+0.117
+0.911
+0.885
+0.0391
+0.840
+Ours (Retrieved Ref.)
+17.02
+0.845
+0.174
+0.887
+0.885
+0.0402
+0.833
+3D reference in geometry. For visual comparisons (Fig. 5), while the baseline methods can generate
+plausible results, they suffer from geometry distortion (e.g., horse legs). Besides, none of the exist-
+ing methods can benefit from the 3D reference for improved generalization ability (e.g., excavator’s
+dipper) and controllability (e.g., cat’s tail) as ours.
+Quantitative Results. Following previous works, we conduct quantitative evaluation on google
+scanned objects (GSO) (Downs et al., 2022). We remove duplicated objects with the same shape
+and randomly select 200 objects for evaluation. For visual quality, we report reconstruction met-
+rics (PSNR, SSIM and LPIPS) on 20 novel views. We also report novel views’ CLIP similarity
+with paired GT (CLIP-P) and input image (CLIP-I). For geometry quality, we sample 50K points
+from mesh surface and compute Chamfer Distance (CD) and F-Score (with a threshold of 0.05). To
+align the generated mesh and GT, we unify their coordinate systems and re-scale them into a unit
+box. We report our results with the retrieved reference, i.e., Ours (Retrieved Ref.), and GT mesh as
+reference, i.e., Ours (GT Ref.), respectively. As shown in Tab. 1, ours, with either retrieved or GT ref-
+erence, outperforms all baselines, benefiting from the proposed retrieval-augmented method. While
+the CD is slightly larger, we argue that our approach produces plausible 3D models given different
+references (Fig. 7), though they can differ from GT mesh when computing chamfer distance.
+User Study. We further conduct a user study to evaluate human preferences among different meth-
+ods. We publicly invite 30 users to complete a questionnaire for pairwise comparisons. We show the
+preference rate (i.e., the percentage of users prefer ours compared to a baseline method) in Tab. 2,
+which suggests that our approach significantly outperforms existing methods in the image-to-3D
+task based on human preferences.
+7
+
+
+Table 2: User study.
+Baseline
+Pref. Rate
+OpenLRM
+94.7%
+LGM
+95.8%
+CRM
+93.7%
+SV3D
+88.4%
+InstantMesh
+91.6%
+Table 3: Quantitative ablation study of the proposed components.
+Method
+PSNR ↑
+SSIM ↑
+LPIPS ↓
+CLIP-P ↑
+CLIP-I ↑
+CD ↓
+F-Score ↑
+Base Model
+14.70
+0.804
+0.227
+0.855
+0.859
+0.0424
+0.826
++ Meta-ControlNet
+16.35
+0.833
+0.190
+0.881
+0.878
+0.0407
+0.829
++ Dynamic Ref. Routing
+14.76
+0.816
+0.221
+0.868
+0.861
+0.0420
+0.826
++ Self-Ref. Augmentation
+16.57
+0.840
+0.182
+0.880
+0.883
+0.0414
+0.830
+Full Model
+17.02
+0.845
+0.174
+0.887
+0.885
+0.0402
+0.833
+Base Model + Retrieval
+Inputs
++ Meta-ControlNet
+(a) Meta-ControlNet
+Base Model
+Inputs
++ Dynamic Reference Routing
+(b) Dynamic Reference Routing
+Base Model
+Inputs
++ Self-Reference Augmentation
+(c) Self-Reference Augmentation
+Figure 6: Qualitative ablation study of the proposed components.
+4.2
+ABLATION STUDY AND ANALYSIS
+Ablation Studies. We conduct ablation studies across four settings: a base model employing a
+standard ControlNet trained with self-reference, and three variants (each integrating one proposed
+component into the base model). The quantitative results in Tab. 3 demonstrate clear improvements
+in both visual and geometric metrics with our proposed components.
+Effectiveness of Meta-ControlNet. To evaluate meta-ControlNet, we use both self-reference and
+retrieved reference for training, as the learning of Meta-Controller (Fig. 3 (a) top) requires reference
+models with varying levels of similarity. As shown in Fig. 6 (a), the base model trained with retrieved
+reference often ignores the reference, failing to follow the shape pattern (disconnected boat). This
+phenomenon stems from the considerable similarity variation among retrieved references, which
+confuses the diffusion model. The base model thereby struggles to determine when and how to use
+the reference as it lacks the ability to adjust to different levels of similarity. Consequently, they
+often end up with ignoring the reference models entirely. In contrast, meta-ControlNet equips the
+model with the capability to dynamically modulate the conditioning strength of the reference model,
+thereby effectively utilizing available references for improving or controlling the generation process.
+Effectiveness of Dynamic Reference Routing. Dynamic reference routing aims to alleviate local
+conflicts between the reference and concept images. As illustrated in Fig. 6 (b), when given a highly
+similar reference, the base model tends to rely heavily on it, leading to missing specific local details
+within the concept image, e.g., the rope on the left. By addressing these conflicts with dynamic
+routing, the model maintains the essential details of the concept image, while still benefiting from
+the guidance of the 3D reference.
+Effectiveness of Self-Reference Augmentation. As shown in Fig. 6 (c), without self-reference aug-
+mentation, the base model predominantly depends on the provided reference for generation. When
+given a significantly misaligned reference, the model tends to follow the reference’s structure, re-
+sulting in an undesired outcome. Conversely, self-reference augmentation ensures that the generated
+models remain faithful to the concept image, while using the reference as geometry guidance.
+Analysis on Similarity Levels of 3D Reference. We analyze how similarity levels of 3D refer-
+ences would affect the performance. For each input, we retrieve three models ranked first (top-1),
+third (top-3), and fifth (top-5) in similarity scores, and randomly choose one model, to serve as 3D
+references. Quantitative results in Tab. 4 indicate that Phidias performs better with more similar
+8
+
+
+Table 4: Quantitative analysis on similarity levels of 3D reference.
+Reference
+PSNR ↑
+SSIM ↑
+LPIPS ↓
+CLIP-P ↑
+CLIP-I ↑
+CD ↓
+F-Score ↑
+Top-1 Retrieval
+17.02
+0.845
+0.174
+0.887
+0.885
+0.0402
+0.833
+Top-3 Retrieval
+16.75
+0.841
+0.172
+0.887
+0.886
+0.0395
+0.830
+Top-5 Retrieval
+15.96
+0.835
+0.185
+0.886
+0.884
+0.0408
+0.819
+Random Reference
+14.74
+0.820
+0.226
+0.884
+0.882
+0.0424
+0.810
+Without Reference
+15.90
+0.836
+0.188
+0.886
+0.880
+0.0416
+0.814
+Figure 7: Qualitative analysis on similarity levels of 3D Reference.
+Figure 8: Phidias enables retrieval-augmented text-to-3D generation by first converting input text
+into a concept image, and then retrieving a 3D reference based on both the text and image.
+references. Fig. 7 shows Phidias generates diverse plausible results with different references. All
+results remain faithful to the input image in the front view, but show variations in shapes influenced
+by the specific reference used. Also, we found Phidias can still generate plausible results even with
+a random 3D reference, indicating robustness to reference with different similarity levels.
+5
+APPLICATIONS
+Phidias supports versatile applications beyond image-to-3D, such as text-to-3D, theme-aware 3D-
+to-3D, interactive 3D generation with coarse guidance, and high-fidelity 3D completion.
+Text to 3D. Text-to-3D generation can be converted to image-conditioned generation by transform-
+ing a text prompt into a concept image. However, the generated concept image can sometimes be
+atypical and may lose some information compared with original text input. To enhance generative
+quality, Phidias employs retrieval-augmented text-to-3D generation, as illustrated in Fig. 8. This
+involves first retrieving a set of 3D references based on the concept image, and then selecting the
+one that most closely matches the text description as the final reference.
+Theme-Aware 3D-to-3D Generation. This task aims to create a gallery of theme-consistent 3D
+variations from existing 3D models. Previous work (Wang et al., 2024b) proposed an optimization-
+based approach, which is time-consuming. Phidias supports fast generation by first generating im-
+age variations based on the input 3D model, and then transforming these variant images into 3D
+variations with the original 3D model itself as reference. The results are shown in Fig. 9, using 3D
+models from Sketchfab1 and previous works as inputs.
+Interactive 3D Generation with Coarse Guidance. Interactive generation gives users more control
+over the outputs, empowering them to make quick edits and receive rapid feedback. Phidias also
+provides this functionality, allowing users to continually adjust the geometry of generated 3D models
+using manually created coarse 3D shapes as reference models, as shown in Fig. 10.
+High-Fidelity 3D Completion. Given incomplete 3D models, as shown in Fig. 11, Phidias can be
+used to restore the missing components. Specially, by generating a complete front view through
+1https://sketchfab.com/
+9
+
+
+3D Input
+Self-Reference
+Generated 3D Variation 1
+Generated 3D Variation 2
+Image Variations
+Figure 9: Phidias facilitates rapid, theme-aware 3D-to-3D generation by using an existing 3D model
+as a reference to transform its image variations into corresponding 3D variations.
+Input Image
+Coarse Shape
+Coarse Shape
+Generated 3D
+Generated 3D
+Figure 10: Phidias enables interactive 3D generation with coarse 3D shapes as guidance.
+Figure 11: Phidias supports high-fidelity 3D completion by using the completed front views to guide
+the missing parts restoration and the original 3D model to help preserve the origin details.
+image inpainting and referencing to the original 3D model, Phidias can precisely predict and fill in
+the missing parts in novel views while maintaining the integrity and details of the origin, resulting
+in a seamlessly and coherently structured 3D model.
+6
+CONCLUSION
+In this work, we introduced Phidias, a 3D-aware diffusion model enhanced by 3D reference. By in-
+corporating meta-ControlNet, dynamic reference routing, and self-reference augmentations, Phidias
+effectively leverages reference models with varying degrees of similarity for 3D generation. The
+proposed approach boosts the quality of 3D generation, expands its generalization capabilities, and
+improves user control. Phidias offers a unified framework for creating high-quality 3D content from
+diverse modalities, such as text, images, and pre-existing 3D models, enabling versatile applications.
+We believe that Phidias will inspire further research to advance the field of 3D generation.
+ACKNOWLEDGMENTS
+This work is partially supported by the National Key R&D Program of China (2022ZD0160201)
+and Shanghai Artificial Intelligence Laboratory. This work is also in part supported by a GRF grant
+from the Research Grants Council of Hong Kong (Ref. No.: 11205620).
+10
+
+
+REFERENCES
+Yogesh Balaji, Seungjun Nah, Xun Huang, Arash Vahdat, Jiaming Song, Qinsheng Zhang, Karsten
+Kreis, Miika Aittala, Timo Aila, Samuli Laine, et al. ediff-i: Text-to-image diffusion models with
+an ensemble of expert denoisers. arXiv preprint arXiv:2211.01324, 2022.
+Raphael Bensadoun, Tom Monnier, Yanir Kleiman, Filippos Kokkinos, Yawar Siddiqui, Mahendra
+Kariya, Omri Harosh, Roman Shapovalov, Benjamin Graham, Emilien Garreau, et al. Meta 3d
+gen. arXiv preprint arXiv:2407.02599, 2024.
+Andreas Blattmann, Robin Rombach, Kaan Oktay, Jonas M¨
+uller, and Bj¨
+orn Ommer. Retrieval-
+augmented diffusion models. Advances in Neural Information Processing Systems, 35:15309–
+15324, 2022.
+Bob. 3D modeling 101: Comprehensive beginners guide, 2022. URL https://wow-how.com/
+articles/3d-modeling-101-comprehensive-beginners-guide.
+Carlos
+Carvajal.
+The
+importance
+of
+references
+in
+3d
+projects,
+2023.
+URL
+https://www.linkedin.com/pulse/
+importance-references-3d-projects-carlos-carvajal/.
+Siddhartha Chaudhuri, Evangelos Kalogerakis, Leonidas Guibas, and Vladlen Koltun. Probabilistic
+reasoning for assembly-based 3d modeling. ACM Trans. Graph., 30(4), jul 2011. ISSN 0730-
+0301.
+Yiwen Chen, Tong He, Di Huang, Weicai Ye, Sijin Chen, Jiaxiang Tang, Xin Chen, Zhongang
+Cai, Lei Yang, Gang Yu, Guosheng Lin, and Chi Zhang. Meshanything: Artist-created mesh
+generation with autoregressive transformers, 2024a.
+Yongwei Chen, Tengfei Wang, Tong Wu, Xingang Pan, Kui Jia, and Ziwei Liu.
+Comboverse:
+Compositional 3d assets creation using spatially-aware diffusion guidance. ECCV, 2024b.
+Zilong Chen, Yikai Wang, Feng Wang, Zhengyi Wang, and Huaping Liu. V3d: Video diffusion
+models are effective 3d generators. arXiv preprint arXiv:2403.06738, 2024c.
+Yen-Chi Cheng, Hsin-Ying Lee, Sergey Tulyakov, Alexander G Schwing, and Liang-Yan Gui. Sd-
+fusion: Multimodal 3d shape completion, reconstruction, and generation. In Proceedings of the
+IEEE/CVF Conference on Computer Vision and Pattern Recognition, pp. 4456–4465, 2023.
+Matt Deitke, Dustin Schwenk, Jordi Salvador, Luca Weihs, Oscar Michel, Eli VanderBilt, Ludwig
+Schmidt, Kiana Ehsani, Aniruddha Kembhavi, and Ali Farhadi. Objaverse: A universe of anno-
+tated 3d objects. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern
+Recognition, pp. 13142–13153, 2023.
+Laura Downs, Anthony Francis, Nate Koenig, Brandon Kinman, Ryan Hickman, Krista Reymann,
+Thomas B McHugh, and Vincent Vanhoucke. Google scanned objects: A high-quality dataset
+of 3d scanned household items. In 2022 International Conference on Robotics and Automation
+(ICRA), pp. 2553–2560. IEEE, 2022.
+Anchit Gupta, Wenhan Xiong, Yixin Nie, Ian Jones, and Barlas O˘
+guz.
+3dgen: Triplane latent
+diffusion for textured mesh generation. arXiv preprint arXiv:2303.05371, 2023.
+Junlin Han, Filippos Kokkinos, and Philip Torr. Vfusion3d: Learning scalable 3d generative models
+from video diffusion models. European Conference on Computer Vision (ECCV), 2024.
+Zexin He and Tengfei Wang. Openlrm: Open-source large reconstruction models. https://
+github.com/3DTopia/OpenLRM, 2023.
+Fangzhou Hong, Jiaxiang Tang, Ziang Cao, Min Shi, Tong Wu, Zhaoxi Chen, Tengfei Wang, Liang
+Pan, Dahua Lin, and Ziwei Liu. 3dtopia: Large text-to-3d generation model with hybrid diffusion
+priors. arXiv preprint arXiv:2403.02234, 2024.
+Yicong Hong, Kai Zhang, Jiuxiang Gu, Sai Bi, Yang Zhou, Difan Liu, Feng Liu, Kalyan Sunkavalli,
+Trung Bui, and Hao Tan. Lrm: Large reconstruction model for single image to 3d. arXiv preprint
+arXiv:2311.04400, 2023.
+11
+
+
+Gabriel Ilharco, Mitchell Wortsman, Ross Wightman, Cade Gordon, Nicholas Carlini, Rohan Taori,
+Achal Dave, Vaishaal Shankar, Hongseok Namkoong, John Miller, Hannaneh Hajishirzi, Ali
+Farhadi, and Ludwig Schmidt. Openclip, July 2021.
+Heewoo Jun and Alex Nichol. Shap-e: Generating conditional 3d implicit functions. arXiv preprint
+arXiv:2305.02463, 2023.
+Vladimir G. Kim, Wilmot Li, Niloy J. Mitra, Siddhartha Chaudhuri, Stephen DiVerdi, and Thomas
+Funkhouser. Learning part-based templates from large collections of 3d shapes. ACM Trans.
+Graph., jul 2013.
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal,
+Heinrich K¨
+uttler, Mike Lewis, Wen-tau Yih, Tim Rockt¨
+aschel, et al. Retrieval-augmented genera-
+tion for knowledge-intensive nlp tasks. Advances in Neural Information Processing Systems, 33:
+9459–9474, 2020.
+Minghua Liu, Ruoxi Shi, Linghao Chen, Zhuoyang Zhang, Chao Xu, Xinyue Wei, Hansheng Chen,
+Chong Zeng, Jiayuan Gu, and Hao Su. One-2-3-45++: Fast single image to 3d objects with
+consistent multi-view generation and 3d diffusion. arXiv preprint arXiv:2311.07885, 2023a.
+Ruoshi Liu, Rundi Wu, Basile Van Hoorick, Pavel Tokmakov, Sergey Zakharov, and Carl Vondrick.
+Zero-1-to-3: Zero-shot one image to 3d object. In Proceedings of the IEEE/CVF International
+Conference on Computer Vision, pp. 9298–9309, 2023b.
+Xiaoxiao Long, Yuan-Chen Guo, Cheng Lin, Yuan Liu, Zhiyang Dou, Lingjie Liu, Yuexin Ma,
+Song-Hai Zhang, Marc Habermann, Christian Theobalt, et al. Wonder3d: Single image to 3d
+using cross-domain diffusion. arXiv preprint arXiv:2310.15008, 2023.
+Luke Melas-Kyriazi, Christian Rupprecht, Iro Laina, and Andrea Vedaldi. RealFusion: 360 recon-
+struction of any object from a single image. 2023.
+Alex Nichol, Heewoo Jun, Prafulla Dhariwal, Pamela Mishkin, and Mark Chen. Point-e: A system
+for generating 3d point clouds from complex prompts. arXiv preprint arXiv:2212.08751, 2022.
+Ben Poole, Ajay Jain, Jonathan T. Barron, and Ben Mildenhall. DreamFusion: Text-to-3D using 2D
+diffusion. In International Conference on Learning Representations (ICLR), 2023.
+Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨
+orn Ommer. High-
+resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF confer-
+ence on computer vision and pattern recognition, pp. 10684–10695, 2022.
+Nadav Schor, Oren Katzir, Hao Zhang, and Daniel Cohen-Or. Componet: Learning to generate
+the unseen by part synthesis and composition. In 2019 IEEE/CVF International Conference on
+Computer Vision (ICCV), pp. 8758–8767, 2019. doi: 10.1109/ICCV.2019.00885.
+Shelly Sheynin, Oron Ashual, Adam Polyak, Uriel Singer, Oran Gafni, Eliya Nachmani, and
+Yaniv Taigman.
+Knn-diffusion: Image generation via large-scale retrieval.
+arXiv preprint
+arXiv:2204.02849, 2022.
+Ruoxi Shi, Hansheng Chen, Zhuoyang Zhang, Minghua Liu, Chao Xu, Xinyue Wei, Linghao Chen,
+Chong Zeng, and Hao Su. Zero123++: a single image to consistent multi-view diffusion base
+model. arXiv preprint arXiv:2310.15110, 2023a.
+Yichun Shi, Peng Wang, Jianglong Ye, Mai Long, Kejie Li, and Xiao Yang. Mvdream: Multi-view
+diffusion for 3d generation. arXiv preprint arXiv:2308.16512, 2023b.
+Yawar Siddiqui, Antonio Alliegro, Alexey Artemov, Tatiana Tommasi, Daniele Sirigatti, Vladislav
+Rosov, Angela Dai, and Matthias Nießner. Meshgpt: Generating triangle meshes with decoder-
+only transformers. arXiv preprint arXiv:2311.15475, 2023.
+Jiaxiang Tang, Zhaoxi Chen, Xiaokang Chen, Tengfei Wang, Gang Zeng, and Ziwei Liu. Lgm:
+Large multi-view gaussian model for high-resolution 3d content creation.
+arXiv preprint
+arXiv:2402.05054, 2024.
+12
+
+
+Junshu Tang, Tengfei Wang, Bo Zhang, Ting Zhang, Ran Yi, Lizhuang Ma, and Dong Chen. Make-
+it-3d: High-fidelity 3d creation from a single image with diffusion prior.
+In Proceedings of
+the IEEE/CVF International Conference on Computer Vision (ICCV), pp. 22819–22829, Octo-
+ber 2023.
+Vikram Voleti, Chun-Han Yao, Mark Boss, Adam Letts, David Pankratz, Dmitry Tochilkin, Chris-
+tian Laforte, Robin Rombach, and Varun Jampani. Sv3d: Novel multi-view synthesis and 3d
+generation from a single image using latent video diffusion. arXiv preprint arXiv:2403.12008,
+2024.
+Peng Wang and Yichun Shi. Imagedream: Image-prompt multi-view diffusion for 3d generation.
+arXiv preprint arXiv:2312.02201, 2023.
+Tengfei Wang, Ting Zhang, Bo Zhang, Hao Ouyang, Dong Chen, Qifeng Chen, and Fang Wen.
+Pretraining is all you need for image-to-image translation. arXiv:2205.12952, 2022.
+Tengfei Wang, Bo Zhang, Ting Zhang, Shuyang Gu, Jianmin Bao, Tadas Baltrusaitis, Jingjing Shen,
+Dong Chen, Fang Wen, Qifeng Chen, et al. Rodin: A generative model for sculpting 3d digital
+avatars using diffusion. In Proceedings of the IEEE/CVF conference on computer vision and
+pattern recognition, pp. 4563–4573, 2023.
+Zhengyi Wang, Yikai Wang, Yifei Chen, Chendong Xiang, Shuo Chen, Dajiang Yu, Chongxuan Li,
+Hang Su, and Jun Zhu. Crm: Single image to 3d textured mesh with convolutional reconstruction
+model. arXiv preprint arXiv:2403.05034, 2024a.
+Zhenwei Wang, Tengfei Wang, Gerhard Hancke, Ziwei Liu, and Rynson WH Lau. Themestation:
+Generating theme-aware 3d assets from few exemplars. SIGGRAPH, 2024b.
+Rundi Wu and Changxi Zheng.
+Learning to generate 3d shapes from a single example.
+ACM
+Transactions on Graphics (TOG), 41(6), 2022.
+Jiale Xu, Weihao Cheng, Yiming Gao, Xintao Wang, Shenghua Gao, and Ying Shan. Instantmesh:
+Efficient 3d mesh generation from a single image with sparse-view large reconstruction models.
+arXiv preprint arXiv:2404.07191, 2024.
+Meng You, Zhiyu Zhu, Hui Liu, and Junhui Hou. Nvs-solver: Video diffusion model as zero-shot
+novel view synthesizer. arXiv preprint arXiv:2405.15364, 2024.
+Bowen Zhang, Yiji Cheng, Jiaolong Yang, Chunyu Wang, Feng Zhao, Yansong Tang, Dong Chen,
+and Baining Guo. Gaussiancube: Structuring gaussian splatting using optimal transport for 3d
+generative modeling. arXiv preprint arXiv:2403.19655, 2024a.
+Longwen Zhang, Ziyu Wang, Qixuan Zhang, Qiwei Qiu, Anqi Pang, Haoran Jiang, Wei Yang, Lan
+Xu, and Jingyi Yu. Clay: A controllable large-scale generative model for creating high-quality 3d
+assets, 2024b.
+Lvmin Zhang, Anyi Rao, and Maneesh Agrawala.
+Adding conditional control to text-to-image
+diffusion models. In Proceedings of the IEEE/CVF International Conference on Computer Vision
+(ICCV), pp. 3836–3847, October 2023.
+Junsheng Zhou, Jinsheng Wang, Baorui Ma, Yu-Shen Liu, Tiejun Huang, and Xinlong Wang. Uni3d:
+Exploring unified 3d representation at scale. In International Conference on Learning Represen-
+tations (ICLR), 2024.
+Zi-Xin Zou, Zhipeng Yu, Yuan-Chen Guo, Yangguang Li, Ding Liang, Yan-Pei Cao, and Song-Hai
+Zhang. Triplane meets gaussian splatting: Fast and generalizable single-view 3d reconstruction
+with transformers. arXiv preprint arXiv:2312.09147, 2023.
+13
+
+
+APPENDIX
+A
+IMPLEMENTATION DETAILS
+A.1
+DATASET
+Training set. To train our reference-augmented multi-view diffusion model, we use a filtered sub-
+set of the Objaverse (Deitke et al., 2023) dataset, excluding low-quality 3D models as described
+in (Tang et al., 2024). Additionally, we apply further filtering to remove objects that are too thin and
+eliminate data originating from scans, both of which are intended to ensure the quality of subsequent
+retrieval. We also exclude objects with an excessively high number of vertices or faces to optimize
+the costly point cloud extraction process and reduce computational time. These refinements result
+in a final training set comprising approximately 64K 3D objects. For each object, we normalize
+it within a unit sphere, and render 1 concept image, 6 canonical coordinate maps (CCMs), and 6
+target RGBA images, following the camera distribution protocol of Zero123++ (Shi et al., 2023a).
+In particular, the concept image is rendered using randomly sampled azimuth and elevation angles
+from a predefined range. The poses of the six corresponding CCMs and target images consist of
+interleaving absolute elevations of {20°, −10°, 20°, −10°, 20°, −10°}, and relative azimuths of
+{ϕ + 30°, ϕ + 90°, ϕ + 150°, ϕ + 210°, ϕ + 270°, ϕ + 330°}, where ϕ represents the azimuth of the
+concept image. To train our sparse-view 3D reconstruction model, we adopt the same training set
+and render images from 32 randomly sampled camera views. All images are rendered at a resolution
+of 512 × 512, a fixed absolute field of view (FOV) of 30°, and a fixed camera distance of 1.866.
+Retrieval data and method. We leverage Uni3D (Zhou et al., 2024) to retrieve a 3D reference from
+an input image. In Uni3D, the latent space of the point cloud encoder is aligned to the OpenCLIP (Il-
+harco et al., 2021) image embedding space, facilitating seamless image-to-PointCloud retrieval. Be-
+fore retrieval, point clouds are sampled from meshes according to the probability distribution of
+face areas, ensuring denser sampling in regions with larger surface areas. Each point cloud contains
+10K points. As point cloud preprocessing is time-consuming, we limit our retrieval to a subset of
+40K objects from Objaverse. Our retrieval database contains precomputed embeddings generated
+by the Uni3D point cloud encoder, which are compared with the query vector of an input image
+using cosine similarity. To obtain the query vector, we first apply normalization transforms to align
+the input image with the pre-trained EVA02-E-14-plus model from OpenCLIP, which acts as the
+query encoder. The normalized image is then encoded into a feature vector. The top candidates are
+selected based on the highest similarity scores, and a softmax function is applied to the top-k scores
+to enable probabilistic sampling, ensuring efficient and accurate matching between the input image
+and the corresponding point clouds.
+A.2
+TRAINING
+Reference-augmented multi-view diffusion model. White-Background Zero123++. As discussed
+in Sec. 3.1, we select Zero123++ as our initial multi-view diffusion model. Upon receiving an input
+image, Zero123++ generates a tailored multi-view image at a resolution of 960×640, comprising six
+320×320 views arranged in a 3×2 grid. The original Zero123++ produces images with a gray back-
+ground, which can result in floaters and cloud-like artifacts during the subsequent sparse-view 3D
+reconstruction phase. To mitigate this issue, we initialize our model with a variant of Zero123++ (Xu
+et al., 2024), which is finetuned to generate multi-view images with a white background.
+Training Details. During the training of our reference-augmented multi-view diffusion model, we
+use the rendered concept image and six CCMs of a 3D object as conditions, and six corresponding
+target images tailored to a 960 × 640 image as ground truth image for denoising. All images and
+CCMs have a white background. We concatenate the concept image and the front-view CCM along
+the RGB channel as the input for meta-ControlNet. For the proposed dynamic reference routing,
+we dynamically downsample the original CCMs to lower resolutions and then upsample them to
+320 × 320, using the nearest neighbor. Specifically, we start with a resolution of 16 at noise levels
+of [0, 0.05) and gradually increase the resolution to 32 and 64 at noise levels of [0.05, 0.4) and
+[0.4, 1.0], respectively. For self-reference augmentations (Sec. A.4), the probabilities of applying
+random resize, flip horizontal, grid distortion, shift, and retrieved reference are set to 0.4, 0.5, 0.1,
+0.5, and 0.2, respectively. We train the model for 10,000 steps, beginning with 1000 warm-up steps
+14
+
+
+Figure 12: Detailed architecture design of meta-ControlNet.
+with minimal augmentations. We use the AdamW optimizer with a learning rate of 1.0×10−5 and a
+total batch size of 48. The whole training process takes around 10 hours on 8 NVIDIA A100 (80G)
+GPUs.
+Sparse-view 3D reconstruction model. As discussed in Sec. 3.5, we employ LGM to convert the
+synthesized multi-view images into a 3D model. The original LGM is designed to reconstruct a
+3D model from four input views at a resolution of 256 × 256. However, this does not align with
+the multi-view images generated in our first stage, which consist of six views at a resolution of
+320 × 320. To adapt LGM to our specific inputs, we take its pretrained weights as initialization
+and finetune it to support six input images at 320 × 320. Simultaneously changing the number of
+input views and image resolutions can destabilize the training process. We therefore separate the
+finetuning of number of input views and input resolution. Specifically, we first finetune the model
+with six input views at the original resolution for 60 epochs and then further finetune the model at
+a higher resolution of 320 × 320 for another 60 epochs. The finetuning process is conducted on 32
+NVIDIA A100 (80G) GPUs using the AdamW optimizer with a learning rate of 2.0 × 10−4 and a
+total batch size of 192. The whole finetuning process takes around four days.
+A.3
+META-CONTROLNET
+A detailed figure of the proposed meta-ControlNet in the style of vanilla ControlNet is shown
+in Fig. 12, where cpair is a pair of the concept image and the front-view reference CCM.
+15
+
+
+Ours
+3D Reference
+CRM
+LGM
+InstantMesh
+SV3D
+OpenLRM
+Frame 1
+Frame 2
+Frame 3
+Frame 4
+Figure 13: Analysis on different input viewpoints. We compare the performance of Phidias with
+five baseline methods by reconstructing 3D objects from video frames with various viewpoints. For
+each case, we show two rendered images at novel views.
+A.4
+AUGMENTATION DETAILS
+We implement a series of augmentations to facilitate the training of our diffusion model in a self-
+reference manner, where the ground truth 3D model serves as its own reference. These augmenta-
+tions are designed to simulate the misalignment between the 3D reference and the concept image.
+Resize and horizontal flip. Due to the self-reference strategy, reference CCMs are always pixel-wise
+aligned with the concept image. However, during inference, references often differ in scale or exhibit
+mirror symmetry. For example, a reference 3D character might hold a weapon in the opposite hand
+compared to the concept image. To address this, we apply random resizing and horizontal flipping
+to the reference model, simulating scale variations and mirror-symmetric structures.
+Grid distortion and shift. During inference, the reference may exhibit asymmetric similarity with the
+target 3D model across different views. For instance, a reference building might closely resemble
+the concept image from the front but differ significantly from the side. To address this, we apply
+multi-view jitter through grid distortion and shifting. Specifically, we independently distort and shift
+each view of the reference CCMs using a random grid and a random shift offset during training,
+simulating such asymmetric similarity across views.
+Retrieved Reference. Although the retrieved 3D reference alone is insufficient for model training, as
+discussed in Sec. 3.4, it can still serve as a strong augmentation to simulate significant misalignment.
+Therefore, we assign a small probability of using the retrieved model as the reference during training.
+16
+
+
+Generated 3D Model
+Input Image
+3D Ref. CCM
+Generated 3D Model
+Input Image
+3D Ref. CCM
+(a) Angle deviation between input image and 3D reference
+(b) Semantic-aligned but structural-misaligned 3D reference
+(30°, 20°)
+(90°, −10°)
+(150°, 20°)
+(210°, −10°)
+(30°, 20°)
+(90°, −10°)
+(150°, 20°)
+(210°, −10°)
+Figure 14: Failure cases. There are two typical failure cases due to bad retrieval: (a) misaligned
+pose and (b) misaligned structure.
+B
+LIMITATION AND FAILURE CASES
+Despite promising results, Phidias still has several limitations for further improvement.
+As a
+retrieval-augmented generation model, the performance can be affected by the retrieval method and
+the scale and quality of 3D reference database. Currently, the 3D database we used for retrieval
+only consists of 40K objects, making it difficult to find a very similar match. Also, mainstream
+3D retrieval methods rely on semantic similarity, which may not always yield the best match. For
+example, retrieved reference models with misaligned poses or structures can lead to undesired out-
+comes, as shown in Fig. 14. Future works that improve the retrieval accuracy and expand the 3D
+reference database could mitigate these issues. Additionally, the limited resolution of the backbone
+multi-view diffusion model (320×320) restricts the handling of high-resolution images. Enhancing
+the resolution of the diffusion model could further improve the quality of the generated 3D models.
+C
+ADDITIONAL RESULTS
+C.1
+ADDITIONAL ANALYSIS ON ENHANCED GENERALIZATION ABILITY
+Phidias takes an additional 3D reference as input to improve generative quality (Fig. 5) and provide
+greater controllability (Fig. 4) for 3D generation. We argue that Phidias can also enhance general-
+ization ability when given input images from atypical viewpoints. When reconstructing 3D objects
+from video frames with varying views (Fig. 13), we observe that the baseline methods perform well
+with typical view angles (i.e., frame 1) but struggle with atypical input view angles (e.g., frame 3 and
+4). Conversely, Phidias produces plausible results given all four input views, demonstrating robust
+generalization ability across both typical and atypical viewpoints.
+C.2
+MORE RESULTS
+More results on theme-aware 3D-to-3D generation are shown in Fig. 15. More results on text-to-3D
+and image-to-3D generation are shown in Fig. 16 and Fig. 17.
+17
+
+
+3D Input
+Self-Reference
+Generated 3D Variation 1
+Generated 3D Variation 2
+Figure 15: Additional results on theme-aware 3D-to-3D generation.
+18
+
+
+Text Input
+Generated 3D Model
+3D Reference
+“Glowing 
+mushroom forest 
+with stars”
+“Red and silver 
+motorcycle”
+Text Input
+Generated 3D Model
+3D Reference
+“Golden and silver 
+medieval knight's 
+helmet”
+“Green and 
+yellow ceramic 
+incense vessel”
+“Blue armored 
+robot with angular 
+design”
+“Bulky robot with 
+two mechanical 
+arms”
+Figure 16: Additional results on retrieval-augmented text-to-3D generation.
+Image Input
+Generated 3D Model
+3D Reference
+Image Input
+Generated 3D Model
+3D Reference
+Figure 17: Additional results on retrieval-augmented image-to-3D generation.
+19
+
+
+Under review as a conference paper at ICLR 2024
+DMV3D: DENOISING MULTI-VIEW DIFFUSION USING
+3D LARGE RECONSTRUCTION MODEL
+Anonymous authors
+Paper under double-blind review
+ABSTRACT
+We propose DMV3D, a novel 3D generation approach that uses a transformer-
+based 3D large reconstruction model to denoise multi-view diffusion. Our re-
+construction model incorporates a triplane NeRF representation and, functioning
+as a denoiser, can denoise noisy multi-view images via 3D NeRF reconstruction
+and rendering, achieving single-stage 3D generation in the 2D diffusion denoising
+process. We train DMV3D on large-scale multi-view image datasets of extremely
+diverse objects using only image reconstruction losses, without accessing 3D
+assets. We demonstrate state-of-the-art results for the single-image reconstruction
+problem where probabilistic modeling of unseen object parts is required for
+generating diverse reconstructions with sharp textures. We also show high-quality
+text-to-3D generation results outperforming previous 3D diffusion models. Our
+project website is at: https://dmv3d.github.io/.
+1
+INTRODUCTION
+The advancements in 2D diffusion models (Ho et al., 2020; Song et al., 2020a; Rombach et al.,
+2022) have greatly simplified the image content creation process and revolutionized 2D design
+workflows. Recently, diffusion models have also been extended for 3D asset creation, which is still
+a time-consuming manual task but critical for various 3D applications such as VR, AR, robotics,
+and gaming. In particular, many works have explored using pre-trained 2D diffusion models for
+generating NeRFs (Mildenhall et al., 2020) with score distillation sampling (SDS) loss (Poole et al.,
+2022; Lin et al., 2023a). However, SDS-based methods require long (often hours of) per-asset
+optimization and can frequently lead to rendering artifacts, such as the multi-face Janus problem.
+On the other hand, attempts to train 3D diffusion models have also been made to enable 3D
+generation without per-asset optimization (Nichol et al., 2022; Jun & Nichol, 2023). These methods
+typically include pre-training per-asset NeRFs, followed by training diffusion models on the NeRF
+latents. However, this disjoint two-stage training, with independently trained NeRFs, often leads to
+an unclean and hard-to-denoise latent space (Chen et al., 2023), making high-quality rendering a
+challenge. To circumvent this, single-stage models have been proposed (Anciukeviˇ
+cius et al., 2023;
+Karnewar et al., 2023), but are all category-specific and unable to generalize beyond simple classes.
+Our goal is to achieve fast, realistic, and generic 3D generation. To this end, we propose DMV3D,
+a novel single-stage category-agnostic diffusion model that can generate 3D (triplane) NeRFs from
+text or single-image input conditions via direct model inference. Our model allows for the generation
+of diverse high-fidelity 3D objects within one minute per asset (see Fig. 1). In particular, DMV3D is
+a 2D multi-view image diffusion model that integrates 3D NeRF reconstruction and rendering into
+its denoiser, trained without direct 3D supervision, in an end-to-end manner. This avoids both pre-
+training 3D NeRFs (as in two-stage models) and tedious per-asset optimization (as in SDS methods).
+In essence, our approach jointly addresses 2D image (diffusion) denoising and 3D reconstruction.
+This is inspired by RenderDiffusion (Anciukeviˇ
+cius et al., 2023) – achieving 3D generation through
+single-view diffusion. However, their single-view framework relies on category-specific priors and
+canonical poses and thus cannot easily be scaled up to generate arbitrary objects. In contrast, we
+consider a sparse set of four multi-view images that surround an object, adequately expressing a full
+3D asset. This design choice is inspired by humans, who can easily imagine a complete 3D object
+from a few surrounding views with little uncertainty. However, utilizing such inputs essentially
+1
+
+
+Under review as a conference paper at ICLR 2024
+Figure 1: Top left: our approach achieves fast 3D generation from text or single-image input; the
+latter one, combined with 2D segmentation methods (like SAM (Kirillov et al., 2023)), allows us to
+reconstruct objects segmented from natural images. Bottom: as a probabilistic generative model, our
+model can produce multiple reasonable 3D assets from the same image. Top right: we demonstrate
+a scene comprising diverse 3D objects generated by our models, each within one minute.
+requires addressing the task of sparse-view 3D reconstruction – a long-standing problem and known
+to be highly challenging even without noise in the inputs.
+We address this by leveraging the power of large transformer models that have been shown to be
+effective and scalable in solving language and multi-modal problems. Specifically, we propose a
+novel transformer-based large 3D reconstruction model that can, from a sparse set of noisy multi-
+view images, reconstruct a clean (noise-free) NeRF model that allows for rendering (denoised)
+images at arbitrary viewpoints. Our transformer model is conditioned on the diffusion time step,
+designed to handle any noise levels in the diffusion process. It can thus be directly plugged as the
+multi-view image denoiser in an multi-view image diffusion framework.
+Moreover, the nature of being a 2D diffusion model allows for natural inheritance of the succeses in
+exiting 2D diffusion models, including the ability to handle various input conditions. In particular,
+we enable single-image conditioning by simply fixing one of the sparse views as the noise-free
+input and denoising other views, posing the task as one similar to (multi-view) image inpainting.
+In addition, we apply attention-based text conditioning and classifier-free guidance, widely used in
+2D diffusion models, to enable text-to-3D generation. We train our model on large-scale datasets of
+both synthetic renderings and real captures with purely multi-view image supervision. Our model
+achieves state-of-the-art results on single-image 3D reconstruction on multiple testing datasets,
+outperforming both SDS-based methods and 3D diffusion models. We also demonstrate high-quality
+text-to-3D results outperforming previous 3D diffusion models. In sum, our main contributions are:
+• A novel single-stage diffusion framework that leverages multi-view 2D image diffusion
+model to achieve 3D generation;
+• A novel transformer-based large reconstruction model that can reconstruct noise-free
+triplane NeRFs from noisy multi-view images;
+• A general approach for high-quality text-to-3D generation and single-image reconstruction.
+Our work offers a novel perspective to address 3D generation tasks, which bridges 2D and 3D
+generative models and unifies 3D reconstruction and generation. This opens up opportunities to
+build a foundation model for tackling a variety of 3D vision and graphics problems.
+2
+
+
+Under review as a conference paper at ICLR 2024
+Figure 2: Single-image reconstruction with SAM. We can use SAM (Kirillov et al., 2023) to
+segment any objects from a real photo and reconstruct their 3D shape and appearance with our
+method, demonstrating the robustness and generalizability of our method.
+2
+RELATED WORK
+Sparse-view Reconstruction. Neural representations (Mescheder et al., 2019; Park et al., 2019;
+Mildenhall et al., 2020; Sitzmann et al., 2019; 2020; Chen et al., 2022; M¨
+uller et al., 2022) offer
+a promising platform for scene representation and neural rendering (Tewari et al., 2022). Applied
+to novel-view synthesis, these approaches have been successful in single-scene overfitting scenarios
+where lots of multi-view training images are available. Recent efforts (Yu et al., 2021; Chen et al.,
+2021; Long et al., 2022; Wang et al., 2021; Lin et al., 2023b; Jain et al., 2021) have extended
+these ideas to operate with a sparse set of views, showcasing improved generalization capabilities
+to unseen scenes. As non-generative methods, however, these approaches struggle on attempting to
+scale learning up to large datasets and they exhibit limited performance on diverse data.
+3D Generative Adversarial Networks (GANs). GANs have made remarkable advancements in
+2D image synthesis (Brock et al., 2018; Karras et al., 2018; 2019; 2020; 2021). 3D GANs (Nguyen-
+Phuoc et al., 2019; Schwarz et al., 2020; Chan et al., 2021; 2022; Niemeyer & Geiger, 2021;
+Gu et al., 2021; Skorokhodov et al., 2022; Xu et al., 2022; 2023; Shi et al., 2022; Gao et al.,
+2022; Skorokhodov et al., 2023) extend these capabilities to generating 3D-aware assets from
+unstructured collections of single-view 2D images in an unsupervised manner. GAN architectures,
+however, are difficult to train and generally best suited for modeling datasets of limited scale and
+diversity (Dhariwal & Nichol, 2021).
+3D-aware Diffusion Models (DMs).
+DMs have emerged as foundation models for visual
+computing, offering unprecedented quality, fine-grained control, and versatility for 2D image
+generation (Ho et al., 2020; Song et al., 2020a;b; Rombach et al., 2022). Several strategies have been
+proposed to extend DMs to the 3D domain. Some of these approaches (Jun & Nichol, 2023; Shue
+et al., 2023; Nichol et al., 2022; Gupta et al., 2023; Ntavelis et al., 2023) use direct 3D supervision.
+The quality and diversity of their results, however, is far from that achieved by 2D DMs. This
+is partly due to the computational challenge of scaling diffusion network models up from 2D to
+3D, but perhaps more so by the limited amount of available 3D training data. Other approaches
+in this category build on optimization using a differentiable 3D scene representation along with
+the priors encoded in 2D DMs (Poole et al., 2022; Lin et al., 2023a; Wang et al., 2022; 2023).
+While showing some success, the quality and diversity of their results is limited by the SDS–based
+loss function (Poole et al., 2022). Another class of methods uses 2D DM–based image-to-image
+translation using view conditioning (Liu et al., 2023b; Chan et al., 2023; Gu et al., 2023). While
+these approaches promote multi-view consistency, they do not enforce it, leading to flicker and other
+view-inconsistent effects. Finally, several recent works have shown success in training 3D diffusion
+models directly on multi-view image datasets (Karnewar et al., 2023; Chen et al., 2023) for relatively
+simple scenes with limited diversity.
+RenderDiffusion (Anciukeviˇ
+cius et al., 2023) and its successor Viewset Diffusion (Szymanowicz
+et al., 2023), which is concurrent to this work, are closest to our method. Both solve the sparse-
+view reconstruction problem using 2D DMs with 3D-aware denoisers. Neither of these methods,
+however, has been demonstrated to work on extremely diverse datasets containing multi-view data
+of >1M objects. Our novel transformer-based 3D denoiser architecture overcomes this challenge
+and enables state-of-the-art results for scalable, diverse, and high-quality 3D generation.
+3
+
+
+Under review as a conference paper at ICLR 2024
+© 2023 Adobe. All Rights Reserved. Adobe Confid
+Image 
+tokenizer 
+(DINO)
+Reshape & 
+Upsample
+t
+Image tokens
+Transformer
+Cross-Att
+MLP
++
++
+Self-Att
++
+Text
+t
+Triplane position 
+embeddings
+Plücker rays
+Triplane 
+tokens
+t-1
+Rendering loss
+Figure 3: Overview of our method. We denoise multiple views (three shown in the figure; four
+used in experiments) for 3D generation. Our multi-view denoiser is a large transformer model that
+reconstructs a noise-free triplane NeRF from input noisy images with camera poses (parameterized
+by Plucker rays). During training, we supervise the triplane NeRF with a rendering loss at input and
+novel viewpoints. During inference, we render denoised images at input viewpoints and combine
+them with noise to obtain less noisy input for the next denoising step. Once the multi-view images
+are fully denoised, our model offers a clean triplane NeRF, enabling 3D generation. Refer to Sec. 3.3
+for how to extend this model to condition on single image.
+3
+METHOD
+We now present our single-stage diffusion model. In particular, we introduce a novel diffusion
+framework that uses a reconstruction-based denoiser to denoise multi-view noisy images for 3D
+generation (Sec. 3.1). Based on this, we propose a novel large 3D reconstruction model conditioned
+on diffusion time step, functioning as the multi-view denoiser, to denoise multi-view images via
+3D NeRF reconstruction and rendering (Sec. 3.2). We further extend our model to support text and
+image conditioning, enabling practical and controllable generation (Sec. 3.3).
+3.1
+MULTI-VIEW DIFFUSION AND DENOISING
+Diffusion. Denoising Diffusion Problistic Models (DDPM) extends the data distribution x0 ∼
+q(x) with a T-step Markov Chain using a Gaussian noise schedule. The generation process is
+the reverse of a forward diffusion process. The diffusion data xt at timestep t can be derived by
+xt = √¯
+αtx0 + √1 −¯
+αtϵ, where ϵ ∼N(0, I) represents Gaussian noise and ¯
+αt is a monotonically
+decreasing noise schedule.
+Multi-view diffusion. The original x0 distribution addressed in 2D DMs is the (single) image
+distribution in a dataset.
+We instead consider the (joint) distribution of multi-view images
+I = {I1, ..., IN}, where each set of I are image observations of the same 3D scene (asset)
+from viewpoints C = {c1, ..., cN}. The diffusion process is equivalent to diffusing each image
+independently but with the same noise schedule:
+It = {√¯
+αtI +
+√
+1 −¯
+αtϵI|I ∈I}
+(1)
+Note that this diffusion process is identical to the original one in DDPM, despite that we consider a
+specific type of data distribution x = I of per-asset 2D multi-view images.
+Reconstruction-based denoising. The reverse of the 2D diffusion process is essentially denoising.
+In this work, we propose to leverage 3D reconstruction and rendering to achieve 2D multi-view
+image denoising, while outputting a clean 3D model for 3D generation. In particular, we leverage
+a 3D reconstruction module E(·) to reconstruct a 3D representation S from the noisy multi-view
+images It (at time step t), and render denoised images with a differentiable rendering module R(·):
+Ir,t = R(St, c),
+St = E(It, t, C)
+(2)
+where Ir,t represents a rendered image from St at a specific viewpoint c.
+4
+
+
+Under review as a conference paper at ICLR 2024
+Denoising the multi-view input It is done by rendering St at the viewpoints C, leading to the
+prediction of noise-free I0. This is equivalent to x0 prediction in 2D DMs (Song et al., 2020a),
+which can be used to predict xt−1, enabling progressive denoising inference. However, unlike
+pure 2D generation, we find merely supervising I0 prediction at input viewpoints cannot guarantee
+high-quality 3D generation (see Tab. 3), often leading to rendering artifacts at novel viewpoints.
+Therefore, we propose to also supervise images rendered at novel viewpoints from the 3D model St.
+In essence, we reposition the original 2D image x0 (I0) prediction to a (hidden) 3D S0 prediction
+task, ensuring consistent high-quality rendering across arbitrary viewpoints. The denoising objective
+is written as
+Lrecon(t) = EI,c∼Ifull,Cfull∥I −R(E(It, t, C), c)∥2
+2
+(3)
+where Ifull and Cfull represent the full set of images and poses (from both input and novel views).
+Note that our framework is general – potentially any 3D representations (S) can be applied. In
+this work, we consider a (triplane) NeRF representation (where R(·) becomes neural volumetric
+rendering) and propose a transformer-based reconstructor E(·).
+3.2
+RECONSTRUCTOR-BASED MULTI-VIEW DENOISER
+We seek to build a robust reconstructor that can recover 3D shape and appearance from sparse multi-
+view images. As in previous work (Chan et al., 2022), we adopt the triplane NeRF as a compact
+and efficient 3D representation. However, in contrast to previous work that relies on CNNs, we use
+a transformer-based large reconstruction model that, given 2D image tokens and learnable triplane
+tokens, effectively reconstructs a 3D NeRF model that supports realistic rendering.
+Reconstruction and rendering. As shown in Fig. 3, we tokenize the triplane with learnable tokens
+(T) and use a Vision Transformer (DINO) to convert input images I = {I1, ..., IN} (N = 4 by
+default) to 2D tokens. We apply a large transformer model with a series of image-to-triplane cross-
+attention and triplane-to-triplane self-attention layers to regress the final tri-plane S that represents
+the 3D shape and appearance of the asset. The triplane is then used to decode volume density
+and color with an MLP for differentiable volume rendering. In essence, this process realizes the
+Eqn. 2 with a large transformer model E and neural rendering module R. Overall, our transformer
+is inspired by the large reconstruction models in Anonymous (2023a;b) and we further enable time
+conditioning for diffusion denoising and introduce a new technique for camera conditioning.
+Time Conditioning. Our transformer-based model requires different designs for time-conditioning,
+compared to DDPM and its variants that are based on CNN UNets. Inspired by DiT (Peebles & Xie,
+2022), we apply time condition through the adaLN-Zero block in our self- and cross- attention layers
+in our model, allowing our model to effectively handle input with different diffusion noise levels.
+Camera Conditioning. Addressing sparse multi-view reconstruction requires an effective design
+of input camera conditioning for the model to understand the multi-view input and build corre-
+spondence for 3D reasoning.
+A basic strategy is, as in the case of time conditioning, to use
+adaLN-Zero block on the camera parameters (as done in Anonymous (2023b)). However, we find
+that conditioning on camera and time simultaneously with the same strategy tends to weaken the
+effects of these two conditions and often leads to an unstable training process and slow convergence.
+Instead, we propose a novel approach – parameterizing cameras with sets of pixel-aligned rays. In
+particular, following LFN (Sitzmann et al., 2021), we parameterize rays using Plucker coordinates
+as r = (o × d, d), where o and d are the origin and direction of a pixel ray and can be computed
+from the camera parameters. We concatenate the Plucker coordinates with image pixels, and send
+them to the ViT transformer for 2D image tokenization, achieving effective camera conditioning.
+3.3
+CONDITIONING ON SINGLE IMAGE OR TEXT
+The methods described thus far enable our model to function as an unconditional generative model.
+We now introduce how to model the conditional probabilistic distribution with a conditional denoiser
+E(It, t, C, y), where y is text and image conditioning, enabling controllable 3D generation.
+Image Conditioning. Unlike previous methods (Liu et al., 2023b) that design new modules to
+inject image conditioning to a DM, we propose a simple but effective view-inpainting strategy for
+our multi-view model. In particular, we keep the first view I1 (in the denoiser input) noise-free as the
+5
+
+
+Under review as a conference paper at ICLR 2024
+image condition, while applying diffusion and denoising on other views. In this case, the denoiser
+essentially learns to fill in the missing pixels within the noisy views using cues extracted from the
+first input view, similar to the task of image inpainting which has been shown to be addressable
+by 2D DMs (Rombach et al., 2022). In addition, to improve the generalizability of our image-
+conditioned model, we generate tri-planes in a coordinate frame aligned with the conditional view
+and render other images using poses relative to the conditional one.
+Text Conditioning. To add text conditioning into our model, we adopt a strategy similar to that
+presented in Stable Diffusion (Rombach et al., 2022). We use the text encoder from CLIP (Radford
+et al., 2021) to generate text embeddings and inject them into our denoiser using cross-attention.
+Specifically, we include an additional cross-attention layer after each self-attention block in the ViT
+and each cross-attention blocak in the triplane transformer, enabling text-driven 3D generation.
+3.4
+TRAINING AND INFERENCE
+Training. During the training phase, we uniformly sample time steps t within the range [1, T],
+and add noise according to a cosine schedule.
+We sample input images with random camera
+poses, instead of fixing ones, enhancing the robustness of our system. We also randomly sample
+additional novel viewpoints to supervise the renderings (as discussed in Sec. 3.1) for better quality.
+We minimize the following training objective with conditional signal y:
+L = Et∼U[1,T ],(I,c)∼(Ifull,Cfull)∥I −R(E(It, t, D, y), c)∥2
+2
+(4)
+Inference. For inference, we select four viewpoints that uniformly surround the object in a circle
+with the same pitch, to ensure the reconstruction model (denoiser) can capture the full 3D shape and
+appearance. We utilize DDIM (Song et al., 2020a) to improve the inference speed in the progressive
+multi-view denoising. Once the 2D multi-view images are fully denoised at the final step, we can
+directly obtain a clean triplane NeRF model from the denoiser, achieving fast 3D generation without
+requiring any extra optimization to fit the multi-view denoised images.
+4
+EXPERIMENTS
+In this section, we present an extensive evaluation of our method. In particular, we briefly describe
+our experiment settings (Sec. 4.1), compare our results with previous works (Sec. 4.2), and show
+additional analysis and ablation experiments (Sec. 4.3).
+4.1
+SETTINGS
+Implementation details. We use Adam optimizer to train our model with an initial learning rate of
+4e−4. We also apply a warm-up stage for 3K steps and a cosine decay on the learning rate. We train
+our denoiser with 256 × 256 input images and render 128 × 128 image crops for supervision. Our
+final model is a large transformer with 48 attention layers and 643 triplane tokens with 32 channels.
+We use 128 NVIDIA A100 GPUs to train this model with a batch size of 8 per GPU for 100K steps,
+taking about 7 days. Since the final model takes a lot of resources, it is impractical for us to evaluate
+the design choices with this large model for our ablation study. Therefore, we also train a small
+model that consists of 36 attention layers to conduct our ablation study. The small model is trained
+with 32 NVIDIA A100 GPUs for 200K steps (4 days).
+Datasets. Our model requires only 2D image supervision. We use rendered multi-view images from
+∼700k scenes in the Objaverse (Deitke et al., 2023) dataset to train our text-to-3D model, for which
+we use Cap3D (Luo et al., 2023) to generate the text prompts. For each scene, we render 32 images
+under uniform lighting at random viewpoints with a fixed 50◦FOV. For image-conditioned (single-
+view reconstruction) model, we combine the Objaverse data with additional real captures of ∼200k
+scenes from the MVImgNet (Yu et al., 2023) dataset, enhancing the generalization to out-of-domain
+input (see Fig. 7). In general, these datasets contain a large variety of synthetic and real assets from
+numerous categories, allowing us to train a generic and scalable 3D generative model.
+We evaluate our image-conditioned model with novel synthetic datasets, including 100 scenes from
+the Google Scanned Object (GSO) (Downs et al., 2022) and 100 scenes from the Amazon Berkeley
+Object (ABO) (Collins et al., 2022) datasets. This allows for direct comparison of single-view
+6
+
+
+Under review as a conference paper at ICLR 2024
+Table 1: Evaluation Metrics of single-image 3D reconstruction on ABO and GSO datasets.
+ABO dataset
+GSO dataset
+FID ↓
+CLIP ↑
+PSNR ↑
+LPIPS ↓
+CD ↓
+FID ↓
+CLIP ↑
+PSNR ↑
+LPIPS ↓
+CD ↓
+Point-E
+112.29
+0.806
+17.03
+0.363
+0.127
+123.70
+0.741
+15.60
+0.308
+0.099
+Shap-E
+79.80
+0.864
+15.29
+0.331
+0.097
+97.05
+0.805
+14.36
+0.289
+0.085
+Zero123
+31.59
+0.927
+17.33
+0.194
+−
+32.44
+0.896
+17.36
+0.182
+−
+One2345
+190.81
+0.748
+12.00
+0.514
+0.163
+139.24
+0.713
+12.42
+0.448
+0.123
+Magic123
+34.93
+0.928
+18.47
+0.180
+0.136
+34.06
+0.901
+18.68
+0.159
+0.113
+Ours (S)
+36.77
+0.915
+22.62
+0.194
+0.059
+35.16
+0.888
+21.80
+0.150
+0.046
+Ours
+27.88
+0.949
+24.15
+0.127
+0.046
+30.01
+0.928
+22.57
+0.126
+0.040
+Ours
+Input
+ShapE
+PointE
+One2345
+Magic123
+Figure 4: Qualitative comparisons on single-image reconstruction.
+reconstruction with the groundtruth. Note that accurate quantitative evaluation of 3D generation
+remains a challenge in the field, we use the most applicable metrics from earlier works to assess our
+and baseline models.
+4.2
+RESULTS AND COMPARISONS
+Single-image reconstruction. We compare our image-conditioned model with previous methods,
+including Point-E (Nichol et al., 2022), Shap-E (Jun & Nichol, 2023), Zero123 (Liu et al., 2023b),
+One2345 (Liu et al., 2023a), and Magic123 (Qian et al., 2023), on single-image reconstruction. We
+evaluate the novel-view rendering quality from all methods using PSNR, LPIPS, CLIP precision
+(including top-1 R-precision and averaged precision), and FID, computed between the rendered and
+GT images. In addition, we also compute the Chamfer distance (CD) for geometry evaluation, for
+which we use marching cubes to extract meshes from NeRFs.
+Table 1 report the quantitative results on the GSO and ABO testing sets respectively. Note that our
+models (even ours-small ) can outperforms all baseline methods, achieving the best scores across all
+7
+
+
+Under review as a conference paper at ICLR 2024
+Ours
+Shap-E
+Point-E
+‘a bowl of vegetables'
+‘a voxelized dog'
+‘a rusty old car'
+Figure 5: Qualitative comparison on Text-to-3D .
+metrics for both datasets. Our high generation quality is reflected by the qualitative results shown
+in Fig. 4; our model generates realistic results with more complete geometry and much sharper
+appearance details, compared to all baselines.
+Table 2: Evaluation Metrics on Text-to-3D.
+Method
+VIT-B/32
+ViT-L/14
+R-Prec
+AP
+R-Prec
+AP
+Point-E
+33.33
+40.06
+46.4
+54.13
+Shap-E
+38.39
+46.02
+51.40
+58.03
+Ours
+39.72
+47.96
+55.14
+61.32
+In particular, the two-stage 3D DMs, ShapE and
+Point-E, lead to lower quality, often with incomplete
+shapes and blurry textures; this suggests the inherent
+difficulties in denoising pretrained 3D latent spaces,
+a problem our model avoids.
+On the other hand,
+Zero123 leads to better quantitative results than ShapE
+and Point-E on appearnce, because it is a 2D diffusion
+model and trained to generate high-quality images.
+However, Zero123 alone cannot output a 3D model
+required by many 3D applications and their rendered
+images suffer from severe inconsistency across viewpoints. This inconsistency also leads to the
+low reconstruction and rendering quality from One2345, which attempts to reconstruct meshes from
+Zero123’s image outputs. On the other hand, the per-asset optimization-based method Magic123
+can achieve rendering quality comparable to Zero123 while offering a 3D mdoel. However, these
+methods require long (hours of) optimization time and also often suffer from unrealistic Janus
+artifacts (as shown in the second object in Fig. 4). In contrast, our approach is a single-stage
+model with 2D image training objectives and directly generates a 3D NeRF model (without per-
+asset optimization) while denoising multi-view diffusion. Our scalable model learns strong data
+priors from massive training data and produces realistic 3D assets without Janus artifacts. In general,
+our approach leads to fast 3D generation and state-of-the-art single-image 3D reconstruction results.
+Table 3: Ablation on GSO dataset (DMV3D-S). See
+Fig. 8 for qualitative results.
+#Views
+FID ↓
+CLIP ↑
+PSNR ↑
+SSIM ↑
+LPIPS ↓
+CD ↓
+4 (Ours)
+35.16
+0.888
+21.798
+0.852
+0.150
+0.0459
+1
+70.59
+0.788
+17.560
+0.832
+0.304
+0.0775
+2
+47.69
+0.896
+20.965
+0.851
+0.167
+0.0544
+6
+39.11
+0.899
+21.545
+0.861
+0.148
+0.0454
+w.o Novel
+102.00
+0.801
+17.772
+0.838
+0.289
+0.185
+w.o Plucker
+43.31
+0.883
+20.930
+0.842
+0.185
+0.505
+Text-to-3D. We also evaluate our text-
+to-3D generation results and compare
+with 3D diffusion models Shap-E (Jun
+& Nichol, 2023) and Point-E (Nichol
+et al., 2022), that are also category-
+agnostic and support fast direct infer-
+ence. For this experiment, we use Shap-
+E’s 50 text prompts for the generation,
+and evaluate the results with CLIP pre-
+cisions using two different ViT models,
+shown in Table. 2. From the table, we
+can see that our model achieves the best precision. We also show qualitative results in Fig. 5, in
+which our results clearly contain more geometry and appearance details and look more realistic than
+the compared ones.
+4.3
+ANALYSIS, ABLATION, AND APPLICATION
+We analyze our image-conditioned model and verify our design choices using our small model
+architecture for better energy-efficiency.
+8
+
+
+Under review as a conference paper at ICLR 2024
+Input
+Novel-view
+Input
+Novel-view
+Figure 6: Robustness on out-of-domain inputs of synthetic, real, and generated images.
+#Views. We show quantitative and qualitative comparisons of our models trained with different
+numbers (1, 2, 4, 6) of input views in Tab. 3 and Fig. 8. We can see that our model consistently
+achieves better quality when using more images, benefiting from capturing more shape and
+appearance information. However, the performance improvement of 6 views over four views is
+marginal, where some metrics (like PSNR) from the 4-view model is even better. We therefore use
+four views as the default setting to generate all of our main results.
+Multiple inference generation. Similar to other DMs, our model can generate various instances
+from the same input image with different random seeds as shown in Fig. 1, demonstrating the
+diversity of our generation results. In general, we find the multiple inference results can all reproduce
+the frontal input view while containing varying shape and appearance in the unseen back side.
+Input sources. Our model is category-agnostic and generally works on various input sources as
+shown in many previous figures. We show additional results in Fig. 6 with various inputs, out of our
+training domains, including synthetic rendering, real capture, and generated images. Our method
+can robustly reconstruct the geometry and appearance of all cases.
+Training data. We compare our models trained w/ and w.o the real MVImgNet dataset on two
+challenging examples. As shown in Fig. 7, we can see that the model without MVImgNet can lead
+to unrealistic flat shapes, showcasing the importance of having diverse training data.
+More ablation. We compare with our ablated models including one trained without the novel-view
+rendering supervision, and one without the Plucker coordinate view conditioning (using the adaLN-
+Zero block conditioning instead). We can also see that the novel view rendering supervision is critical
+for our model. Without it, all quantitative scores drop by a large margin. In general, the novel view
+supervision is crucial for our model to achieve meaningful 3D generation, avoiding the model to
+learn a local minima that merely recovers the sparse multi-view images. In addition, our design of
+Plucker coordinate-based camera conditioning is also effective, leading to better quantitative results
+than the ablated model.
+Application.
+The flexibility and generality of our method can potentially enable broad 3D
+applications. One useful image editing application is to lift any objects in a 2D photo to 3D by
+segment them (using methods like SAM (Kirillov et al., 2023)) and reconstruct the 3D model with
+our method, as shown in Fig. 1 and 2.
+5
+CONCLUSION
+We presented a novel single-stage diffusion model for 3D generation, generating 3D assets by
+denoising multi-view image diffusion. Our multi-view denoiser is based on a large transformer
+model, which takes multi-view noisy images to reconstruct a clean triplane NeRF, outputting
+denoised images through neural rendering. Our framework generally supports text- and image-
+conditioning inputs, achieving fast 3D generation via direct diffusion inference without per-asset
+optimization. Our method outperforms previous 3D diffusion models for text-to-3D generation
+and achieves state-of-the-art quality on single-view reconstruction on various testing datasets. Our
+approach combines 2D diffusion and 3D reconstruction, bridging the gap between 2D and 3D
+generation and paving the way for future directions on extending 2D diffusion applications for 3D
+generation.
+9
+
+
+Under review as a conference paper at ICLR 2024
+Ethics Statement.
+Our generative model is trained on the Objaverse data and MvImgNet data.
+The dataset (about 1M) is smaller than the dataset in training 2D diffusion models (about 100M
+to 1000M). The lack of data can raise two considerations. First, it can possibly bias towards the
+training data distribution. Secondly, it might not be powerful enough to cover all the diversity of
+testing images and testing texts. Our model has certain generalization ability but might not cover
+as much modes as the 2D diffusion model can. Given that our model does not have the ability to
+identify the content that is out of its knowledge, it might introduce to unsatisfying user experience.
+Also, our model can possibly leak the training data if the text prompt or image input highly align
+with some data sample. This potential leakage raises legal and security considerations, and is shared
+among all generative data (such as LLM and 2D diffusion models).
+Reproducibility Statement.
+We provide detailed implementation of our training method in the
+main text and also provide the model configurations in Table 6.
+We will help to resolve any
+uncertainty of our implementation during review discussions.
+REFERENCES
+Titas Anciukeviˇ
+cius, Zexiang Xu, Matthew Fisher, Paul Henderson, Hakan Bilen, Niloy J Mitra, and
+Paul Guerrero. Renderdiffusion: Image diffusion for 3d reconstruction, inpainting and generation.
+In IEEE Conf. Comput. Vis. Pattern Recog., 2023.
+Anonymous. Lrm: Large reconstruction model for single image to 3d. In Supplementary Files,
+2023a.
+Anonymous. Instant3d: Fast text-to-3d with sparse-view generation and large reconstruction model.
+In Supplementary Files, 2023b.
+Andrew Brock, Jeff Donahue, and Karen Simonyan. Large scale gan training for high fidelity natural
+image synthesis. arXiv preprint arXiv:1809.11096, 2018.
+Eric R Chan, Marco Monteiro, Petr Kellnhofer, Jiajun Wu, and Gordon Wetzstein. pi-gan: Periodic
+implicit generative adversarial networks for 3d-aware image synthesis. In IEEE Conf. Comput.
+Vis. Pattern Recog., 2021.
+Eric R Chan, Connor Z Lin, Matthew A Chan, Koki Nagano, Boxiao Pan, Shalini De Mello, Orazio
+Gallo, Leonidas J Guibas, Jonathan Tremblay, Sameh Khamis, et al. Efficient geometry-aware 3d
+generative adversarial networks. In IEEE Conf. Comput. Vis. Pattern Recog., 2022.
+Eric R Chan, Koki Nagano, Matthew A Chan, Alexander W Bergman, Jeong Joon Park, Axel Levy,
+Miika Aittala, Shalini De Mello, Tero Karras, and Gordon Wetzstein. Generative novel view
+synthesis with 3d-aware diffusion models. Int. Conf. Comput. Vis., 2023.
+Anpei Chen, Zexiang Xu, Fuqiang Zhao, Xiaoshuai Zhang, Fanbo Xiang, Jingyi Yu, and Hao Su.
+Mvsnerf: Fast generalizable radiance field reconstruction from multi-view stereo. In Int. Conf.
+Comput. Vis., 2021.
+Anpei Chen, Zexiang Xu, Andreas Geiger, Jingyi Yu, and Hao Su. Tensorf: Tensorial radiance
+fields. In European Conference on Computer Vision (ECCV), 2022.
+Hansheng Chen, Jiatao Gu, Anpei Chen, Wei Tian, Zhuowen Tu, Lingjie Liu, and Hao Su. Single-
+stage diffusion nerf: A unified approach to 3d generation and reconstruction. arXiv preprint
+arXiv:2304.06714, 2023.
+Jasmine Collins, Shubham Goel, Kenan Deng, Achleshwar Luthra, Leon Xu, Erhan Gundogdu,
+Xi Zhang, Tomas F Yago Vicente, Thomas Dideriksen, Himanshu Arora, et al. Abo: Dataset and
+benchmarks for real-world 3d object understanding. In IEEE Conf. Comput. Vis. Pattern Recog.,
+pp. 21126–21136, 2022.
+Matt Deitke, Dustin Schwenk, Jordi Salvador, Luca Weihs, Oscar Michel, Eli VanderBilt, Ludwig
+Schmidt, Kiana Ehsani, Aniruddha Kembhavi, and Ali Farhadi.
+Objaverse: A universe of
+annotated 3d objects. In IEEE Conf. Comput. Vis. Pattern Recog., pp. 13142–13153, 2023.
+10
+
+
+Under review as a conference paper at ICLR 2024
+Prafulla Dhariwal and Alexander Nichol. Diffusion models beat gans on image synthesis. Advances
+in neural information processing systems, 34:8780–8794, 2021.
+Laura Downs, Anthony Francis, Nate Koenig, Brandon Kinman, Ryan Hickman, Krista Reymann,
+Thomas B McHugh, and Vincent Vanhoucke. Google scanned objects: A high-quality dataset
+of 3d scanned household items. In 2022 International Conference on Robotics and Automation
+(ICRA), pp. 2553–2560. IEEE, 2022.
+Jun Gao, Tianchang Shen, Zian Wang, Wenzheng Chen, Kangxue Yin, Daiqing Li, Or Litany, Zan
+Gojcic, and Sanja Fidler. Get3d: A generative model of high quality 3d textured shapes learned
+from images. Adv. Neural Inform. Process. Syst., 2022.
+Jiatao Gu, Lingjie Liu, Peng Wang, and Christian Theobalt. Stylenerf: A style-based 3d-aware
+generator for high-resolution image synthesis. arXiv preprint arXiv:2110.08985, 2021.
+Jiatao Gu, Alex Trevithick, Kai-En Lin, Joshua M Susskind, Christian Theobalt, Lingjie Liu, and
+Ravi Ramamoorthi. Nerfdiff: Single-image view synthesis with nerf-guided distillation from
+3d-aware diffusion. In Int. Conf. Mach. Learn., 2023.
+Anchit Gupta, Wenhan Xiong, Yixin Nie, Ian Jones, and Barlas O˘
+guz.
+3dgen: Triplane latent
+diffusion for textured mesh generation. arXiv preprint arXiv:2303.05371, 2023.
+Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. Adv. Neural
+Inform. Process. Syst., 2020.
+Ajay Jain, Matthew Tancik, and Pieter Abbeel. Putting nerf on a diet: Semantically consistent
+few-shot view synthesis. In Int. Conf. Comput. Vis., 2021.
+Heewoo Jun and Alex Nichol. Shap-e: Generating conditional 3d implicit functions. arXiv preprint
+arXiv:2305.02463, 2023.
+Animesh Karnewar, Andrea Vedaldi, David Novotny, and Niloy J Mitra. Holodiffusion: Training a
+3d diffusion model using 2d images. In IEEE Conf. Comput. Vis. Pattern Recog., 2023.
+Tero Karras, Timo Aila, Samuli Laine, and Jaakko Lehtinen.
+Progressive growing of gans for
+improved quality, stability, and variation. In Int. Conf. Learn. Represent., 2018.
+Tero Karras, Samuli Laine, and Timo Aila. A style-based generator architecture for generative
+adversarial networks. In IEEE Conf. Comput. Vis. Pattern Recog., 2019.
+Tero Karras, Samuli Laine, Miika Aittala, Janne Hellsten, Jaakko Lehtinen, and Timo Aila.
+Analyzing and improving the image quality of StyleGAN. In IEEE Conf. Comput. Vis. Pattern
+Recog., 2020.
+Tero Karras, Miika Aittala, Samuli Laine, Erik H¨
+ark¨
+onen, Janne Hellsten, Jaakko Lehtinen, and
+Timo Aila. Alias-free generative adversarial networks. In Adv. Neural Inform. Process. Syst.,
+2021.
+Alexander Kirillov, Eric Mintun, Nikhila Ravi, Hanzi Mao, Chloe Rolland, Laura Gustafson, Tete
+Xiao, Spencer Whitehead, Alexander C Berg, Wan-Yen Lo, et al. Segment anything. arXiv
+preprint arXiv:2304.02643, 2023.
+Chen-Hsuan Lin, Jun Gao, Luming Tang, Towaki Takikawa, Xiaohui Zeng, Xun Huang, Karsten
+Kreis, Sanja Fidler, Ming-Yu Liu, and Tsung-Yi Lin. Magic3d: High-resolution text-to-3d content
+creation. In IEEE Conf. Comput. Vis. Pattern Recog., pp. 300–309, 2023a.
+Kai-En Lin, Lin Yen-Chen, Wei-Sheng Lai, Tsung-Yi Lin, Yi-Chang Shih, and Ravi Ramamoorthi.
+Vision transformer for nerf-based view synthesis from a single input image. In IEEE Winter Conf.
+Appl. Comput. Vis., 2023b.
+Minghua Liu, Chao Xu, Haian Jin, Linghao Chen, Mukund Varma T, Zexiang Xu, and Hao Su.
+One-2-3-45: Any single image to 3d mesh in 45 seconds without per-shape optimization, 2023a.
+Ruoshi Liu, Rundi Wu, Basile Van Hoorick, Pavel Tokmakov, Sergey Zakharov, and Carl Vondrick.
+Zero-1-to-3: Zero-shot one image to 3d object. arXiv preprint arXiv:2303.11328, 2023b.
+11
+
+
+Under review as a conference paper at ICLR 2024
+Xiaoxiao Long, Cheng Lin, Peng Wang, Taku Komura, and Wenping Wang.
+Sparseneus: Fast
+generalizable neural surface reconstruction from sparse views. 2022.
+Tiange Luo, Chris Rockwell, Honglak Lee, and Justin Johnson.
+Scalable 3d captioning with
+pretrained models. arXiv preprint arXiv:2306.07279, 2023.
+Lars Mescheder, Michael Oechsle, Michael Niemeyer, Sebastian Nowozin, and Andreas Geiger.
+Occupancy networks: Learning 3d reconstruction in function space. In IEEE Conf. Comput. Vis.
+Pattern Recog., 2019.
+Ben Mildenhall, Pratul P Srinivasan, Matthew Tancik, Jonathan T Barron, Ravi Ramamoorthi, and
+Ren Ng. Nerf: Representing scenes as neural radiance fields for view synthesis. In Eur. Conf.
+Comput. Vis., 2020.
+Thomas M¨
+uller, Alex Evans, Christoph Schied, and Alexander Keller.
+Instant neural graphics
+primitives with a multiresolution hash encoding. ACM Trans. Graph., 41(4):102:1–102:15, July
+2022.
+doi: 10.1145/3528223.3530127.
+URL https://doi.org/10.1145/3528223.
+3530127.
+Thu Nguyen-Phuoc, Chuan Li, Lucas Theis, Christian Richardt, and Yong-Liang Yang. Hologan:
+Unsupervised learning of 3d representations from natural images. In Int. Conf. Comput. Vis.,
+2019.
+Alex Nichol, Heewoo Jun, Prafulla Dhariwal, Pamela Mishkin, and Mark Chen. Point-e: A system
+for generating 3d point clouds from complex prompts. arXiv preprint arXiv:2212.08751, 2022.
+Michael Niemeyer and Andreas Geiger. Giraffe: Representing scenes as compositional generative
+neural feature fields. In IEEE Conf. Comput. Vis. Pattern Recog., 2021.
+Evangelos Ntavelis, Aliaksandr Siarohin, Kyle Olszewski, Chaoyang Wang, Luc Van Gool, and
+Sergey Tulyakov. Autodecoding latent 3d diffusion models. arXiv preprint arXiv:2307.05445,
+2023.
+Jeong Joon Park, Peter Florence, Julian Straub, Richard Newcombe, and Steven Lovegrove.
+Deepsdf: Learning continuous signed distance functions for shape representation. In IEEE Conf.
+Comput. Vis. Pattern Recog., 2019.
+William Peebles and Saining Xie. Scalable diffusion models with transformers. arXiv preprint
+arXiv:2212.09748, 2022.
+Ben Poole, Ajay Jain, Jonathan T. Barron, and Ben Mildenhall. Dreamfusion: Text-to-3d using 2d
+diffusion. arXiv, 2022.
+Guocheng Qian, Jinjie Mai, Abdullah Hamdi, Jian Ren, Aliaksandr Siarohin, Bing Li, Hsin-
+Ying Lee, Ivan Skorokhodov, Peter Wonka, Sergey Tulyakov, et al.
+Magic123: One image
+to high-quality 3d object generation using both 2d and 3d diffusion priors.
+arXiv preprint
+arXiv:2306.17843, 2023.
+Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal,
+Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al. Learning transferable visual
+models from natural language supervision. In International conference on machine learning, pp.
+8748–8763. PMLR, 2021.
+Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Bj¨
+orn Ommer. High-
+resolution image synthesis with latent diffusion models. In IEEE Conf. Comput. Vis. Pattern
+Recog., 2022.
+Katja Schwarz, Yiyi Liao, Michael Niemeyer, and Andreas Geiger. Graf: Generative radiance fields
+for 3d-aware image synthesis. In Adv. Neural Inform. Process. Syst., 2020.
+Zifan Shi, Sida Peng, Yinghao Xu, Geiger Andreas, Yiyi Liao, and Yujun Shen. Deep generative
+models on 3d representations: A survey. arXiv preprint arXiv:2210.15663, 2022.
+12
+
+
+Under review as a conference paper at ICLR 2024
+J. Ryan Shue, Eric Ryan Chan, Ryan Po, Zachary Ankner, Jiajun Wu, and Gordon Wetzstein. 3d
+neural field generation using triplane diffusion. In IEEE Conf. Comput. Vis. Pattern Recog., 2023.
+Vincent Sitzmann, Michael Zollh¨
+ofer, and Gordon Wetzstein.
+Scene representation networks:
+Continuous 3d-structure-aware neural scene representations. Advances in Neural Information
+Processing Systems, 32, 2019.
+Vincent Sitzmann, Julien Martel, Alexander Bergman, David Lindell, and Gordon Wetzstein.
+Implicit neural representations with periodic activation functions. Advances in neural information
+processing systems, 33:7462–7473, 2020.
+Vincent Sitzmann, Semon Rezchikov, Bill Freeman, Josh Tenenbaum, and Fredo Durand. Light field
+networks: Neural scene representations with single-evaluation rendering. Advances in Neural
+Information Processing Systems, 34:19313–19325, 2021.
+Ivan Skorokhodov, Sergey Tulyakov, Yiqun Wang, and Peter Wonka. Epigraf: Rethinking training
+of 3d gans. In Adv. Neural Inform. Process. Syst., 2022.
+Ivan Skorokhodov, Aliaksandr Siarohin, Yinghao Xu, Jian Ren, Hsin-Ying Lee, Peter Wonka,
+and Sergey Tulyakov.
+3d generation on imagenet.
+In International Conference on Learning
+Representations, 2023. URL https://openreview.net/forum?id=U2WjB9xxZ9q.
+Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. arXiv
+preprint arXiv:2010.02502, 2020a.
+Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben
+Poole. Score-based generative modeling through stochastic differential equations. arXiv preprint
+arXiv:2011.13456, 2020b.
+Stanislaw Szymanowicz, Christian Rupprecht, and Andrea Vedaldi. Viewset diffusion:(0-) image-
+conditioned 3d generative models from 2d data. arXiv preprint arXiv:2306.07881, 2023.
+Ayush Tewari, Justus Thies, Ben Mildenhall, Pratul Srinivasan, Edgar Tretschk, Wang Yifan,
+Christoph Lassner, Vincent Sitzmann, Ricardo Martin-Brualla, Stephen Lombardi, et al. Ad-
+vances in neural rendering. In Computer Graphics Forum, volume 41, pp. 703–735. Wiley Online
+Library, 2022.
+Haochen Wang, Xiaodan Du, Jiahao Li, Raymond A. Yeh, and Greg Shakhnarovich.
+Score
+jacobian chaining: Lifting pretrained 2d diffusion models for 3d generation.
+arXiv preprint
+arXiv:2212.00774, 2022.
+Qianqian Wang, Zhicheng Wang, Kyle Genova, Pratul P Srinivasan, Howard Zhou, Jonathan T
+Barron, Ricardo Martin-Brualla, Noah Snavely, and Thomas Funkhouser. Ibrnet: Learning multi-
+view image-based rendering. In IEEE Conf. Comput. Vis. Pattern Recog., 2021.
+Zhengyi Wang, Cheng Lu, Yikai Wang, Fan Bao, Chongxuan Li, Hang Su, and Jun Zhu.
+Prolificdreamer: High-fidelity and diverse text-to-3d generation with variational score distillation.
+arXiv preprint arXiv:2305.16213, 2023.
+Yinghao Xu, Sida Peng, Ceyuan Yang, Yujun Shen, and Bolei Zhou. 3d-aware image synthesis via
+learning structural and textural representations. In IEEE Conf. Comput. Vis. Pattern Recog., 2022.
+Yinghao Xu, Menglei Chai, Zifan Shi, Sida Peng, Ivan Skorokhodov, Aliaksandr Siarohin, Ceyuan
+Yang, Yujun Shen, Hsin-Ying Lee, Bolei Zhou, et al.
+Discoscene: Spatially disentangled
+generative radiance fields for controllable 3d-aware scene synthesis.
+In IEEE Conf. Comput.
+Vis. Pattern Recog., 2023.
+Alex Yu, Vickie Ye, Matthew Tancik, and Angjoo Kanazawa. pixelnerf: Neural radiance fields from
+one or few images. In IEEE Conf. Comput. Vis. Pattern Recog., 2021.
+Xianggang Yu, Mutian Xu, Yidan Zhang, Haolin Liu, Chongjie Ye, Yushuang Wu, Zizheng Yan,
+Chenming Zhu, Zhangyang Xiong, Tianyou Liang, et al. Mvimgnet: A large-scale dataset of
+multi-view images. In IEEE Conf. Comput. Vis. Pattern Recog., pp. 9150–9161, 2023.
+13
+
+
+Under review as a conference paper at ICLR 2024
+Table 4: Robustness on GSO dataset.
+Lighting/Fov
+Appearance
+Geometry
+FID ↓
+CLIP ↑
+PSNR ↑
+SSIM ↑
+LPIPS ↓
+CD ↓
+Ours
+30.01
+0.928
+22.57
+0.845
+0.126
+0.0395
+Fov10
+35.69
+0.912
+19.136
+0.820
+0.207
+0.0665
+Fov30
+32.309
+0.921
+20.428
+0.839
+0.166
+0.0527
+Fov70
+32.095
+0.921
+20.961
+0.860
+0.154
+0.0616
+Fov90
+34.438
+0.912
+19.952
+0.855
+0.190
+0.0754
+city
+33.31
+0.916
+21.19
+0.831
+0.142
+0.0437
+night
+36.32
+0.907
+20.383
+0.829
+0.161
+0.0413
+sunrise
+33.264
+0.917
+21.080
+0.843
+0.140
+0.0423
+studio
+36.32
+0.927
+21.383
+0.839
+0.141
+0.0428
+Input
+w. MvImageNet
+w.o. MvImageNet
+Figure 7: Qualitative comparison on w. and w.o. MvImageNet.
+A
+APPENDIX
+A.1
+ROBUSTNESS EVALUATION.
+We evaluate our model with different FOV angles and lighting conditions to justify its robustness.
+Specifically, while the MVImgNet datasets include diverse camera FOVs and lighting conditions,
+our model is mostly trained with 50◦-FOV and uniform lighting from the Objaverse dataset. We
+evaluate the robustness of our model (image-conditioned one) by testing images with other FOV
+angles and complex environment maps. As shown in Tab. 4, our model is sensitive to the FOV angles
+of the captured images, leading to lower quality with angles more deviated from the trained one. In
+general, our model assumes an input image with a 50◦FOV, thus causing visible shape distortion
+in generated 3D shapes when the input FOV is different. However, it exhibits lower sensitivity to
+lighting variations, leading to similar quality across different lighting conditions. When the lighting
+is non-uniform, despite not physically matching the input, our model bakes the shading effects into
+the NeRF appearance, yielding plausible renderings.
+A.2
+QUANTATIVE EVALUATION ON MVIMAGENET.
+MvImageNet contains a diverse set of real data, which helps to improve our generalization
+capabilities for real data or out-of-domain data, as demonstrated in Fig 7.
+We also perform
+quantative evaluation on the model with and without MvImageNet on the GSO dataset in Tab. 5. The
+reconstructed results in terms of appearance and geometry are similar to the previous results only
+trained with Objaverse, indicating that MvImageNet improves generalization without compromising
+the quality of reconstruction.
+A.3
+IMPLEMENTATION DETAILS.
+Please see Tab. 6 for details.
+14
+
+
+Under review as a conference paper at ICLR 2024
+Table 5: Ablation on MvImageNet.
+#Views
+Appearance
+Geometry
+FID ↓
+CLIP ↑
+PSNR ↑
+SSIM ↑
+LPIPS ↓
+CD ↓
+w. MvImageNet
+30.01
+0.928
+22.57
+0.845
+0.126
+0.0395
+w.o MvImageNet 27.761
+0.924
+21.851
+0.850
+0.128
+0.0378
+Small
+Large
+Encoder
+Att Layers
+12
+12
+Patch size
+16
+8
+Decoder
+Triplane tokens
+323
+643
+Channels
+32
+32
+Att layers
+12 (a +c)
+16 (a+c)
+Renderer
+Token upsample
+1
+2
+Patch size
+64
+128
+Steps
+48
+96
+Diffusion
+Steps
+1000
+1000
+Learn sigma
+False
+False
+Predict target
+x0
+x0
+Schedule
+cosine
+cosine
+Traininig
+Learning rate
+4e-4
+4e-4
+Optimizer
+Adamw
+Adamw
+Warm-up
+3000
+3000
+Table 6: Implementation details.
+A.4
+VIEW NUMBERS
+We have compared the effects of using different numbers of views quantitatively in Tab. 3. Here,
+we also present qualitative results in Fig. 8. When there is only one view, the predicted novel view
+is very blurry. However, when the view number increases to four, the results become much clearer.
+When using six views, the improvement compared to four views is not significant, consistent to
+the metrics reported in Tab. 3, indicating saturation. Therefore, our network uses four views as the
+default configuration.
+A.5
+MORE COMPARISON.
+We also include more qualitative comparison on single-view image reconstruction in Fig. 9.
+15
+
+
+Under review as a conference paper at ICLR 2024
+Input
+#view 1
+#view 4
+#view 2
+#view 6
+Figure 8: Qualitative comparison on difference view numbers.
+ShapE
+Point-E
+One-2345 Magic123
+Ours
+Figure 9: Qualitative comparison on single-image reconstruction.
+16

@@ -1,0 +1,4518 @@
+THEMIS: Fair and Efﬁcient GPU Cluster Scheduling
+Abstract: Modern distributed machine learning (ML) train-
+ing workloads beneﬁt signiﬁcantly from leveraging GPUs.
+However, signiﬁcant contention ensues when multiple such
+workloads are run atop a shared cluster of GPUs. A key ques-
+tion is how to fairly apportion GPUs across workloads. We
+ﬁnd that established cluster scheduling disciplines are a poor
+ﬁt because of ML workloads’ unique attributes: ML jobs have
+long-running tasks that need to be gang-scheduled, and their
+performance is sensitive to tasks’ relative placement.
+We propose THEMIS, a new scheduling framework for ML
+training workloads. It’s GPU allocation policy enforces that
+ML workloads complete in a ﬁnish-time fair manner, a new
+notion we introduce. To capture placement sensitivity and
+ensure efﬁciency, THEMIS uses a two-level scheduling archi-
+tecture where ML workloads bid on available resources that
+are offered in an auction run by a central arbiter. Our auction
+design allocates GPUs to winning bids by trading off fairness
+for efﬁciency in the short term, but ensuring ﬁnish-time fair-
+ness in the long term. Our evaluation on a production trace
+shows that THEMIS can improve fairness by more than 2.25X
+and is ~5% to 250% more cluster efﬁcient in comparison to
+state-of-the-art schedulers.
+1
+Introduction
+With the widespread success of machine learning (ML) for
+tasks such as object detection, speech recognition, and ma-
+chine translation, a number of enterprises are now incorporat-
+ing ML models into their products. Training individual ML
+models is time- and resource-intensive with each training job
+typically executing in parallel on a number of GPUs.
+With different groups in the same organization training ML
+models, it is beneﬁcial to consolidate GPU resources into a
+shared cluster. Similar to existing clusters used for large scale
+data analytics, shared GPU clusters for ML have a number of
+operational advantages, e.g., reduced development overheads,
+lower costs for maintaining GPUs, etc. However, today, there
+are no ML workload-speciﬁc mechanisms to share a GPU
+cluster in a fair manner.
+Our conversations with cluster operators indicate that fair-
+ness is crucial; speciﬁcally, that sharing an ML cluster be-
+comes attractive to users only if they have the appropriate
+sharing incentive. That is, if there are a total N users sharing
+a cluster C, every user’s performance should be no worse than
+using a private cluster of size C
+N . Absent such incentive, users
+are either forced to sacriﬁce performance and suffer long wait
+times for getting their ML jobs scheduled, or abandon shared
+clusters and deploy their own expensive hardware.
+Providing sharing incentive through fair scheduling mech-
+anisms has been widely studied in prior cluster scheduling
+frameworks, e.g., Quincy [18], DRF [8], and Carbyne [11].
+However, these techniques were designed for big data work-
+loads, and while they are used widely to manage GPU clusters
+today, they are far from effective.
+The key reason is that ML workloads have unique charac-
+teristics that make existing “fair” allocation schemes actually
+unfair. First, unlike batch analytics workloads, ML jobs have
+long running tasks that need to be scheduled together, i.e.,
+gang-scheduled. Second, each task in a job often runs for a
+number of iterations while synchronizing model updates at
+the end of each iteration. This frequent communication means
+that jobs are placement-sensitive, i.e., placing all the tasks
+for a job on the same machine or the same rack can lead to
+signiﬁcant speedups. Equally importantly, as we show, ML
+jobs differ in their placement-sensitivity (Section 3.1.2).
+In Section 3, we show that having long-running tasks means
+that established schemes such as DRF – which aims to equally
+allocate the GPUs released upon task completions – can arbi-
+trarily violate sharing incentive. We show that even if GPU
+resources were released/reallocated on ﬁne time-scales [13],
+placement sensitivity means that jobs with same aggregate
+resources could have widely different performance, violating
+sharing incentive. Finally, heterogeneity in placement sensi-
+tivity means that existing scheduling schemes also violate
+Pareto efﬁciency and envy-freedom, two other properties that
+are central to fairness [34].
+Our scheduler, THEMIS, address these challenges, and sup-
+ports sharing incentive, Pareto efﬁciency, and envy-freedom
+for ML workloads. It multiplexes a GPU cluster across ML
+applications (Section 2), or apps for short, where every app
+consists of one or more related ML jobs, each running with
+different hyper-parameters, to train an accurate model for a
+given task. To capture the effect of long running tasks and
+placement sensitivity, THEMIS uses a new long-term fairness
+metric, ﬁnish-time fairness, which is the ratio of the running
+time in a shared cluster with N apps to running alone in a 1
+N
+cluster. THEMIS’s goal is thus to minimize the maximum ﬁn-
+ish time fairness across all ML apps while efﬁciently utilizing
+cluster GPUs. We achieve this goal using two key ideas.
+First, we propose to widen the API between ML apps and
+the scheduler to allow apps to specify placement preferences.
+We do this by introducing the notion of a round-by-round
+auction. THEMIS uses leases to account for long-running ML
+tasks, and auction rounds start when leases expire. At the start
+of a round, our scheduler requests apps for their ﬁnish-time
+fairness metrics, and makes all available GPUs visible to a
+fraction of apps that are currently farthest in terms of their
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    289
+
+
+fairness metric. Each such app has the opportunity to bid for
+subsets of these GPUs as a part of an auction; bid values
+reﬂect the app’s new (placement sensitive) ﬁnish time fairness
+metric from acquiring different GPU subsets. A central arbiter
+determines the global winning bids to maximize the aggregate
+improvement in the ﬁnish time fair metrics across all bidding
+apps. Using auctions means that we need to ensure that apps
+are truthful when they bid for GPUs. Thus, we use a partial
+allocation auction that incentivizes truth telling, and ensures
+Pareto-efﬁciency and envy-freeness by design.
+While a far-from-fair app may lose an auction round, per-
+haps because it is placed less ideally than another app, its bid
+values for subsequent auctions naturally increase (because a
+losing app’s ﬁnish time fairness worsens), thereby improving
+the odds of it winning future rounds. Thus, our approach con-
+verges to fair allocations over the long term, while staying
+efﬁcient and placement-sensitive in the short term.
+Second, we present a two-level scheduling design that con-
+tains a centralized inter-app scheduler at the bottom level,
+and a narrow API to integrate with existing hyper-parameter
+tuning frameworks at the top level. A number of existing
+frameworks such as Hyperdrive [29] and HyperOpt [3] can in-
+telligently apportion GPU resources between various jobs in
+a single app, and in some cases also terminate a job early if its
+progress is not promising. Our design allows apps to directly
+use such existing hyper parameter tuning frameworks. We de-
+scribe how THEMIS accommodates various hyper-parameter
+tuning systems and how its API is exercised in extracting
+relevant inputs from apps when running auctions.
+We implement THEMIS atop Apache YARN 3.2.0, and
+evaluate by replaying workloads from a large enterprise trace.
+Our results show that THEMIS is at least 2.25X more fair
+(ﬁnish-time fair) than state-of-the-art schedulers while also
+improving cluster efﬁciency by ~5% to 250%. To further
+understand our scheduling decisions, we perform an event-
+driven simulation using the same trace, and our results show
+that THEMIS offers greater beneﬁts when we increase the
+fraction of network intensive apps, and the cluster contention.
+2
+Motivation
+We start by deﬁning the terminology used in the rest of the
+paper. We then study the unique properties of ML workload
+traces from a ML training GPU cluster at Microsoft. We end
+by stating our goals based on our trace analysis and conversa-
+tions with the cluster operators.
+2.1
+Preliminaries
+We deﬁne an ML app, or simply an “app”, as a collection of
+one or more ML model training jobs. Each app corresponds
+to a user training an ML model for a high-level goal, such
+as speech recognition or object detection. Users train these
+models knowing the appropriate hyper-parameters (in which
+case there is just a single job in the app), or they train a closely
+related set of models (n jobs) that explore hyper-parameters
+such as learning rate, momentum etc. [21,29] to identify and
+train the best target model for the activity at hand.
+Each job’s constituent work is performed by a number of
+parallel tasks. At any given time, all of a job’s tasks collec-
+tively process a mini-batch of training data; we assume that
+the size of the batch is ﬁxed for the duration of a job. Each task
+typically processes a subset of the batch, and, starting from
+an initial version of the model, executes multiple iterations of
+the underlying learning algorithm to improve the model. We
+assume all jobs use the popular synchronous SGD [4].
+We consider the ﬁnish time of an app to be when the best
+model and relevant hyper-parameters have been identiﬁed.
+Along the course of identifying such a model, the app may
+decide to terminate some of its constituent jobs early [3,29];
+such jobs may be exploring hyper-parameters that are clearly
+sub-optimal (the jobs’ validation accuracy improvement over
+iterations is signiﬁcantly worse than other jobs in the same
+app). For apps that contain a single job, ﬁnish time is the time
+taken to train this model to a target accuracy or maximum
+number of iterations.
+2.2
+Characterizing Production ML Apps
+We perform an analysis of the properties of GPU-based ML
+training workloads by analyzing workload traces obtained
+from Microsoft. The GPU cluster we study supports over
+5000 unique users. We restrict our analysis to a subset of the
+trace that contains 85 ML training apps submitted using a
+hyper-parameter tuning framework.
+GPU clusters are known to be heavily contented [19], and
+we ﬁnd this also holds true in the subset of the trace of ML
+apps we consider (Figure 1). For instance, we see that GPU
+demand is bursty and the average GPU demand is ~50 GPUs.
+We also use the trace to provide a ﬁrst-of-a-kind view
+into the characteristics of ML apps. As mentioned in Section
+2.1, apps may either train a single model to reach a target
+accuracy (1 job) or may use the cluster to explore various
+hyper-parameters for a given model (n jobs). Figure 2 shows
+that ~10% of the apps have 1 job, and around ~90% of the
+apps perform hyper-parameter exploration with as many as
+100 jobs (median of 75 jobs). Interestingly, there is also a sig-
+niﬁcant variation in the number of hyper-parameters explored
+ranging from a few tens to about a hundred (not shown).
+We also measure the GPU time of all ML apps in the trace.
+If an app uses 2 jobs with 2 GPUs each for a period of 10
+minutes, then the GPU time for — the tasks would be 10
+minutes each, the jobs would be 20 minutes each, and the app
+would be 40 GPU minutes. Figure 3 and Figure 4 show the
+long running nature of ML apps: the median app takes 11.5
+GPU days and the median task takes 3.75 GPU hours. There
+is a wide diversity with a signiﬁcant fraction of jobs and apps
+that are more than 10X shorter and many that are more than
+10X longer.
+From our analysis we see that ML apps are heterogeneous
+in terms of resource usage, and number of jobs submitted.
+290    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+Figure 1: Aggregate GPU demand of
+ML apps over time
+Figure 2: Job count distribution across
+different apps
+Figure 3: ML app time ( = total GPU
+time across all jobs in app) distribution
+Figure 4: Distribution of Task GPU
+times
+Running times are also heterogeneous, but at the same time
+much longer than, e.g., running times of big data analytics
+jobs (typically a few hours [12]). Handling such heterogene-
+ity can be challenging for scheduling frameworks, and the
+long running nature may make controlling app performance
+particularly difﬁcult in a shared setting with high contention.
+We next discuss how some of these challenges manifest in
+practice from both cluster user and cluster operator perspec-
+tives, and how that leads to our design goals for THEMIS.
+2.3
+Our Goal
+Our many conversations with operators of GPU clusters re-
+vealed a common sentiment, reﬂected in the following quote:
+“ We were scheduling with a balanced approach ... with guidance
+to ‘play nice’. Without ﬁrm guard rails, however, there were always
+individuals who would ignore the rules and dominate the capacity. ”
+— An operator of a large GPU cluster at Microsoft
+With long app durations, users who dominate capacity im-
+pose high waiting times on many other users. Some such users
+are forced to “quit” the cluster as reﬂected in this quote:
+“Even with existing fair sharing schemes, we do ﬁnd users frus-
+trated with the inability to get their work done in a timely way... The
+frustration frequently reaches the point where groups attempt or
+succeed at buying their own hardware tailored to their needs. ”
+— An operator of a large GPU cluster at Microsoft
+While it is important to design a cluster scheduler that
+ensures efﬁcient use of highly contended GPU resources,
+the above indicates that it is perhaps equally, if not more
+important, for the scheduler to allocate GPU resources in a
+fair manner across many diverse ML apps; in other words,
+roughly speaking, the scheduler’s goal should be to allow all
+apps to execute their work in a “timely way”.
+In what follows, we explain using examples, measurements,
+and analysis, why existing fair sharing approaches when ap-
+plied to ML clusters fall short of the above goal, which we
+formalize next. We identify the need both for a new fairness
+metric, and for a new scheduler architecture and API that
+supports resource division according to the metric.
+3
+Finish-Time Fair Allocation
+We present additional unique attributes of ML apps and dis-
+cuss how they, and the above attributes, affect existing fair
+sharing schemes.
+3.1
+Fair Sharing Concerns for ML Apps
+The central question is - given R GPUs in a cluster C and N
+ML apps, what is a fair way to divide the GPUs.
+As mentioned above, cluster operators indicate that the pri-
+mary concern for users sharing an ML cluster is performance
+isolation that results in “timely completion”. We formalize
+this as: if N ML Apps are sharing a cluster then an app should
+not run slower on the shared cluster compared to a dedicated
+cluster with 1
+N of the resources. Similar to prior work [8],
+we refer to this property as sharing incentive (SI). Ensuring
+sharing incentive for ML apps is our primary design goal.
+In addition, resource allocation mechanisms must satisfy
+two other basic properties that are central to fairness [34]:
+Pareto Efﬁciency (PE) and Envy-Freeness (EF) 1
+While prior systems like Quincy [18], DRF [8] etc. aim at
+providing SI, PE and EF, we ﬁnd that they are ineffective for
+ML clusters as they fail to consider the long durations of ML
+tasks and placement preferences of ML apps.
+3.1.1
+ML Task Durations
+We empirically study task durations in ML apps and show how
+they affect the applicability of existing fair sharing schemes.
+Figure 4 shows the distribution of task durations for ML
+apps in a large GPU cluster at Microsoft. We note that the
+tasks are, in general, very long, with the median task roughly
+3.75 hours long. This is in stark contrast with, e.g., big data
+analytics jobs, where tasks are typically much shorter in dura-
+tion [26].
+State of the art fair allocation schemes such as DRF [8]
+provide instantaneous resource fairness. Whenever resources
+become available, they are allocated to the task from an app
+with the least current share. For big data analytics, where
+task durations are short, this approximates instantaneous re-
+source fairness, as frequent task completions serve as oppor-
+tunities to redistribute resources. However, blindly applying
+such schemes to ML apps can be disastrous: running the much
+longer-duration ML tasks to completion could lead to newly
+arriving jobs waiting inordinately long for resources. This
+leads to violation of SI for late-arriving jobs.
+Recent “attained-service” based schemes address this prob-
+lem with DRF. In [13], for example, GPUs are leased for a
+certain duration, and when leases expire, available GPUs are
+given to the job that received the least GPU time thus far;
+1Informally, a Pareto Efﬁcient allocation is one where no app’s allocation
+can be improved without hurting some other app. And, envy-freeness means
+that no app should prefer the resource allocation of an other app.
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    291
+
+
+VGG16
+Inception-v3
+4 P100 GPUs on 1 server
+103.6 images/sec
+242 images/sec
+4 P100 GPUs across 2 servers
+80.4 images/sec
+243 images/sec
+Table 1: Effect of GPU resource allocation on job throughput. VGG16 has a
+machine-local task placement preference while Inception-v3 does not.
+this is the “least attained service”, or LAS allocation policy.
+While this scheme avoids the starvation problem above for
+late-arriving jobs, it still violates all key fairness properties
+because it is placement-unaware, an issue we discuss next.
+3.1.2
+Placement Preferences
+Next, we empirically study placement preferences of ML apps.
+We use examples to show how ignoring these preferences in
+fair sharing schemes violates key properties of fairness.
+Many apps, many preference patterns: ML cluster users
+today train a variety of ML apps across domains like com-
+puter vision, NLP and speech recognition. These models have
+signiﬁcantly different model architectures, and more impor-
+tantly, different placement preferences arising from different
+computation, communication needs. For example, as shown
+in Table 1, VGG16 has a strict machine-local task placement
+preference while Inception-v3 does not. This preference in-
+herently stems from the fact that VGG-like architectures have
+very large number of parameters and incur greater overheads
+for updating gradients over the network.
+We use examples to show the effect of placement on DRF’s
+allocation strategy. Similar examples and conclusions apply
+for the LAS allocation scheme.
+Ignoring placement affects SI: example: Consider the In-
+stance 1 in Figure 5. In this example, there are two placement
+sensitive ML apps - A1 and A2, both training VGG16. Each
+ML app has just one job in it with 4 tasks and the cluster
+has two 4 GPU machines. As shown above, given the same
+number of GPUs both apps prefer GPUs to be in the same
+server than spread across servers.
+For this example, DRF [8] equalizes the dominant resource
+share of both the apps under resource constraints and allocates
+4 GPUs to each ML app. In Instance 1 of Figure 5 we show
+an example of a valid DRF allocation. Both apps get the
+same type of placement with GPUs spread across servers.
+This allocation violates SI for both apps as their performance
+would be better if each app just had its own dedicated server.
+Ignoring placement affects PE, EF: example: Consider In-
+stance 2 in Figure 5 with two apps - A1 (Inception-v3) which
+is not placement sensitive and A2 (VGG16) which is place-
+ment sensitive. Each app has one job with four tasks and the
+cluster has two machines: one 4 GPU and two 2 GPU.
+Now consider the allocation in Instance 2, where A1 is al-
+located on the 4 GPU machine whereas A2 is allocated across
+the 2 GPU machines. This allocation violates EF, because
+A2 would prefer A1’s allocation. It also violates PE because
+swapping the two apps’ allocation would improve A2’s per-
+formance without hurting A1.
+In fact, we can formally show that:
+Theorem 3.1. Existing fair schemes (DRF, LAS) ignore place-
+ment preferences and violate SI, PE, EF for ML apps.
+A1
+A2
+A1
+A2
+Instance 1: 2 4-GPU 
+Instance 2: 1 4-GPU; 2 2-GPU
+Figure 5: By ignoring placement preference, DRF violates sharing incentive.
+−
+!
+G
+[0,0]
+[0,1] = [1,0]
+[1,1]
+r
+rold
+200
+400 = 1
+2
+100
+400 = 1
+4
+Table 2: Example table of bids sent from apps to the scheduler
+Proof Refer to Appendix.
+In summary, existing schemes fail to provide fair sharing
+guarantees as they are unaware of ML app characteristics.
+Instantaneous fair schemes such as DRF fail to account for
+long task durations. While least-attained service schemes
+overcome that limitation, neither approach’s input encodes
+placement preferences. Correspondingly, the fairness metrics
+used - i.e., dominant resource share (DRF) or attained service
+(LAS) - do not capture placement preferences.
+This motivates the need for a new placement-aware fairness
+metric, and corresponding scheduling discipline. Our obser-
+vations about ML task durations imply that, like LAS, our fair
+allocation discipline should not depend on rapid task comple-
+tions, but instead should operate over longer time scales.
+3.2
+Metric: Finish-Time Fairness
+We propose a new metric called as ﬁnish-time fairness, r.
+r = Tsh
+Tid .
+Tid is the independent ﬁnish-time and Tsh is the shared
+ﬁnish-time. Tsh is the ﬁnish-time of the app in the shared
+cluster and it encompasses the slowdown due to the placement
+and any queuing delays that an app experiences in getting
+scheduled in the shared cluster. The worse the placement, the
+higher is the value of Tsh. Tid, is the ﬁnish-time of the ML app
+in its own independent and exclusive 1
+N share of the cluster.
+Given the above deﬁnition, sharing incentive for an ML app
+can be attained if r 1. 2
+To ensure this, it is necessary for the allocation mechanism
+to estimate the values of r for different GPU allocations.
+Given the difﬁculty in predicting how various apps will react
+to different allocations, it is intractable for the scheduling
+engine to predict or determine the values of r.
+Thus, we propose a new wider interface between the app
+and the scheduling engine that can allow the app to express
+a preference for each allocation. We propose that apps can
+encode this information as a table. In Table 2, each column has
+a permutation of a potential GPU allocation and the estimate
+of r on receiving this allocation. We next describe how the
+scheduling engine can use this to provide fair allocations.
+3.3
+Mechanism: Partial Allocation Auctions
+The ﬁnish-time fairness ri(.) for an ML app Ai is a function
+of the GPU allocation ~
+Gi that it receives. The allocation policy
+2Note, sharing incentive criteria of r 1 assumes the presence of an
+admission control mechanism to limit contention for GPU resources. An
+admission control mechanism that rejects any app if the aggregate number of
+GPUs requested crosses a certain threshold is a reasonable choice.
+292    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+Pseudocode 1 Finish-Time Fair Policy
+1: Applications {Ai}
+. set of apps
+2: Bids {ri(.)}
+. valuation function for each app i
+3: Resources −
+!
+R
+. resource set available for auction
+4: Resource Allocations {−
+!
+G i}
+. resource allocation for each app i
+5: procedure AUCTION({Ai}, {ri(.)}, −
+!
+R )
+6:
+−
+!
+G i,p f = arg max ’i 1/ri(−
+!
+Gi)
+. proportional fair (pf) allocation per app i
+7:
+−
+!
+G −i
+j,p f = arg max ’ j!=i 1/r j(−
+!
+Gj)
+. pf allocation per app j without app i
+8:
+ci =
+’ j!=i 1/r j(−
+!
+G j,pf )
+’ j!=i 1/r j(−
+!
+G−i
+j,pf )
+9:
+−
+!
+Gi = ci * −
+!
+G i,p f
+. allocation per app i
+10:
+−
+!
+L = Âi 1−ci * −
+!
+G i,pf
+. aggregate leftover resource
+11:
+return {−
+!
+Gi}, −
+!
+L
+12: end procedure
+13: procedure ROUNDBYROUNDAUCTIONS({Ai}, {ri(.)})
+14:
+while True do
+15:
+ONRESOURCEAVAILABLEEVENT ~
+R0:
+16:
+{Asort
+i
+} = SORT({Ai}) on rcurrent
+i
+17:
+{Afilter
+i
+} = get top 1−f fraction of apps from {Asort}
+18:
+{rfilter
+i
+(.)} = get updated r(.) from apps in {A filter
+i
+}
+19:
+{
+−
+−
+−
+!
+Gfilter
+i
+}, −
+!
+L = AUCTION({Afilter
+i
+}, {r filter
+i
+(.)}, ~
+R0)
+20:
+{Aunfilter
+i
+} = {Ai}−{Afilter
+i
+}
+21:
+allocate −
+!
+L to {Aunfilter
+i
+} at random
+22:
+end while
+23: end procedure
+takes these ri(.)’s as inputs and outputs allocations ~
+Gi.
+A straw-man policy that sorts apps based on their reported
+ri values and allocates GPUs in that order reduces the max-
+imum value of r but has one key issue. An app can submit
+false information about their r values. This greedy behavior
+can boost their chance of winning allocations. Our conversa-
+tions with cluster operators indicate that apps request for more
+resources than required and they require manual monitoring
+(“We also monitor the usage. If they don’t use it, we reclaim
+it and pass it on to the next approved project”). Thus, this
+simple straw-man fails to incentivize truth-telling and violates
+another key property, namely, strategy proofness (SP).
+To address this challenge, we propose to use auctions in
+THEMIS. We begin by describing a simple mechanism that
+runs a single-round auction and then extend to a round-by-
+round mechanism that also considers online updates.
+3.3.1
+One-Shot Auction
+Details of the inputs necessary to run the auction are given
+ﬁrst, followed by how the auction works given these inputs.
+Inputs: Resources and Bids. ~
+R represents the total GPU
+resources to be auctioned, where each element is 1 and the
+number of dimensions is the number of GPUs to be auctioned.
+Each ML app bids for these resources. The bid for each ML
+app consists of the estimated ﬁnish-time fair metric (ri) values
+for several different GPU allocations (~
+Gi). Each element in
+~
+Gi can be {0,1}. A set bit implies that GPU is allocated to
+the app. Example of a bid can be seen in Table 2.
+Auction Overview. To ensure that the auction can provide
+strategy proofness, we propose using a partial allocation
+auction (PA) mechanism [5]. Partial allocation auctions have
+been shown to incentivize truth telling and are an appropriate
+ﬁt for modeling subsets of indivisible goods to be auctioned
+across apps. Pseudocode 1, line 5 shows the PA mechanism.
+There are two aspects to auctions that are described next.
+1. Initial allocation. PA starts by calculating an intrinsically
+proportionally-fair allocation
+~
+Gi,pf for each app Ai by maxi-
+mizing the product of the valuation functions i.e., the ﬁnish-
+time fair metric values for all apps (Pseudocode 1, line 6).
+Such an allocation ensures that it is not possible to increase
+the allocation of an app without decreasing the allocation of
+at least another app (satisfying PE [5]).
+2. Incentivizing Truth Telling. To induce truthful reporting
+of the bids, the PA mechanism allocates app Ai only a fraction
+ci < 1 of Ai’s proportional fair allocation
+~
+Gi,pf , and takes
+1−ci as a hidden payment (Pseudocode 1, line 10). The ci is
+directly proportional to the decrease in the collective valuation
+of the other bidding apps in a market with and without app Ai
+(Pseudocode 1, line 8). This yields the ﬁnal allocation ~
+Gi for
+app Ai (Pseudocode 1, line 9).
+Note that the ﬁnal result, ~
+Gi is not a market-clearing alloca-
+tion and there could be unallocated GPUs~
+L that are leftover
+from hidden payments. Hence, PA is not work-conserving.
+Thus, while the one-shot auction provides a number of prop-
+erties related to fair sharing it does not ensure SI is met.
+Theorem 3.2. The one-shot partial allocation auction guaran-
+tees SP, PE and EF, but does not provide SI.
+Proof Refer to Appendix. The intuitive reason for this is
+that, with unallocated GPUs as hidden payments, PA does not
+guarantee r 1 for all apps. To address this we next look
+at multi-round auctions that can maximize SI for ML apps.
+We design a mechanism that is based on PA and preserves
+its properties, but offers slightly weaker guarantee, namely
+min max r. We describe this next. It runs in multiple rounds.
+Empirically, we ﬁnd that it gets r 1 for most apps, even
+without admission control.
+3.3.2
+Multi-round auctions
+To maximize sharing incentive and to ensure work conserva-
+tion, our goal is to ensure r 1 for as many apps as possible.
+We do this using three key ideas described below.
+Round-by-Round Auctions: With round-by-round auctions,
+the outcome of an allocation from an auction is binding only
+for a lease duration. At the end of this lease, the freed GPUs
+are re-auctioned. This also handles the online case as any auc-
+tion is triggered on a resource available event. This takes care
+of app failures and arrivals, as well as cluster reconﬁgurations.
+At the beginning of each round of auction, the policy so-
+licits updated valuation functions r(.) from the apps. The
+estimated work and the placement preferences for the case
+of ML apps are typically time varying. This also makes our
+policy adaptive to such changes.
+Round-by-Round Filtering: To maximize the number of
+apps with r 1, at the beginning of each round of auctions
+we ﬁlter the 1−f fraction of total active apps with the greatest
+values of current estimate of their ﬁnish-time fair metric r.
+Here, f 2 (0,1) is a system-wide parameter.
+This has the effect of restricting the auctions to the apps that
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    293
+
+
+are at risk of not meeting SI. Also, this restricts the auction to
+a smaller set of apps which reduces contention for resources
+and hence results in smaller hidden payments. It also makes
+the auction computationally tractable.
+Over the course of many rounds, ﬁltering maximizes the
+number of apps that have SI. Consider a far-from-fair app i
+that lost an auction round. It will appear in future rounds with
+much greater likelihood relative to another less far-from-fair
+app k that won the auction round. This is because, the win-
+ning app k was allocated resources; as a result, it will see its
+r improve over time; thus, it will eventually not appear in the
+fraction 1−f of not-so-fairly-treated apps that participate in
+future rounds. In contrast, i’s r will increase due to the wait-
+ing time, and thus it will continue to appear in future rounds.
+Further an app that loses multiple rounds will eventually lose
+its lease on all resources and make no further progress, caus-
+ing its r to become unbounded. The next auction round the
+app participates in will likely see the app’s bid winning, be-
+cause any non-zero GPU allocation to that app will lead to a
+huge improvement in the app’s valuation.
+As f ! 1, our policy provides greater guarantee on SI.
+However, this increase in SI comes at the cost of efﬁciency.
+This is because f ! 1 restricts the set of apps to which avail-
+able GPUs will be allocated; with f ! 0 available GPUs can
+be allocated to apps that beneﬁt most from better placement,
+which improves efﬁciency at the risk of violating SI.
+Leftover Allocation: At the end of each round we have left-
+over GPUs due to hidden payments. We allocate these GPUs
+at random to the apps that did not participate in the auction in
+this round. Thus our overall scheme is work-conserving.
+Overall, we prove that:
+Theorem 3.3. Round-by-round auctions preserve the PE, EF
+and SP properties of partial auctions and maximize SI.
+Proof. Refer to Appendix.
+To summarize, in THEMIS we propose a new ﬁnish-time
+fairness metric that captures fairness for long-running, place-
+ment sensitive ML apps. To perform allocations, we propose
+using a multi-round partial allocation auction that incentivizes
+truth telling and provides Pareto efﬁcient, envy free alloca-
+tions. By ﬁltering the apps considered in the auction, we max-
+imize sharing incentive and hence satisfy all the properties
+necessary for fair sharing among ML applications.
+4
+System Design
+We ﬁrst list design requirements for an ML cluster scheduler
+taking into account the fairness metric and auction mechanism
+described in Section 3, and the implications for the THEMIS
+scheduler architecture. Then, we discuss the API between the
+scheduler and the hyper-parameter optimizers.
+4.1
+Design Requirements
+Separation of visibility and allocation of resources. Core
+to our partial allocation mechanism is the abstraction of mak-
+ing available resources visible to a number of apps but al-
+locating each resource exclusively to a single app. As we
+argue below, existing scheduling architectures couple these
+concerns and thus necessitate the design of a new scheduler.
+Integration with hyper-parameter tuning systems. Hyper-
+parameter optimization systems such as Hyperband [21], Hy-
+perdrive [29] have their own schedulers that decide the re-
+source allocation and execution schedule for the jobs within
+those apps. We refer to these as app-schedulers. One of our
+goals in THEMIS is to integrate with these systems with mini-
+mal modiﬁcations to app-schedulers.
+These two requirements guide our design of a new two-
+level semi-optimistic scheduler and a set of corresponding
+abstractions to support hyper-parameter tuning systems.
+4.2
+THEMIS Scheduler Architecture
+Existing scheduler architectures are either pessimistic or fully
+optimistic and both these approaches are not suitable for real-
+izing multi-round auctions. We ﬁrst describe their shortcom-
+ings and then describe our proposed architecture.
+4.2.1
+Need for a new scheduling architecture
+Two-level pessimistic schedulers like Mesos [17] enforce pes-
+simistic concurrency control. This means that visibility and
+allocation go hand-in-hand at the granularity of a single app.
+There is restricted single-app visibility as available resources
+are partitioned by a mechanism internal to the lower-level
+(i.e., cross-app) scheduler and offered only to a single app at
+a time. The tight coupling of visibility and allocation makes it
+infeasible to realize round-by-round auctions where resources
+need to be visible to many apps but allocated to just one app.
+Shared-state fully optimistic schedulers like Omega [30]
+enforce fully optimistic concurrency control. This means that
+visibility and allocation go hand-in-hand at the granularity of
+multiple apps. There is full multi-app visibility as all cluster
+resources and their state is made visible to all apps. Also, all
+apps contend for resources and resource allocation decisions
+are made by multiple apps at the same time using transactions.
+This coupling of visibility and allocation in a lock-free manner
+makes it hard to realize a global policy like ﬁnish-time fairness
+and also leads to expensive conﬂict resolution (needed when
+multiple apps contend for the same resource) when the cluster
+is highly contented, which is typically the case in shared GPU
+clusters.
+Thus, the properties required by multi-round auctions, i.e.,
+multi-app resource visibility and single-app resource alloca-
+tion granularity, makes existing architectures ineffective.
+4.2.2
+Two-Level Semi-Optimistic Scheduling
+The two-levels in our scheduling architecture comprise of
+multiple app-schedulers and a cross-app scheduler that we
+call the ARBITER. The ARBITER has our scheduling logic.
+The top level per-app schedulers are minimally modiﬁed to
+interact with the ARBITER. Figure 6 shows our architecture.
+Each GPU in a THEMIS-managed cluster has a lease associ-
+ated with it. The lease decides the duration of ownership of the
+GPU for an app. When a lease expires, the resource is made
+294    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+THEMIS ARBITER
+Ask all 
+apps for !
+estimates
+Offers
+to subset 
+of apps
+Allocate 
+Winning 
+Bids
+Make Bids
+Receive Allocation
+Give ! Estimates
+AGENT
+App1
+App2
+Appn
+. .
+. . . 
+Appm
+1
+2
+3
+4
+5
+Resource Alloc
+!new
+0
+!old
+M1:2G
+M1:1G,M2:1G !old - "
+!old - 2"
+(a)
+(b)
+Apps 
+make 
+bids
+Figure 6: THEMIS Design. (a) Sequence of events in THEMIS - starts with
+a resource available event and ends with resource allocations. (b) Shows
+a typical bid valuation table an App submits to ARBITER. Each row has a
+subset of the complete resource allocation and the improved value of rnew.
+available for allocation. THEMIS’s ARBITER pools available
+resources and runs a round of the auctions described earlier.
+During each such round, the resource allocation proceeds in
+5 steps spanning 2 phases (shown in Figure 6):
+The ﬁrst phase, called the visibility phase, spans steps 1–3.
+1 The ARBITER asks all apps for current ﬁnish-time fair
+metric estimates. 2 The ARBITER initiates auctions, and
+makes the same non-binding resource-offer of the available
+resources to a fraction f 2 [0,1] of ML apps with worst ﬁnish-
+time fair metrics (according to round-by-round ﬁltering de-
+scribed earlier). To minimize changes in the ML app scheduler
+to participate in auctions, THEMIS introduces an AGENT that
+is co-located with each ML app scheduler. The AGENT serves
+as an intermediary between the ML app and the ARBITER. 3
+The apps examine the resource offer in parallel. Each app’s
+AGENT then replies with a single bid that contains preferences
+for desired resource allocations.
+The second phase, allocation phase, spans steps 4–5. 4
+The ARBITER, upon receiving all the bids for this round,
+picks winning bids according to previously described partial
+allocation algorithm and leftover allocation scheme. It then
+notiﬁes each AGENT of its winning allocation (if any). 5 The
+AGENT propagates the allocation to the ML app scheduler,
+which can then decide the allocation among constituent jobs.
+In sum, the two phase resource allocation means that our
+scheduler enforces semi-optimistic concurrency control. Sim-
+ilar to fully optimistic concurrency control, there is multi-app
+visibility as the cross-app scheduler offers resources to multi-
+ple apps concurrently. At the same time, similar to pessimistic
+concurrency control, the resource allocations are conﬂict-free
+guaranteeing exclusive access of a resource to every app.
+To enable preparation of bids in step 3, THEMIS imple-
+ments a narrow API from the ML app scheduler to the AGENT
+that enables propagation of app-speciﬁc information. An
+AGENT’s bid contains a valuation function (r(.)) that pro-
+vides, for each resource subset, an estimate of the ﬁnish-time
+fair metric the app will achieve with the allocation of the
+resource subset. We describe how this is calculated next.
+4.3
+AGENT and AppScheduler Interaction
+An AGENT co-resides with an app to aid participation in
+auctions. We now describe how AGENTs prepare bids based
+on inputs provided by apps, the API between an AGENT
+and its app, and how AGENTs integrate with current hyper-
+parameter optimization schedulers.
+4.3.1
+Single-Job ML Apps
+For ease of explanation, we ﬁrst start with the simple case of
+an ML app that has just one ML training job which can use
+at most job_demandmax GPUs. We ﬁrst look at calculation
+of the ﬁnish-time fair metric, r. We then look at a multi-job
+app example so as to better understand the various steps and
+interfaces in our system involved in a multi-round auction.
+Calculating r(−
+!
+G). Equation 1 shows the steps for calculating
+r for a single job given a GPU allocation of −
+!
+G in a cluster
+C with RC GPUs. When calculating r we assume that the
+allocation −
+!
+G is binding till job completion.
+r(−
+!
+G) = Tsh(−
+!
+G)/Tid
+Tsh = Tcurrent −Tstart+
+iter_left ⇤iter_time(−
+!
+G)
+Tid = Tcluster ⇤Navg
+iter_time(−
+!
+G) =
+iter_time_serial ⇤S(−
+!
+G)
+min(||−
+!
+G||1, job_demandmax)
+Tcluster = iter_total ⇤iter_serial_time
+min(RC, job_demandmax)
+(1)
+Tsh is the shared ﬁnish-time and is a function of the allo-
+cation −
+!
+G that the job receives. For the single job case, it has
+two terms. First, is the time elapsed (= Tcurrent −Tstart). Time
+elapsed also captures any queuing delays or starvation time.
+Second, is the time to execute remaining iterations which
+is the product of the number of iterations left (iter_left)
+and the iteration time (iter_time(−
+!
+G)). iter_time(−
+!
+G) depends
+on the allocation received. Here, we consider the common-
+case of the ML training job executing synchronous SGD.
+In synchronous SGD, the work in an iteration can be paral-
+lelized across multiple workers. Assuming linear speedup,
+this means that the iteration time is the serial iteration time
+(iter_time_serial) reduced by a factor of the number of GPUs
+in the allocation, ||−
+!
+G||1 or job_demandmax whichever is
+lesser. However, the linear speedup assumption is not true
+in the common case as network overheads are involved. We
+capture this via a slowdown penalty, S(−
+!
+G), which depends on
+the placement of the GPUs in the allocation. Values for S(−
+!
+G)
+can typically be obtained by proﬁling the job ofﬂine for a
+few iterations. 3 The slowdown is captured as a multiplicative
+factor, S(−
+!
+G) ≥1, by which Tsh is increased.
+3S(−
+!
+G) can also be calculated in an online fashion. First, we use crude
+placement preference estimates to begin with for single machine (=1), cross-
+machine (=1.1), cross-rack (=1.3) placement. These are replaced with ac-
+curate estimates by proﬁling iteration times when the ARBITER allocates
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    295
+
+
+Tid is the estimated ﬁnish-time in an independent
+1
+Navg clus-
+ter. Navg is the average contention in the cluster and is the
+weighted average of the number of apps in the system during
+the lifetime of the app. We approximate this as the ﬁnish-time
+of the app in the whole cluster, Tcluster multiplied by the aver-
+age contention. Tcluster assumes linear speedup when the app
+executes with all the cluster resources RC or maximum app
+demand whichever is lesser. It also assumes no slowdown.
+Thus, it is approximated as iter_total⇤iter_serial_time
+min(RC, job_demandmax) .
+4.3.2
+Generalizing to Multiple-Job ML Apps
+ML app schedulers for hyper-parameter optimization systems
+typically go from aggressive exploration of hyper-parameters
+to aggressive exploitation of best hyper-parameters. While
+there are a number of different algorithms for choosing the
+best hyper-parameters [3,21] to run, we focus on early stop-
+ping criteria as this affects the ﬁnish time of ML apps.
+As described in prior work [9], automatic stopping algo-
+rithms can be divided into two categories: Successive Halving
+and Performance Curve Stopping. We next discuss how to
+compute Tsh for each case.
+Successive Halving refers to schemes which start with a total
+time or iteration budget B and apportion that budget by peri-
+odically stopping jobs that are not promising. For example,
+if we start with n hyper parameter options, then each one is
+submitted as a job with a demand of 1 GPU for a ﬁxed number
+of iterations I. After I iterations, only the best n
+2 ML training
+jobs are retained and assigned a maximum demand of 2 GPUs
+for the same number of iterations I. This continues until we
+are left with 1 job with a maximum demand of n GPUs. Thus
+there are a total of log2n phases in Successive Halving. This
+scheme is used in Hyperband [21] and Google Vizier [9].
+We next describe how to compute Tsh and Tid for successive
+halving. We assume that the given allocation −
+!
+G lasts till app
+completion and the total time can be computed by adding up
+the time the app spends for each phase. Consider the case of
+phase i which has J =
+n
+2i−1 jobs. Equation 2 shows the calcu-
+lation of Tsh(i), the shared ﬁnish time of the phase. We assume
+a separation of concerns where the hyper-parameter optimizer
+can determine the optimal allocation of GPUs within a phase
+and thus estimate the value of S(−
+!
+G j). Along with iter_left,
+serial_iter_time, the AGENT can now estimate Tsh( j) for each
+job in the phase. We mark the phase as ﬁnished when the
+slowest or last job in the app ﬁnishes the phase (max j). Then
+the shared ﬁnish time for the app is the sum of the ﬁnish times
+of all constituent phases.
+To estimate the ideal ﬁnish-time we compute the total time
+to execute the app on the full cluster. We estimate this using
+the budget B which represents the aggregate work to be done
+and, as before, we assume linear speedup to the maximum
+number of GPUs the app can use app_demandmax.
+unseen placements. The multi-round nature of allocations means that errors
+in early estimates do not have a signiﬁcant effect.
+Tsh(i) = max j{T(−
+!
+Gj)}
+Tsh = Â
+i
+Tsh(i)
+Tcluster =
+B
+min(RC,app_demandmax)
+Tid = Tcluster ⇤Navg
+(2)
+The AGENT generates r using the above procedure for
+all possible subsets of {−
+!
+G} and produces a bid table similar
+to the one shown in Table 2 before. The API between the
+AGENT and hyper-parameter optimizer is shown in Figure 7
+and captures the functions that need to implemented by the
+hyper-parameter optimizer.
+Performance Curve Stopping refers to schemes where the
+convergence curve of a job is extrapolated to determine which
+jobs are more promising. This scheme is used by Hyper-
+drive [29] and Google Vizier [9]. Computing Tsh proceeds
+by calculating the ﬁnish time for each job that is currently
+running by estimating the iteration at which the job will be
+terminated (thus Tsh is determined by the job that ﬁnishes last).
+As before, we assume that the given allocation −
+!
+G lasts till app
+completion. Since the estimations are usually probabilistic,
+i.e., the iterations at which the job will converge has an error
+bar, we over-estimate and use the most optimistic convergence
+curve that results in the maximum forecasted completion time
+for that job. As the job progresses, the estimates of the con-
+vergence curve get more accurate and improves the accuracy
+of the estimated ﬁnish time Tsh. The API implemented by
+the hyper-parameter optimizer is simpler and only involves
+getting a list of running jobs as shown in Figure 7.
+We next present an end-to-end example of a multi-job app
+showing our mechanism in action.
+4.3.3
+End-to-end Example.
+We now run through a simple example that exercises the
+various aspects of our API and the interfaces involved.
+Consider a 16 GPU cluster and an ML app that has 4 ML
+jobs and uses successive halving, running along with 3 other
+ML apps in the same cluster. Each job in the app is tuning a
+different hyper-parameter and the serial time taken per itera-
+tion for the jobs are 80,100,100,120 seconds respectively.4
+The total budget for the app is 10,000 seconds of GPU time
+and we assume the job_demandmax is 8 GPUs and S(−
+!
+G) = 1.
+Given we start with 4 ML jobs, the hyper-parameter op-
+timizer divides this into 3 phases each having 4,2,1 jobs,
+respectively. To evenly divide the budget across the phases,
+the hyper-parameter optimizer budgets ⇡8,16,36 iterations
+in each phase. First we calculate the Tid by considering the
+budget, total cluster size, and cluster contention as: 10000⇥4
+16
+=
+2500s.
+Next, we consider the computation of Tsh assuming that 16
+4The time per iteration depends on the nature of the hyper-parameter
+being tuned. Some hyper-parameters like batch size or quantization used
+affect the iteration time while others like learning rate don’t.
+296    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+class JobInfo(int itersRemaining,
+float avgTimePerIter,
+float localitySensitivity);
+// Successive Halving
+List<JobInfo> getJobsInPhase(int phase,
+List<Int> gpuAlloc);
+int getNumPhases();
+// Performance Curve
+List<JobInfo> getJobsRemaining(List<Int> gpuAlloc);
+Figure 7: API between AGENT and hyperparameter optimizer
+||−
+!
+G||1
+0
+1
+2
+4
+8
+16
+r
+rold
+4
+2
+1
+0.5
+0.34
+Table 3: Example of bids submitted by AGENT
+GPUs are offered by the ARBITER. The AGENT now computes
+the bid for each subset of GPUs offered. Consider the case
+with 2 GPUs. In this case in the ﬁrst phase we have 4 jobs
+which are serialized to run 2 at a time. This leads to Tsh(1) =
+(120⇥8)+(80⇥8) = 1600 seconds. (Assume two 100s jobs
+run serially on one GPU, and the 80 and 120s jobs run serially
+on the other. Tsh is the time when the last job ﬁnishes.)
+When we consider the next stage the hyper-parameter opti-
+mizer currently does not know which jobs will be chosen for
+termination. We use the median job (in terms of per-iteration
+time) to estimate Tsh(i) for future phases. Thus, in the sec-
+ond phase we have 2 jobs so we run one job on each GPU
+each of which we assume to take the median 100 seconds
+per iteration leading to Tsh(2) = (100⇥16) = 1600 seconds.
+Finally for the last phase we have 1 job that uses 2 GPUs
+and runs for 36 iterations leading to Tsh(3) = (100⇥36)
+2
+= 1800
+(again, the “median” jobs takes 100s per iteration). Thus Tsh =
+1600+1600+1800 = 5000 seconds, making r = 5000
+2500 = 2.
+Note that since placement did not matter here we considered
+any 2 GPUs being used. Similarly ignoring placement, the
+bids for the other allocations are shown in Table 3.
+We highlight a few more points about our example above.
+If the jobs that are chosen for the next phase do not match
+the median iteration time then the estimates are revised in the
+next round of the auction. For example, if the jobs that are
+chosen for the next round have iteration time 120,100 then the
+above bid will be updated with Tsh(2) = (120⇥16) = 32005
+and Tsh(3) = (120⇥36)
+2
+= 2160. Further, we also see that the
+job_demandmax = 8 means that the r value for 16 GPUs
+does not linearly decrease from that of 8 GPUs.
+5
+Implementation
+We implement THEMIS on top of a recent release of Apache
+Hadoop YARN [1] (version 3.2.0) which includes, Subma-
+rine [2], a new framework for running ML training jobs atop
+YARN. We modify the Submarine client to support submitting
+a group of ML training jobs as required by hyper-parameter
+exploration apps. Once an app is submitted, it is managed by
+5Because the two jobs run on one GPU each, and the 120s-per-iteration
+job is the last to ﬁnish in the phase
+a Submarine Application Master (AM) and we make changes
+to the Submarine AM to implement the ML app scheduler
+(we use Hyperband [21]) and our AGENT.
+To prepare accurate bids, we implement a proﬁler in the
+AM that parses TensorFlow logs, and tracks iteration times
+and loss values for all the jobs in an app. The allocation of
+a job changes over time and iteration times are used to ac-
+curately estimate the placement preference (S) for different
+GPU placements. Loss values are used in our Hyperband
+implementation to determine early stopping. THEMIS’s AR-
+BITER is implemented as a separate module in YARN RM.
+We add gRPC-based interfaces between the AGENT and the
+ARBITER to enable offers, bids, and ﬁnal winning allocations.
+Further, the ARBITER tracks GPU leases to offer reclaimed
+GPUs as a part of the offers.
+All the jobs we use in our evaluation are TensorFlow pro-
+grams with conﬁgurable hyper-parameters. To handle allo-
+cation changes at runtime, the programs checkpoint model
+parameters to HDFS every few iterations. After a change in
+allocation, they resume from the most recent checkpoint.
+6
+Evaluation
+We evaluate THEMIS on a 64 GPU cluster and also use a
+event-driven simulator to model a larger 256 GPU cluster. We
+compare against other state-of-the-art ML schedulers. Our
+evaluation shows the following key highlights -
+• THEMIS is better than other schemes on ﬁnish-time fair-
+ness while also offering better cluster efﬁciency (Figure 9-10-
+11-12).
+• THEMIS’s beneﬁts compared to other schemes improve
+with increasing fraction of placement sensitive apps and in-
+creasing contention in the cluster, and these improvements
+hold even with errors – random and strategic – in ﬁnish-time
+fair metric estimations (Figure 14-18).
+• THEMIS enables a trade-off between ﬁnish-time fairness
+in the long-term and placement efﬁciency in the short-term.
+Sensitivity analysis (Figure 19) using simulations show that
+f = 0.8 and a lease time of 10 minutes gives maximum fair-
+ness while also utilizing the cluster efﬁciently.
+6.1
+Experimental Setup
+Testbed Setup. Our testbed is a 64 GPU, 20 machine cluster
+on Microsoft Azure [23]. We use NC-series instances. We
+have 8 NC12-series instances each with 2 Tesla K80 GPUs
+and 12 NC24-series instances each with 4 Tesla K80 GPUs.
+Simulator. We develop an event-based simulator to evaluate
+THEMIS at large scale. The simulator assumes that estimates
+of the loss function curves for jobs are known ahead of time so
+as to predict the total number of iterations for the job. Unless
+stated otherwise, all simulations are done on a heterogeneous
+256 GPU cluster. Our simulator assumes a 4-level hierarchical
+locality model for GPU placements. Individual GPUs ﬁt onto
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    297
+
+
+(a) CDF GPUs per job
+(b) CDF jobs per app
+Figure 8: Details of 2 workloads used for evaluation of THEMIS
+Model
+Type
+Dataset
+10%
+Inception-v3 [33]
+CV
+ImageNet [7]
+AlexNet [20]
+CV
+ImageNet
+ResNet50 [16]
+CV
+ImageNet
+VGG16 [32]
+CV
+ImageNet
+VGG19 [32]
+CV
+ImageNet
+60%
+Bi-Att-Flow [31]
+NLP
+SQuAD [28]
+LangModel [41]
+NLP
+PTB [22]
+GNMT [38]
+NLP
+WMT16 [37]
+Transformer [35]
+NLP
+WMT16
+30%
+WaveNet [25]
+Speech
+VCTK [40]
+DeepSpeech [15]
+Speech
+CommonVoice [6]
+Table 4: Models used in our trace.
+slots on machines occupying different cluster racks.6
+Workload. We experiment with 2 different traces that have
+different workload characteristics in both the simulator and
+the testbed - (i) Workload 1. A publicly available trace of
+DNN training workloads at Microsoft [19,24]. We scale-down
+the trace, using a two week snapshot and focus on subset
+of jobs from the trace that correspond to hyper-parameter
+exploration jobs triggered by Hyperdrive. (ii) Workload 2.
+We use the app arrival times from Workload 1, generate jobs
+per app using the successive halving pattern characteristic of
+the Hyperband algorithm [21], and increase the number of
+tasks per job compared to Workload 1. The distribution of
+number of tasks per job and number of jobs per app for the
+two workloads is shown in Figure 8.
+The traces comprise of models from three categories - com-
+puter vision (CV - 10%), natural language processing (NLP
+- 60%) and speech (Speech - 30%). We use the same mix of
+models for each category as outlined in Gandiva [39]. We
+summarize the models in Table 4.
+Baselines. We compare THEMIS against four state-of-the-art
+ML schedulers - Gandiva [39], Tiresias [13], Optimus [27],
+SLAQ [42]; these represent the best possible baselines for
+maximizing efﬁciency, fairness, aggregate throughput, and ag-
+gregate model quality, respectively. We also compare against
+two scheduling disciplines - shortest remaining time ﬁrst
+(SRTF) and shortest remaining service ﬁrst (SRSF) [13]; these
+represent baselines for minimizing average job completion
+6The heterogeneous cluster consists of 16 8-GPU machines (4 slots and
+2 GPUs per slot), 6 4-GPU machines (4 slots and 1 GPU per slot), and 16
+1-GPU machines
+time (JCT) with efﬁciency as secondary concern and mini-
+mizing average JCT with fairness as secondary concern, re-
+spectively. We implement these baselines in our testbed as
+well as the simulator as described below:
+Ideal Efﬁciency Baseline - Gandiva. Gandiva improves
+cluster utilization by packing jobs on as few machines as pos-
+sible. In our implementation, Gandiva introspectively proﬁles
+ML job execution to infer placement preferences and migrates
+jobs to better meet these placement preferences. On any re-
+source availability, all apps report their placement preferences
+and we allocate resources in a greedy highest preference ﬁrst
+manner which has the effect of maximizing the average place-
+ment preference across apps. We do not model time-slicing
+and packing of GPUs as these system-level techniques can be
+integrated with THEMIS as well and would beneﬁt Gandiva
+and THEMIS to equal extents.
+Ideal Fairness Baseline - Tiresias. Tiresias deﬁnes a new
+service metric for ML jobs – the aggregate GPU-time allo-
+cated to each job – and allocates resources using the Least
+Attained Service (LAS) policy so that all jobs obtain equal
+service over time. In our implementation, on any resource
+availability, all apps report their service metric and we allo-
+cate the resource to apps that have the least GPU service.
+Ideal Aggregate Throughput Baseline - Optimus. Opti-
+mus proposes a throughput scaling metric for ML jobs – the
+ratio of new job throughput to old job throughput with and
+without an additional GPU allocation. On any resource avail-
+ability, all apps report their throughput scaling and we allocate
+resources in order of highest throughput scaling metric ﬁrst.
+Ideal Aggregate Model Quality - SLAQ. SLAQ proposes a
+greedy scheme for improving aggregate model quality across
+all jobs. In our implementation, on any resource availability
+event, all apps report the decrease in loss value with allo-
+cations from the available resources and we allocate these
+resources in a greedy highest loss ﬁrst manner.
+Ideal Average App Completion Time - SRTF, SRSF. For
+SRTF, on any resource availability, all apps report their re-
+maining time with allocations from the available resource and
+we allocate these resources using SRTF policy. Efﬁciency is
+a secondary concern with SRTF as better packing of GPUs
+leads to shorter remaining times.
+SRSF is a service-based metric and approximates gittins
+index policy from Tiresias. In our implementation, we as-
+sume accurate knowledge of remaining service and all apps
+report their remaining service and we allocate one GPU at
+a time using SRSF policy. Fairness is a secondary concern
+as shorter service apps are preferred ﬁrst as longer apps are
+more amenable to make up for lost progress due to short-term
+unfair allocations.
+Metrics. We use a variety of metrics to evaluate THEMIS.
+(i) Finish-time fairness:
+We evaluate the fairness of
+schemes by looking at the ﬁnish-time fair metric (r) distribu-
+tion and the maximum value across apps. A tighter distribu-
+tion and a lower value of maximum value of r across apps
+298    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+Figure 9: [TESTBED] Comparison of ﬁnish-time fairness across schedulers
+with Workload 1
+Figure 10: [TESTBED] Comparison of ﬁnish-time fairness across schedulers
+with Workload 2
+ThemisGandiva SLAQ Tiresias SRTF
+SRSF Optimus
+0
+200
+400
+600
+800
+1000
+1200
+GPU Time (hours)
+Figure 11: [TESTBED] Comparison of total GPU times across schemes with
+Workload 1. Lower GPU time indicates better utilization of the GPU cluster
+indicate higher fairness. (ii) GPU Time: We use GPU Time
+as a measure of how efﬁciently the cluster is utilized. For two
+scheduling schemes S1 and S2 that have GPU times G1 and
+G2 for executing the same amount of work, S1 utilizes the
+cluster more efﬁciently than S2 if G1 < G2. (iii) Placement
+Score: We give each allocation a placement score (1). This
+is inversely proportional to slowdown, S, that app experiences
+due to this allocation. The slowdown is dependent on the ML
+app properties and the network interconnects between the
+allocated GPUs. A placement score of 1.0 is desirable for as
+many apps as possible.
+6.2
+Macrobenchmarks
+In our testbed, we evaluate THEMIS against all baselines on
+all the workloads. We set the fairness knob value f as 0.8
+and lease as 10 minutes, which is informed by our sensitivity
+analysis results in Section 6.4.
+Figure 9-10 shows the distribution of ﬁnish-time fairness
+metric, r, across apps for THEMIS and all the baselines. We
+see that THEMIS has a narrower distribution for the r values
+which means that THEMIS comes closest to giving all jobs an
+equal sharing incentive. Also, THEMIS gives 2.2X to 3.25X
+better (smaller) maximum r values compared to all baselines.
+Figure 11-12 shows a comparison of the efﬁciency in terms
+of the aggregate GPU time to execute the complete workload.
+Workload 1 has similar efﬁciency across THEMIS and the
+ThemisGandiva SLAQ Tiresias SRTF
+SRSF Optimus
+0
+200
+400
+600
+800
+1000
+1200
+1400
+GPU Time (hours)
+Figure 12: [TESTBED] Comparison of total GPU times across schemes with
+Workload 2. Lower GPU time indicates better utilization of the GPU cluster
+Job Type
+GPU Time
+# GPUs
+rTHEMIS
+rTiresias
+Long Job
+~580 mins
+4
+~1
+~0.9
+Short Job
+~83 mins
+2
+~1.2
+~1.9
+Table 5: [TESTBED] Details of 2 jobs to understand the beneﬁts of THEMIS
+0.5
+0.6
+0.7
+0.8
+0.9
+1.0
+Placement Score
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Fraction of allocations
+Themis
+Gandiva
+SLAQ
+Tiresias
+SRTF
+SRSF
+Optimus
+Figure 13: [TESTBED] CDF of place-
+ment scores across schemes
+Figure 14: [TESTBED] Impact of
+contention on ﬁnish-time fairness
+baselines as all jobs are either 1 or 2 GPU jobs and almost
+all allocations, irrespective of the scheme, end up as efﬁcient.
+With workload 2, THEMIS betters Gandiva by ~4.8% and out-
+performs SLAQ by ~250%. THEMIS is better because global
+visibility of app placement preferences due to the auction
+abstraction enables globally optimal decisions. Gandiva in
+contrast takes greedy locally optimal packing decisions.
+6.2.1
+Sources of Improvement
+In this section, we deep-dive into the reasons behind the wins
+in fairness and cluster efﬁciency in THEMIS.
+Table 5 compares the ﬁnish-time fair metric value for a
+pair of short- and long-lived apps from our testbed run for
+THEMIS and Tiresias. THEMIS offers better sharing incentive
+for both the short and long apps. THEMIS induces altruistic
+behavior in long apps. We attribute this to our choice of r
+metric. With less than ideal allocations, even though long
+apps see an increase in Tsh, their r values do not increase
+drastically because of a higher Tid value in the denominator.
+Whereas, shorter apps see a much more drastic degradation,
+and our round-by-round ﬁltering of farthest-from-ﬁnish-time
+fairness apps causes shorter apps to participate in auctions
+more often. Tiresias offers poor sharing incentive for short
+apps as it treats short- and long-apps as the same. This only
+worsens the sharing incentive for short apps.
+Figure 13 shows the distribution of placement scores for
+all the schedulers. THEMIS gives the best placement scores
+(closer to 1.0 is better) in workload 2, with Gandiva and Opti-
+mus coming closest. Workload 1 has jobs with very low GPU
+demand and almost all allocations have a placement score of 1
+irrespective of the scheme. Other schemes are poor as they do
+not account for placement preferences. Gandiva does greedy
+local packing and Optimus does greedy throughput scaling
+and are not as efﬁcient because they are not globally optimal.
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    299
+
+
+6.2.2
+Effect of Contention
+In this section, we analyze the effect of contention on ﬁnish-
+time fairness. We decrease the size of the cluster to half and
+quarter the original size to induce a contention of 2X and
+4X respectively. Figure 14 shows the change in max value
+of r as the contention changes with workload 1. THEMIS
+is the only scheme that maintains sharing incentive even in
+high contention scenarios. SRSF comes close as it preferably
+allocates resources to shorter service apps. This behavior is
+similar to that in THEMIS. THEMIS induces altruistic shedding
+of resources by longer apps (Section 6.2.1), giving shorter
+apps a preference in allocations during higher contention.
+6.2.3
+Systems Overheads
+From our proﬁling of the experiments above, we ﬁnd that
+each AGENT spends 29 (334) milliseconds to compute bids at
+the median (95-%). The 95 percentile is high because enumer-
+ation of possible bids needs to traverse a larger search space
+when the number of resources up for auction is high.
+The ARBITER uses Gurobi [14] to compute partial allo-
+cation of resources to apps based on bids. This computation
+takes 354 (1398) milliseconds at the median (95-%ile). The
+high tail is once again observed when both the number of
+offered resources and the number of apps bidding are high.
+However, the time is small relative to lease time. The net-
+work overhead for communication between the ARBITER
+and individual apps is negligible since we use the existing
+mechanisms used by Apache YARN.
+Upon receiving new resource allocations, the AGENT
+changes (adds/removes) the number of GPU containers avail-
+able to its app. This change takes about 35 (50) seconds at
+the median (95-%ile), i.e., an overhead of 0.2% (2%) of the
+app duration at the median (95-%ile). Prior to relinquishing
+control over its resources, each application must checkpoint
+its set of parameters. We ﬁnd that that this is model dependent
+but takes about 5-10 seconds on an average and is driven
+largely by the overhead of check-pointing to HDFS.
+6.3
+Microbenchmarks
+Placement Preferences: We analyze the impact on ﬁnish-
+time fairness and cluster efﬁciency as the fraction of network-
+intensive apps in our workload increases. We synthetically
+construct 6 workloads and vary the percentage of network-
+intensive apps in these workloads from 0%-100%.
+From Figure 15, we notice that sharing incentive degrades
+most when there is a heterogeneous mix of compute and net-
+work intensive apps (at 40% and 60%). THEMIS has a max r
+value closest to 1 across all scenarios and is the only scheme to
+ensure sharing incentive. When the workload consists solely
+of network-intensive apps, THEMIS performs ~1.24 to 1.77X
+better than existing baselines on max fairness.
+Figure 16 captures the impact on cluster efﬁciency. With
+only compute-intensive apps, all scheduling schemes utilize
+the cluster equally efﬁciently. As the percentage of network
+intensive apps increases, THEMIS has lower GPU times to exe-
+0
+20
+40
+60
+80
+100
+% Network Intensive Apps
+0
+2
+4
+6
+8
+10
+Max Fairness
+Themis
+Gandiva
+SLAQ
+Tiresias
+SRTF
+SRSF
+Optimus
+Figure 15: [SIMULATOR] Impact of placement preferences for varying mix
+of compute- and network-intensive apps on max r
+0
+20
+40
+60
+80
+100
+% Network Intensive Apps
+0
+200
+400
+600
+800
+1000
+1200
+1400
+1600
+GPU Time (hours)
+Themis
+Gandiva
+SLAQ
+Tiresias
+SRTF
+SRSF
+Optimus
+Figure 16: [SIMULATOR] Impact of placement preferences for varying mix
+of compute- and network-intensive apps on GPU Time
+cute the same workload. This means that THEMIS utilizes the
+cluster more efﬁciently than other schemes. In the workload
+with 100% network-intensive apps, THEMIS performs ~8.1%
+better than Gandiva (state-of-the-art for cluster efﬁciency).
+Error Analysis: Here, we evaluate the ability of THEMIS to
+handle errors in estimation of number of iterations and the
+slowdown (S). For this experiment, we assume that all apps
+are equally susceptible to making errors in estimation. The
+percentage error is sampled at random from [-X, X] range for
+each app. Figure 17 shows the changes in max ﬁnish-time
+fairness as we vary X. Even with X = 20%, the change in
+max ﬁnish-time fairness is just 10.76% and is not signiﬁcant.
+Truth-Telling: To evaluate strategy-proofness, we use sim-
+ulations. We use a cluster of 64 GPUs with 8 identical apps
+with equivalent placement preferences. The cluster has a sin-
+gle 8 GPU machine and the others are all 2 GPU machines.
+The most preferred allocation in this cluster is the 8 GPU ma-
+chine. We assume that there is a single strategically lying app
+and 7 truthful apps. In every round of auction it participates
+in, the lying app over-reports the slowdown with staggered
+machine placement or under-reports the slowdown with dense
+machine placement by X%. Such a strategy would ensure
+higher likelihood of winning the 8 GPU machine. We vary the
+value of X in the range [0,100] and analyze the lying app’s
+completion time and the average app completion time of the
+truthful apps in Figure 18. We see that at ﬁrst the lying app
+does not experience any decrease in its own app completion
+time. On the other hand, we see that the truthful apps do better
+on their average app completion time. This is because the hid-
+den payment from the partial allocation mechanism in each
+round of the auction for the lying app remains the same while
+300    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+0%
+5%
+10%
+20%
+% error in bid valuations
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+1.2
+1.4
+Max. Fairness
+Figure 17: [SIMULATOR] Impact of
+error in bid values on max fairness
+Figure 18: [SIMULATOR] Strategic
+lying is detrimental
+(a) Impact on Max Fairness
+(b) Impact on GPU Time
+Figure 19: [SIMULATOR] Sensitivity of fairness knob and lease time.
+the payment from the rest of the apps keeps decreasing. We
+also observe that there is a sudden tipping point at X > 34%.
+At this point, there is a sudden increase in the hidden payment
+for the lying app and it loses a big chunk of resources to other
+apps. In essence, THEMIS incentivizes truth-telling.
+6.4
+Sensitivity Analysis
+We use simulations to study THEMIS’s sensitivity to fairness
+knob f and the lease time. Figure 19 (a) shows the impact
+on max r as we vary the fairness knob f. We observe that
+ﬁltering (1 −f) fraction of apps helps with ensuring better
+sharing incentive. As f increases from 0 to 0.8, we observe
+that fairness improves. Beyond f = 0.8, max fairness wors-
+ens by around a factor of 1.5X. We see that the quality of
+sharing incentive, captured by max r, degrades at f = 1 be-
+cause we observe that only a single app with highest r value
+participates in the auction. This app is forced sub-optimal
+allocations because of poor placement of available resources
+with respect to the already allocated resources in this app. We
+also observe that smaller lease times promote better fairness
+since frequently ﬁltering apps reduces the time that queued
+apps wait for an allocation.
+Figure 19 (b) shows the impact on the efﬁciency of cluster
+usage as we vary the fairness knob f. We observe that the ef-
+ﬁciency decreases as the value of f increases. This is because
+the number of apps that can bid for an offer reduces as we
+increase f leading to fewer opportunities for the ARBITER to
+pack jobs efﬁciently. Lower lease values mean than models
+need to be check-pointed more often (GPUs are released on
+lease expiry) and hence higher lease values are more efﬁcient.
+Thus we choose f = 0.8 and lease = 10 minutes.
+7
+Related Work
+Cluster scheduling for ML workloads has been targeted by a
+number of recent works including SLAQ [42], Gandiva [39],
+Tiresias [13] and Optimus [27]. These systems target different
+objectives and we compare against them in Section 6.
+We build on rich literature on cluster scheduling disci-
+plines [8,10–12] and two level schedulers [17,30,36]. While
+those disciplines/schedulers don’t apply to our problem, we
+build upon some of their ideas, e.g., resource offers in [17].
+Sharing incentive was outlined by DRF [8], but we focus on
+long term fairness with our ﬁnish-time metric. Tetris [10]
+proposes resource-aware packing with an option to trade-
+off for fairness using multi-dimensional bin-packing as the
+mechanism for achieving that. In THEMIS, we instead focus
+on fairness with an option to trade-off for placement-aware
+packing, and use auctions as our mechanism.
+Some earlier schemes [11,12] also attempted to emulate the
+long term effects of fair allocation. Around occasional barri-
+ers, unused resources are re-allocated across jobs. THEMIS dif-
+fers in many respects: First, earlier systems focus on batch ana-
+lytics. Second, earlier schemes rely on instantaneous resource-
+fairness (akin to DRF), which has issues with placement-
+preference unawareness and not accounting for long tasks.
+Third, in the ML context there are no occasional barriers.
+While barriers do arise due to synchronization of parameters
+in ML jobs, they happen at every iteration. Also, resources
+unilaterally given up by a job may not be usable by another
+job due to placement preferences.
+8
+Conclusion
+In this paper we presented THEMIS, a fair scheduling frame-
+work for ML training workloads. We showed how existing
+fair allocation schemes are insufﬁcient to handle long-running
+tasks and placement preferences of ML workloads. To address
+these challenges we proposed a new long term fairness ob-
+jective in ﬁnish-time fairness. We then presented a two-level
+semi-optimistic scheduling architecture where ML apps can
+bid on resources offered in an auction. Our experiments show
+that THEMIS can improve fairness and efﬁciency compared
+to state of the art schedulers.
+Acknowledgements. We are indebted to Varun Batra and
+Surya Teja Chavali for early discussions and helping with
+cluster management. We thank the Azure University Grant
+for their generous support in providing us the GPU resources
+used for experiments in this paper. We also thank Jim Jerni-
+gan for sharing his insights on running large GPU clusters
+at Microsoft. Finally, we thank the reviewers and our shep-
+herd Manya Ghobadi. This work is supported by the National
+Science Foundation (grants CNS-1838733, CNS-1763810,
+CNS-1563095, CNS-1617773, and CCF-1617505). Shivaram
+Venkataraman is also supported by a Facebook faculty re-
+search award and support for this research was also provided
+by the Ofﬁce of the Vice Chancellor for Research and Gradu-
+ate Education at the University of Wisconsin, Madison with
+funding from the Wisconsin Alumni Research Foundation.
+Aditya Akella is also supported by a Google faculty research
+award, a Facebook faculty research award, and H. I. Romnes
+Faculty Fellowship.
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    301
+
+
+References
+[1] Apache
+Hadoop
+NextGen
+MapReduce
+(YARN).
+Retrieved
+9/24/2013,
+URL:
+http://hadoop.
+apache.org/docs/current/hadoop-yarn/
+hadoop-yarn-site/YARN.html, 2013.
+[2] Apache Hadoop Submarine.
+https://hadoop.
+apache.org/submarine/, 2019.
+[3] J. Bergstra, B. Komer, C. Eliasmith, D. Yamins, and D. D.
+Cox. Hyperopt: a python library for model selection and
+hyperparameter optimization. Computational Science
+& Discovery, 8(1), 2015.
+[4] J. Chen, X. Pan, R. Monga, S. Bengio, and R. Jozefowicz.
+Revisiting distributed synchronous sgd. arXiv preprint
+arXiv:1604.00981, 2016.
+[5] R. Cole, V. Gkatzelis, and G. Goel. Mechanism de-
+sign for fair division: allocating divisible items without
+payments. In Proceedings of the fourteenth ACM con-
+ference on Electronic commerce, pages 251–268. ACM,
+2013.
+[6] Common Voice Dataset.
+https://voice.mozilla.
+org/.
+[7] J. Deng, W. Dong, R. Socher, L.-J. Li, K. Li, and
+L. Fei-Fei. Imagenet: A large-scale hierarchical im-
+age database. In 2009 IEEE conference on computer
+vision and pattern recognition, pages 248–255. Ieee,
+2009.
+[8] A. Ghodsi, M. Zaharia, B. Hindman, A. Konwinski,
+S. Shenker, and I. Stoica. Dominant resource fairness:
+Fair allocation of multiple resource types. In NSDI,
+2011.
+[9] D. Golovin, B. Solnik, S. Moitra, G. Kochanski, J. Karro,
+and D. Sculley. Google vizier: A service for black-box
+optimization. In KDD, 2017.
+[10] R. Grandl, G. Ananthanarayanan, S. Kandula, S. Rao,
+and A. Akella. Multi-resource packing for cluster sched-
+ulers. ACM SIGCOMM Computer Communication Re-
+view, 44(4):455–466, 2015.
+[11] R. Grandl, M. Chowdhury, A. Akella, and G. Anantha-
+narayanan. Altruistic scheduling in multi-resource clus-
+ters. In 12th {USENIX} Symposium on Operating Sys-
+tems Design and Implementation ({OSDI} 16), pages
+65–80, 2016.
+[12] R. Grandl, S. Kandula, S. Rao, A. Akella, and J. Kulka-
+rni.
+GRAPHENE: Packing and Dependency-Aware
+Scheduling for Data-Parallel Clusters. In 12th USENIX
+Symposium on Operating Systems Design and Imple-
+mentation (OSDI 16), pages 81–97, 2016.
+[13] J. Gu, M. Chowdhury, K. G. Shin, Y. Zhu, M. Jeon,
+J. Qian, H. Liu, and C. Guo. Tiresias: A {GPU} clus-
+ter manager for distributed deep learning.
+In 16th
+{USENIX} Symposium on Networked Systems Design
+and Implementation ({NSDI} 19), pages 485–500, 2019.
+[14] Gurobi Optimization. http://www.gurobi.com/.
+[15] A. Hannun, C. Case, J. Casper, B. Catanzaro, G. Di-
+amos, E. Elsen, R. Prenger, S. Satheesh, S. Sengupta,
+A. Coates, et al. Deep speech: Scaling up end-to-end
+speech recognition. arXiv preprint arXiv:1412.5567,
+2014.
+[16] K. He, X. Zhang, S. Ren, and J. Sun. Deep residual learn-
+ing for image recognition. In Proceedings of the IEEE
+conference on computer vision and pattern recognition,
+pages 770–778, 2016.
+[17] B. Hindman, A. Konwinski, M. Zaharia, A. Ghodsi,
+A. D. Joseph, R. H. Katz, S. Shenker, and I. Stoica.
+Mesos: A platform for ﬁne-grained resource sharing in
+the data center. In NSDI, 2011.
+[18] M. Isard, V. Prabhakaran, J. Currey, U. Wieder, K. Tal-
+war, and A. Goldberg. Quincy: fair scheduling for dis-
+tributed computing clusters. In Proceedings of the ACM
+SIGOPS 22nd symposium on Operating systems princi-
+ples, pages 261–276. ACM, 2009.
+[19] M. Jeon, S. Venkataraman, A. Phanishayee, J. Qian,
+W. Xiao, and F. Yang. Analysis of Large-Scale Multi-
+Tenant GPU Clusters for DNN Training Workloads. In
+USENIX ATC, 2019.
+[20] A. Krizhevsky, I. Sutskever, and G. E. Hinton. Imagenet
+classiﬁcation with deep convolutional neural networks.
+In Advances in neural information processing systems,
+pages 1097–1105, 2012.
+[21] L. Li, K. Jamieson, G. DeSalvo, A. Rostamizadeh, and
+A. Talwalkar. Hyperband: A novel bandit-based ap-
+proach to hyperparameter optimization. arXiv preprint
+arXiv:1603.06560, 2016.
+[22] M. Marcus, B. Santorini, and M. A. Marcinkiewicz.
+Building a large annotated corpus of english: The penn
+treebank. 1993.
+[23] Microsoft Azure. https://azure.microsoft.com/
+en-us/.
+[24] Microsoft Philly Trace.
+https://github.com/
+msr-fiddle/philly-traces, 2019.
+[25] A. v. d. Oord, S. Dieleman, H. Zen, K. Simonyan,
+O. Vinyals, A. Graves, N. Kalchbrenner, A. Senior, and
+K. Kavukcuoglu. Wavenet: A generative model for raw
+audio. arXiv preprint arXiv:1609.03499, 2016.
+302    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+[26] K. Ousterhout, P. Wendell, M. Zaharia, and I. Stoica.
+Sparrow: distributed, low latency scheduling. In SOSP,
+pages 69–84, 2013.
+[27] Y. Peng, Y. Bao, Y. Chen, C. Wu, and C. Guo. Optimus:
+an efﬁcient dynamic resource scheduler for deep learn-
+ing clusters. In Proceedings of the Thirteenth EuroSys
+Conference, page 3. ACM, 2018.
+[28] P. Rajpurkar, J. Zhang, K. Lopyrev, and P. Liang. Squad:
+100,000+ questions for machine comprehension of text.
+arXiv preprint arXiv:1606.05250, 2016.
+[29] J. Rasley, Y. He, F. Yan, O. Ruwase, and R. Fonseca. Hy-
+perdrive: Exploring hyperparameters with pop schedul-
+ing. In Proceedings of the 18th ACM/IFIP/USENIX
+Middleware Conference, pages 1–13. ACM, 2017.
+[30] M. Schwarzkopf, A. Konwinski, M. Abd-El-Malek, and
+J. Wilkes. Omega: ﬂexible, scalable schedulers for large
+compute clusters. In Eurosys, 2013.
+[31] M. Seo, A. Kembhavi, A. Farhadi, and H. Hajishirzi.
+Bidirectional attention ﬂow for machine comprehension.
+arXiv preprint arXiv:1611.01603, 2016.
+[32] K. Simonyan and A. Zisserman. Very deep convolu-
+tional networks for large-scale image recognition. arXiv
+preprint arXiv:1409.1556, 2014.
+[33] C. Szegedy, V. Vanhoucke, S. Ioffe, J. Shlens, and Z. Wo-
+jna. Rethinking the inception architecture for computer
+vision. In Proceedings of the IEEE conference on com-
+puter vision and pattern recognition, pages 2818–2826,
+2016.
+[34] H. R. Varian. Equity, envy, and efﬁciency. Journal of
+Economic Theory, 9(1):63 – 91, 1974.
+[35] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit,
+L. Jones, A. N. Gomez, Ł. Kaiser, and I. Polosukhin.
+Attention is all you need. In Advances in neural infor-
+mation processing systems, pages 5998–6008, 2017.
+[36] A. Verma, L. Pedrosa, M. Korupolu, D. Oppenheimer,
+E. Tune, and J. Wilkes. Large-scale cluster management
+at google with borg. In Eurosys, 2015.
+[37] WMT16 Dataset. http://www.statmt.org/wmt16/.
+[38] Y. Wu, M. Schuster, Z. Chen, Q. V. Le, M. Norouzi,
+W. Macherey, M. Krikun, Y. Cao, Q. Gao, K. Macherey,
+et al. Google’s neural machine translation system: Bridg-
+ing the gap between human and machine translation.
+arXiv preprint arXiv:1609.08144, 2016.
+[39] W. Xiao, R. Bhardwaj, R. Ramjee, M. Sivathanu,
+N. Kwatra, Z. Han, P. Patel, X. Peng, H. Zhao, Q. Zhang,
+et al. Gandiva: Introspective cluster scheduling for deep
+learning. In 13th {USENIX} Symposium on Operat-
+ing Systems Design and Implementation ({OSDI} 18),
+pages 595–610, 2018.
+[40] J. Yamagishi.
+English multi-speaker corpus for cstr
+voice cloning toolkit. URL http://homepages. inf. ed. ac.
+uk/jyamagis/page3/page58/page58. html, 2012.
+[41] W. Zaremba, I. Sutskever, and O. Vinyals.
+Recur-
+rent neural network regularization.
+arXiv preprint
+arXiv:1409.2329, 2014.
+[42] H. Zhang, L. Stafman, A. Or, and M. J. Freedman. Slaq:
+quality-driven scheduling for distributed machine learn-
+ing. In Proceedings of the 2017 Symposium on Cloud
+Computing, pages 390–404. ACM, 2017.
+USENIX Association
+17th USENIX Symposium on Networked Systems Design and Implementation    303
+
+
+A
+Appendix
+PROOF OF THEOREM 3.1. Examples in Figure 5 and Sec-
+tion 3.1.2 shows that DRF violates SI, EF, and PE. Same
+examples hold true for LAS policy in Tiresias. The service
+metric i.e. the GPU in Instance 1 and Instance 2 is the same
+for A1 and A2 in terms of LAS and is deemed a fair allocation
+over time. However, Instance 1 violates SI as A1 (VGG16)
+and A2 (VGG16) would prefer there own independent GPUs
+and Instance 2 violates EF and PE as A2 (VGG16) prefers
+the allocation of A1 (Inception-v3) and PE as the optimal
+allocation after taking into account placement preferences
+would interchange the allocation of A1 and A2.
+PROOF OF THEOREM 3.2. We ﬁrst show that the valuation
+function, r(.), for the case of ML jobs is homogeneous. This
+means that r(.) has the following property: r(m⇤−
+!
+G) = m⇤
+r−
+!
+G.
+Consider a job with GPUs spread across a set of some
+M machines. If we keep this set of machines the same, and
+increase the number of GPUs allocated on these same set of
+machines by a certain factor then the shared running time (Tsh)
+of this job decreases proportionally by the same factor. This is
+so because the slowdown, S remains the same. Slowdown is
+determined by the slowest network interconnect between the
+machines. The increased allocation does not change the set
+of machines M. The independent running time (Tid) remains
+the same. This means that r also proportionally changes by
+the same factor.
+Given, homogeneous valuation functions, the PA mecha-
+nism guarantees SP, PE and EF [5]. However, PA violates SI
+due to the presence of hidden payments. This also make PA
+not work-conserving.
+PROOF OF THEOREM 3.3. With multi-round auctions we
+ensure truth-telling of r estimates in the visibility phase. This
+is done by the AGENT by using the cached r(.) estimates from
+the last auction the app participated in. In case an app gets
+leftover allocations from the leftover allocation mechanism,
+the AGENT updates the r estimate again by using the cached
+r(.) table. In this way we guarantee SP with multi-round
+auctions.
+As we saw in Theorem 3.2, an auction ensures PE and
+EF. In each round, we allocate all available resources using
+auctions. This ensures end-to-end PE and EF.
+For maximizing sharing incentive, we always take a frac-
+tion 1−f of apps in each round. A wise choice of f ensures
+that we ﬁlter in all the apps with r > 1 that have poor sharing
+incentive. We only auction the resources to such apps which
+maximizes sharing incentive.
+304    17th USENIX Symposium on Networked Systems Design and Implementation
+USENIX Association
+
+
+This paper is included in the Proceedings of the  
+17th USENIX Symposium on Operating Systems  
+Design and Implementation.
+July 10–12, 2023 • Boston, MA, USA
+978-1-939133-34-2
+Open access to the Proceedings of the 
+17th USENIX Symposium on Operating 
+Systems Design and Implementation  
+is sponsored by
+AlpaServe: Statistical Multiplexing with Model 
+Parallelism for Deep Learning Serving
+Zhuohan Li and Lianmin Zheng, UC Berkeley; Yinmin Zhong, Peking University; 
+Vincent Liu, University of Pennsylvania; Ying Sheng, Stanford University;  
+Xin Jin, Peking University; Yanping Huang and Zhifeng Chen, Google;  
+Hao Zhang, UC San Diego; Joseph E. Gonzalez and Ion Stoica, UC Berkeley
+https://www.usenix.org/conference/osdi23/presentation/li-zhuohan
+
+
+AlpaServe: Statistical Multiplexing with Model Parallelism
+for Deep Learning Serving
+Zhuohan Li1,∗Lianmin Zheng1,∗Yinmin Zhong2,∗Vincent Liu3 Ying Sheng4
+Xin Jin2 Yanping Huang5 Zhifeng Chen5 Hao Zhang6 Joseph E. Gonzalez1 Ion Stoica1
+1UC Berkeley 2Peking University 3University of Pennsylvania
+4Stanford University 5Google 6UC San Diego
+Abstract
+Model parallelism is conventionally viewed as a method to
+scale a single large deep learning model beyond the memory
+limits of a single device. In this paper, we demonstrate that
+model parallelism can be additionally used for the statistical
+multiplexing of multiple devices when serving multiple mod-
+els, even when a single model can fit into a single device. Our
+work reveals a fundamental trade-off between the overhead
+introduced by model parallelism and the opportunity to ex-
+ploit statistical multiplexing to reduce serving latency in the
+presence of bursty workloads. We explore the new trade-off
+space and present a novel serving system, AlpaServe, that
+determines an efficient strategy for placing and parallelizing
+collections of large deep learning models across a distributed
+cluster. Evaluation results on production workloads show that
+AlpaServe can process requests at up to 10× higher rates or
+6× more burstiness while staying within latency constraints
+for more than 99% of requests.
+1
+Introduction
+Advances in self-supervised learning have enabled exponen-
+tial scaling in model sizes. For example, large pretrained mod-
+els like BERT [14] and GPT-3 [5] have unlocked a plethora of
+new machine learning (ML) applications from Copilot [18]
+to copy.ai [7] and ChatGPT [35].
+Serving these very large models is challenging because
+of their high computational and memory requirements. For
+example, GPT-3 requires 325 GB of memory to store its pa-
+rameters as well as a requisite amount of computation to run
+inference. To serve this model, one would need at least 5 of
+Nvidia’s newest Hopper 80 GB GPUs just to hold the weights
+and potentially many more to run in real-time. Worse yet, the
+explosive growth of model sizes continues unabated [6,17].
+Techniques like model compression and pruning are not suf-
+ficient in face of the exponential growth in model sizes and
+often come at the expense of reduced model quality [15].
+∗Equal contribution.
+(a) No colocation
+GPU 1
+Model A
+GPU 2
+Model B
+R1
+R2
+R3
+R4
+R5
+R6
+Burst 1:
+4 requests of model A
+Model placement
+Burst 2:
+2 requests of model B
+(b) Colocation with model parallelism
+GPU 1
+A.0
+GPU 2
+A.1
+R1
+R3
+R2
+R4
+Burst 1:
+4 requests of model A
+Model placement
+Burst 2:
+2 requests of model B
+B.0
+B.1
+R1
+R3
+R2
+R4
+R5
+R6
+R5
+R6
+Figure 1: Two placement strategies for serving two models on
+two GPUs. In each subfigure, the left part shows the model
+placements and the right part shows the timeline for handling
+bursty requests. At the time of "Burst 1", 4 requests of model
+A come at the same time. Colocation with model parallelism
+can reduce the average completion time of bursty requests.
+Provisioning sufficient resources to serve these models can
+be arduous as request rates are bursty. For example, using
+common workload traces, we observe frequent spikes in de-
+mand of up to 50× the average [54]. Meeting the service level
+objective (SLO) of latency usually means provisioning for
+these peak loads, which can be very expensive; additional
+devices allocated for this purpose would remain underutilized
+most of the time. Making matters worse, it is increasingly
+common to serve multiple models and multiple variations of
+the same large model in situations like A/B testing or serving
+fine-tuned models for specific domains (§2).
+This paper studies how to efficiently serve multiple large
+models concurrently. Specifically, we explore the underappre-
+ciated benefits of model parallelism in online model serving,
+even for smaller models that can fit on a single device. Model
+parallelism refers to partitioning and executing a model on dis-
+tributed devices (§2.1). The benefits of model parallelism have
+been well studied [23,27,31,56] in the throughput-oriented
+training setting. However, its effects for model serving under
+latency-sensitive settings remains largely untapped.
+We observe that there are fundamental transition points in
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    663
+
+
+the model serving design space that challenge prior assump-
+tions about serving, even for models that fit on a single device.
+For example, consider the scenario with two models and two
+GPUs, each of which has sufficient memory to hold one com-
+plete model. As shown in Fig. 1(a), the natural approach
+assumed by almost all existing serving systems [9,33,34] is
+to allocate one dedicated GPU for one model. This approach
+appears rational because partitioning the model across GPUs
+would incur communication overheads that would likely in-
+crease the prediction latency. However, we find that inducing
+additional model parallelism (to the point where per-example
+execution time actually increases) enables a wider range of
+placement strategies, e.g., model co-location, which can im-
+prove the statistical multiplexing of the system under bursty
+workloads. In Fig. 1(a), assuming the execution time of a
+model is y, the average end-to-end latency of request 1 through
+4 is (1y + 2y + 3y + 4y)/4 = 2.5y. In Fig. 1(b), assuming a
+10% model-parallel overhead, the average latency of request 1
+through 4 is reduced to (1.1y+1.6y+2.1y+2.6y)/4 = 1.85y.
+Co-location with model parallelism can utilize more devices
+to handle bursty requests and reduces the average comple-
+tion time, despite its overheads (§3.1). Even if we batch the
+requests, the case still holds (§6.5).
+Unfortunately, the decision of how to optimally split and
+place a collection of models is complex. Although leverag-
+ing model parallelism as above has its benefits, it still adds
+overheads that may negate those benefits for less bursty work-
+loads. For example, we find that a particularly influential axis
+on the efficacy of model parallelism is per-GPU memory ca-
+pacity (§3.2), although other factors (e.g., the arrival pattern,
+SLO) can also have a significant effect. Further, besides the
+inter-op model parallelism presented in Fig. 1, another kind
+of model parallelism, intra-op parallelism, presents its own
+distinct tradeoffs (§3.3). Ultimately, different styles of paral-
+lelism and their tradeoffs create a complex, multi-dimensional,
+and multi-objective design space that existing systems largely
+ignore and/or fail to navigate. However, not leveraging model
+parallelism in the serving setting is typically not an option for
+large models, and not addressing this trade-off space directly
+results in significant increases in cost and serving latency.
+To that end, we present AlpaServe2, a system that automat-
+ically and efficiently explores the tradeoffs among different
+parallelization and placement strategies for model serving.
+AlpaServe takes a cluster resource specification, a set of mod-
+els, and a periodic workload profile; it then partitions and
+places the models and schedules the requests to optimize
+SLO attainment (i.e., the percentage of requests served within
+SLO). To assist the design of AlpaServe, we first introduce a
+taxonomy and quantify the tradeoffs between different paral-
+lelization strategies in model serving (§3). We then present
+key algorithms to navigate the tradeoff space (§4). We de-
+sign an iterative simulator-guided model placement algorithm
+2https://github.com/alpa-projects/mms
+to optimize the colocation of models and a group partition
+algorithm to search for the best way to partition the cluster
+into disjoint model-parallel groups. In addition, we extend the
+existing auto-parallelization algorithms for training to make
+them more suitable for inference.
+We evaluate AlpaServe with production workloads on a
+64-GPU cluster (§6). Evaluation results show that, when opti-
+mizing one metric at a time, AlpaServe can choose to increase
+the request processing rate by 10×, achieve 2.5× lower la-
+tency deadlines, or tolerate 6× burstier traffic compared to
+previous state-of-the-art serving systems.
+In summary, we make the following contributions:
+• A detailed analysis of the tradeoff space of different
+model parallel strategies for efficient model serving.
+• Novel model placement algorithms to incorporate model
+parallelism in a serving system.
+• A comprehensive evaluation of AlpaServe with both
+synthetic and production workloads.
+2
+Background
+Over the past few years, increasingly capable models have
+been developed for everything from recommendations to text
+generation. As a result, serving predictions from these mod-
+els has become an essential workload in modern cloud sys-
+tems. The structure of these workloads often follows a simple
+request-response paradigm. Developers upload a pre-trained
+model and its weights ahead of time; at runtime, clients (either
+users or other applications) submit requests for that model
+to a serving system, which will queue the requests, dispatch
+them to available GPUs/TPUs, and return the results.
+The requirements of these model-serving systems can be
+stringent. To satisfy user demand, systems often must ad-
+here to aggressive SLO on latency. At the same time, serving
+systems that must run continuously need to minimize their
+operational costs associated with expensive accelerators. Min-
+imizing serving costs can be challenging because dynamically
+scaling compute resources would be too slow on the critical
+path of each prediction request: it can take multiple seconds
+just to swap a large model into accelerator memory [37]. Fur-
+thermore, there is significant and unpredictable burstiness
+in the arrival process of user requests. To meet tight SLO,
+contemporary serving systems are forced to over-provision
+compute resources, resulting in low cluster utilization [48].
+Another pattern that emerges in serving large models is the
+use of multiple instances of the same or similar model archi-
+tectures. This is commonly seen in the practice of pretraining
+on large unlabeled data and fine-tuning for various down-
+stream tasks [14], which can significantly boost accuracy but
+results in multiple instances of the same model architecture.
+For example, Hugging Face serves more than 9,000 versions
+of fine-tuned BERT [24]. They either share a portion of the
+parameters or do not share any parameters at all for better
+accuracy. Prior works have [44,57] exploited the property of
+shared parameters, but we do not consider the shared parame-
+664    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+ters in this paper because AlpaServe targets general settings
+and full-weight tuning is still a major use case.
+2.1
+Model Parallelism in Model Serving
+Distributed parallel model execution is necessary when at-
+tempting to satisfy the serving performance requirements or
+support large models that do not fit in the memory of a single
+device. At a high level, distributed execution of deep learning
+models can be classified into two categories: intra-operator
+parallelism and inter-operator parallelism [56].
+Intra-operator parallelism. DL models are composed of a
+series of operators over multidimensional tensors, e.g., matrix
+multiplication over input and weight tensors. Intra-operator
+parallelism is when a single operator is partitioned across
+multiple devices, with each device executing a portion of
+the computation in parallel [43, 45, 50]. Depending on the
+specific partitioning strategy and its relationship to prior and
+subsequent operators in the model, partitioning can require
+communication among participating GPUs to split the input
+and then merge the output.
+The benefit of intra-operator parallelism for single-request
+execution is twofold. First, it can expand the total amount of
+computation available to the target model, reducing its end-
+to-end latency. In a similar fashion, it can expand the total
+memory available to the model for storing its inputs, weights,
+and intermediate values. The cost is the aforementioned com-
+munication overhead.
+Inter-operator parallelism. The other type of parallelism
+available to DL models is inter-operator parallelism, which
+assigns different operators of the model’s execution graph
+to execute on distributed devices in a pipeline fashion (a.k.a.
+pipeline parallelism) [23,28,30]. Here, devices communicate
+only between pipeline stages, typically using point-to-point
+communication between device pairs.
+Unlike intra-operator parallelism, pipeline parallelism does
+not reduce the execution time of a single request. In fact, it
+typically increases the execution time due to modest amounts
+of communication latency between pipeline stages, although
+the total amount of transferred data is often lower than it is in
+intra-operator parallelism. Instead, the primary use of inter-
+operator parallelism in traditional serving systems is to allow
+the model to exceed the memory limitation of a single GPU.
+3
+Motivation and Tradeoff Analysis
+As mentioned, both types of model parallelism reduce per-
+device memory usage by partitioning a model on multiple
+devices. A key motivation for this work is that we can use this
+property to fit more models on one device, enabling better
+statistical multiplexing of the devices when handling bursty
+requests. We explore this idea through a series of empirical
+examinations and theoretical analysis, starting with an illus-
+trative example (§3.1), followed by an empirical analysis of
+when model parallelism is beneficial (§3.2), the overhead of
+model parallelism (§3.3), and a queueing theory-based analy-
+sis (§3.4). All the experiments in this section are performed
+on an AWS EC2 p3.16xlarge instance with 8 NVIDIA 16GB
+V100 GPUs.
+3.1
+Case Study: A Two-model Example
+We start with an illustrative experiment to show how model
+parallelism can benefit the serving of multiple models. We use
+two GPUs to serve two Transformer models with 6.7 billion
+parameters each (13.4 GB to store its FP16 weights). Because
+each GPU has 16 GB of memory, it can fit one and only one
+model. A single request takes around 0.4 s to process on one
+GPU.
+We compare the following model placements, correspond-
+ing to the strategies in Fig. 1. The first is simple placement,
+where we place one model on each GPU due to the memory
+constraint. The second is model-parallel placement, where we
+use inter-op parallelism to partition each model to a 2-stage
+pipeline and let each GPU execute half of each model.
+We evaluate the two placements when the requests to each
+model follow an independent Poisson process with an arrival
+rate of 1.5 request/s. Fig. 2a shows the cumulative distribu-
+tion function (CDF) and average of request latency (which
+includes the GPU execution time and queuing delay). Model-
+parallel placement reduces the average latency of the simple
+placement from 0.70s to 0.55s, a 1.3× speedup. The speedup
+comes from the better burst tolerance: when a burst arrives
+that exceeds the capability of a single GPU, simple placement
+must begin queuing requests. However, as long as the other
+model does not receive many requests, the model parallel
+placement can use both GPUs to serve the requests for the
+popular model via statistical multiplexing of the GPUs.
+This effect becomes more pronounced with higher bursti-
+ness, which we can demonstrate using a Gamma request ar-
+rival process with the same average request rate as above but a
+higher coefficient of variance (CV) of 3. As shown in Fig. 2b,
+the speedup on mean latency is now increased to 1.9×. Fig. 2d
+shows a representative trace of the corresponding total cluster
+utilization over time. Note that for each request burst, model-
+parallel placement can use the whole cluster and only take
+half of the time to process, while simple placement can only
+use half of the cluster.
+In addition, we also evaluate the case where one model re-
+ceives more requests than another. In Fig. 2c, we use Poisson
+arrival but let 20% of the requests ask for model 1 and 80% ask
+for model 2. Although replication performs slightly better for
+model 1 requests, it is drastically worse on model 2 requests
+compared to the model-parallel placement. For model-parallel
+placement, because both GPUs are shared across two models,
+the requests to both models follow the same latency distri-
+bution. Overall, model-parallel placement reduces the mean
+latency by 6.6×.
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    665
+
+
+0
+1
+2
+3
+4
+Latency (s)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CDF
+Simple Placement
+Simple Placement Mean Latency
+Model Parallelism
+Model Parallelism Mean Latency
+(a) Poisson arrival.
+0
+10
+20
+30
+Latency (s)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CDF
+Simple Placement
+Simple Placement Mean Latency
+Model Parallelism
+Model Parallelism Mean Latency
+(b) High CV Gamma arrival.
+0
+5
+10
+15
+20
+25
+Latency (s)
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+CDF
+Simple Placement
+Simple Placement Model 1
+Simple Placement Model 2
+Simple Placement Mean Latency
+Model Parallelism
+Model Parallelism Model 1
+Model Parallelism Model 2
+Model Parallelism Mean Latency
+(c) Different rates.
+0
+5
+10
+15
+20
+25
+Time (s)
+0
+50
+100
+Utilization (%)
+Simple Placement
+Model Parallelism
+(d) Cluster utilization.
+Figure 2: Latency CDF and cluster utilization in the 2-model example.
+GPU 1
+A
+GPU 2
+B
+GPU 3
+C
+GPU 4
+D
+A
+B
+B
+C
+C
+D
+D
+A
+C
+B
+D
+A
+C
+B
+D
+A
+C
+B
+D
+A
+C
+B
+D
+1x
+2x
+4x
+A
+GPU 1
+GPU 2
+GPU 3
+GPU 4
+A
+C
+B
+D
+A
+C
+B
+D
+A
+C
+B
+D
+A
+C
+B
+D
+A1 B1 C1 D1
+A2 B2 C2 D2
+A3 B3 C3 D3
+A4 B4 C4 D4
+A1
+B1
+C1
+D1
+A2
+B2
+C2
+D2
+A1
+B1
+C1
+D1
+A2
+B2
+C2
+D2
+Mem
+(a) Replication
+（b) Model Parallelism
+Figure 3: Replication and model parallel placement illustra-
+tion with different memory budgets, where the memory bud-
+gets are set to be multiples of a single model’s size.
+10
+20
+30
+40
+Memory Budget (GB)
+1
+2
+Mean Latency (s)
+Model Parallelism
+Replication
+GPU Memory Bound
+10
+20
+30
+40
+Memory Budget (GB)
+5
+10
+P99 Latency (s)
+Model Parallelism
+Replication
+GPU Memory Bound
+Figure 4: Serving performance with changing per-GPU mem-
+ory budgets. Model parallelism is beneficial for limited mem-
+ory budget. The dashed vertical line is the real per-GPU mem-
+ory bound of a 16GB V100. The value is around 13GB due
+to the need to store activations and other runtime context.
+3.2
+When is Model Parallelism Beneficial
+To further explore the nuances of model parallelism in serving,
+we increase the size of the deployment to 8 GPUs and 8
+Transformer models with 2.6B parameters each. As a base
+setting, we set the requests to each model as a Gamma process
+with an average rate of 20 request/s and CV of 3; we then
+vary a range of factors to see their effects. Note that some
+of the settings we evaluate are impossible on real hardware
+(e.g., exceeding the memory capacity of a single device) so
+we leverage the simulator introduced in §5. The fidelity of the
+simulator is very high as verified in §6.1.
+The model in this case is smaller (5.2GB), so one GPU
+can also store multiple models without model parallelism.
+We compare two placement methods: (1) Replication. In this
+setting, we replicate the models to different devices until each
+device cannot hold any extra models. Because all the models
+receive equal amounts of loads on average, we replicate each
+model the same number of times (Fig. 3a). (2) Model Paral-
+0
+10
+20
+Total Rates (req/s)
+0.50
+0.75
+1.00
+Mean Latency (s)
+Model Parallelism
+Replication
+0
+10
+20
+Total Rates (req/s)
+1
+2
+3
+4
+P99 Latency (s)
+Model Parallelism
+Replication
+Figure 5: Serving performance with changing arrival rates.
+Model parallelism is beneficial for smaller rates.
+0
+2
+4
+6
+8
+Coefficient of Variance
+0
+2
+4
+6
+Mean Latency (s)
+Model Parallelism
+Replication
+0
+2
+4
+6
+8
+Coefficient of Variance
+0
+10
+20
+P99 Latency (s)
+Model Parallelism
+Replication
+Figure 6: Serving performance with changing CVs. Model
+parallelism is beneficial for larger CVs.
+lelism. Here we use inter-operator parallelism and uniformly
+assign the Transformer layers to different GPUs.
+Device memory. We evaluate the mean and the tail latency
+of the two placement methods under different device memory
+capacities. For replication, more GPU memory can fit more
+models onto a single GPU. For model parallelism, more GPU
+memory can also reduce the number of pipeline stages and
+reduce the overhead as in Fig. 3b. The resulting mean and P99
+latency is shown in Fig. 4. With more memory, more models
+can fit into a single GPU, so the benefit of statistical multi-
+plexing diminishes because replication can also effectively
+use multiple devices to serve the bursty requests to a single
+model. When the GPU memory capacity is large enough to
+hold all models, there is no gain from model parallelism.
+Request arrival. We vary the parameters of the arrival pro-
+cess and compare the replication placement with the model-
+parallel placement with 8-stage pipeline parallelism. The
+mean and P99 latency results of changing arrival rate are
+shown in Fig. 5. When the arrival rate is low, model paral-
+lelism can greatly reduce the serving latency. However, when
+the arrival rate approaches the peak serving rate of the clus-
+ter, the benefit of model-parallel placement starts to diminish.
+Eventually, it starts to perform worse than replication. This is
+because when all models are equally saturated, the replication
+666    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+5
+10
+15
+20
+SLO Scale
+0
+50
+100
+SLO Attainment (%)
+Model Parallelism
+Replication
+(a) Real model latency.
+5
+10
+15
+20
+SLO Scale
+0
+50
+100
+SLO Attainment (%)
+Model Parallelism (α=1.0)
+Model Parallelism (α=1.1)
+Model Parallelism (α=1.2)
+Model Parallelism (α=1.3)
+Model Parallelism (α=1.4)
+Model Parallelism (α=1.5)
+Replication
+(b) Changing overhead.
+Figure 7: SLO attainment with changing SLOs. Model paral-
+lelism is beneficial for smaller SLOs.
+placement is able to achieve efficient cluster utilization and
+there is no benefit to the statistical multiplexing afforded by
+model parallelism. Instead, the overhead of model parallelism
+(§3.3) starts to become a significant factor.
+The mean and P99 latency results of changing CV are in
+Fig. 6. With a higher CV, the requests become more bursty,
+and the benefit of model parallelism becomes more significant.
+As shown in the results, with a higher CV, model parallelism
+can greatly outperform the performance of replication.
+Service level objectives.
+In prediction serving settings, it
+is common to have tight latency SLO and predictions made
+after these deadlines are often discarded [19]. For example,
+advertising systems may choose not to show an ad rather
+than delay rendering user content. In this case, the goal of the
+serving system is to optimize the percentage of requests that
+can be finished within the deadline, i.e., SLO attainment.
+In this experiment, we measure how SLOs affect the perfor-
+mance of the placement methods. We compare the replication
+and the model-parallel placement with 8-stage pipeline par-
+allelism. During execution, we drop the requests that will
+exceed the deadline even if we schedule it immediately. We
+scale the SLO to different multiplies of the single device exe-
+cution latency (SLO Scale in Fig. 7a) and compare the SLO
+attainment of the two methods.
+As in Fig. 7a, when SLO is tight (< 10× model latency),
+model parallelism can greatly improve SLO attainment. How-
+ever, when the SLO becomes looser, its SLO attainment
+plateaus but that of the replication placement keeps grow-
+ing. This result shares the same core logic as previous ex-
+periments: When SLO becomes looser, more requests can
+stay in the waiting queue, and thus the effective burstiness of
+the requests decreases. When many requests are queued, the
+system is bounded by its total processing capability, which
+might be affected by the model parallelism overhead. In the
+real world, the SLO requirement is often less than 5× of the
+model execution latency [19], where model parallelism can
+improve SLO attainment.
+Summary: Model parallelism benefits model serving
+through statistical multiplexing when the device mem-
+ory is limited, the request rate is low, the request CV is
+high, or the SLO is tight.
+1
+2
+4
+8
+Number of GPUs
+0.0
+0.1
+0.2
+0.3
+Latency (s)
+Compuation
+Communication Overhead
+Uneven Partition Overhead
+(a) Inter-op parallelism.
+1
+2
+4
+8
+Number of GPUs
+0.00
+0.05
+0.10
+0.15
+0.20
+0.25
+Latency (s)
+Compuation
+Communication Overhead
+(b) Intra-op parallelism.
+Figure 8: The overhead decomposition. The overhead of inter-
+op parallelism mainly comes from uneven partition while the
+overhead of intra-op parallelism comes from communication.
+3.3
+Overhead of Model Parallelism
+In this section, we further investigate the overheads of dif-
+ferent model parallel strategies and how they affect serving
+performance. Similar to the setup in Fig. 7a, we manually
+modify the overhead of model parallelism. Specifically, let
+the latency of a single model executing on the GPU be L and
+the number of pipeline stages be n. We set the total latency of
+pipeline execution to be αL and the latency of each pipeline
+stage to be αL/n, where α is a parameter that controls the
+overhead. When α = 1, model parallelism does not have any
+overhead and larger α means higher overhead.
+We show the results in Fig. 7b. If model parallelism does
+not have any overhead (α = 1), it can always outperform repli-
+cation due to its ability to multiplex the devices. When the
+overhead becomes larger and the SLO is low, model paral-
+lelism still outperforms replication. However, with a larger
+SLO, the effective burstiness is reduced and the performance
+is dominated by the overhead.
+Given that the overhead can greatly affect serving perfor-
+mance, we perform a detailed study of the multiple sources
+of model-parallel overhead in Fig. 8. For inter-op parallelism,
+when partitioning a single model into multiple stages, dif-
+ferent stages need to communicate the intermediate tensors,
+and we denote this overhead as the communication overhead.
+In addition, the pipeline execution will be bottlenecked by
+the execution time of the slowest stage, making the effective
+latency to be the number of pipeline stages times the latency
+of the slowest stage [23]. We denote this as the uneven par-
+tition overhead. As in Fig. 8a, for inter-op parallelism, most
+overhead comes from the latency imbalance among different
+pipeline stages, instead of the communication between stages.
+While our previous discussion mainly focuses on inter-op
+parallelism, the other type of model parallelism, intra-op par-
+allelism, has very different performance characteristics. Its
+overhead is merely brought by the collective communication
+across multiple devices [31], which cannot be overlapped
+with the neural network computation due to data dependency.
+From Fig. 8b, we can see that the communication overhead of
+intra-op parallelism is much higher than inter-op parallelism.
+Finally, we compare the latency, throughput, and memory
+consumption of different model-parallel placements and the
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    667
+
+
+2
+4
+6
+8
+#GPUs
+0.0
+0.1
+0.2
+Latency (s)
+Inter-op Parallelism
+Intra-op Parallelism
+Replication
+(a) Single input latency.
+2
+4
+6
+8
+#GPUs
+10
+20
+30
+Throughput (req/s)
+Inter-op Parallelism
+Intra-op Parallelism
+Replication
+(b) Throughput.
+2
+4
+6
+8
+#GPUs
+10
+20
+30
+40
+Memory (GB)
+Inter-op Parallelism
+Intra-op Parallelism
+Replication
+(c) Total memory usage.
+Figure 9: The latency, throughput and memory usage vs. #GPUs for inter-op parallelism, intra-op parallelism, and replication. In
+subfigure (c), the lines for inter-op and intra-op parallelism overlap.
+replication placement in Fig. 9. Because of the sequential
+dependence between the different stages, inter-op parallelism
+cannot reduce the execution latency of a single input data. In-
+stead, the latency is slightly higher due to the communication
+between the stages. On the other hand, intra-op parallelism
+can largely reduce the latency via the parallel execution of dif-
+ferent GPUs (Fig. 9a). However, because inter-op parallelism
+can pipeline the execution of different stages and only com-
+municate a relatively small amount of data, it attains higher
+throughput compared to intra-op parallelism (Fig. 9b). Be-
+cause both parallel methods split the model weight tensors
+across different GPUs, the total memory usage stays con-
+stant with increasing numbers of GPUs (Fig. 9c). This makes
+the statistical multiplexing of different GPUs across multiple
+models possible.
+In the end, the tradeoff between parallelization strategies
+and their interplay with cluster resources, arrival patterns, and
+serving objectives forms an intricate design space.
+3.4
+Queueing Theory Analysis
+In this section, we use queuing theory to mathematically ver-
+ify the conclusions in §3.2 and §3.3. Specifically, we analyze
+the case where the inputs follow the Poisson arrival process.
+Since the execution time of a deep learning inference task is
+highly predictable [19], we assume the request serving time is
+deterministic. For the single device case, suppose the request
+rate to a model is λ0 and the single device latency is D with
+the utilization λ0D < 1, then the average number of requests
+LQ and the average latency W in this M/D/1 queue [46] are:
+LQ =
+λ0D
+2(1−λ0D),
+W = D+LQD = D+
+λ0D2
+2(1−λ0D).
+Now consider the example in §3.1. Let pλ,(1−p)λ be the
+average request rates for the two models respectively, where
+p ∈[0,1] controls the percentage of requests for both models.
+Then for the simple placement, the average latency can be
+derived as the average latency of two independent queues:
+Wsimple = D+
+p2λD2
+2(1−pλD) +
+(1−p)2λD2
+2(1−(1−p)λD).
+0.0
+0.5
+1.0
+1.5
+2.0
+λD
+1.0
+1.2
+1.4
+α
+β
+Figure 10: Maximal communication overhead α and uneven
+partition overhead β satisfy Wpipeline ≤Wsimple as a function
+of total utilization λD.
+Note that Wsimple reaches minimum when p = 1/2. Intuitively,
+when p is not exactly half, one model receives more requests
+than the other. This larger portion of requests have a longer
+queueing delay, which leads to the higher overall mean la-
+tency.
+For the model-parallel case, the requests to both models
+merged to a single Poisson Process with rate λ. For pipeline
+parallelism, suppose the latency for a single input to be Ds
+and the maximum stage latency to be Dm, then the average
+latency would be
+Wpipeline = Ds +
+λD2
+m
+2(1−λDm).
+Suppose there is no model-parallel overhead, then Ds =
+2Dm = D. Let’s first consider the case where p = 1/2 (Fig. 2a).
+We have
+Wsimple = D+
+λD2
+4−2λD,
+Wpipeline = D+
+λD2
+8−4λD.
+In this case, the waiting time for model-parallel execution is
+half of the simple placement waiting time, as shown in the
+vertical lines in Fig. 2a. When the p is not 1/2, Wsimple will
+increase while Wpipeline will stay the same, so the gap between
+Wsimple and Wpipeline will be even larger, as in Fig. 2c.
+Next, we consider the case where model parallelism in-
+curs overhead. We measure the two types of overheads in
+§3.3 separately: With the overhead from communication,
+Ds = 2Dm = αD, where α ≥1 is the overhead factor. With
+the overhead from uneven stages, we suppose Ds = D still
+holds, but Dm = βD/2 where β ≥1 is the overhead factor.
+To keep Wpipeline ≤Wsimple, we can get the maximal α and
+668    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+Controller
+HTTP Requests
+Model a
+Model b
+Model c
+GPU
+GPU
+GPU
+GPU
+Model Parallel Runtime
+Model a
+Model d
+Model e
+GPU
+GPU
+GPU
+GPU
+Model Parallel Runtime
+Model f
+Model g
+GPU
+GPU
+Model Parallel Runtime
+Group 1
+Group 2
+Group 3
+Figure 11: AlpaServe Runtime System Architecture
+β as a function of the total utilization λD separately and we
+visualize the function in Fig. 10. When the utilization is high,
+the benefit of statistical multiplexing diminishes, and thus
+the overhead needs to be low, as in §3.2. On the other hand,
+when the utilization is very low, most requests will not be
+queued, and thus the communication overhead α needs to
+be low to keep the processing latency to be low. Note that
+the maximal overhead here is based on a uniform Poisson ar-
+rival distribution. A more bursty or more non-uniform arrival
+distribution will make the simple placement performs worse
+and make the model-parallelism placement outperforms the
+simple replication placement with even higher overhead.
+4
+Method
+From §3, we can see that there are several key challenges to
+effectively utilize model parallelism for deep learning serving:
+• Derive efficient model parallel strategies for inference to
+reduce the overhead of model parallelism. Specifically,
+find a partitioning strategy that minimizes the stage im-
+balance for inter-operator parallelism.
+• Determine model-parallel placements according to the
+arrival pattern to maximize SLO attainment.
+We built AlpaServe to specifically tackle these challenges.
+The runtime architecture of AlpaServe is shown in Fig. 11. Al-
+paServe utilizes a centralized controller to dispatch requests to
+different groups.3 Each group hosts several model replicas on
+a shared model-parallel runtime. This section describes the ar-
+chitecture of AlpaServe and the key algorithms for efficiently
+leveraging model parallelism in a model serving system.
+4.1
+Automatic Parallelization for Inference
+Since different parallelization configurations have different
+latency and throughput trade-offs, we need to enumerate mul-
+tiple possible configurations for every single model and let the
+placement algorithm choose the best combination for all mod-
+els in the whole cluster. Therefore, given a model, AlpaServe
+first runs an auto-parallelization compiler with various con-
+straints to generate a list of possible configurations. We build
+several extensions on top of an existing auto parallelization
+training system, Alpa [56], to make it suitable for generating
+serving parallelization strategies. Alpa includes two passes
+3For a larger service, AlpaServe can be extended as a hierarchical deploy-
+ment with each controller only managing a subset of devices as in [52].
+for generating efficient model parallel partitions: inter-op pass
+and intra-op pass. The inter-op pass uses a dynamic program-
+ming (DP) algorithm to figure out the optimal inter-op parallel
+plan, and it calls the intra-op pass for each potential pipeline
+stage, which is formulated as an integer linear programming
+(ILP) problem, to profile its latency with the optimal intra-
+op parallel plan. In AlpaServe, we keep the two compilation
+passes, but extends both passes for serving.
+The inter-op pass in Alpa optimizes the overall pipeline
+execution latency, which includes the time of forward and
+backward propagation and weight synchronization. However,
+in serving workloads, only forward propagation is being exe-
+cuted and there is no need for weight synchronization. There-
+fore, we reformulate the dynamic programming in AlpaServe
+to merely focus on minimizing the maximal stage latency.
+Specifically, denote F(s,k) to be the maximum latency when
+slicing layers 1 to k into s stages. We can derive F as
+F(s,k) = min
+1≤i≤k{max{F(s−1,i−1),latency(i,k)}},
+where latency(i,k) denotes the latency of a stage composes
+of layer i to k. In Alpa, the latency function of all possible
+O(K2) combinations is being profiled by the intra-op pass
+because of the complicated dependency between forward and
+backward passes. In AlpaServe, because the pipeline stages
+only perform forward propagation and only communicate
+intermediate results once between layer boundaries, we can
+accelerate the profiling by only profiling K layers and letting
+latency(i,k) to be the sum of the latencies for layer i to k.
+This acceleration enables us to efficiently enumerate different
+inter- and intra-op device partition setups and generate a list
+of parallel strategies for the placement algorithm in §4.2.
+For the intra-op pass, we extend the ILP in Alpa to drop
+all configurations that use data parallelism. For serving work-
+loads, because there is no need for weight synchronization,
+data parallelism can be achieved by the replication placement.
+We leave the decision of whether to replicate a model to the
+placement algorithm in §4.2.
+4.2
+Placement Algorithm
+Given a set of models and a fixed cluster, AlpaServe parti-
+tions the cluster into several groups of devices. Each group
+of devices selects a subset of models to serve using a shared
+model-parallel configuration. Different groups can hold the
+same model as replicas. The requests for a model are dis-
+patched to the groups with the requested model replica. We
+call a specific cluster group partition, model selection, and
+parallel configuration as a placement. Our goal is to find a
+placement that maximizes the SLO attainment.
+However, finding the optimal placement is a difficult combi-
+natorial optimization problem. The overall placement config-
+uration space grows exponentially with the number of devices
+and the number of models. To make things worse, the objec-
+tive “SLO attainment” has no simple analytical formula for
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    669
+
+
+Algorithm 1 Simulator-Guided Greedy Model Selection.
+Input: Model list M, device group list G, group parallel con-
+figurations P, workload W, beam size k (default = 1).
+Output: The model selection best_sel.
+best_sel ←/
+0
+beam_sels ←{/
+0}
+while true do
+new_sels ←/
+0
+for sel ∈beam_sels do
+for (m,(g, p)) ∈M ×(G,P) do
+// Parallelize the model as in §4.1.
+mparallelized ←parallelize(m,g, p)
+sel′ ←sel.add_model_to_group(mparallelized,g)
+if sel′ is in memory constraint then
+sel′.slo_attainment ←simulate(sel′,W)
+new_sels.append(sel′)
+if new_sels = /
+0 then
+break
+beam_sels ←top-k_SLO_attainment(new_sels)
+sel∗←pick_highest_SLO_attainment(beam_sels)
+if sel∗.slo_att > best_sel.slo_att then
+best_sel ←sel∗
+return best_sel
+an arbitrary arrival distribution. Existing tools and approxima-
+tions from queueing theory can only analyze simple cases in
+§3.4 and cannot model more complex situations [46]. There-
+fore, we resort to a simulator-guided greedy algorithm that
+calls a simulator to compute SLO attainment.
+To compute the SLO attainment with a given set of requests
+and placement, in AlpaServe, we assume we know the arrival
+process in advance. Although short-term burstiness is impos-
+sible to predict, the arrival pattern over longer timescales (e.g.,
+hours or days) is often predictable [48]. Given this predictabil-
+ity, AlpaServe either directly uses the history request traces
+or fits a distribution from the trace and resamples new traces
+from the distribution as the input workload to the simulator
+to compute the SLO attainment.
+We design a two-level placement algorithm: Given a cluster
+group partition and a shared model-parallel configuration for
+each group, Algorithm 1 uses a simulator-guided greedy algo-
+rithm to decide which models to select for each group. Then,
+Algorithm 2 enumerates various potential cluster partitions
+and parallel configurations and compares the SLO attainment
+from Algorithm 1 to determine the optimal placement.
+Given a cluster group partition with a fixed model-parallel
+configuration for each group, Algorithm 1 selects model repli-
+cas iteratively as a beam search algorithm: At each iteration,
+it enumerates all possible (model, group) pairs, parallelizes
+the model on the device group with the algorithms in §4.1,
+and checks whether the model can be put on the group under
+the memory constraint. For all valid selections, it runs the
+Algorithm 2 Enumeration-Based Group Partition and Model-
+Parallel Configuration Selection.
+Input: Model list M, cluster C, workload W.
+Output: The placement best_plm.
+best_plm ←/
+0
+B ←get_potential_model_buckets(M)
+for (B1,B2,...,Bk) ∈B do
+H ←get_potential_device_buckets(C,B,k)
+for (H1,H2,...,Hk) ∈H do
+// Get the placement for each bucket individually.
+for i from 1 to k do
+plm∗
+i ←/
+0
+G ←get_potential_group_partitions(Hi)
+for G ∈G do
+P ←get_potential_parallel_configs(G)
+for P ∈P do
+plm ←greedy_selection(Bi,G,P,W)
+if plm.slo_att > plm∗
+i .slo_att then
+plm∗
+i ←plm
+plm∗←concat(plm∗
+1,...,plm∗
+k)
+if plm∗.slo_att > best_plm.slo_att then
+best_plm ←plm∗
+return best_plm
+simulator and computes SLO attainment. It then picks the
+top-k solutions and enters the next iteration. The algorithm
+terminates when no more replicas can be put into any groups.
+The complexity of Algorithm 1 is O(MGRSB), where M
+is the number of models, G is the number of groups, R is
+the number of replicas we can put according to the memory
+constraint, S is the number of requests in the workload (the
+simulation time is proportional to the number of the requests)
+and B is the beam size. It runs reasonably fast for our medium-
+scale cluster when the number of requests is small. When the
+number of requests is very large, we propose another heuristic
+to accelerate: Instead of using the simulator to evaluate all
+(model, group) pairs at each iteration, we can run the simu-
+lator only once and place a model with the most unserved
+requests in an available group with the lowest utilization. This
+reduces the time complexity to O((M +G)RS). We find this
+heuristic gives solutions with SLO attainment higher than
+98% of the SLO attainment get by the original algorithm in
+our benchmarks.
+Algorithm 2 enumerates different group partitions and
+model-parallel configurations and picks the best one via mul-
+tiple calls to Algorithm 1. When designing Algorithm 2,
+the first phenomenon we notice is that putting small and
+large models in the same group causes convoy effects, where
+the requests of small models have to wait for the requests
+of large models and miss the SLO. Therefore, in Algo-
+rithm 2, we first cluster models into model buckets. Each
+bucket contains a set of models with relatively similar sizes
+670    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+and every model is assigned to one and only one bucket.
+Specifically, the function get_potential_model_buckets
+returns all the possible model bucket partitions that sepa-
+rate models whose latency difference is larger than a thresh-
+old into different disjoint buckets. We then enumerate all
+the potential ways to assign the devices to each bucket in
+get_potential_device_buckets.
+Because different buckets include a disjoint set of models,
+we can then figure out the optimal placement for each bucket
+individually. For each bucket, we enumerate possible ways
+to partition the devices in the bucket into several groups in
+get_potential_group_partitions and enumerate the po-
+tential parallel configurations for each group with the method
+in get_potential_parallel_configs. We then call Al-
+gorithm 1 with greedy_placement to place models in the
+model bucket to the groups in the device bucket. We send the
+whole workload W to Algorithm 1, which ignores the requests
+that hit the models outside of the current bucket. Finally, a
+complete solution is got by concatenating the solutions for
+all buckets. The algorithm returns the best solution it finds
+during the enumerative search process.
+Enumerating all possible choices can be slow, so we use
+the following heuristics to prune the search space. Intuitively,
+we want the different buckets to serve a similar number of
+requests per second. Therefore, we eliminate the bucket con-
+figurations with high discrepancies in the estimated num-
+ber of requests it can serve per second for each bucket.
+Additionally, in get_potential_group_partitions and
+get_potential_parallel_configs, we assume all groups
+have the same size and the same parallel configurations except
+for the last group which is used when the number of devices
+is not divisible by the group size.
+4.3
+Runtime Scheduling
+We use a simple policy to dispatch and schedule the requests at
+runtime. All requests are sent to a centralized controller. The
+controller dispatches each request to the group with the short-
+est queue length. Each group manages a first-come-first-serve
+queue. When a group receives a request, it checks whether
+it can serve the request under SLO and rejects the request if
+it cannot. This is possible because the execution time of a
+DNN model is very predictable and can be got in advance by
+profiling [19]. In most of our experiments, we do not include
+advanced runtime policies such as batching [19], swapping,
+and preemption [21]. These techniques are complementary to
+model parallelism. Nevertheless, we discuss how they fit into
+our system.
+Batching. Batching multiple requests of the same model to-
+gether can increase the GPU utilization and thus increase the
+throughput of a serving system. In our system, we do find
+batching is helpful, but the gain is limited. This is because we
+mainly target large models and a small batch size can already
+fully saturate the GPU, which is verified in §6.5. To isolate
+the benefits of model parallelism and make the results more
+explainable, we decide to disable any batching in this paper
+except for the experiments in §6.5.
+Preemption. The optimal scheduling decision often depends
+on future arrivals, and leveraging preemption can help cor-
+rect previous suboptimal decisions. The first-come-first-serve
+policy may result in convoy effects when models with signifi-
+cantly different execution times are placed in the same group.
+We anticipate a least-slack-time-first policy with preemption
+can alleviate the problems [12].
+Swapping. The loading overheads from the CPU or Disk to
+GPU memory are significant for large models, which is the
+target of this paper, so we do not implement swapping in Al-
+paServe. We assume all models are placed on the GPUs. This
+is often required due to tight SLOs and high rates, especially
+for large models. The placement of models in AlpaServe can
+be updated in the periodic re-placement (e.g., every 24 hours).
+Fault tolerance. While the current design of AlpaServe does
+not have fault tolerance as a focus, we acknowledge several
+potential new challenges for fault tolerance: With model par-
+allelism, the failure of a single GPU could cause the entire
+group to malfunction. Additionally, the use of a centralized
+controller presents a single point of failure.
+5
+Implementation
+We implement a real system and a simulator for AlpaServe
+with about 4k lines of code in Python. The real system is
+implemented on top of an existing model-parallel training sys-
+tem, Alpa [56]. We extend its auto-parallelization algorithms
+for inference settings to get the model-parallel strategies. We
+then launch an Alpa runtime for each group and dispatch
+requests to these groups via a centralized controller.
+The simulator is a continuous-time, discrete-event simula-
+tor [39]. The simulator maintains a global clock and simulates
+all requests and model executions on the cluster. Because the
+simulator only models discrete events, it is orders of magni-
+tude faster than the real experiments. In our experiment, it
+takes less than 1 hour for a 24-hour trace. The fidelity of the
+simulator is very high because of the predictability of DNN
+model execution, which is verified in §6.1.
+6
+Evaluation
+In this section, we evaluate AlpaServe’s serving ability under
+a variety of model and workload conditions. The evaluation is
+conducted on a range of model sizes, including those that do
+and do not fit into a single GPU, and we show that AlpaServe
+consistently outperforms strong baselines across all model
+sizes. In addition, we evaluate the robustness of AlpaServe
+against changing arrival patterns and do ablation studies of our
+proposed techniques. Evaluation results show that AlpaServe
+can greatly improve various performance metrics. Specifically,
+AlpaServe can choose to save up to 2.3× devices, handle 10×
+higher rates, 6× more burstiness, or 2.5× more stringent SLO,
+while meeting the latency SLOs for over 99% requests.
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    671
+
+
+Name
+Size
+Latency (ms)
+S1
+S2
+S3
+S4
+BERT-1.3B
+2.4 GB
+151
+32
+0
+10
+0
+BERT-2.7B
+5.4 GB
+238
+0
+0
+10
+0
+BERT-6.7B
+13.4 GB
+395
+0
+32
+10
+0
+BERT-104B
+208 GB
+4600
+0
+0
+0
+4
+MoE-1.3B
+2.6 GB
+150
+0
+0
+10
+0
+MoE-2.4B
+4.8 GB
+171
+0
+0
+10
+0
+MoE-5.3B
+10.6 GB
+234
+0
+0
+10
+0
+Table 1: The first three columns list the sizes and inference
+latency of the models. The latency is measured for a single
+query with a sequence length of 2048 on a single GPU. BERT-
+104B’s latency is reported using a minimal degree of inter-op
+parallelism. The latter columns list the number of instances
+for each model in different model sets named as S1-S4.
+6.1
+Experiment Setup
+Cluster testbed. We deploy AlpaServe on a cluster with 8
+nodes and 64 GPUs. Each node is an AWS EC2 p3.16xlarge
+instance with 8 NVIDIA Tesla V100 (16GB) GPUs.
+Model setup. Since Transformer [47] is the default backbone
+for large models, we choose two representative large Trans-
+former model families: BERT [14] and GShard MoE [27]
+for evaluation.4 In ML practice, the large model weights are
+usually pretrained and then finetuned into different versions
+for different tasks. Hence, for each model family, we select
+several most commonly used model sizes [5], and then create
+multiple model instances at each size for experimentation.
+Also, we design some model sets to test the serving systems
+under different model conditions; details about model sizes,
+their inference latency on testbed GPUs, and the number of
+model instances in each model set are provided in Tab. 1.
+Metrics. We use SLO attainment as the major evaluation
+metric. Under a specific SLO attainment goal (say, 99%), we
+concern with another four measures: (1) the minimal num-
+ber of devices the system needs, (2) the maximum average
+request rate, (3) the maximum traffic burstiness the system
+can support, and (4) the minimal SLO the system can handle.
+We are particularly interested in a SLO attainment of 99% (in-
+dicated by vertical lines in all curve plots), but will also vary
+each variable in (1) - (4) and observe how the SLO attainment
+changes.
+Simulator fidelity. We want to study the system behavior
+under extensive models, workload, and resource settings, but
+some settings are just beyond the capacity of our testbed. Also,
+it is cost- and time-prohibitive to perform all experiments on
+the testbed for the days-long real traces. To mitigate the prob-
+lem, we use the simulator introduced in §5 for the majority
+of our experiments, noticing that DNN model execution [19]
+has high predictability, even under parallel settings [27,56].
+4In this paper, we focus on non-autoregressive large models which per-
+form inference with one forward pass, but note that the techniques proposed
+in this paper can be extended to auto-regressive models like GPT-3.
+SLO
+Scale
+Selective Replication
+AlpaServe
+Real System
+Simulator
+Real System
+Simulator
+0.5x
+00.0%
+00.0%
+33.3%
+33.3%
+1x
+00.0%
+00.0%
+53.5%
+53.2%
+1.5x
+29.7%
+30.2%
+64.1%
+64.7%
+2x
+36.9%
+36.8%
+79.0%
+80.6%
+3x
+49.5%
+48.5%
+91.4%
+92.1%
+4x
+58.6%
+57.8%
+96.4%
+96.5%
+5x
+64.9%
+64.0%
+97.6%
+97.9%
+10x
+83.1%
+82.6%
+100.0%
+99.7%
+Table 2: Comparison of the SLO attainment reported by the
+simulator and the real system under different SLO scales.
+We study the fidelity of the simulator in Tab. 2. Given two
+model placement algorithms, we compare the SLO attain-
+ment reported by the simulator and by real runs on our testbed
+under different SLO Scales. The error is less than 2% in all
+cases, verifying the accuracy of our simulator. Additionally,
+we conduct experiments on cluster testbed for results in §6.3.
+6.2
+End-to-end Results with Real Workloads
+In this section, we compare AlpaServe against baseline meth-
+ods on publicly available real traces.
+Workloads. There does not exist an open-source production
+ML inference trace to the best of our knowledge. Therefore,
+we use the following two production traces as a proxy: Mi-
+crosoft Azure function trace 2019 (MAF1) [42] and 2021
+(MAF2) [54]. They were originally collected from Azure
+serverless function invocations in two weeks, and have been
+repurposed for ML serving research [4,25]. The two traces
+exhibit distinct traffic patterns. In MAF1, each function re-
+ceives steady and dense incoming requests with gradually
+changing rates; in MAF2, the traffic is very bursty and is
+distributed across functions in a highly skewed way – some
+function receives orders of magnitude more requests than
+others. Note that most previous works [19] are evaluated on
+MAF1 only. Since there are more functions than models, fol-
+lowing previous work [4,25], given a model set from Tab. 1,
+we round-robin functions to models to generate traffic for
+each model.
+Setup. SLO attainment depends on many factors. For each
+metric (1) - (4) mentioned in §6.1, we set a default value, e.g.,
+the default SLO is set as tight as 5× inference latency (SLO
+Scale=5). This forms a default setting, given which, we then
+vary one variable (while fixing others) at a time and observe
+how it affects the resulting SLO attainment. To change the
+two variables (3) and (4), which characterize traffic patterns,
+we follow Clockwork [19] and Inferline [8] and slice the
+original traces into time windows, and fit the arrivals in each
+time window with a Gamma Process parameterized by rate
+and coefficient of variance (CV). By scaling the rate and CV
+and resampling from the processes, we can control the rate
+and burstiness, respectively.
+Baselines. We compare AlpaServe to two baseline methods:
+672    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+10
+20
+30
+40
+50
+#devices
+60
+70
+80
+90
+100
+S1 @ MAF1
+60
+80
+100
+120
+#devices
+60
+70
+80
+90
+100
+S2 @ MAF1
+40
+60
+80
+#devices
+60
+70
+80
+90
+100
+S3 @ MAF1
+5
+10
+15
+#devices
+60
+70
+80
+90
+100
+S1 @ MAF2
+20
+40
+60
+#devices
+60
+70
+80
+90
+100
+S2 @ MAF2
+20
+40
+60
+#devices
+60
+70
+80
+90
+100
+S3 @ MAF2
+SLO Attainment (%)
+AlpaServe
+Clockwork++
+SR
+0.002
+0.004
+0.006
+0.008
+Rate Scale
+60
+70
+80
+90
+100
+0.002
+0.004
+0.006
+0.008
+Rate Scale
+60
+70
+80
+90
+100
+0.002
+0.004
+0.006
+0.008
+Rate Scale
+60
+70
+80
+90
+100
+20
+40
+60
+80
+100
+Rate Scale
+60
+70
+80
+90
+100
+20
+40
+60
+80
+100
+Rate Scale
+60
+70
+80
+90
+100
+0
+20
+40
+60
+Rate Scale
+60
+70
+80
+90
+100
+SLO Attainment (%)
+2
+4
+6
+8
+CV Scale
+40
+60
+80
+100
+2
+4
+6
+8
+CV Scale
+40
+60
+80
+100
+2
+4
+6
+8
+CV Scale
+40
+60
+80
+100
+2
+4
+6
+8
+10
+CV Scale
+40
+60
+80
+100
+2
+4
+6
+8
+10
+CV Scale
+40
+60
+80
+100
+2
+4
+6
+8
+CV Scale
+40
+60
+80
+100
+SLO Attainment (%)
+2.5
+5.0
+7.5
+10.0
+SLO Scale
+0
+25
+50
+75
+100
+2.5
+5.0
+7.5
+10.0
+SLO Scale
+0
+25
+50
+75
+100
+2.5
+5.0
+7.5
+10.0
+SLO Scale
+0
+25
+50
+75
+100
+1
+2
+3
+4
+SLO Scale
+0
+25
+50
+75
+100
+1
+2
+3
+4
+SLO Scale
+0
+25
+50
+75
+100
+1
+2
+3
+4
+5
+SLO Scale
+0
+25
+50
+75
+100
+SLO Attainment (%)
+Figure 12: SLO attainment under various settings. In column S1@MAF1, we replay the MAF1 trace on the model set S1, and
+so on. In each row, we focus on one specific metric mentioned in §6.2 to see how its variation affects the performance of each
+serving system. If any, the dotted vertical line shows when the system can achieve 99% SLO attainment.
+(1) Selective Replication (SR): use AlpaServe’s placement al-
+gorithm without model parallelism, which mimics the policy
+of a wide range of existing serving systems [9,44]; (2) Clock-
+work++: an improved version of the state-of-the-art model
+serving system Clockwork [19]. The original Clockwork con-
+tinuously swaps models into and out of GPUs. This helps for
+very small models (e.g., w/ several million parameters) but
+incurs significant swapping overheads on larger models. For
+fair comparisons, we implement Clockwork++ in our simula-
+tor, which swaps models following Clockwork’s replacement
+strategy at the boundary of every two windows5 of the trace
+using SR’s algorithm, but assuming zero swapping overheads.
+We believe it represents a hypothetical upper bound of Clock-
+work’s performance. Since all the baselines can only support
+models that can fit into one GPU memory,6 we use model set
+S1, S2 and S3 from Tab. 1 in this experiment.
+SLO attainment vs. cluster size. Fig. 12’s first row shows
+the SLO attainment with varying cluster sizes when serving
+a specific (model set, trace) pair. AlpaServe outperforms the
+two baselines at all times and uses far fewer devices to achieve
+99% SLO attainment thanks to model parallelism. By splitting
+5For MAF1, we follow Clockwork to set the window size as 60 seconds.
+For MAF2, we set it as 5.4K seconds.
+6In our cluster testbed, the per-GPU memory is 16GB, but the actual
+available space for model weights is around 13GB due to the need to store
+activations and other runtime context.
+one model replica onto N devices, AlpaServe can achieve
+similar throughput as if N replica were created for replication-
+only methods; but note AlpaServe uses only one replica of
+memory. Surprisingly, although we let Clockwork++ adjust
+to the traffic dynamically with zero overhead, AlpaServe still
+wins with a static placement; this is because model-parallel
+placement is by nature more robust to bursty traffic.
+It is worth noting that replication-only methods can at most
+place 2 replicas of BERT-2.6B on a V100 (13GB memory bud-
+get), resulting in a substantial memory fraction, while model
+parallelism can avoid such memory fractions and enable more
+flexible placement of models.
+SLO attainment vs. rate. Fig. 12’s 2nd row varies the rate of
+the workloads. For a stable trace like MAF1, AlpaServe can
+handle a much higher rate than baselines. While for a skewed
+and highly dynamic trace MAF2, whose traffic is dominated
+by a few models and changes rapidly, the replication-based
+methods have to allocate the majority of the GPUs to create
+many replicas for “hot” models to combat their bursty traffic;
+those GPUs, however, may go idle between bursts, even with
+frequent re-placement as in Clockwork++. In AlpaServe, each
+model needs fewer replicas to handle its peak traffic.
+SLO attainment vs. CV. Fig. 12’s 3rd row varies the CV of
+the workloads. The traffic becomes more bursty with a higher
+CV, which aggravates the queuing effect of the system and
+increases the possibility of SLO violation. The traditional
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    673
+
+
+solution to handle burstiness is by over-provision, wasting a
+lot of resources. AlpaServe reveals a hidden opportunity to
+handle this by model parallelism.
+SLO attainment vs. SLO. Fig. 12’s 4th row shows the effect
+of different SLO. Previous work [19] which targets serving
+small models usually sets SLO to hundreds of milliseconds,
+even though the actual inference latency is less than 10 ms.
+Thanks to the intra-op parallelism, AlpaServe can maintain
+good performance under similar SLO when serving large
+models, whose inference latency can be over 100 ms. When
+SLO is tight, even less than the model inference time, Al-
+paServe favors intra-op parallelism to reduce the inference
+latency, which also reduces AlpaServe’s peak throughput due
+to the communication overhead but can make more requests
+to meet their SLO. When SLO becomes looser, AlpaServe
+will automatically switch to use more inter-op parallelism to
+get higher throughput.
+6.3
+Serving Very Large Models
+Today’s large models may possess hundreds of billions of
+parameters [5, 31, 53]. To serve large models at this scale,
+the common practice in production is to choose the model
+parallelism strategy manually and use dedicated GPUs for
+each model [51]. To show AlpaServe has improved capability
+in serving very large models, we deploy model set S4 on our
+testbed, each requiring at least 16 GPUs to serve in terms of
+memory usage. As baselines, for each model, we enumerate
+all combinations of inter- and intra-op parallelisms on 16
+GPUs. In contrast, AlpaServe searches for the optimal GPU
+group allocation and model placement according to the arrival
+traffic and tries to achieve statistical multiplexing.
+Offered load. In the default setting, the traffic is generated
+via a Gamma Process with an average rate of 8 requests/s and
+CV of 4. We then split the requests to each model following
+a power law distribution with an exponent of 0.5 to simulate
+the real-world skewness.7 Similar to §6.2, we vary one of the
+rate, CV, or SLO in the default setting to see how each factor
+contributes to the resulting performance. It is worth noting
+that all results presented in this section are obtained via real
+execution on the testbed cluster.
+SLO attainment. Fig. 13 shows the SLO attainment of each
+system under various settings. Although enumerating par-
+allelism strategies and selecting the best can improve per-
+formance, it still remains a substantial gap compared to Al-
+paServe. This means that the traditional way of using ded-
+icated GPUs to serve large models is not ideal. We check
+the solution of AlpaServe and find it slices the cluster evenly
+into two groups, each with the (4, 8) inter-/intra-op parallel
+configuration, and groups the models in a way that balances
+the requests between two groups. This further proves that our
+motivation in §3.1 still holds for extremely large models. By
+7Uniform split yielded similar results.
+2.5
+5.0
+7.5
+Rate (r/s)
+60
+70
+80
+90
+100
+1
+2
+3
+4
+CV
+60
+70
+80
+90
+100
+2.5
+5.0
+7.5
+SLO Scale
+0
+20
+40
+60
+80
+100
+SLO Attainment (%)
+AlpaServe
+(16,1)
+(8,2)
+(4,4)
+(2,8)
+Figure 13: SLO attainment as we vary the rate, CV, and SLO
+scale. (8,2) means 8-way inter-op parallelism and in each
+pipeline stage using 2-way intra-op parallelism.
+space-sharing the devices, AlpaServe can exploit new oppor-
+tunities for statistical multiplexing, which is advantageous for
+bursty workloads but largely under-explored by prior work.
+6.4
+Robustness to Changing Traffic Patterns
+Until now, AlpaServe’s good performance is based on the
+assumption we make in its placement algorithm that we know
+the arrival process in advance. In practice, the arrival process
+can be approximated using historical traces but the unavoid-
+able real-world variance may make the prediction inaccurate.
+In this experiment, we study how AlpaServe performs if the
+traffic patterns change.
+We reuse the same setting for S2@MAF1 in §6.2, but this
+time for AlpaServe and SR, we randomly slice two one-hour
+traces from MAF1, one is what their algorithms are assumed,
+while the other one is used as the actual arrival process. While
+for Clockwork++, we still run its algorithm directly on the
+actual arrival process to respect its online nature. Similarly,
+we vary different factors and compute the SLO attainment for
+each system. We repeat the experiments three times and show
+the average results in Fig. 14.
+Unsurprisingly, SR’s performance drops significantly when
+traffic changes. By contrast, AlpaServe maintains good per-
+formance and still outperforms Clockwork++, an online ad-
+justment algorithm, using a static placement generated from
+substantially different traffic patterns. This confirms that, in
+face of highly-dynamic traffic patterns, statistical multiplex-
+ing with model parallelism is a simple and better alternative
+than existing replication- or replacement-based algorithms.
+6.5
+Benefits of Dynamic Batching
+Batching is a common optimization in other serving sys-
+tems [19, 33, 34] and the choice of batch size is critical to
+the performance because it can increase GPU utilization and
+thus increase the system throughput. However, in large model
+scenarios, the benefit of batching is limited mainly due to
+two reasons. First, for large models, a small batch size will
+saturate the GPU, which means there is little gain to batching
+more requests. Second, the execution latency grows linearly
+with the batch size [44], so when the SLO is tight (say SLO
+Scale is less than 2), batching is simply not a choice.
+To isolate the benefits of model parallelism and make the
+674    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+10
+20
+30
+40
+50
+#devices
+0
+20
+40
+60
+80
+100
+0.002
+0.004
+0.006
+0.008
+Rate Scale
+0
+20
+40
+60
+80
+100
+2
+4
+6
+8
+CV Scale
+0
+20
+40
+60
+80
+100
+2
+4
+6
+8
+10
+SLO Scale
+0
+20
+40
+60
+80
+100
+SLO Attainment (%)
+AlpaServe
+Clockwork++
+SR
+Figure 14: The actual arrival traffic for AlpaServe and SR is different from what their algorithms are assumed, while Clockwork++
+runs directly on the actual traffic.
+0.0
+2.5
+5.0
+7.5
+10.0
+12.5
+SLO Scale
+0
+20
+40
+60
+80
+100
+AlpaServe
+AlpaServe (mb=2)
+AlpaServe (mb=4)
+AlpaServe (mb=8)
+AlpaServe (mb=16)
+0.0
+2.5
+5.0
+7.5
+10.0
+12.5
+SLO Scale
+0
+20
+40
+60
+80
+100
+AlpaServe
+Clockwork++
+AlpaServe (mb=2)
+Clockwork++ (mb=2)
+SLO Attainment (%)
+Figure 15: SLO Attainment when batching is enabled. mb=2
+means the maximum batch size is 2.
+results more explainable, we decide to disable any batching
+in other experiments but prove that the batching strategy is
+purely orthogonal to the scope of this paper in this subsection.
+To prove this, we implement a standard batching algorithm in
+AlpaServe and evaluate its performance.
+Batching strategy. When a request arrives, it will get exe-
+cuted immediately if any device group is available. Otherwise,
+it will be put into a per-model requests queue for batching.
+When a device group becomes idle, it will choose a model
+which has a replica on it and batch as many requests as possi-
+ble from the requests queue of the model while satisfying the
+SLO requirements.
+Setup. As the model size increases, the potential benefit of
+batching decreases. Therefore, we choose to evaluate model
+set S1. We generate a synthetic Gamma Process traffic with
+an average rate of 4 requests/s and a CV of 4 for each model.
+SLO attainment. Fig. 15 (left) shows the SLO attainment
+achieved by AlpaServe with different maximum batch size set-
+tings under various SLO scales. When the SLO requirement
+is tight, any batching will violate the SLO so there is no gain
+with batching enabled. Also, although we choose to serve the
+smallest model in Tab. 1, a small batch size like 2 combined
+with a long sequence length of 2048 already saturates the
+GPU, so a larger maximum batch size brings no performance
+improvement. Fig. 15 (right) compares the improvement for
+AlpaServe and Clockwork++ with our batching algorithm
+enabled.8 When the SLO requirement becomes loose, both
+AlpaServe and Clockwork++ have better SLO attainment to
+8SR is left out to make the figure clearer as it is worse than Clockwork++.
+1
+2
+4
+8
+Number of GPUs
+0.100
+0.125
+0.150
+0.175
+0.200
+0.225
+0.250
+Latency (s)
+Compuation
+Communication Overhead
+Uneven Partition Overhead
+(a) Transformer 1.3B.
+1
+2
+4
+8
+Number of GPUs
+0.20
+0.22
+0.24
+0.26
+0.28
+0.30
+Latency (s)
+Compuation
+Communication Overhead
+Uneven Partition Overhead
+(b) Transformer 2.6B.
+Figure 16: Comparison of the model parallel overhead be-
+tween manual partition (lighter color) and the partition found
+by the automatic algorithm (darker color).
+some extent. Since AlpaServe’s performance is good even
+without batching and batched requests with different batch
+sizes will incur stage imbalance and pipeline bubble in inter-
+op parallel, the absolute improvement of Clockwork++ is
+slightly better.
+6.6
+Ablation Study
+In this section, we study the effectiveness of our proposed
+auto-parallelization (§4.1) and placement algorithms (§4.2).
+Benefits of auto-parallelization. We show that the auto-
+parallelization ability allows AlpaServe to not only gener-
+alize to arbitrary model architectures but even also reduce
+parallelism overheads – hence improved serving performance
+(see §3.3 for more discussion). To see that, typical manual
+model-parallel parallelization strategies offered in de facto
+systems [1, 31, 32] is to assign an equal number of (trans-
+former) layers to each pipeline stage. These strategies often
+fail to create balanced workloads across distributed GPUs be-
+cause contemporary large models have heterogeneous layers,
+such as embedding operations. The extensions introduced in
+§4.1 automatically partition the models at the computational
+graph level and generate nearly-balanced stages. Empirically,
+as shown in Fig. 16, for 8 pipeline stages, auto-parallelization
+reduces the total overhead by 32.9% and 46.7% for Trans-
+former 1.3B and 2.6B respectively, which is necessary for
+achieving good serving performance when model parallelism
+is used for serving.
+Effectiveness of the placement algorithm. We now test the
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    675
+
+
+20
+40
+60
+80
+100
+120
+Rate (r/s)
+60
+65
+70
+75
+80
+85
+90
+95
+100
+Round robin
+Greedy placement
+Greedy placement + Group partitioning
+2
+4
+6
+CV
+60
+65
+70
+75
+80
+85
+90
+95
+100
+Round robin
+Greedy placement
+Greedy placement + Group partitioning
+SLO Attainment (%)
+Figure 17: Ablation study of placement algorithms.
+effectiveness of our placement algorithm on a synthetic work-
+load. We serve the most challenging model set S3 (Tab. 1)
+on our testbed. The rate distribution of the models follows
+a power law distribution. The arrival pattern of each model
+is a Gamma process. Three variants of the placement algo-
+rithms are evaluated. Round robin means placing models in a
+round-robin fashion and using 4-stage pipelines for all groups.
+Greedy placement uses our greedy placement and 4-stage
+pipeline for all groups. Greedy placement + Group partition-
+ing performs greedy placement plus group partitioning search.
+As shown in Fig. 17, both placement and group partitioning
+are necessary to achieve good SLO attainment. In the left
+subfigure, the group partitioning increases the rate by 1.5×
+compared to greedy placement without group partitioning
+over 99% SLO attainment, while round robin can never reach
+99% SLO attainment. In the right subfigure, the group parti-
+tioning increases the traffic burstiness that can be handled to
+meet 99% SLO attainment by 1.3×.
+7
+Related Work
+Model serving systems. There has been a proliferation of
+model serving systems recently. These range from general-
+purpose production-grade systems like TensorFlow Serv-
+ing [34] and NVIDIA Triton [33], which are widely used but
+do not provide any support for automatic placement or latency
+constraints. They also include systems that are optimized for
+single-model serving [51] or serving of specific classes of
+models (e.g., transformers) [16,51,57]. AlpaServe targets a
+broader set of models and features than these systems.
+For SLO-aware, distributed serving, most serving systems
+ignore placement-level interactions between models. Clock-
+work [19], for instance, primarily focuses on predictability;
+when scheduling, it greedily loads and executes models on
+available GPUs. Shepherd [52] utilizes preemption to correct
+sub-optimal scheduling decisions. For large models, loading
+model weights and preemption can easily overwhelm prac-
+tical SLOs. Other systems like Clipper [9], Infaas [40], and
+DVABatch [10] also do not reason about the latencies of
+co-located models.
+Nexus [44] is very related to our work in that it exam-
+ines the placement of models; however, Nexus is an example
+of a system that takes the traditional replication approach
+described in §3 and, thus, misses a broad class of potential
+parallelization strategies that we explore in this paper.
+Inference optimizations for large models. AlpaServe is com-
+plementary to another large body of work on optimizations
+for inference over large models. These include techniques like
+quantization [13], distillation [41], offloading [1], better oper-
+ator parallelism [36], and CUDA kernel optimization [11,26].
+Some of these optimizations are intended to stem the tide
+of increasing model sizes; however, all of these gains are
+partial— the challenge of serving large models has continued
+to escalate rapidly despite these efforts.
+Model parallelism for training. AlpaServe is largely orthog-
+onal to the large body of work on model parallelism in train-
+ing [23,28,31,37,56]. As described in §3, serving presents
+a unique set of constraints and opportunities not found in
+training workloads. Where these systems do intersect with
+AlpaServe, however, is in their methods for implementing
+model parallelism along various dimensions. In particular,
+AlpaServe builds on some of the parallelization techniques
+introduced in [56].
+Resource allocation and multiplexing. The problem of how
+to multiplex limited resources to the incoming requests is one
+of the oldest topics in computer science and has been stud-
+ied in different application domains [3,29,38]. Recent work
+on DL scheduling uses swapping [2], preemption [20], inter-
+leaving [55], and space-sharing [49] to realize fine-grained
+resource sharing. Rather, the contribution of this paper is a
+deep empirical analysis of the applications of these ideas to
+an emerging space: the serving of multiple large models.
+8
+Conclusion and Future Work
+In this paper, we presented AlpaServe, a system for prediction
+servings of multiple large deep-learning models. The key
+innovation of AlpaServe is integrating model parallelism into
+multi-model serving. Because of the inherent overheads of
+model parallelism, such parallelism is traditionally applied
+conservatively—reserved for cases where models simply do
+not fit within a single GPU or execute within the required SLO.
+AlpaServe demonstrates that model parallelism is useful for
+many other scenarios, quantifies the tradeoffs, and presents
+techniques to automatically navigate that tradeoff space.
+In the future, we will extend AlpaServe to more com-
+plicated scenarios, including serving multiple parameter-
+efficient adapted models (e.g., LoRA [22]), models with de-
+pendencies, and autoregressive models [5].
+9
+Acknowledgement
+We thank the OSDI reviewers and our shepherd, Heming Cui,
+for their valuable feedback. This work is in part supported by
+NSF CISE Expeditions Award CCF1730628, NSFC under the
+grant number 62172008, and gifts from Astronomer, Google,
+IBM, Intel, Lacework, Microsoft, Nexla, Samsung SDS, Uber,
+and VMware. Yinmin Zhong and Xin Jin are also with the
+Key Laboratory of High Confidence Software Technologies
+(Peking University), Ministry of Education.
+676    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+References
+[1] Reza Yazdani Aminabadi, Samyam Rajbhandari, Min-
+jia Zhang, Ammar Ahmad Awan, Cheng Li, Du Li, El-
+ton Zheng, Jeff Rasley, Shaden Smith, Olatunji Ruwase,
+et al. Deepspeed inference: Enabling efficient inference
+of transformer models at unprecedented scale. arXiv
+preprint arXiv:2207.00032, 2022.
+[2] Zhihao Bai, Zhen Zhang, Yibo Zhu, and Xin Jin.
+{PipeSwitch}: Fast pipelined context switching for deep
+learning applications. In 14th USENIX Symposium on
+Operating Systems Design and Implementation (OSDI
+20), pages 499–514, 2020.
+[3] Nirvik Baruah, Peter Kraft, Fiodar Kazhamiaka, Pe-
+ter Bailis, and Matei Zaharia. Parallelism-optimizing
+data placement for faster data-parallel computations.
+Proceedings of the VLDB Endowment, 16(4):760–771,
+2022.
+[4] Anirban Bhattacharjee, Ajay Dev Chhokra, Zhuangwei
+Kang, Hongyang Sun, Aniruddha Gokhale, and Gabor
+Karsai. Barista: Efficient and scalable serverless serving
+system for deep learning prediction services. In 2019
+IEEE International Conference on Cloud Engineering
+(IC2E), pages 23–33. IEEE, 2019.
+[5] Tom Brown, Benjamin Mann, Nick Ryder, Melanie
+Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+Askell, et al.
+Language models are few-shot learn-
+ers. Advances in neural information processing systems,
+33:1877–1901, 2020.
+[6] Aakanksha Chowdhery, Sharan Narang, Jacob Devlin,
+Maarten Bosma, Gaurav Mishra, Adam Roberts, Paul
+Barham, Hyung Won Chung, Charles Sutton, Sebastian
+Gehrmann, et al. Palm: Scaling language modeling with
+pathways. arXiv preprint arXiv:2204.02311, 2022.
+[7] Copy.ai. Copy.ai: Write better marketing copy and con-
+tent with ai. https://www.copy.ai/.
+[8] Daniel Crankshaw, Gur-Eyal Sela, Xiangxi Mo, Corey
+Zumar, Ion Stoica, Joseph Gonzalez, and Alexey Tu-
+manov. Inferline: latency-aware provisioning and scal-
+ing for prediction serving pipelines. In Proceedings of
+the 11th ACM Symposium on Cloud Computing, pages
+477–491, 2020.
+[9] Daniel Crankshaw, Xin Wang, Guilio Zhou, Michael J
+Franklin, Joseph E Gonzalez, and Ion Stoica. Clipper:
+A low-latency online prediction serving system. In 14th
+USENIX Symposium on Networked Systems Design and
+Implementation (NSDI 17), pages 613–627, 2017.
+[10] Weihao Cui, Han Zhao, Quan Chen, Hao Wei, Zirui
+Li, Deze Zeng, Chao Li, and Minyi Guo. Dvabatch:
+Diversity-aware multi-entry multi-exit batching for ef-
+ficient processing of dnn services on gpus. In 2022
+USENIX Annual Technical Conference (USENIX ATC
+22), pages 183–198, 2022.
+[11] Tri Dao, Daniel Y Fu, Stefano Ermon, Atri Rudra, and
+Christopher Ré.
+Flashattention: Fast and memory-
+efficient exact attention with io-awareness. Advances in
+Neural Information Processing Systems, 2022.
+[12] Robert I Davis, Ken W Tindell, and Alan Burns.
+Scheduling slack time in fixed priority pre-emptive sys-
+tems. In 1993 Proceedings Real-Time Systems Sympo-
+sium, pages 222–231. IEEE, 1993.
+[13] Tim Dettmers, Mike Lewis, Younes Belkada, and Luke
+Zettlemoyer. Llm. int8 (): 8-bit matrix multiplication for
+transformers at scale. Advances in Neural Information
+Processing Systems, 2022.
+[14] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. Bert: Pre-training of deep bidirec-
+tional transformers for language understanding. arXiv
+preprint arXiv:1810.04805, 2018.
+[15] Mengnan Du, Subhabrata Mukherjee, Yu Cheng, Milad
+Shokouhi, Xia Hu, and Ahmed Hassan Awadallah. What
+do compressed large language models forget? robust-
+ness challenges in model compression. arXiv preprint
+arXiv:2110.08419, 2021.
+[16] Jiarui Fang, Yang Yu, Chengduo Zhao, and Jie Zhou.
+Turbotransformers: an efficient gpu serving system for
+transformer models. In Proceedings of the 26th ACM
+SIGPLAN Symposium on Principles and Practice of
+Parallel Programming, pages 389–402, 2021.
+[17] William Fedus, Barret Zoph, and Noam Shazeer. Switch
+transformers: Scaling to trillion parameter models with
+simple and efficient sparsity. Journal of Machine Learn-
+ing Research, 23(120):1–39, 2022.
+[18] Github.
+Github copilot: Your ai pair programmer.
+https://github.com/features/copilot.
+[19] Arpan Gujarati, Reza Karimi, Safya Alzayat, Wei Hao,
+Antoine Kaufmann, Ymir Vigfusson, and Jonathan
+Mace. Serving {DNNs} like clockwork: Performance
+predictability from the bottom up. In 14th USENIX
+Symposium on Operating Systems Design and Imple-
+mentation (OSDI 20), pages 443–462, 2020.
+[20] Mingcong Han, Hanze Zhang, Rong Chen, and Haibo
+Chen. Microsecond-scale preemption for concurrent
+GPU-accelerated DNN inferences. In 16th USENIX
+Symposium on Operating Systems Design and Imple-
+mentation (OSDI 22), pages 539–558, Carlsbad, CA,
+July 2022. USENIX Association.
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    677
+
+
+[21] Mingcong Han, Hanze Zhang, Rong Chen, and Haibo
+Chen. Microsecond-scale preemption for concurrent
+{GPU-accelerated}{DNN} inferences. In 16th USENIX
+Symposium on Operating Systems Design and Imple-
+mentation (OSDI 22), pages 539–558, 2022.
+[22] Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan
+Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and
+Weizhu Chen. Lora: Low-rank adaptation of large lan-
+guage models, 2021.
+[23] Yanping Huang, Youlong Cheng, Ankur Bapna, Orhan
+Firat, Dehao Chen, Mia Chen, HyoukJoong Lee, Jiquan
+Ngiam, Quoc V Le, Yonghui Wu, et al. Gpipe: Effi-
+cient training of giant neural networks using pipeline
+parallelism. Advances in neural information processing
+systems, 32, 2019.
+[24] Huggingface.
+Models - huggingface.
+https://
+huggingface.co/models.
+[25] Vatche Ishakian, Vinod Muthusamy, and Aleksander
+Slominski. Serving deep learning models in a serverless
+platform. In 2018 IEEE International Conference on
+Cloud Engineering (IC2E), pages 257–262. IEEE, 2018.
+[26] Andrei Ivanov, Nikoli Dryden, Tal Ben-Nun, Shigang
+Li, and Torsten Hoefler. Data movement is all you need:
+A case study on optimizing transformers. Proceedings
+of Machine Learning and Systems, 3:711–732, 2021.
+[27] Dmitry Lepikhin, HyoukJoong Lee, Yuanzhong Xu, De-
+hao Chen, Orhan Firat, Yanping Huang, Maxim Krikun,
+Noam Shazeer, and Zhifeng Chen. Gshard: Scaling gi-
+ant models with conditional computation and automatic
+sharding. In International Conference on Learning Rep-
+resentations, 2020.
+[28] Zhuohan Li, Siyuan Zhuang, Shiyuan Guo, Danyang
+Zhuo, Hao Zhang, Dawn Song, and Ion Stoica. Terapipe:
+Token-level pipeline parallelism for training large-scale
+language models. In International Conference on Ma-
+chine Learning, pages 6543–6552. PMLR, 2021.
+[29] Xiaoqiao Meng, Canturk Isci, Jeffrey Kephart, Li Zhang,
+Eric Bouillet, and Dimitrios Pendarakis. Efficient re-
+source provisioning in compute clouds via vm multiplex-
+ing. In Proceedings of the 7th international conference
+on Autonomic computing, pages 11–20, 2010.
+[30] Deepak Narayanan, Aaron Harlap, Amar Phanishayee,
+Vivek Seshadri, Nikhil R Devanur, Gregory R Ganger,
+Phillip B Gibbons, and Matei Zaharia. Pipedream: gen-
+eralized pipeline parallelism for dnn training. In Pro-
+ceedings of the 27th ACM Symposium on Operating
+Systems Principles, pages 1–15, 2019.
+[31] Deepak Narayanan, Mohammad Shoeybi, Jared Casper,
+Patrick LeGresley, Mostofa Patwary, Vijay Korthikanti,
+Dmitri Vainbrand, Prethvi Kashinkunti, Julie Bernauer,
+Bryan Catanzaro, Amar Phanishayee, and Matei Zaharia.
+Efficient large-scale language model training on gpu
+clusters using megatron-lm. In Proceedings of the Inter-
+national Conference for High Performance Computing,
+Networking, Storage and Analysis, SC ’21, New York,
+NY, USA, 2021. Association for Computing Machinery.
+[32] NVIDIA. Fastertransformer. https://github.com/
+NVIDIA/FasterTransformer.
+[33] NVIDIA.
+Triton
+inference
+server.
+https://developer.nvidia.com/
+nvidia-triton-inference-server.
+[34] Christopher Olston, Noah
+Fiedel, Kiril
+Gorovoy,
+Jeremiah
+Harmsen, Li
+Lao, Fangwei
+Li, Vinu
+Rajashekhar, Sukriti
+Ramesh, and Jordan
+Soyke.
+Tensorflow-serving: Flexible, high-performance ml
+serving. arXiv preprint arXiv:1712.06139, 2017.
+[35] OpenAI. Chatgpt. https://chat.openai.com/chat.
+[36] Reiner Pope, Sholto Douglas, Aakanksha Chowdh-
+ery, Jacob Devlin, James Bradbury, Anselm Levskaya,
+Jonathan Heek, Kefan Xiao, Shivani Agrawal, and Jeff
+Dean. Efficiently scaling transformer inference. arXiv
+preprint arXiv:2211.05102, 2022.
+[37] Samyam Rajbhandari, Jeff Rasley, Olatunji Ruwase, and
+Yuxiong He. Zero: Memory optimizations toward train-
+ing trillion parameter models. In SC20: International
+Conference for High Performance Computing, Network-
+ing, Storage and Analysis, pages 1–16. IEEE, 2020.
+[38] KV Rashmi, Mosharaf Chowdhury, Jack Kosaian, Ion
+Stoica, and Kannan Ramchandran.
+Ec-cache: Load-
+balanced, low-latency cluster caching with online era-
+sure coding. In 12th USENIX Symposium on Operating
+Systems Design and Implementation (OSDI 16), pages
+401–417, 2016.
+[39] Stewart Robinson. Simulation: the practice of model
+development and use. Bloomsbury Publishing, 2014.
+[40] Francisco Romero, Qian Li, Neeraja J. Yadwadkar, and
+Christos Kozyrakis. INFaaS: Automated model-less in-
+ference serving. In 2021 USENIX Annual Technical Con-
+ference (USENIX ATC 21), pages 397–411. USENIX
+Association, July 2021.
+[41] Victor Sanh, Lysandre Debut, Julien Chaumond, and
+Thomas Wolf.
+Distilbert, a distilled version of bert:
+smaller, faster, cheaper and lighter.
+arXiv preprint
+arXiv:1910.01108, 2019.
+678    17th USENIX Symposium on Operating Systems Design and Implementation
+USENIX Association
+
+
+[42] Mohammad Shahrad, Rodrigo Fonseca, Íñigo Goiri, Go-
+har Chaudhry, Paul Batum, Jason Cooke, Eduardo Lau-
+reano, Colby Tresness, Mark Russinovich, and Ricardo
+Bianchini. Serverless in the wild: Characterizing and
+optimizing the serverless workload at a large cloud
+provider. In 2020 USENIX Annual Technical Conference
+(USENIX ATC 20), pages 205–218, 2020.
+[43] Noam Shazeer, Youlong Cheng, Niki Parmar, Dustin
+Tran, Ashish Vaswani, Penporn Koanantakool, Peter
+Hawkins, HyoukJoong Lee, Mingsheng Hong, Cliff
+Young, Ryan Sepassi, and Blake Hechtman.
+Mesh-
+TensorFlow: Deep learning for supercomputers. In Neu-
+ral Information Processing Systems, 2018.
+[44] Haichen Shen, Lequn Chen, Yuchen Jin, Liangyu Zhao,
+Bingyu Kong, Matthai Philipose, Arvind Krishnamurthy,
+and Ravi Sundaram. Nexus: A gpu cluster engine for
+accelerating dnn-based video analysis. In Proceedings
+of the 27th ACM Symposium on Operating Systems Prin-
+ciples, pages 322–337, 2019.
+[45] Mohammad Shoeybi, Mostofa Patwary, Raul Puri,
+Patrick LeGresley, Jared Casper, and Bryan Catanzaro.
+Megatron-lm: Training multi-billion parameter lan-
+guage models using model parallelism. arXiv preprint
+arXiv:1909.08053, 2019.
+[46] John F Shortle, James M Thompson, Donald Gross, and
+Carl M Harris. Fundamentals of queueing theory, vol-
+ume 399. John Wiley & Sons, 2018.
+[47] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob
+Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser,
+and Illia Polosukhin. Attention is all you need. Advances
+in neural information processing systems, 30, 2017.
+[48] Qizhen Weng, Wencong Xiao, Yinghao Yu, Wei Wang,
+Cheng Wang, Jian He, Yong Li, Liping Zhang, Wei Lin,
+and Yu Ding. Mlaas in the wild: Workload analysis and
+scheduling in large-scale heterogeneous gpu clusters. In
+19th USENIX Symposium on Networked Systems Design
+and Implementation (NSDI 22), pages 945–960, 2022.
+[49] Bingyang Wu, Zili Zhang, Zhihao Bai, Xuanzhe Liu,
+and Xin Jin. Transparent GPU sharing in container
+clouds for deep learning workloads. In 20th USENIX
+Symposium on Networked Systems Design and Imple-
+mentation (NSDI 23), pages 69–85, Boston, MA, April
+2023. USENIX Association.
+[50] Yuanzhong Xu, HyoukJoong Lee, Dehao Chen, Blake
+Hechtman, Yanping Huang, Rahul Joshi, Maxim Krikun,
+Dmitry Lepikhin, Andy Ly, Marcello Maggioni, et al.
+Gspmd: general and scalable parallelization for ml com-
+putation graphs.
+arXiv preprint arXiv:2105.04663,
+2021.
+[51] Gyeong-In Yu, Joo Seong Jeong, Geon-Woo Kim, Soo-
+jeong Kim, and Byung-Gon Chun. Orca: A distributed
+serving system for transformer-based generative mod-
+els. In 16th USENIX Symposium on Operating Systems
+Design and Implementation (OSDI 22), pages 521–538,
+2022.
+[52] Hong Zhang, Yupeng Tang, Anurag Khandelwal, and
+Ion Stoica. {SHEPHERD}: Serving {DNNs} in the
+wild. In 20th USENIX Symposium on Networked Sys-
+tems Design and Implementation (NSDI 23), pages 787–
+808, 2023.
+[53] Susan Zhang, Stephen Roller, Naman Goyal, Mikel
+Artetxe, Moya Chen, Shuohui Chen, Christopher De-
+wan, Mona Diab, Xian Li, Xi Victoria Lin, et al. Opt:
+Open pre-trained transformer language models. arXiv
+preprint arXiv:2205.01068, 2022.
+[54] Yanqi Zhang, Íñigo Goiri, Gohar Irfan Chaudhry, Ro-
+drigo Fonseca, Sameh Elnikety, Christina Delimitrou,
+and Ricardo Bianchini. Faster and cheaper serverless
+computing on harvested resources. In Proceedings of the
+ACM SIGOPS 28th Symposium on Operating Systems
+Principles, pages 724–739, 2021.
+[55] Yihao Zhao, Yuanqiang Liu, Yanghua Peng, Yibo Zhu,
+Xuanzhe Liu, and Xin Jin. Multi-resource interleaving
+for deep learning training. In Proceedings of the ACM
+SIGCOMM 2022 Conference, pages 428–440, 2022.
+[56] Lianmin Zheng, Zhuohan Li, Hao Zhang, Yonghao
+Zhuang, Zhifeng Chen, Yanping Huang, Yida Wang,
+Yuanzhong Xu, Danyang Zhuo, Joseph E Gonzalez, et al.
+Alpa: Automating inter-and intra-operator parallelism
+for distributed deep learning. In 16th USENIX Sympo-
+sium on Operating Systems Design and Implementation
+(OSDI 22), 2022.
+[57] Zhe Zhou, Xuechao Wei, Jiejing Zhang, and Guangyu
+Sun. Pets: A unified framework for parameter-efficient
+transformers serving. In 2022 USENIX Annual Tech-
+nical Conference (USENIX ATC 22), pages 489–504,
+2022.
+USENIX Association
+17th USENIX Symposium on Operating Systems Design and Implementation    679

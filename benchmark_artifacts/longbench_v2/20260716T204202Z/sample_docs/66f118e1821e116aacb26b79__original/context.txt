@@ -1,0 +1,9952 @@
+6CCS3OME – Optimisation Methods
+Overview of the module
+Department of Informatics, King’s College London
+2022/23, Second term
+
+
+6CCS3OME – Optimisation Methods
+6CCS3OME, Overview of the module
+2 / 17
+•
+Lecturers:
+•
+Teaching Assistants (TBA, for Small Group tutorials)
+•
+Teaching arrangements
+•
+Pre-recorded weekly lectures available on KEATS; 3-5 segments
+(10-20 mins each segment) for each week.
+•
+Weekly 1-hour Large Group Tutorials (LGT): Wednesdays, 11:00 -
+13:00, Strand Building S-2.18, starting from the 1-st teaching week.
+The students have to familiarize themselves with the lecture material for
+the current week before the LGT.
+•
+Weekly 1-hour Small Group Tutorials (SGT):
+on different days of the week depending on the group, starting from the
+2-nd teaching week; check your timetable for the day and time of your
+SGT.
+•
+Prepare for LGTs and SGTs,
+by reviewing and attempting exercises given at the end of the lecture
+slides.
+
+
+6CCS3OME – Optimisation Methods – Assessment
+6CCS3OME, Overview of the module
+3 / 17
+•
+100% for the ﬁnal examination, in the format of multiple-choice questions
+with some questions requiring submission of working-out.
+•
+Weekly KEATS-based quizzes to check your understanding of the
+introduced material.
+These quizzes do not contribute to the ﬁnal mark for the module.
+
+
+6CCS3OME – Optimisation Methods – Feedback and help
+6CCS3OME, Overview of the module
+4 / 17
+•
+Correct answers to quiz questions will be explained (unless the question
+and the answer are straightforward).
+•
+Solutions to LGT and SGT exercises will be published (after the tutorial).
+•
+If you have questions regarding the module material, post them on KEATS
+in the Course Discussion Area.
+Everyone is encourage to give answers to the posted questions
+(you learn by trying to explain).
+The lecturers check this forum once a week for the remaining questions.
+•
+Email the lecturer in advance of the next LGT session, if you think there
+may be some points in the recorded lecture which may require further
+explanations.
+The lecturer will consider including explanations in the LGT.
+•
+Weekly ofﬁce hours.
+
+
+6CCS3OME – Optimisation Methods - aims of the module
+6CCS3OME, Overview of the module
+5 / 17
+•
+Aims of the module
+•
+To introduce
+∗various optimisation problems,
+focusing on network optimisation problems
+∗efﬁcient algorithms for solving these problems,
+∗general optimisation techniques.
+•
+To discuss applications of optimisation problems
+in computer networks, communication systems,
+scheduling, resource allocation, ﬁnancial analysis, data analysis
+•
+Focus on efﬁcient algorithms and general optimisation techniques.
+•
+Analysis of the efﬁciency (the running time) of algorithms.
+•
+A general optimisation technique: can be applied to
+(specialised to) different problems,
+from different application domains.
+
+
+6CCS3OME – Optimisation Methods – information for non-CS students
+6CCS3OME, Overview of the module
+6 / 17
+•
+Information for the undergraduate students from programmes other than
+BSc/MSci CS (CS with Management) and MSc students who don’t have
+the BSc CS/Computing background:
+•
+Prerequisite knowledge:
+∗Understanding of the basic computer programming concepts
+∗Understanding of the general notion of algorithm
+•
+Some additional individual study of relevant CS concepts
+might be needed, depending on the background
+(e.g. possibly some additional reading about
+relevant data structures, e.g. priority queues).
+•
+Last year: 230 students, including
+30 from Engineering,
+30 from Mathematics,
+6 from MSc programmes
+
+
+Syllabus
+6CCS3OME, Overview of the module
+7 / 17
+•
+Shortest-paths problems: algorithms
+[Weeks 1 – 3]
+•
+Single-source shortest paths: Bellman-Ford and Dijkstra’s algorithms
+•
+All-pairs shortest paths
+•
+Some special cases: shortest paths in directed acyclic graphs, shortest
+paths in geographical networks
+•
+Network ﬂow problems: algorithms and applications
+[Weeks 4, 5, 7 *]
+•
+Maximum ﬂows, Minimum-cost ﬂows, Multicommodity ﬂows
+•
+Ford-Fulkerson method for the maximum-ﬂow problem
+•
+Successive-Shortest-Paths algorithm for the min-cost ﬂow problem
+•
+Applications of network ﬂow problems
+•
+General optimisation techniques
+[Weeks 8 – 11]
+•
+The principles of linear programming; linear programming for network
+ﬂow problems; introduction to numeric optimisation
+•
+The principles and applications of convex optimisation
+•
+The gradient descent method; Stochastic optimization
+•
+Constrained optimization: Proximal gradient descent, Lagrange Multipliers
+* Week 6 is the reading week
+
+
+Useful books
+6CCS3OME, Overview of the module
+8 / 17
+1.
+T. H. Cormen, C. E. Leiserson, R. L. Rivest and C. Stein, ”Introduction to
+Algorithms” (Second edition), McGraw-Hill, 2003.
+[shortest paths; maximum ﬂow problem; NP-hard problems]
+2.
+R. K. Ahuja, T. L. Magnanti and J. B. Orlin, “Network ﬂows: theory,
+algorithms, and applications,” Prentice Hall, 1993.
+[network ﬂow problems]
+3.
+S. Boyd and L. Vandenberghe, “Convex Optimization,” Cambridge
+University Press, 2004, https://web.stanford.edu/ boyd/cvxbook/
+[general optimisation techniques]
+4.
+S. Bubeck, “Convex Optimization: Algorithms and Complexity”
+Foundations and Trends in Machine Learning, 2015.
+[general optimisation techniques]
+
+
+From real-world problems to graph-based optimisation problems
+6CCS3OME, Overview of the module
+9 / 17
+Starting from a real-world problem:
+1.
+model using graphs
+2.
+formulate the right graph problem (e.g. a shortest-path problem)
+3.
+solve the graph problem
+4.
+interpret the solution in terms of the real-world problem
+completion time
+Transport:
+planning routes
+Financial analysis:
+optimising transactions
+Project management:
+estimating earliest 
+model
+Transport:
+planning routes
+Financial analysis:
+optimising transactions
+Project management:
+estimating earliest 
+completion time
+8
+1
+6
+3
+4
+2
+7
+2
+5
+7
+1
+9
+4
+2
+completion time
+solution
+model
+Transport:
+planning routes
+Financial analysis:
+optimising transactions
+Project management:
+estimating earliest 
+8
+1
+6
+3
+4
+2
+7
+5
+7
+2
+1
+9
+4
+2
+
+
+Shortest paths
+6CCS3OME, Overview of the module
+10 / 17
+•
+Find the shortest-distance path from site v to site w.
+8
+9
+1
+1
+2
+4
+1
+6
+3
+1
+4
+2
+7
+5
+6
+2
+3
+v
+w
+5
+16
+13
+11
+•
+Find the shortest-distance paths from site v to all other sites in the network
+(single-source shortest-paths problem).
+•
+Find the shortest-distance path from v to w
+for every pair of sites v and w
+(all-pairs shortest-paths problem).
+15
+16
+19
+26
+10
+E
+16
+16
+19
+26 10 18
+A
+E
+D
+C
+B
+A
+B
+C D
+15
+16
+34
+41
+19 31 26
+10
+E
+28
+57
+0
+0
+0
+0
+0
+16
+35
+16
+34
+19
+32 28
+26 10 18
+A
+E
+D
+C
+B
+A
+B
+C D
+•
+All direct “distances” may be non-negative, (as in graphs representing road
+networks) but in the general case they may be negative.
+Special cases: networks without cycles; “geographical” networks (the
+geographical coordinates of nodes are given.
+
+
+Negative “distances” in an application
+6CCS3OME, Overview of the module
+11 / 17
+•
+Buy IBM stock with dollars, in the most proﬁtable way.
+•
+Don’t look only for a direct exchange.
+Consider larger exchange-rates networks:
+Dollar
+Sterling
+INTEL
+IBM
+Yen
+1.6
+0.6
+100
+0.006
+0.05
+1.4
+0.7
+3000
+0.00032
+0.031
+0.039
+0.031
+0.032
+0.03
+0.03276
+•
+Find a path from node “Dollar” to node “IBM”
+in the exchange-rates network, which maximises
+the combined exchange rate
+(the product of the individual exchange rates).
+
+
+A graph of exchange rates (cont.)
+6CCS3OME, Overview of the module
+12 / 17
+•
+We can transform the exchange rates on the edges of the graph into edge
+“lengths” in such a way that the shortest-distance path from v to u is the
+path from a node v to a node u which maximises the combined exchange
+rate from v to u.
+•
+But we will have both positive and negative edge lengths.
+Dollar
+Sterling
+Yen
+−0.47
+−4.61
+5.12
+3.24
+3.00
+−0.34
+−8.01
+8.05
+0.35
+0.51
+3.47
+IBM
+INTEL
+
+
+Flow Networks
+6CCS3OME, Overview of the module
+13 / 17
+•
+The links (edges) in the network have speciﬁed “capacities”.
+8
+1
+1
+2
+4
+1
+6
+3
+4
+2
+7
+2
+5
+7
+2
+2
+1
+9
+•
+The capacity of a link could be:
+•
+in computer networks: the bandwidth of the link (the maximum data
+transfer rate)
+•
+in transportation networks: the maximum number of
+cars which can enter the road in a 1-hour period;
+•
+in ﬁnancial analysis: the maximum funds which
+can be transfered from one site to another.
+
+
+Maximum ﬂow
+6CCS3OME, Overview of the module
+14 / 17
+•
+Design (continuous) ﬂow (of some commodity) from the source site s to the
+destination site t such that the rate of ﬂow is as large as possible.
+•
+The rate of ﬂow through a link must be at most the capacity of this link.
+8
+1
+1
+2
+4
+1
+6
+3
+4
+2
+7
+2
+s
+t
+7
+2
+2
+1
+9
+5
+5
+1
+1
+the rate (value) of this flow = 5+1+1 = 7
+3
+7
+5
+2
+1
+3
+3
+the maximum flow rate (value) = 5+5+1 = 11
+1
+2
+5
+1
+3
+8
+1
+1
+2
+4
+1
+6
+3
+4
+2
+7
+2
+s
+t
+5
+7
+2
+1
+9
+2
+
+
+Minimum-cost ﬂow
+6CCS3OME, Overview of the module
+15 / 17
+•
+Design (continuous) ﬂow (of some commodity) from the supply sites to the
+demand sites so that the total cost is minimised.
+•
+The pair of numbers (x, y) next to a link means that the capacity of this link
+is x and the cost of sending one unit of ﬂow along this link is y.
+Known supply (positive numbers) & demand (negative numbers) at nodes.
++5
++8
+-6
+-4
+-3
+(4,3)
+(2,3)
+(2,2)
+(3,2)
+(2,6)
+(4,2)
+(1,5)
+(2,3)
+(4,1)
+(6,3)
+(4,3)
+(1,1)
+(5,1)
+(1,5)
+(8,1)
+(3,8)
+•
+Some distribution-of-goods problems can be modeled
+as the minimum-cost ﬂow problem.
+
+
+Multicommodity ﬂow
+6CCS3OME, Overview of the module
+16 / 17
+•
+Design ﬂow of several commodities through a common network.
+Each commodity is speciﬁed by its origin, destination and demand.
+•
+The number next to an edge is the capacity of this edge. The total ﬂow
+through a single edge cannot be greater than the capacity of that edge.
+demand of commodity 1 = 7,  demand of commod. 2 = 5,  demand of commod. 3 = 2
+8
+1
+4
+1
+6
+3
+3
+2
+t1
+s2
+t2
+s3
+t3
+5
+6
+2
+7
+8
+9
+4
+4
+2
+2
+s1
+5
+2
+5
+2
+2
+5
+3 2
+2
+3
+5
+2
+2
+•
+The goal, for example: minimise the maximum
+congestion of an edge.
+•
+Some problems in telecommunication, transportation,
+computer networks can be modeled as
+multicommodity ﬂow problems.
+
+
+General optimisation techniques
+6CCS3OME, Overview of the module
+17 / 17
++5
++8
+−6
+−4
+−3
+(2,1)
+(4,2)
+(4,3)
+(6,2)
+(5,3)
+(4,3)
+(4,6)
+(3,2)
+(1,2)
+(4,1)
+(5,1)
+(8,2)
+x2
+(2,3)
+x1
+(3,2)
+(6,1)
+(1,3)
+3
+4
+4
+3
+1
+1
+3
+2
+4
+1
+3
+= 2
+= 1
+...
+c2*x2
++ 1 − x2/u2
+Simple (linear) cost function:
+More complex cost function:
+c1*x1 + c2*x2 + ...
+c1*x1
+1 − x1/u1
++
+•
+Optimisation models may get quite complicated, if we want them to be
+more realistic:
+•
+the cost function (which we want to optimise) may become more
+complicated, as in the minimum cost ﬂow example above, and/or
+•
+the constraints deﬁning feasible solutions may become complicated.
+•
+The general format of an optimisation problem P:
+P :
+min
+(x1,x2,...,xn)∈D f(x1, x2, . . . , xn).
+•
+The module includes examples of such problems
+and computational methods for solving them.
+
+
+6CCS3OME/7CCSMOME – Optimisation Methods
+Lecture 1
+Single-source shortest-paths problem:
+Basic concepts, Relaxation technique,
+Bellman-Ford algorithm
+Tomasz Radzik
+Department of Informatics, King’s College London
+2022/23, Second term
+
+
+Single-source shortest-paths problem
+6CCS3OME/7CCSMOME, Lecture 1
+2 / 31
+1
+2
+6
+1
+1
+2
+4
+2
+2
+3
+5
+7
+9
+5
+7
+3
+3
+5
+s
+•
+G = (V, E)
+– directed graph; |V | = n, |E| = m.
+•
+w(v, u)
+– the weight of edge (v, u)
+•
+s ∈V
+– the source vertex
+•
+Compute the shortest paths, that is, the paths with the smallest total
+weights, from s to all other vertices.
+•
+The point-to-point shortest path problem is normally
+solved using a single-source shortest path algorithm
+(or an adaptation of such an algorithm).
+
+
+Preliminaries
+6CCS3OME/7CCSMOME, Lecture 1
+3 / 31
+2
+6
+1
+1
+2
+4
+2
+2
+3
+5
+7
+9
+5
+7
+3
+3
+5
+s
+1
+y
+x
+z
+r
+v
+s
+s
+v
+a
+c
+•
+A path: p =< v1, v2, . . . , vk, vk+1 >, where (vi, vi+1) is an edge for each
+i = 1, 2, . . . , k.
+For example, path Q =< s, x, r, z, v >.
+•
+The weight of a path p =< v1, v2, . . . , vk, vk+1 >:
+w(p) = w(v1, v2) + w(v2, v3) + · · · + w(vk, vk+1).
+w(Q) = 14.
+•
+The shortest-path weight (distance) from u to v:
+δ(u, v) =
+!
+min w(p) over all p from u to v, if there is any such path;
++∞, if there is no path from u to v.
+•
+A shortest path from u to v is any path p from u to v with weight
+w(p) = δ(u, v).
+δ(s, v) = 14.
+Two shortest-paths
+from s to v.
+δ(s, y) = +∞.
+
+
+Preliminaries (cont.)
+6CCS3OME/7CCSMOME, Lecture 1
+4 / 31
+•
+Useful simple facts:
+1.
+A subpath of a shortest path is a shortest path.
+In the graph on the previous slide: path ⟨x, r, z⟩is a subpath of a
+shortest path ⟨s, x, r, z, v⟩, so it must be a shortest path (from x to z).
+2.
+Triangle inequality:
+for each edge (u, v) ∈E, δ(s, v) ≤δ(s, u) + w(u, v).
+a shortest path
+a shortest path
+from s to v
+from s to u
+u
+v
+s
+Holds also if u or v is not reachable from s.
+•
+First the general case:
+the weights of edges may be negative.
+
+
+Negative weights in an application
+6CCS3OME/7CCSMOME, Lecture 1
+5 / 31
+Example from ﬁnancial analysis: a graph of exchange rates.
+Find paths maximising exchange rates:
+Find shortest paths:
+D
+S
+Sterling
+INTEL
+IBM
+Yen
+1.6
+0.6
+100
+0.006
+0.05
+1.4
+0.7
+3000
+0.00032
+0.031
+0.039
+Dollar
+Dollar
+Sterling
+Yen
+−0.47
+−4.61
+5.12
+3.24
+3.00
+−0.34
+−8.01
+8.05
+0.35
+0.51
+3.47
+IBM
+INTEL
+•
+For an edge (x, y): γ(x, y) = the exchange rate from x to y.
+E.g., γ(S, D) = 1.6.
+•
+Set the weight of edge (x, y):
+w(x, y)
+=
+−ln(γ(x, y))
+(We use the natural logarithms, but any ﬁxed base > 1 would do.)
+•
+For example:
+w(S, D) = −ln(γ(S, D)) = −ln(1.6) ≈−0.47
+•
+A path from v to u maximises the combined exchange rate from v to u, if and only
+if, this is a shortest path from v to u according to the these edge weights.
+•
+If γ(x, y) > 1, then w(x, y) < 0.
+We cannot avoid negative weights here, so we have to solve the shortest-paths
+problem in a graph with (some) edge weights negative.
+
+
+The exchange-rates example (cont.)
+6CCS3OME/7CCSMOME, Lecture 1
+6 / 31
+For a path P = ⟨v1, v2, . . . , vk⟩:
+w(P)
+=
+w(v1, v2) + w(v2, v3) + · · · w(vk−1, vk)
+=
+−ln(γ(v1, v2)) −ln(γ(v2, v3)) −· · · −ln(γ(vk−1, vk))
+=
+−[ln(γ(v1, v2)) + ln(γ(v2, v3)) + · · · + ln(γ(vk−1, vk))]
+=
+−ln (γ(v1, v2)γ(v2, v3) · · · γ(vk−1, vk))
+{ln(a) + ln(b) + ln(c) = ln(abc)}
+=
+−ln (γ(P)) .
+For two paths P and Q, the following relations are equivalent:
+γ(P)
+>
+γ(Q)
+ln(γ(P))
+>
+ln(γ(Q))
+−ln(γ(P))
+<
+−ln(γ(Q))
+w(P)
+<
+w(Q)
+That is,
+“γ(P) > γ(Q)” if and only if “w(P) < w(Q)”
+Thus, a path P from v to u is a maximum exchange rate path from v to u, if and only if,
+P is a shortest path from v to u according to the edge weights w.
+
+
+Negative-weight cycles (negative cycles)
+6CCS3OME/7CCSMOME, Lecture 1
+7 / 31
++
+s
+3
+6
+−3
+3
+−6
+8
+3
+5
+−1
+11
+7
+2
+5
+−4
+4
+2
+8
+5
++
+s
+3
+6
+−3
+3
+−6
+8
+3
+5
+−1
+11
+7
+2
+5
+−4
+4
+2
+5
+2?
+5?
+8
+3?
+8
+s
+3
+6
+−3
+3
+−6
+8
+3
+5
+−1
+11
+7
+2
+5
+−4
+4
+2
+5
+2?
+5?
+8
+3?
++
+−
+8
+−
+8
+−
+•
+If there is a negative cycle on a path from s to v, then by going increasingly
+many times around such a cycle,
+we get paths from s to v
+of arbitrarily small (negative) weights.
+•
+If there is a negative cycle on a path from s to v,
+then, by convention, δ(s, v) = −∞.
+
+
+We give up, if we detect a negative cycle in the input graph
+6CCS3OME/7CCSMOME, Lecture 1
+8 / 31
+•
+We consider only shortest-paths algorithms which:
+•
+compute shortest paths for graphs with no negative cycles reachable
+from the source
+•
+for graphs with negative cycles reachable from the source, correctly
+detect that the input graph has a negative cycle (but are not required to
+compute anything else).
+•
+Why don’t we compute shortest simple paths (not containing cycles)? Such
+paths are always well deﬁned, even if the graph has negative cycles.
+•
+This would be a valid, and interesting computational problem (with some
+applications).
+•
+The issue: we know efﬁcient algorithms which compute shortest paths in
+graphs with no negative cycles, but we don’t know any efﬁcient algorithm
+for computing shortest simple paths in graphs with negative cycles.
+•
+The problem of computing shortest simple paths in graphs containing
+negative cycles is NP-hard, that is, computationally difﬁcult (by reduction
+from the Hamiltonian Path problem), and the algorithms which we discuss
+in Lectures 1–3 do not apply.
+
+
+Representation of computed shortest paths: A shortest-paths tree
+6CCS3OME/7CCSMOME, Lecture 1
+9 / 31
+2
+6
+1
+1
+2
+4
+2
+2
+3
+5
+7
+9
+5
+7
+3
+3
+5
+s
+1
+y
+a
+c
+v
+b
+r
+x
+z
+h
+2
+6
+1
+1
+2
+4
+2
+2
+3
+5
+7
+9
+5
+7
+3
+3
+5
+s
+1
+y
+a
+c
+v
+b
+r
+x
+z
+h
+2
+6
+1
+1
+2
+4
+2
+2
+3
+5
+7
+9
+5
+7
+3
+3
+5
+s
+1
+y
+a
+c
+v
+b
+r
+x
+z
+h
+2
+6
+1
+1
+2
+4
+2
+2
+3
+5
+7
+9
+5
+7
+3
+3
+5
+s
+1
+y
+a
+c
+v
+b
+r
+x
+z
+h
+•
+If there are multiple shortest paths from s to v, do we want to ﬁnd all of
+them or just one?
+For each node v reachable from s, we want to ﬁnd just one shortest path
+from s to v.
+•
+How should we represent the output, that is, the computed shortest paths?
+•
+If there is no negative cycle reachable from s, then shortest paths from s to
+all nodes reachable from s are well deﬁned and can be represented by a
+shortest-paths tree:
+a tree rooted at s such that for any node v reachable from s, the tree path
+from s to v is a shortest path from s to v.
+PARENT[a] = x
+PARENT[x] = s
+PARENT[s] = nil
+PARENT[y] = nil
+. . .
+
+
+Representation of computed shortest paths: A shortest-paths tree (cont.)
+6CCS3OME/7CCSMOME, Lecture 1
+10 / 31
+•
+A shortest-paths tree from s contains exactly one shortest path from s to
+each v reachable from s. There may be other shortest paths from s to v,
+which are not included in this tree.
+•
+A shortest-paths tree T can be represented by an array PARENT[v], v ∈V ,
+in Θ(n) space (memory) , where n is the number of nodes in the graph.
+•
+PARENT[v] is the predecessor of node v in tree T.
+•
+An explicit representation of shortest-paths from s (a list of shortest-paths,
+one path per one node reachable from s, and each path represented as a
+full sequence of all its edges) would take Θ(n2) space in the worst case.
+s
+
+
+Output of a shortest-paths algorithm
+6CCS3OME/7CCSMOME, Lecture 1
+11 / 31
+•
+A shortest-paths algorithm computes the shortest-path weights and a
+shortest-paths tree, or detects a negative cycle reachable from s.
+•
+Example. Input graph and the computed shortest-paths tree:
+2
+6
+1
+1
+2
+4
+2
+2
+3
+5
+7
+9
+5
+7
+3
+3
+5
+s
+1
+y
+a
+c
+v
+b
+r
+x
+z
+h
+The output of a shortest-path algorithm: array PARENT[.] representing the
+computed shortest-paths tree and array d[.] with the shortest-path weights:
+node
+a
+b
+c
+h
+r
+s
+v
+x
+y
+z
+PARENT[node]
+x
+nil
+a
+r
+x
+nil
+z
+s
+nil
+r
+d[node]
+6
+∞
+8
+6
+4
+0
+14
+1
+∞
+7
+•
+Terminology and notation in [CLRS]:
+(parent, PARENT[v], d[v]) −
+→(predecessor, v.π, v.d).
+
+
+Relaxation technique (for computing shortest paths)
+6CCS3OME/7CCSMOME, Lecture 1
+12 / 31
+•
+For each node v, maintain:
+•
+d[v]: the shortest-path estimate for v – an upper bound on the weight of a
+shortest path from s to v;
+•
+PARENT[v]: the current predecessor of node v.
+•
+The relaxation technique:
+INITIALIZATION followed by
+a sequence of RELAX operations.
+INITIALIZATION(G, s)
+d[s] ←0; PARENT[s] ←NIL
+for each node v ∈V −{s} do
+d[v] ←∞;
+PARENT[v] ←NIL
+node
+a
+b
+c
+h
+r
+s
+v
+x
+y
+z
+PARENT nil nil nil nil nil nil nil nil nil nil
+d ∞∞∞∞∞
+0
+∞∞∞∞
+RELAX(u, v, w) { relax edge (u, v) }
+if d[v] > d[u] + w(u, v) then
+d[v] ←d[u] + w(u, v);
+PARENT[v] ←u
+s
+u
+d[u]
+v
+d[v]
+w(u,v)
+s
+u
+d[u]
+v
+d[v]
+PARENT[v]
+w(u,v)
+PARENT[u]
+s
+u
+d[u]
+v
+d[v]
+PARENT[v]
+w(u,v)
+PARENT[u]
+PARENT[v]
+•
+All algorithms discussed in this module are based on the relaxation technique (as
+most of the SP algorithms). They differ in the order of RELAX operations.
+•
+When should the computation stop?
+
+
+Relax operation
+6CCS3OME/7CCSMOME, Lecture 1
+13 / 31
+8
+v
+s
+0
+8
+12
+8
+8
+8
+25
+18
+7
+5
+20
+23
+29
+14
+u
+v
+s
+0
+8
+12
+8
+8
+8
+25
+18
+7
+5
+20
+23
+29
+4
+14
+8
+RELAX(u, v)
+6
+v
+s
+0
+8
+12
+8
+8
+8
+25
+18
+7
+5
+20
+23
+27
+14
+8
+9
+u
+
+
+Example of Relaxation Technique – LGT
+6CCS3OME/7CCSMOME, Lecture 1
+14 / 31
+5
+s
+u
+v
+x
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+0
+10
+21
+25
+12
+(s,u), (y,v), (u,x), (x,v), (v,y)
+s
+u
+v
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+x
+(u,v)
+0
+10
+11
+25
+12
+s
+u
+v
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+x
+(x,y)
+0
+10
+11
+14
+12
+s
+u
+v
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+x
+. . . and so on.
+
+
+Properties of the relaxation technique
+6CCS3OME/7CCSMOME, Lecture 1
+15 / 31
+•
+(1) Non-increasing shortest-path estimates. Throughout the
+computation, for each node v, the shortest-path estimate d[v] can only
+decrease (it never increases).
+(from deﬁnition of operation)
+•
+(2) For each node v, the shortest-path estimate d[v] is always either equal
+to ∞(at the beginning) or equal to the weight of some path from s to v.
+(by induction)
+infinite d[.]
+u
+v
+s
+graph G
+finte d[.]
+•
+(3) Upper bound property. For each node v, we always have
+d[v] ≥δ(s, v).
+(directly from (2))
+•
+(4) No-path property. If there is no path from s to v, then we always have
+d[v] = δ(s, v) = ∞.
+(directly from (2))
+
+
+Properties of the relaxation technique (cont. 1)
+6CCS3OME/7CCSMOME, Lecture 1
+16 / 31
+•
+(5) Convergence property. If (s, . . . , u, v) is a shortest path from s to v
+and if d[u] = δ(s, u) at any time prior to relaxing edge (u, v), then
+d[v] = δ(s, v) at all times afterward.
+s
+v
+u
+•
+(6) Path-relaxation property. If p = (v0, v1, . . . , vk), is a shortest path from
+s = v0 to vk, and we relax the edges of p in the order (v0, v1),
+(v1, v2), . . . , (vk−1, vk), then d[vk] = δ(s, vk).
+This property holds regardless of any other relaxation steps that occur,
+even if they are intermixed with relaxations of the edges of path p.
+0
+1
+i
+i+1
+k
+v
+v
+s
+v
+v
+v
+
+
+Relaxation technique: properties of the parent subgraph
+6CCS3OME/7CCSMOME, Lecture 1
+17 / 31
+•
+(7) For each edge (u, v) in the current parent subgraph (that is,
+u = PARENT[v]), d[u] + w(u, v) ≤d[v].
+(by induction – LGT)
+•
+(8) If the graph contains no negative-weight cycle reachable from s, then
+•
+the parent subgraph is always a tree T rooted at s,
+•
+for each node v in tree T, d[v] ≥the weight of the path in T from s to v.
+(prove using (7) – LGT)
+finite d[.], parent tree
+graph G
+s
+The red part of the current parent tree (“near” the source vertex s) is
+already part of the computed shortest-paths tree.
+The blue part may change during the subsequent relax operations.
+
+
+Relaxation technique: properties of the parent subgraph (cont.)
+6CCS3OME/7CCSMOME, Lecture 1
+18 / 31
+•
+(9) When d[v] = δ(s, v) for all v ∈V , then
+•
+the parent subgraph is a shortest-paths tree rooted at s,
+(from (8))
+•
+no further updates possible.
+(from (3) - the upper bound property)
+not reachable from s, infinite d[.]
+graph G
+s
+
+
+Effective relax operations
+6CCS3OME/7CCSMOME, Lecture 1
+19 / 31
+•
+Deﬁnition:
+an effective relax operation is a relax operation which decreases d[v].
+•
+(10) The computation can progress, if the s.p. weights not reached yet:
+•
+(a) There exists a vertex x ∈V such that d[x] > δ(s, x), if and only if,
+•
+(b) There exists an edge (u, v) ∈E such that d[v] > d[u] + w(u, v) (that
+is, another effective relax operation is possible).
+•
+(b) ⇒(a): from (3) and the Triangle Inequality.
+•
+(a) ⇒(b): Assume d[x] > δ(s, x) for some node x (so δ(s, x) < +∞).
+•
+Case δ(s, x) > −∞(no negative cycle on a path from s to x).
+Consider a shortest s-to-x path P:
+s
+u
+v
+x
+d[s] = δ(s, s)
+d[x] > δ(s, x)
+Must have an edge (u, v) on P such that d[u] = δ(s, u) but d[v] > δ(s, v).
+For such an edge: d[v] > δ(s, v) = δ(s, u) + w(u, v) = d[u] + w(u, v).
+•
+Case δ(s, x) = −∞for some vertex x: exercise (consider a path
+(s, u1, . . . , uk, v1, . . . , vr, v1), where (v1, . . . , vr, v1) is a negative cycle).
+
+
+The relaxation technique: summary for the case of no negative cycles
+6CCS3OME/7CCSMOME, Lecture 1
+20 / 31
+not reachable from s, infinite d[.]
+graph G
+s
+•
+If no negative cycle is reachable from s:
+•
+Only ﬁnitely many effective relax operations during the computation.
+(If no neg. cycles, Prop. (2) becomes: d[v] is ∞or the weight of a simple
+s-to-v path. Hence d[v] takes on only ﬁnitely many different values.)
+•
+The PARENT-subgraph is always a tree rooted at s.
+(property (8))
+•
+When eventually no effective relax operation possible, then
+for each node v, d[v] = δ(s, v) (property (10)), and
+the PARENT pointers form a shortest-paths tree (property(9)).
+
+
+The relaxation technique: summary for the case with negative cycles
+6CCS3OME/7CCSMOME, Lecture 1
+21 / 31
+negative cycle
+graph G
+s
+•
+If there is a negative cycle reachable from s:
+•
+There is always an edge (u, v) such that: d[v] > d[u] + w(u, v), that is,
+an effective RELAX operation is always possible.
+(from property (10))
+•
+The PARENT subgraph eventually contains a cycle. (not easy to prove)
+•
+Thus we can detect the existence of a negative cycle by periodically
+checking if the PARENT pointers form a cycle.
+This way we can avoid inﬁnite loop, so we can turn any relaxation
+technique computation into an algorithm.
+How to check for cycles in the parent subgraph and how often?
+
+
+The Bellman-Ford algorithm (for single-source shortest-paths problem)
+6CCS3OME/7CCSMOME, Lecture 1
+22 / 31
+•
+Edge weights may be negative.
+BELLMAN-FORD(G, w, s)
+{ G = (V, E) }
+INITIALIZATION(G, s)
+1: for i ←1 to n −1 do
+{ n = |V | }
+for each edge (u, v) ∈E do
+{ edges considered in arbitrary order}
+RELAX(u, v, w)
+2: for each edge (u, v) ∈E do
+if d[v] > d[u] + w(u, v) then
+return FALSE { a negative cycle is reachable from s}
+return TRUE { no negative cycles; for each v ∈V , d[v] = δ(s, v) }
+•
+This algorithm is based on the relaxation technique: INITIALIZATION
+followed by a (ﬁnite) sequence of RELAX operations.
+•
+The running time is Θ(mn), where n is the number of nodes and m is the
+number of edges.
+representation of input:
+nodes indexed by 1, 2, . . . , n;
+one node index as the source;
+list of edges
+exactly of the order of  
+•
+The worst case running time of any algorithm for the single-source shortest
+paths problem with negative weights is Ω(mn). at least of the order of  
+
+
+Example of the computation by the Bellman-Ford algorithm – LGT
+6CCS3OME/7CCSMOME, Lecture 1
+23 / 31
+5
+s
+u
+v
+x
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+Assume that the edges are given in this order:
+(s, u), (s, x), (y, s), (v, y), (u, v), (x, v), (y, v), (x, u), (x, y), (u, x).
+Initially:
+(relaxation technique
+initialization)
+node
+s
+u
+v
+x
+y
+PARENT[.]
+nil
+nil
+nil
+nil
+nil
+d[.]
+0
+∞
+∞
+∞
+∞
+
+
+Example the computation by the Bellman-Ford algorithm (cont.)
+6CCS3OME/7CCSMOME, Lecture 1
+24 / 31
+At the end of the 1-st iteration
+of the main loop 1:
+node
+s
+u
+v
+x
+y
+PARENT[.]
+nil
+x
+u
+s
+x
+d[.]
+0
+8
+11
+5
+7
+0
+5
+7
+11
+8
+s
+u
+x
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+v
+At the end of the 2-nd iteration
+of the main loop 1:
+node
+s
+u
+v
+x
+y
+PARENT[.]
+nil
+x
+u
+s
+x
+d[.]
+0
+8
+9
+5
+7
+0
+5
+7
+8
+9
+s
+u
+x
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+v
+The shortest paths and the shortest-paths weights are now computed, but the
+algorithm will execute the remaining two iterations of the main loop.
+
+
+Correctness of the Bellman-Ford algorithm
+6CCS3OME/7CCSMOME, Lecture 1
+25 / 31
+•
+If there is a negative cycle reachable from s, then Bellman-Ford algorithm
+returns FALSE (because an effective relax operation will always be
+possible).
+That is, in this case the algorithm is correct.
+•
+If no negative cycle reachable from s, then the following claim is true.
+Claim: At the termination of loop 1, d[v] = δ(s, v) for each vertex v ∈V .
+•
+This claim follows from the lemma given on the next slide.
+•
+This claim implies that at the termination of loop 1, no effective relax
+operation is possible so the algorithm returns TRUE.
+At the end of the computation:
+(a) array d contains the shortest path distances from s to all other nodes;
+(b) array PARENT contains a shortest-paths tree with node s as the source
+(from (a) and property (9) of the relaxation technique).
+•
+That is, in the case of “no negative cycles,” the algorithm is also correct.
+
+
+Correctness of the Bellman-Ford algorithm (cont.)
+6CCS3OME/7CCSMOME, Lecture 1
+26 / 31
+•
+Lemma: If the length (the number of edges) of a shortest (simple) path
+from s to a node v is k, then at the end of iteration k (of the main loop 1) in
+the Bellman-Ford algorithm, d[v] = δ(s, v).
+•
+This lemma follows from the path-relaxation property of the relaxation
+technique (property (6)).
+•
+A shortest path from s to v of lenght k (k edges on the path, k ≤n −1):
+s
+xk=v
+x3
+x2
+x1
+d[x1] = δ(s, x1) by the end of the 1st iteration,
+d[x2] = δ(s, x2) by the end of the 2nd iteration,
+d[x3] = δ(s, x3) by the end of the 3rd iteration,
+. . .
+d[v] = δ(s, v) by the end of the k-th iteration.
+•
+This lemma implies the claim from
+the previous slide, because each
+simple shortest path has at most n −1 edges.
+
+
+Speeding-up the Bellman-Ford algorithm
+6CCS3OME/7CCSMOME, Lecture 1
+27 / 31
+•
+Try to decrease the number of iterations of loop 1:
+•
+If no effective relax operation in the current iteration, then terminate: the
+shortest-path weights are already computed.
+•
+Check periodically (at the end of each iteration of loop 1?) if the
+PARENT pointers form a cycle. If they do, then terminate and return
+FALSE: there is a negative cycle reachable from s.
+•
+Try to decrease the running time of one iteration of loop 1:
+consider only edges which may give effective relax operations.
+•
+We say a vertex u is active, if the edges outgoing
+from u have not been relaxed since
+the last time d[u] has been decreased.
+z
+u
+v2
+x
+v1
+parent[u]
+•
+Perform RELAX only on edges outgoing from active vertices.
+•
+Store active vertices in the Queue data structure.
+(What is the Queue data structure?)
+
+
+The Bellman-Ford algorithm with FIFO Queue
+6CCS3OME/7CCSMOME, Lecture 1
+28 / 31
+BF-WITH-FIFO(G, w, s)
+{ G = (V, E) }
+INITIALIZATION(G, s)
+Q ←∅;
+ENQUEUE(Q, s) {Q - FIFO queue of active vertices}
+while Q ̸= ∅do
+u ←head(Q);
+DEQUEUE(Q)
+for each v ∈Adj[u]
+{ for each node v adjacent to u }
+do RELAX(u, v, w)
+return TRUE
+{ for each v ∈V , d[v] = δ(s, v) }
+representation of input:
+the array Adj of adjacency lists;
+Adj[u] – the list of u’s neighbours
+v3
+u
+s
+v1
+v2
+RELAX(u, v, w):
+if d[v] > d[u] + w(u, v) then
+d[v] ←d[u] + w(u, v);
+PARENT[v] ←u
+if v is not in Q then ENQUEUE(Q, v)
+•
+A mechanism for detecting negative cycles must be added (Q never empty,
+if there is a negative cycle): periodically check PARENT pointers for a cycle.
+•
+The running time: O(mn), if properly implemented. But Θ(mn) worst case.
+
+
+Example of the computation of Bellman-Ford with FIFO Queue – LGT
+6CCS3OME/7CCSMOME, Lecture 1
+29 / 31
+s
+u
+v
+x
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+Assume that the edges outgoing from nodes are given in this order:
+(s, u), (s, x);
+(u, x), (u, v);
+(x, u), (x, v), (x, y);
+(v, y);
+(y, s), (y, v).
+
+
+Examples and Exercises – LGT
+6CCS3OME/7CCSMOME, Lecture 1
+30 / 31
+1.
+Example of the relaxation technique - slide 14.
+2.
+Show the properties of the relaxation technique given on slide 17:
+•
+Property (7): For each edge (u, v) in the current parent subgraph (that
+is, u = PARENT[v]), d[u] + w(u, v) ≤d[v].
+•
+Property (8):
+If the graph contains no negative-weight cycle reachable from s, then
+•
+the parent subgraph is always a tree T rooted at s,
+•
+for each node v in T, d[v] ≥the weight of the path in T from s to v.
+3.
+Example of the computation by the Bellman-Ford algorithm – slide 23.
+4.
+Example of the computation of Bellman-Ford with FIFO Queue – slide 29.
+
+
+Exercises – LGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 1
+31 / 31
+5.
+Design an efﬁcient algorithm for checking whether the array PARENT[.]
+represents a tree (or it has a cycle). Check how your algorithm works on
+these two arrays:
+NODE
+a
+b
+c
+g
+h
+s
+x
+z
+PARENT:
+x
+s
+s
+c
+x
+NIL
+b
+c
+NODE
+a
+b
+c
+g
+h
+s
+x
+z
+PARENT:
+x
+h
+s
+c
+x
+NIL
+b
+c
+
+
+6CCS3OME/7CCSMOME – Optimisation Methods
+Lecture 2
+Single-source shortest-paths:
+Dijkstra’s algorithm, shortest-paths algorithm for DAGs
+Tomasz Radzik
+Department of Informatics, King’s College London
+2022/23, Second term
+
+
+Topics
+6CCS3OME/7CCSMOME, Lecture 2
+2 / 27
+•
+Single-source shortest-paths; restricted cases
+•
+Only non-negative edge weights allowed:
+Dijkstra’s shortest-paths algorithm
+•
+The input graph is acyclic (a DAG – a directed acyclic graph):
+Single-source shortest paths algorithm for DAG’s
+•
+In both cases, the Bellman-Ford shortest-paths
+algorithm can be used.
+In both cases, the new algorithms are faster
+than the Bellman-Ford algorithm.
+
+
+Dijkstra’s shortest-paths algorithm
+6CCS3OME/7CCSMOME, Lecture 2
+3 / 27
+•
+Crucial assumption: all edge weights are nonnegative.
+•
+For convenience, assume that all nodes are reachable from s.
+node
+a
+b
+c
+h
+r
+s
+v
+x
+y
+z
+PARENT nil nil nil nil nil nil nil nil nil nil
+d ∞∞∞∞∞
+0
+∞∞∞∞
+DIJKSTRA(G, w, s)
+{ G = (V, E) }
+INITIALIZATION(G, s)
+{ “relaxation technique” initialization }
+S ←∅
+{ nodes v for which we know that d[v] = δ(s, v) }
+Q ←V
+{ the other nodes in Priority Queue with keys d[.]}
+•
+Q is implemented as a
+Priority Queue data structure.
+Priority Queue maintains pairs (value, key)
+and the main operation is EXTRACT-MIN.
+In Dijkstra’s algorithm: pairs (node, d[node]).
+while Q ̸= ∅do
+u ←EXTRACT-MIN(Q) { u has the min d[.] value in Q }
+S ←S ∪{u}
+for each node v ∈Adj[u] do RELAX(u, v, w)
+end while .
+S
+3
+8
+8
+15
+11
+15
+14
+12
+9
+0
+5
+2
+6
+7
+7
+s
+Q
+S
+3
+8
+8
+15
+11
+15
+14
+12
+9
+0
+5
+2
+6
+7
+7
+u
+s
+Q
+S
+3
+8
+8
+15
+11
+15
+14
+12
+9
+0
+5
+2
+6
+7
+7
+u
+s
+Q
+
+
+Example
+6CCS3OME/7CCSMOME, Lecture 2
+4 / 27
+From [CLRS] textbook:
+s
+u
+v
+x
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+
+
+Example: initialization (continued at LGT)
+6CCS3OME/7CCSMOME, Lecture 2
+5 / 27
+From [CLRS] textbook:
+8
+8
+8
+8
+Q = { (s,0),  (u,    ),  (v,    ),  (x,     ),  (y,    ) }
+8
+0
+8
+8
+8
+s
+u
+v
+x
+y
+10
+1
+4
+6
+2
+3
+9
+7
+2
+5
+
+
+The correctness of Dijkstra’s algorithm
+6CCS3OME/7CCSMOME, Lecture 2
+6 / 27
+An intermediate state of the computation (at the end of one iteration).
+s
+set S
+d[.] finite
+set S
+s
+8
+8
+s
+set S
+•
+Set S grows by one
+node per one iteration
+End 1-st iter.: S = {s}
+End last iter.: S = V
+•
+All edges from nodes in S, and only these edges, have been relax’ed.
+•
+All nodes in S or at the end of edges from S:
+•
+have ﬁnite d[.] values
+(by induction)
+•
+have parents, forming a tree (no negative cycles and Prop. (8)).
+•
+For all other nodes, d[.] = ∞, and not in the parent tree.
+
+
+The correctness of Dijkstra’s algorithm (2)
+6CCS3OME/7CCSMOME, Lecture 2
+7 / 27
+At the end of
+the computation:
+all d[.] finite
+s
+set S = V
+•
+Set S = V .
+For each v ∈V , d[v] is ﬁnite and d[v] ≥δ(s, v).
+The parent subgraph is a tree (rooted at s)
+which includes all nodes.
+•
+We haven’t shown yet that the computed:
+tree is a shortest paths tree and
+the d[.] values are the shortest-path weights.
+
+
+The correctness of Dijkstra’s algorithm (2): the crucial property
+6CCS3OME/7CCSMOME, Lecture 2
+8 / 27
+The crucial property (the invariant of the computation of Dijkstra’s algorithm):
+At the end of each iteration (on the main loop) of Dijkstra’s algorithm,
+for each node v ∈S, d[v] = δ(s, v).
+•
+This property can be shown by induction on the number of iterations.
+•
+Basis of the induction: The property holds at the end of the ﬁrst iteration:
+S = {s}, d[s] = 0 = δ(s, s).
+set S
+0 s
+2
+2
+5
+6
+5
+5
+6
+5
+8
+8
+8
+8
+8
+8
+8
+8
+8
+8
+8
+
+
+The invariant of Dijkstra’s algorithm: the induction step
+6CCS3OME/7CCSMOME, Lecture 2
+9 / 27
+Induction step:
+•
+Assume the invariant
+holds at the end of
+some iteration
+(not the last one):
+for each v ∈S,
+d[v] = δ(s, v).
+u
+s
+8
+8
+8
+8
+8
+8
+8
+8
+set S
+•
+Let u denote the node
+selected in the next
+(current) iteration.
+•
+Show that the invariant
+holds at the end of
+the current iteration,
+(after u added to set S).
+u
+set S
+s
+8
+8
+8
+8
+8
+8
+•
+That is, show that
+d[u] = δ(s, u).
+
+
+The invariant of Dijkstra’s algorithm: the induction step (cont.)
+6CCS3OME/7CCSMOME, Lecture 2
+10 / 27
+•
+We have to show that at the beginning of the current iteration, d[u] is the
+shortest-path weight from s to u. That is, we have to show that d[u] = δ(s, u).
+the tree path to x
+x
+x = Parent[u]
+set S
+s
+u
+R2
+R1 y
+z
+•
+We have d[u] ≥δ(s, u)
+(relaxation technique).
+We show d[u] ≤δ(s, u).
+•
+Take any (simple) path R
+from s to u and show that
+its weight w(R) ≥d[u].
+•
+Let z be the ﬁrst node on
+path R which is outside S,
+and let y be the predecessor
+of z on R (so y ∈S).
+•
+Let R1 be the initial part of path R ending at node y, and let R2 be the part of path
+R from node z to the ﬁnal node u.
+•
+w(R) = w(R1) + w(y, z) + w(R2) ≥d[y] + w(y, z) + w(R2) ≥d[z] + w(R2)
+≥d[u] + w(R2) ≥d[u].
+•
+The inequalities above follow from: the inductive assumption, RELAX(y, z) done,
+the rule for selecting u, and the non-negative weights of edges, respectively.
+•
+Thus no path from s to u has smaller weight than d[u],
+so d[u] ≤δ(s, u).
+
+
+The running time of Dijkstra’s algorithm
+6CCS3OME/7CCSMOME, Lecture 2
+11 / 27
+•
+n – number of nodes;
+m – number of edges.
+•
+Initialisation (as in the relaxation technique):
+Θ(n).
+•
+For every edge (u, v), RELAX(u, v) is performed exactly once.
+This happens during the iteration when node u is removed from Q.
+(Each node is removed from Q exactly once.)
+•
+The running time depends on the implementation of the priority queue Q.
+•
+Note that n −1 ≤m ≤n(n −1), so m = Ω(n) and m = O(n2).
+•
+The naive implementation of Q, using an unordered list of elements:
+l
+d:
+Q:
+w
+c
+b
+k
+q
+r
+s
+w
+q
+p
+k
+f
+c
+b
+•
+one EXTRACT-MIN(Q): O(n) time;
+all of them: O(n2);
+•
+one RELAX operation: O(1);
+all of them: O(m);
+•
+the total running time:
+Θ(n) + O(n2) + O(m) = O(n2).
+•
+What would be the running time of Dijkstra’s algorithm, if Q was maintained
+as an ordered list? (LGT).
+
+
+Priority Queue implemented as Heap: operations and performance
+6CCS3OME/7CCSMOME, Lecture 2
+12 / 27
+•
+To improve the running time of Dijkstra’s algorithm, use the Heap
+implementation of the Priority-Queue to maintain Q.
+•
+The main Priority Queue operations in Heap (n denotes the size of the
+heap, that is, the number of elements in the heap):
+•
+INSERT(Q, v, k): insert the value-key pair (v, k).
+O(log n) time
+•
+EXTRACT-MIN(Q): remove and return the pair with the smallest key.
+O(log n) time
+•
+Check if Heap is not empty.
+O(1) (constant) time
+•
+Initialise Heap with given n elements.
+Θ(n) time.
+•
+In Dijkstra’s algorithm, we also need heap operation:
+HEAP-DECREASE-KEY(Q, v, k)
+– decrease the key associated with v to k.
+O(log n) time
+
+
+Dijkstra’s algorithm with Heap
+6CCS3OME/7CCSMOME, Lecture 2
+13 / 27
+•
+The set Q in Dijkstra’s algorithm maintained as Heap:
+•
+Initialisation of the Heap: Θ(n) time.
+•
+One EXTRACT-MIN(Q): O(log n) time; all: O(n log n) time.
+•
+one RELAX(u, v): O(log n) time, since it may involve one operation
+HEAP-DECREASE-KEY;
+all: O(m log n) time.
+•
+The total running time of Dijkstra’s algorithm with Heap
+is: Θ(n) + Θ(n) + O(n log n) + O(m log n) = O(m log n).
+•
+If the input graph is dense, that is (here), if m = Ω(n2/ log n), then the
+implementation of Dijkstra’s algorithm without Heap (maintaining Q as an
+unordered list) gives the better (worst-case) running time – O(n2).
+•
+For the other cases (when m = O(n2/ log n)), the implementation of
+Dijkstra’s algorithm with Heap gives the better (worst-case) running time.
+•
+In most applications of Dijkstra’s algorithm, graphs are not dense, so
+Dijkstra’s algorithm is commonly assumed to use Heap.
+
+
+Heap implementation of Priority Queue data structure
+6CCS3OME/7CCSMOME, Lecture 2
+14 / 27
+•
+Heap: An array A[1..n] with a sequence of numbers (keys) and associated
+data (values), satisfying some speciﬁc partial order of the entries.
+This speciﬁc order is called the heap property (Min-Heap here):
+A[i] ≤A[2i]
+and
+A[i] ≤A[2i + 1],
+for i = 1, 2, . . .
+Below, an arrow points from a smaller key to a larger key:
+smallest key
+A[1] A[2] A[3] A[4] A[5]A[6]
+A[i]
+A[2i]A[2i+1]
+smallest key
+A[2]
+A[4]
+A[5]
+A[1] A[2] A[3] A[4] A[5]A[6]
+A[2i]
+A[3]
+A[6]
+A[7]
+A[2i+1]
+A[2i]
+A[2i+1]
+A[i]
+A[1]
+A[i]
+•
+The operations of extracting the minimum and inserting a new element take
+O(log n) time, where n is the current size of the Heap.
+
+
+Heap in Dijkstra’s algorithm
+6CCS3OME/7CCSMOME, Lecture 2
+15 / 27
+The entries in the Heap array are the pairs (u, d[u]), where u is a node in the
+graph and d[u] is its current shortest path estimate. The number d[u] is the key
+of this entry.
+Q_A:
+...........................
+...........................
+...........................
+1
+2
+3
+4
+x
+y
+z
+v
+d[x]  d[y]  d[z]  d[v]
+y
+z
+v
+x
+Q_A:
+pos_in_Q:
+...........................
+...........................
+...........................
+d[x]  d[y]  d[z]  d[v]
+y
+z
+v
+x
+z
+x
+y
+v
+1
+2
+3
+4
+1
+2
+3
+4
+x
+y
+z
+v
+•
+We need a heap operation HEAP-DECREASE-KEY, which restores the heap
+property when the key of one entry is decreased.
+RELAX(u, v)
+(in Dijkstra’s algorithm, if Q is a Heap)
+if d[v] > d[u] + w(u, v) then
+d[v] ←d[u] + w(u, v);
+PARENT[v] ←u
+HEAP-DECREASE-KEY(Q, v, d[v])
+Operation HEAP-DECREASE-KEY takes O(log n) time.
+
+
+Heap Extract-Min operation
+6CCS3OME/7CCSMOME, Lecture 2
+16 / 27
+min
+log (n)
+2
+
+
+Heap-Decrease-Key operation
+6CCS3OME/7CCSMOME, Lecture 2
+17 / 27
+v
+log (n)
+2
+pos_in_Q:
+v
+
+
+Single-source shortest paths in DAG’s
+6CCS3OME/7CCSMOME, Lecture 2
+18 / 27
+Input:
+•
+G = (V, E) – directed acyclic graph (DAG);
+•
+w – weights of edges (may be negative);
+•
+s ∈V – the source node.
+s
+3
+4
+5
+−1
+8
+3
+1
+−2
+a
+d
+e
+b
+c
+Output: the shortest-path weights from s to all other nodes
+and a shortest-paths tree from s.
+There may be edges with negative weights,
+but no problem with negative cycles, because
+there are no cycles at all.
+Bellman-Ford: O(mn).
+We show an algorithm which runs in O(n + m) time.
+(Linear, optimal time)
+
+
+Application
+6CCS3OME/7CCSMOME, Lecture 2
+19 / 27
+•
+Determine the critical (longest) paths in PERT chart analysis (Program
+Evaluation and Review Technique).
+•
+Nodes: milestones of the project (‘synchronisation points’) .
+Edges: tasks
+of the project. The weight of an edge: the duration of this task.
+Find the longest path from node “begin” to node “end”:
+this gives the fastest possible time for completing the whole project (that is,
+for completing all tasks of the project).
+4
+4
+4
+7
+3
+3
+3
+3
+1
+5
+3
+6
+4
+5
+5
+6
+1
+2
+3
+a
+e
+b
+c
+d
+f
+g
+h
+p
+q
+begin
+end
+17
+23
+
+
+DAGs: Longest paths to shortest paths by negating all egde weights
+6CCS3OME/7CCSMOME, Lecture 2
+20 / 27
+•
+To compute longest paths from the start node, negate all edge weights and
+compute shortest paths from the start node.
+−3
+−4
+−4
+−1
+−4
+−3
+−5
+−3
+a
+e
+b
+c
+d
+f
+g
+h
+p
+q
+begin
+end
+−4
+−3
+−6
+−5
+−6
+−1
+−2
+−3
+−5
+−7
+−23
+−17
+−3
+
+
+Algorithm
+6CCS3OME/7CCSMOME, Lecture 2
+21 / 27
+•
+Consider the nodes in a topological order: all edges go in the same
+direction.
+begin
+a
+e
+g
+b
+c
+h
+d
+f
+p
+q
+end
+DAGSHORTESTPATHS(G, w, s)
+1: topologically sort the nodes of G { put the nodes in a topological order }
+2: INITIALIZATION(G, s)
+3: for
+each node u taken in the topological order computed in step 1
+do
+4:
+for
+each node v ∈Adj[u]
+do
+5:
+RELAX(u, v, w)
+•
+Running time: O(n + m)
+(topological sort takes O(n + m) time).
+•
+Correctness: show (by induction) that when
+node u is considered in line 3, then d[u] = δ(s, u).
+
+
+Examples and Exercises – LGT
+6CCS3OME/7CCSMOME, Lecture 2
+22 / 27
+1.
+Example of the computation of Dijkstra’s algorithm – slides 4-5.
+2.
+What would be the running time of Dijkstra’s algorithm, if the priority queue
+Q was maintained as an ordered list?
+
+
+Examples and Exercises – LGT (cont)
+6CCS3OME/7CCSMOME, Lecture 2
+23 / 27
+3.
+(Exercise 24.2-3 from [CLRS])
+The PERT chart formulation given in this lecture is somewhat unnatural.
+More naturally, vertices would represent tasks and edges would represent
+order constraints; edge (u, v) would indicate that task u must be performed
+before task v. We would then assign weights (duration of the tasks) to
+vertices, not edges. Modify the DAGSHORTESTPATHS algorithm so that it
+ﬁnds, in linear time, a longest path in a directed acyclic graph with
+weighted vertices. Let w(v) denote the weight of a vertex v.
+Trace the computation of the algorithm on the graph below.
+3
+3
+1
+5
+3
+4
+7
+4
+2
+4
+6
+2
+a
+e
+b
+c
+d
+f
+g
+h
+p
+q
+begin
+end
+20
+26
+The green path
+has weight 20.
+The red path,
+with weight 26,
+is the longest path.
+
+
+Exercises – SGT
+6CCS3OME/7CCSMOME, Lecture 2
+24 / 27
+1.
+This exercise shows that Dijkstra’s algorithm does not necessary compute
+shortest paths, if there are negative weights; even if there are no negative
+cycles.
+(a)
+Show the values d[x] and the tree
+computed by Dijkstra’s algorithm
+for the input graph:
+s
+b
+d
+a
+c
+4
+8
+7
+-6
+4
+8
+6
+4
+(b)
+Show the shortest-path weights and a shortest-paths tree in this
+graph.
+(c)
+How to modify Dijkstra’s algorithm so that it runs also for graphs
+where edge weights may be negative?
+(d)
+What is the running time of the modiﬁed algorithm?
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 2
+25 / 27
+2.
+Design a linear-time (O(n + m)-time) algorithm which for a given directed
+acyclic graph (with n nodes and m edges) computes a topological order of
+the nodes.
+Do not use the Depth-First Search (DFS) algorithm.
+(There is a topological sort algorithm which is based on the DFS algorithm,
+but in this exercise you are asked to design an alternative algorithm.)
+Hint: How to identify the ﬁst node for the topological order? How to
+identify subsequent nodes?
+For the running time, assume the adjacency-list representation of the
+graph.
+Specify all data structures which your algorithm needs to achieve the
+O(n + m) running time.
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 2
+26 / 27
+3.
+Revise the Breadth-First Search (BFS) algorithm.
+Trace the execution of BFS on the graph shown below.
+Assume that for each vertex, the vertices adjacent to
+this vertex are given in alphabetical order.
+4.
+Revise the Depth-First Search (DFS) algorithm.
+Trace the execution of DFS on the same graph,
+considering vertices in alphabetical order.
+h
+a
+b
+s
+e
+k
+g
+f
+d
+c
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 2
+27 / 27
+5.
+The graph below has a negative cycle reachable from the source. Trace
+the computation of the Bellman-Ford algorithm with FIFO queue on this
+graph until the PARENT edges form a cycle.
+−5
+s
+u
+v
+x
+y
+4
+6
+2
+5
+3
+1
+7
+6
+−2
+Assume that the edges outgoing from nodes are given in this order:
+(s, u), (s, x);
+(u, x), (u, v);
+(x, u), (x, y);
+(v, x), (v, y);
+(y, s), (y, v).
+
+
+6CCS3OME/7CCSMOME – Optimisation Methods
+Lecture 3
+All-pairs shortest paths
+Point-to-point shortest-paths in
+geographical networks
+Tomasz Radzik
+Department of Informatics, King’s College London
+2022/23, Second term
+
+
+Topics
+6CCS3OME/7CCSMOME, Lecture 3
+2 / 23
+•
+All-pairs shortest-paths problem: ﬁnd shortest paths for all
+source-destination pairs of nodes.
+Johnson’s algorithm
+•
+Single-source single-destination shortest-path problem
+•
+Geographical networks: geographical coordinates of the nodes are
+known; the weights of edges are at least the straight-line (geographical)
+distances between the nodes.
+Adaptation of Dijkstra’s shortest-paths algorithm
+•
+From Dijkstra’s algorithm to
+the A* search algorithm.
+
+
+All-pairs shortest-paths problem
+6CCS3OME/7CCSMOME, Lecture 3
+3 / 23
+19
+10
+10
+26
+26
+19
+A
+C
+E
+B
+16
+D
+16
+15
+16
+18
+D
+15
+16
+19
+26
+10
+E
+16
+16
+19
+26 10 18
+A
+E
+D
+C
+B
+A
+B
+C
+D
+15
+16
+34
+41
+19 32 26
+10
+E
+28
+57
+0
+0
+0
+0
+0
+16
+35
+16
+34
+19
+31 50
+26 10 18
+A
+E
+D
+C
+B
+A
+B
+C
+E
+E
+A
+E
+D
+C
+B
+A
+B
+C D
+A B
+B
+A
+B
+B
+B
+A
+C
+C
+B
+E
+D A B
+B
+D E E
+Input: weighted directed graph G = (V, E).
+w(v, u) - the weight of edge (v, u).
+Assume that the nodes are numbered from 1 to n, that is, V = {1, 2, . . . , n}.
+Output:
+•
+information whether G contains a negative cycle,
+and if it doesn’t, then
+•
+n × n matrix D = (di,j) such that di,j is equal to δ(i, j) (the shortest-path
+weight from node i to node j); and
+shortest-paths trees, one from each node in the graph.
+To avoid technicalities, we won’t discuss computation of shortest-paths trees.
+
+
+Repeatedly apply a single-source shortest-paths algorithm
+6CCS3OME/7CCSMOME, Lecture 3
+4 / 23
+•
+If all edge weights are non-negative:
+•
+Use Dijkstra’s algorithm.
+•
+The total running time is
+n × O(min{m log n, n2}) = O(min{nm log n, n3}).
+•
+No method with a better (worst-case) running time is known.
+•
+In the general case, when the edge weights may be negative:
+•
+We may use the Bellman-Ford algorithm.
+•
+If we do so, the total running time is
+n × O(nm) = O(n2m)
+(this is Θ(n4), if m = Θ(n2)).
+•
+The Floyd-Warshall algorithm:
+Θ(n3).
+•
+Johnson’s algorithm:
+O(nm log n).
+
+
+Change the weights of edges without changing shortest paths
+6CCS3OME/7CCSMOME, Lecture 3
+5 / 23
+How can we change the weight of edges
+(ideally removing negative weights)
+without changing shortest paths?
+Adding the same (large) number
+to the weight of each edge doesn’t work.
++M
++M
++M
++M
++M
++M
++M
++M
++M
++M
++M
++M
+Changing weights of edges
+in Johnson’s algorithm:
++z
+z
+a
+e
++x
++y
++z
++a
++e
+−a
+−e
++z
+−z
++e
+r
+−c
+−r
++r
+−c
++c
+x
+c
+y
+−y
+−z
+−a
+−y
+−x
++x
+−r
++z
+
+
+The main idea behind Johnson’s algorithm
+6CCS3OME/7CCSMOME, Lecture 3
+6 / 23
+•
+Reduces the general case (edge weights may be negative) to the case with
+all edge weights nonnegative.
+•
+Re-weighting: compute new edge weights ˆ
+w with these properties:
+1.
+For all u, v ∈V , a shortest path from u to v using the original weights w
+is also a shortest path from u to v using the new weights ˆ
+w.
+2.
+ˆ
+w(u, v) ≥0, for each edge (u, v) ∈E.
+•
+The general idea for re-weighting:
+•
+For each node v ∈V , assign a number h(v) to v.
+•
+For each (v, u) ∈E, let ˆ
+w(u, v) = w(u, v) + h(u) −h(v).
+•
+For any numbers h(v), the new edge weights satisfy Property 1 above.
+•
+If there is no negative cycle in G, then we can ﬁnd numbers h(v) which
+satisfy also Property 2.
+
+
+Re-weighting
+6CCS3OME/7CCSMOME, Lecture 3
+7 / 23
+•
+For any path P = (v1, v2, . . . , vk):
+ˆ
+w(P)
+=
+ˆ
+w(v1, v2) + ˆ
+w(v2, v3) + · · · + ˆ
+w(vk−1, vk)
+=
+w(v1, v2) + h(v1) −h(v2) + w(v2, v3) + h(v2) −h(v3)
++ · · · + w(vk−1, vk) + h(vk−1) −h(vk)
+=
+w(v1, v2) + w(v2, v3) + · · · + w(vk−1, vk) + h(v1) −h(vk)
+=
+w(P) + h(v1) −h(vk)
+(∗)
+•
+Thus when we change the edge weights from w to ˆ
+w, then for each pair of
+nodes u and v, the weight of each path from u to v changes by the same
+amount: h(u) −h(v).
+h(u)=3
+u
+v
+25
+18
+22
+h(v)=8
+u
+v
+20
+13
+17
+•
+Hence a path P is a shortest path from u to v according to weights w, if and
+only if, P is a shortest path from u to v according to weights ˆ
+w.
+•
+We also have, from (∗):
+ˆ
+δ(u, v) = δ(u, v) + [h(u) −h(v)].
+•
+How to select numbers h(v), so that all new weights are nonnegative?
+
+
+Computation of the new edge weights – example
+6CCS3OME/7CCSMOME, Lecture 3
+8 / 23
+1
+2
+3
+4
+5
+3
+4
+−5
+6
+−4
+7
+1
+−2
+2
+input graph
+2
+1
+2
+3
+4
+5
+3
+4
+−5
+6
+−4
+7
+1
+−2
+0
+s
+0
+0
+0
+0
+−4
+s
+0
+0
+0
+0
+0
+1
+2
+3
+4
+5
+3
+4
+−5
+6
+−4
+7
+1
+−2
+2
+0
+0
+−5
+−1
+10
+1
+2
+3
+4
+5
+4
+0
+0
+3
+2
+0
+0
+2
+new edge weights
+Calculate the original and the new weights of paths: 1-3; 1-2-4-3; 1-2-5-4-3.
+
+
+Johnson’s algorithm
+6CCS3OME/7CCSMOME, Lecture 3
+9 / 23
+JOHNSON(G, w)
+{ G = (V, E), w - edge weights }
+compute G′ = (V ′, E′): V ′ = V ∪{s}, E′ = E ∪{(s, v) | v ∈V }
+assign weights to new edges: w(s, v) ←0, for each v ∈V
+if BELLMAN-FORD(G′, w, s) = FALSE then
+terminate: the input graph G contains a negative cycle
+else
+{ BELLMAN-FORD has computed values δ(s, v) }
+for each v ∈V do h(v) ←δ(s, v)
+for each (u, v) ∈E do ˆ
+w(u, v) ←w(u, v) + h(u) −h(v)
+for each u ∈V do
+run DIJKSTRA(G, ˆ
+w, u) to compute ˆ
+δ(u, v) for all v ∈V
+for each v ∈V do duv ←ˆ
+δ(u, v) −[h(u) −h(v)]
+return D = duv
+•
+Running time: O(nm) (one BELLMAN-FORD);
+n · O(min{n2, m log n}) (n DIJKSTRA’S); O(n2) (other computation).
+Summing up, the total running time is O(min{n3, nm log n }).
+
+
+Correctness of Johnson’s algorithm
+6CCS3OME/7CCSMOME, Lecture 3
+10 / 23
+1.
+The input graph G contains a negative cycle, if and only if, there is a
+negative cycle in graph G′ reachable from s.
+This means that the algorithm correctly identiﬁes whether the input graph
+has a negative cycle.
+2.
+For each edge (u, v) in G, the new
+weight ˆ
+w(u, v) assigned to this edge
+in Johnson’s algorithm is nonnegative.
+a shortest path
+a shortest path
+from s to v
+from s to u
+u
+v
+s
+Indeed,
+δ(s, u) + w(u, v) ≥δ(s, v)
+(the Triangle Inequality for the shortest-path weights), so
+ˆ
+w(u, v) = w(u, v) + h(u) −h(v) = w(u, v) + δ(s, u) −δ(s, v) ≥0.
+The nonnegative weights imply that the algorithm correctly computes
+ˆ
+δ(u, v) for all pairs of vertices.
+3.
+For any numbers h(.) and for each pair of nodes u and v in G:
+δ(u, v) = ˆ
+δ(u, v) −[h(u) −h(v)]
+(shown earlier)
+Thus the algorithm computes correctly δ(u, v) for all pairs of vertices.
+
+
+Dijkstra’s algorithm for single-source single-destination
+6CCS3OME/7CCSMOME, Lecture 3
+11 / 23
+•
+Run Dijkstra from the source and stop when the destination node is
+considered (is removed from Q). May check the whole network.
+d
+s
+d
+•
+Run in parallel two Dijkstra’s computations, one from the source, one from
+the destinations (considering edges backward). Stop when the shortest
+s →d path is found. A smaller part of the network is examined.
+How do we know that the combined path (one part from the shortest-path
+tree from s and the other part from the shortest-path tree to d) is the
+shortest s −d path?
+Implementation is somewhat tricky.
+s
+d
+
+
+Dijkstra’s algorithm for “geographical” networks
+6CCS3OME/7CCSMOME, Lecture 3
+12 / 23
+•
+The nodes are geographical places (say, towns), and we know their
+coordinates. The weights of edges (road distances) are at least the
+straight-line distances between the nodes.
+How can we use this information to speed-up Dijkstra’s computation for
+ﬁnding a shortest source-destination path?
+•
+Use re-weighting of edges to favour the edges leading “geographically”
+closer to the destination.
+•
+The re-weighting with h(v) = −dist(v, d), where dist(v, d) is the straight-line
+distance from node v to the destination d (computed from the coordinates
+of v and d):
+ˆ
+w(u, v) = w(u, v) −dist(u, d) + dist(v, d)
+(observe that this is always ≥0)
+u
+d
+5
+5
+3
+7
+v
+d
+5
+5
+3
+7
+20
+22
+26
+27
+24
+=
+⇒
+u
+d
+1
+3
+5
+10
+
+
+Dijkstra’s algorithm with “geographical” re-weighting
+6CCS3OME/7CCSMOME, Lecture 3
+13 / 23
+•
+The search for the shortest path is “directed” towards the destination.
+Only relatively few edges away from the shortest path are considered.
+This can lead to a considerable improvement of the average running time.
+But compute the new weights only when you need them!
+s
+d
+•
+The worst-case running time remains as in the main Dijkstra’s algorithm for
+the single-source (all destinations) case.
+
+
+Dijkstra’s algorithm with re-weighting to direct search towards the target
+6CCS3OME/7CCSMOME, Lecture 3
+14 / 23
+•
+For single-source single-destination shortest-path queries in geographical
+networks, Dijkstra’s algorithm with re-weighting by the straight-line
+distances to the destination works because the straight-line distances
+satisfy the triangle inequality:
+dist(u, d) ≤dist(u, v) + dist(v, d) ≤w(u, v) + dist(v, d)
+so the new weights are non-negative:
+ˆ
+w(u, v) = w(u, v) −dist(u, d) + dist(v, d) ≥0.
+•
+The straight-line distances are used here as (under)-estimates of the
+shortest-path weights.
+•
+Can we use this idea of speeding-up Dijkstra’s algorithm in other context,
+when we might have some estimates on
+the shortest-path weights, but
+we cannot guarantee that those estimates
+satisfy the triangle inequality?
+
+
+Dijkstra’s algorithm with re-weighting: a general setting (1)
+6CCS3OME/7CCSMOME, Lecture 3
+15 / 23
+c"
+s
+t
+c’
+s
+t
+s
+t
+c
+Example:
+•
+The nodes of the graph represent all
+possible ‘conﬁgurations’, say of some
+game.
+An edge from a conﬁguration c′ to
+a conﬁguration c′′ represents a
+possible move, and the weight w(c′, c′′)
+of this edge represents the cost
+of this move (a positive number).
+•
+Find a shortest (least costly) path of moves from a given starting
+conﬁguration s to a given goal (target) conﬁguration t.
+•
+This is a single-source single-destination shortest-path problem with
+non-negative edge weights, so we can use Dijkstra’s algorithm, but . . .
+•
+The graph is huge, way too large to be given explicitly as input. The graph
+is given implicitly by specifying a procedure which for a given conﬁguration
+generates all possible moves from this conﬁguration.
+•
+We could try Dijkstra, but it would take too much time and memory.
+
+
+Dijkstra’s algorithm with re-weighting: a general setting (2)
+6CCS3OME/7CCSMOME, Lecture 3
+16 / 23
+c"
+s
+t
+c’
+20
+s
+t
+15
+19
+17
+23
+w"−5
+s
+t
+15
+19
+17
+23
+20
+w’+3
+•
+Let’s say for each conﬁguration c
+we have an estimate b(c) ≥0 on
+the cost of getting from c
+to the target conﬁguration t, and
+these etimates are easy to compute.
+•
+We can re-weight using estimates b(.):
+ˆ
+w(u, v) = w(u, v) −b(u) + b(v).
+•
+We want to apply Dijkstra’s algorithm
+to the new weights ˆ
+w(u, v), so that
+the computation is directed towards the target.
+What should the considerations be here?
+
+
+Dijkstra’s algorithm with re-weighting: a general setting (3)
+6CCS3OME/7CCSMOME, Lecture 3
+17 / 23
+c"
+s
+t
+c’
+s
+t
+set S
+s
+t
+u
+v
+set S
+•
+Firstly, we probably cannot guarantee
+non-negative new weights.
+•
+We should therefore use the
+modiﬁed Dijkstra’s algorithm,
+which moves a node back from S to Q,
+if its shortest-path estimate is updated.
+•
+In the diagram, if node u is considered
+in the current iteration, RELAX(u, v)
+may update (reduce) the shortest-path estimate d[v] at v. If d[v] is reduced,
+then node v is removed form set S and put back to the priority queue Q.
+•
+The modiﬁed Dijkstra guarantees that the shortest path to t is eventually
+found (no negative cycles, so the computation will end successfully), if we
+compute shortest paths to all nodes.
+In other words, we cannot stop the computation when we take the target
+node t from Q, because the d[t] value at this point of the computation isn’t
+guaranteed to be the shortest-path weight to t.
+
+
+Dijkstra’s algorithm with re-weighting −
+→A* search algorithm
+6CCS3OME/7CCSMOME, Lecture 3
+18 / 23
+c"
+s
+t
+c’
+•
+The modiﬁed Dijkstra’s algorithm with
+re-weighting using a cost estimate
+function b is the A∗search algorithm
+(common in the context of AI methods).
+•
+In the A∗algorithm, function b(.)
+is called a heuristic function,
+and is often denoted by h(.)
+•
+The property of the heuristic function h
+which guarantees that when the target
+node t is taken from Q, then the shortest path to t is computed:
+For each edge (u, v),
+h(u) ≤w(u, v) + h(v).
+•
+A heuristic function h(.) which satisﬁes this property is called consistent or
+monotone, and is equivalent to the property that all new weights
+ˆ
+w(u, v) = w(u, v) −h(u) + h(v)
+are non-negative.
+
+
+Examples and Exercises – LGT
+6CCS3OME/7CCSMOME, Lecture 3
+19 / 23
+1.
+For an input graph with no negative edge weights, we have computed
+all-pairs shortest paths: two output matrices as on slide 3.
+One edge (u, v) changes its weight, while all other edge weights remain as
+they were. What do we have to recalculate to update the all-pairs
+shortest-path matrices?
+Consider cases:
+•
+edge (u, v) belongs / doesn’t belong, to computed shortest-path trees;
+•
+the weight of edge (u, v) increases / decreases.
+2.
+What is the running time of Dijkstra’s algorithm for geographical networks,
+in terms of n, m, p and q, where n and m are the number of nodes and
+edges in the graph, respectively, p is the number of iterations (until the
+destination node is taken from Q), and q is the number of executed relax
+operations?
+In the worst case p = n and q = m, but we would expect p and q to be
+much smaller than n and m. How should the algorithm be implemented so
+that the running time depends on p and q, but not on n or m?
+
+
+Examples and Exercises – LGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 3
+20 / 23
+3.
+Consider the following problem of maximizing the number of deliveries.
+The input is a directed graph G = (V, E) with a designated vertex s where
+a courier is located at time 0.
+Each vertex (location) v other than s has a speciﬁed ﬁxed time tv > 0
+when the message for v should be delivered. That is, if the courier wants
+to deliver the message at location v, it has to be done exactly at time tv.
+Each edge (x, y) of G has a speciﬁed travel time w(x, y) > 0: the courier
+needs w(x, y) time to go from location x to location y.
+Design an algorithm for computing a delivery route for the courier which
+maximises the number of delivered messages.
+Further assumptions: (i) the courier can wait, that is, does not have to be
+constantly moving; (ii) when the courier is at a location v, the delivery of
+the messages at this location is instantaneous (no any additional time); (iii)
+the courier can move along the same edges more than once.
+Hint: analyse this problem referring to shortest-paths problems and use
+appropriate shortest-paths algorithms.
+
+
+Exercises – SGT
+6CCS3OME/7CCSMOME, Lecture 3
+21 / 23
+1.
+How does the reweighting change the weights of the cycles?
+2.
+If the input graph for Johnson’s alg. doesn’t have negative cycles but has a
+cycle of weight 0, what are the new weights of the edges on this cycle?
+3.
+Consider Johnson’s all-pairs shortest path algorithm and an input graph
+with all edge weights non-negative.
+(a)
+What is the relationship between the input weights w and the weights
+ˆ
+w computed in Johnson’s algorithm?
+(b)
+If Johnson’s algorithm computes the new edge weights using the
+“Bellman-Ford with FIFO Queue” algorithm, then what is the running
+time of Bellman-Ford in Johnson’s algorithm for such an input graph
+(when all edge weights are non-negative)? Give a precise bound.
+4.
+Consider Johnson’s algorithm with the following modiﬁcation: instead of
+adding a new vertex s, let s be any vertex of the input graph G.
+(a)
+Give an example of an input graph for which Johnson’s algorithm
+modiﬁed in this way gives incorrect output.
+(b)
+Show that if the input graph is strongly connected (every vertex is
+reachable from every other vertex), then the modiﬁed Johnson’s
+algorithm gives correct output.
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 3
+22 / 23
+5.
+For the “geographical” network given below, the starting node p and the
+destination d, compare the computation of the standard Dijkstra’s
+shortest-paths algorithm, which uses only given original distances of the
+direct connections, with the computation of Dijkstra’s algorithm which uses
+the geographical re-weighting. The straight-line distances from all nodes
+to the destination node d are given below.
+In both cases, show the shortest paths tree at the termination of the
+computation, that is, at the time when the destination node d is taken from
+the priority queue. Indicate also all edges to which the relax operation has
+been applied.
+Note that the original distances are the same in both directions of an edge,
+but the re-weighted distance of an edge (x, y) may be different than the
+re-weighted distance of the reverse edge (y, x).
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 3
+23 / 23
+5.
+(cont.)
+10
+a
+b
+c
+d
+e
+f
+g
+h
+i
+j
+k
+l
+p
+q
+r
+3
+3
+5
+6
+7
+9
+6
+6
+3
+5
+6
+4
+7
+7
+5
+9
+7
+2
+4
+9
+3
+3
+4
+4
+straight−line distances to d:
+21 13 15
+0
+12 17
+6
+4
+14 18
+9
+16 11 13
+6
+a
+b c
+d e
+f
+g
+h
+i
+j
+k
+l
+p
+q
+r
+
+
+6CCS3OME/7CCSMOME – Optimisation Methods
+Lecture 4
+Network ﬂow problems
+Ford-Fulkerson method
+Tomasz Radzik
+Department of Informatics, King’s College London
+2021/22, Second term
+
+
+Maximum network-ﬂow problem
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+2 / 32
+8
+1
+1
+2
+4
+1
+6
+3
+4
+2
+7
+2
+5
+7
+2
+1
+9
+t
+s
+•
+A Flow Network:
+G = (V, E, c, s, t), where
+•
+V – set of n nodes,
+E – set of m directed edges (links)
+•
+For each (u, v) ∈E, c(u, v) ≥0 is the capacity of edge (u, v).
+if (u, v) ̸∈E, then (for convenience) deﬁne c(u, v) = 0;
+•
+two distinguished nodes: source s and sink t. (s ̸= t)
+•
+Find (design) a maximum ﬂow from the source to the sink:
+•
+a ﬂow of the maximum total amount, while the ﬂow on each edge is not
+greater than the capacity of this edge;
+•
+a continuous ﬂow of the maximum total rate, while the rate of ﬂow on
+each edge is not greater than the capacity of this edge.
+
+
+Flow in network: example
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+3 / 32
+8
+1
+1
+2
+4
+1
+6
+3
+4
+2
+7
+2
+s
+t
+7
+2
+2
+1
+9
+5
+5
+2
+1
+1
+the rate (value) of this flow = 5 + 2 + 1 + 1 = 9
+the maximum flow rate (value) = 5+5+1 = 11
+7
+5
+2
+1
+1
+3
+3
+3
+3
+2
+5
+1
+8
+1
+1
+2
+4
+1
+6
+3
+4
+2
+7
+2
+s
+t
+5
+7
+2
+2
+9
+1
+
+
+Application: Problem of Representatives
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+4 / 32
+•
+Applications in transportation and communication networks.
+•
+Applications discussed in the Ahuja-Magnanti-Orlin textbook:
+parallel machine scheduling, assignment of computer modules to computer
+processors, rounding of census data, tanker scheduling,
+the problem of representatives.
+•
+The problem of representatives:
+A town has r residents, q clubs, p political parties; r ≫q ≫p.
+Each resident may be a member of a number of clubs, but belongs to
+exactly one political party.
+Select the governing council of exactly q members, which satisﬁes the
+following balancing “properties”:
+1.
+Each club is represented in the council by (exactly) one of its members.
+One council member can represent only one club.
+2.
+For each political party Pk, the number of council members belonging
+to this party is at most uk. (The numbers uk are given.)
+Is it possible to select a council which satisﬁes this properties?
+
+
+Problem of Representatives reduced to the Maximum-ﬂow Problem
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+5 / 32
+parties
+2
+R1
+R3
+R4
+R5
+R6
+R7
+C1
+C2
+C3
+C4
+P1
+P2
+P3
+1
+u  = 1
+u  = 2
+2
+u  = 2
+3
+clubs
+residents
+R2
+R1
+R3
+R4
+R5
+R6
+R7
+C1
+C2
+C3
+C4
+P1
+P2
+P3
+R
+2
+2
+R1
+R3
+R4
+R5
+R6
+R7
+C1
+C2
+C3
+C4
+P1
+P2
+P3
+s
+t
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1 1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+u  = 2
+3
+u  = 1
+1
+u  = 2
+R
+2
+2
+R1
+R3
+R4
+R5
+R6
+R7
+C1
+C2
+C3
+C4
+P1
+P2
+P3
+s
+t
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1 1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+u  = 2
+3
+u  = 1
+1
+u  = 2
+2
+integral flow from s to t
+(positive flow on the red (bold) edges)
+1
+R
+•
+An integral ﬂow in the constructed ﬂow network corresponds to a feasible
+“partial” council (some clubs might not have their representatives).
+•
+It is possible to select a full balanced council (Properties 1 & 2), if, and only
+if, the maximum ﬂow value is equal to q (the number of clubs).
+
+
+Other ﬂow problems
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+6 / 32
+•
+Flow-Feasibility problem (Transshipment problem): multiple sources
+and sinks with speciﬁed supplies and demands.
+Find a feasible ﬂow, that is, a ﬂow which satisﬁes the edge capacities and
+the speciﬁed supply/demand values at the nodes.
++5
++8
+−6
+−4
+−3
+(4)
+(3)
+(2)
+(4)
+(2)
+(4)
+(4)
+(1)
+(5)
+(1)
+(3)
+(6)
+(3)
+(8)
+(1)
+(2)
+(3)
+This problem is “equivalent” to the maximum ﬂow problem.
+•
+Minimum-cost ﬂow problems.
+Multicommodity ﬂow problems.
+These problems are more difﬁcult
+than the maximum ﬂow problem.
+
+
+Flows – formal deﬁnition
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+7 / 32
+•
+We assume, for convenience, that
+if (u, v) ∈E, then (v, u) ̸∈E.
+v
+u
+If there are “antiparallel” edges (u, v) and (v, u)
+in a given application, we can convert the network
+into an equivalent one with no antiparallel edges.
+new vertex
+v
+u
+•
+A ﬂow is a function f : E →R, where f(u, v) ≥0 is the ﬂow
+on edge (u, v), that has the following properties:
+•
+Capacity constraints:
+For each edge (u, v) ∈E, 0 ≤f(u, v) ≤c(u, v).
+u
+v
+0 <= f(u,v) <= c(u,v)  .
+•
+Flow conservation: For each node v ∈V −{s, t},
+the total ﬂow into v is equal to
+the total ﬂow out of v.
+In other words: the net ﬂow into v is equal to 0.
+1
+2
+3
+8
+4
+v
+
+
+Flow conservation
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+8 / 32
+For each node v ∈V −{s, t}:
+•
+The ﬂow into v is equal
+to the ﬂow out of v:
+.
+v
+a
+d
+e
+c
+b
+a+b+c = d+e
+flow in = flow out:
+!
+(x,v)∈E
+f(x, v)
+=
+!
+(v,z)∈E
+f(v, z).
+•
+The net ﬂow into v
+is equal to 0:
+.
+v
+a
+d
+e
+c
+b
+a+b+c−d−e = 0
+net flow into v:
+!
+(x,v)∈E
+f(x, v) −
+!
+(v,z)∈E
+f(v, z) = 0.
+
+
+The maximum ﬂow problem (formally)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+9 / 32
+•
+The value of a ﬂow f is the net ﬂow from the source, which is equal to
+the net ﬂow into the sink, due to the ﬂow conservation condition:
+|f|
+def
+=
+!
+(s,v)∈E
+f(s, v) −
+!
+(u,s)∈E
+f(u, s)
+s
+=
+!
+(x,t)∈E
+f(x, t) −
+!
+(t,z)∈E
+f(t, z)
+t
+•
+Maximum ﬂow problem: For a given ﬂow network, ﬁnd a ﬂow of the
+maximum possible value (maximizes the net ﬂow from the source).
+Such a ﬂow is called a maximum ﬂow.
+(Not necessarily unique.)
+•
+For a given ﬂow f, if f(v, u) = c(v, u), then
+we say that ﬂow fsaturates edge (v, u),
+and edge (v, u) is a saturated edge.
+
+
+From ﬂows to paths
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+10 / 32
+•
+G = (V, E, c, s, t): a ﬂow network;
+f: a ﬂow in G.
+•
+Flow f can be “decomposed” into at most m paths from s to t and cycles,
+where m is the number of edges in G.
+•
+Example (no ﬂow cycles here).
+Decompose the following ﬂow
+into paths (the numbers on the
+edges are the edge ﬂows):
+s
+t
+b
+c
+d
+a
+4
+7
+5
+9
+5
+3
+3
+11
+3
+25
+4
+•
+Algorithm: keep selecting and
+removing (from the current ﬂow)
+“maximal” s–t path ﬂows.
+Each path removes all remaining
+ﬂow from at least one edge, so at most m paths.
+•
+This algorithm can be extended to the case when there are ﬂow cycles.
+•
+One ﬂow path (or cycle) can be found in O(n) time, and there are at most
+m paths/cycles selected, so the total running time is O(nm).
+This is less than the time needed to ﬁnd a maximum ﬂow.
+
+
+The Flow-Feasibility problem (formally)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+11 / 32
++5
++8
+−6
+−4
+−3
+(4)
+(3)
+(2)
+(4)
+(2)
+(4)
+(4)
+(1)
+(5)
+(1)
+(3)
+(6)
+(3)
+(8)
+(1)
+(2)
+(3)
+•
+Input: G = (V, E, c, d), where V and E are the sets of nodes and edges;
+for each (v, u) ∈E, c(v, u) ≥0 is the capacity of edge (v, u);
+for each v ∈V , d(v) indicates the supply/demand at node v.
+d(v) > 0: supply of d(v) units at v;
+d(v) < 0: demand of |d(v)| units at v;
+d(v) = 0: a “transitional” node (ﬂow only passes through).
+Assume: "
+v∈V d(v) = 0, that is, total supply = total demand.
+•
+Find a feasible ﬂow f, that is, a ﬂow within the edge capacities and
+such that for each node v ∈V ,
+the net ﬂow from v equals d(v):
+!
+(v,x)∈E
+f(v, x) −
+!
+(z,v)∈E
+f(z, v) = d(v).
+•
+The above condition is the ﬂow conservation property for this problem.
+
+
+Reduction from ﬂow-feasibility to maximum-ﬂow
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+12 / 32
++8
+−6
+−4
+−3
+(4)
+(2)
+(3)
+(4)
+(4)
+(1)
+(5)
+(2)
+(3)
+(3)
+(8)
+(1)
+(2)
+(2)
+(6)
+(3)
+(1)
++5
+t
+s
+(3)
+(6)
+(4)
+(5)
+(8)
+•
+For a given input G = (V, E, c, d) of the ﬂow feasibility problem, construct
+the following input G′ = (V ′, E′, c′, s, t) for the maximum ﬂow problem:
+•
+V ′ = V ∪{s, t}, where s and t are two new nodes;
+•
+E′ = E ∪{(s, v) : v ∈V, d(v) > 0} ∪{(u, t) : u ∈V, d(u) < 0};
+•
+c′(v, u) = c(v, u);
+c′(s, v) = d(v);
+c′(u, t) = −d(u).
+
+
+Reduction from ﬂow-feasibility to maximum-ﬂow (cont.)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+13 / 32
+•
+Compute a maximum ﬂow f ′ in G′.
++8
+−6
+−4
+−3
+(4)
+(2)
+(3)
+(4)
+(4)
+(1)
+(5)
+(2)
+(3)
+(3)
+(8)
+(1)
+(2)
+(2)
+(6)
+(3)
+(1)
++5
+t
+s
+(3)
+(6)
+(4)
+(5)
+(8)
+3
+3
+2
+1
+2
+3
+4
+4
+3
+1
+1
+1
+1
+4
+5
+8
+3
+6
+•
+A maximum ﬂow in G′ saturates all edges outgoing from s, if and only if,
+there is a feasible ﬂow in G.
+•
+If a maximum ﬂow f ′ in G′ saturates all edges outgoing from s, then
+remove the added nodes and edges to get a feasible ﬂow in G.
+•
+If f is a feasible ﬂow in G, then saturate all edges outgoing from s and all
+edges incoming to t to get a maximum ﬂow in G′.
+
+
+Residual capacities
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+14 / 32
+•
+Let f be a ﬂow in a ﬂow network G = (V, E, c, s, t).
+•
+The residual capacity of an edge (u, v) ∈E is deﬁned as:
+cf(u, v) = c(u, v) −f(u, v).
+residual capacity = 1
+capacity = 4;
+3 units of flow
+flow    capacity
+x (y)
+u
+v
+3 (4)
+u
+v
+(1)
+•
+If for an edge (u, v) ∈E, f(u, v) > 0, then the residual capacity of a
+reverse edge (v, u) is deﬁned as: cf(v, u) = f(u, v).
+positive residual capacities
+in both directions
+0 < f(u,v) < c(u,v)
+u
+v
+u
+v
+(3)
+(1)
+3 (4)
+•
+The positive residual capacity of the reverse edge (v, u) represents
+possibility of decreasing the current positive ﬂow f(u, v).
+
+
+Residual networks
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+15 / 32
+•
+If cf(u, v) > 0, then (u, v) is a residual edge.
+•
+Let Ef denote the set of all residual edges.
+m = |E| ≤|Ef| ≤2|E| = 2m
+•
+The residual network of G induced by ﬂow f is the ﬂow network
+Gf = (V, Ef, cf, s, t),
+where cf are the residual capacities and Ef is the set of residual edges.
+
+
+Increase the ﬂow using the residual network: example
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+16 / 32
+of value 7
+1 (3)
+1 (1)
+2 (5)
+3 (3)
+4 (4)
+c
+a
+b
+t
+s
+(3)
+(3)
+(2)
+and flow f
+network G
+input
+f
+c
+a
+b
+t
+s
+(1)
+(3)
+(2)
+(2)
+(3)
+(2)
+(4)
+(3)
+(3)
+(1)
+network G
+residual
+of value 1
+in residual
+flow f’
+c
+a
+b
+t
+s
+(1)
+1 (3)
+(2)
+(2)
+1 (1)
+(2)
+(4)
+1 (3)
+(3)
+network
+Gf
+1 (3)
+.
+of value 7+1 = 8.
+b
+t
+s
+(3)
+1 (3)
+1 (3)
+(2)
+4 (4)
+3 (3)
+3 (5)
+1 (1)
+input
+network G
+and flow
+h = f
+f’
+c
+a
+
+
+Augmenting the current ﬂow by a ﬂow in the residual network
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+17 / 32
+•
+If f is a ﬂow in G and f ′ is a ﬂow in the residual network Gf, then we can
+augment f by f ′ to get a new greater ﬂow h in G.
+•
+The new ﬂow h = f ↑f ′ in G is deﬁned in the following way:
+h(u, v) =
+#
+f(u, v) + f ′(u, v) −f ′(v, u)
+if (u, v) ∈E,
+0
+otherwise.
+combined (in the input network)
+in the input network
+in the residual network
+u
+v
+2 (4)
+u
+v
+3 (7)
+0 (3)
+u
+v
+5 (7)
+in the input network
+in the residual network
+combined (in the input network)
+u
+v
+0 (4)
+u
+v
+3 (7)
+u
+v
+1 (7)
+2 (3)
+•
+This deﬁnition of f ↑f ′ works also if both f ′(u, v) and f ′(v, u) are positive.
+•
+|f ↑f ′| = |f| + |f ′|,
+that is the value of ﬂow f ↑f ′ (the net ﬂow from the
+source) is equal to the sum of the values of ﬂows f and f ′.
+
+
+A general approach to ﬁnding a maximum ﬂow
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+18 / 32
+•
+Start with the zero ﬂow and keep iteratively increasing the ﬂow by ﬂows in
+the residual network:
+f ←zero ﬂow
+{ f(u, v) = 0, for each (u, v) ∈E }
+loop
+(1) Construct the residual network Gf
+(2) Find a nonzero ﬂow f ′ in Gf,
+If there is no such a ﬂow, then exit
+(3) f ←f ↑f ′
+{ augmentation: augment ﬂow f with ﬂow f ′ }
+end of loop
+•
+Most of the max-ﬂow algorithms which follow this general approach
+compute in each iteration a path ﬂow f ′, that is, a ﬂow along one residual
+path from s to t.
+
+
+Augmenting paths and path ﬂows
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+19 / 32
+G = (V, E, c, s, t) – a ﬂow network;
+f – ﬂow in G.
+•
+Residual path: a simple path in the residual network Gf.
+Augmenting path: a residual path from s to t.
+•
+The residual capacity of an augmenting path p is the maximum amount of
+ﬂow that can be sent along path p:
+cf(p)
+=
+min{cf(u, v) | (u, v) is an edge on p}.
+bottleneck capacity
+(3)
+(3)
+(7)
+s
+t
+(5)
+(7)
+(4)
+•
+Let p be an augmenting path in Gf. The (path) ﬂow fp in Gf is:
+fp(u, v) =
+#
+cf(p),
+if (u, v) is on p,
+0.
+otherwise.
+•
+The value of ﬂow fp is
+|fp| = cf(p) > 0.
+
+
+Ford-Fulkerson method
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+20 / 32
+FORD-FULKERSON(G)
+{ G = (V, E, c, s, t) }
+f ←zero ﬂow
+{ f(u, v) = 0 for each (u, v) ∈E }
+loop
+(1) Construct the residual network Gf
+(2) Find an augmenting path p in Gf,
+If there is no augmenting path in Gf, then exit
+(*)
+(3) f ←f ↑fp
+{ path augmentation }
+end of loop
+Below, the highlighted edges have positive ﬂow, the other edges – zero ﬂow.
+0
+current
+t
+q
+q
+q
+q
+q
+q
+new
++q
++q
++q
+fp
+f
+f
+s
+s
+s
+t
+t
+x > q
+y > q
+z = q
+x−q
+y−q
+
+
+Ford-Fulkerson method (cont.)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+21 / 32
+FORD-FULKERSON(G)
+{ G = (V, E, c, s, t) }
+f ←zero ﬂow
+{ f(u, v) = 0 for each (u, v) ∈E }
+loop
+(1) Construct the residual network Gf
+(2) Find an augmenting path p in Gf,
+If there is no augmenting path in Gf, then exit
+(3) f ←f ↑fp
+{ path augmentation }
+end of loop
+•
+Does this algorithm compute a maximum ﬂow in G?
+•
+What is the running time?
+•
+The running time of one iteration is O(m):
+construct Gf: Θ(m), or O(n), if incrementally;
+search Gf to ﬁnd an augmenting path: O(m);
+update the ﬂow: O(n).
+(n - number of nodes; m - number of edges)
+•
+The number of iterations depends
+on the selection strategy in step (2).
+(100)
+(100)
+(100)
+(100)
+(1)
+t
+s
+
+
+Cuts
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+22 / 32
+•
+A cut (S, T) in a network G:
+S ⊆V ,
+T = V −S,
+s ∈S,
+t ∈T.
+That is, a cut is a partitioning of the set of nodes V into two disjoint sets S
+and T such that the source node s is in set S and the sink node t is in set T.
+T
+S
+s
+t
+•
+The capacity of a cut (S, T) is the sum of
+the capacities of the edges from S to T:
+c(S, T)
+=
+!
+(u,v)∈E: u∈S,v∈T
+c(u, v).
+•
+If f is a ﬂow, then
+the net ﬂow across the cut (S, T) is:
+f(S, T)
+=
+!
+(u,v)∈E: u∈S,v∈T
+f(u, v) −
+!
+(x,y)∈E: x∈T,y∈S
+f(x, y).
+•
+For each cut (S, T),
+f(S, T) = |f|,
+that is, the net ﬂow across the cut is equal to the net ﬂow into the sink t.
+This follows from the ﬂow conservation constraints.
+
+
+Cuts: example
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+23 / 32
+S
+1
+1
+2
+1
+1
+1
+2
+7
+1
+5
+3
+(9)
+(2)
+(1)
+(7)
+(3)
+(2)
+(4)
+(1)
+(6)
+(2)
+(7)
+(4)
+(1)
+(8)
+(1)
+(2)
+s
+t
+(5)
+For this cut (S, T) and this ﬂow f:
+•
+c(S, T) = 4 + 7 + 7 + 1 + 6 = 25.
+•
+f(S, T) = 7 + 3 + 1 −2 = 9 = |f|.
+
+
+Cuts (cont.)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+24 / 32
+•
+For any ﬂow f and any cut (S, T):
+|f| = f(S, T)
+≤
+c(S, T).
+(The net ﬂow across a cut cannot be greater than the capacity of this cut.)
+•
+Therefore, the value of a maximum ﬂow is not greater than the minimum
+capacity of a cut.
+max{|f| : f is a ﬂow in G}
+≤
+min{c(S, T) : (S, T) is a cut in G}.
+T
+1
+1
+1
+1
+1
+7
+2
+2
+5
+1
+3 (7)
+(3)
+(4)
+(1)
+(6)
+(1)
+(7)
+(4)
+(2)
+(5)
+(2)
+(8)
+(1)
+(2)
+s
+t
+(9)
+(2)
+(1)
+•
+This cut (S, T) is a minimum capacity cut, c(S, T) = 5 + 2 + 2 + 1 = 10, so
+the maximum value of ﬂow for this network is not greater than 10.
+
+
+The Max-ﬂow Min-cut theorem
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+25 / 32
+•
+Theorem 1. (Max-ﬂow Min-cut theorem)
+The maximum value of a ﬂow equals to the minimum capacity of a cut:
+max{|f| : f is a ﬂow in G} = min{c(S, T) : (S, T) is a cut in G}.
+•
+Theorem 2.
+For a ﬂow f in G, the following three conditions are equivalent.
+(a) f is a maximum ﬂow in G.
+(b) There is no augmenting path in the residual network Gf.
+(c) For some cut (S, T) in G,
+|f| = c(S, T).
+•
+Theorem 2 can be proven by showing implications: (a) ⇒(b) ⇒(c) ⇒(a).
+•
+Theorem 1 follows from Theorem 2:
+(a) ⇒(c), so for a maximum ﬂow f, there is a cut (S, T) such that
+|f| = f(S, T) = c(S, T) ≥min{c(S′, T ′) : (S′, T ′) is a cut in G}.
+•
+Correctness of the FORD-FULKERSON method: When this method
+terminates, then for the computed ﬂow f, there is no augmenting path in
+the residual network Gf, so f is a maximum ﬂow (by Theorem 2, (b) ⇒(a)).
+
+
+Max-ﬂow Min-cut (cont.)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+26 / 32
+•
+Theorem 2.
+For a ﬂow f in G, the following three conditions are equivalent.
+(a) f is a maximum ﬂow in G.
+(b) There is no augmenting path in the residual network Gf.
+(c) For some cut (S, T) in G,
+|f| = c(S, T).
+•
+(a) ⇒(b).
+Assume f is a maximum ﬂow in G.
+If there is an augmenting path, then the ﬂow cannot be maximum because
+we can use such a path to increase the value of ﬂow.
+•
+(b) ⇒(c).
+Assume no augmenting path in Gf.
+T
+S
+s
+t
+Let S be the set of nodes reachable from s
+in the residual network Gf. t is not in S.
+All edges from S to T = V −S are
+saturated. All edges from T to S have zero ﬂow.
+Therefore, |f| = f(S, T) = c(S, T).
+•
+(c) ⇒(a).
+Let (S, T) be a cut as in (c).
+|f| = f(S, T) = c(S, T), but there is no ﬂow of value greater than c(S, T), so
+f is a maximum ﬂow.
+
+
+Examples and Exercises – LGT
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+27 / 32
+1.
+Assume that the ﬂow in the right hand side diagram on slide 5 is the ﬂow
+at the end of some iteration of the execution of the Ford-Fulkerson
+method. Continue this method to obtain a maximum ﬂow.
+
+
+Examples and Exercises – LGT
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+28 / 32
+2.
+Consider the following input for the ﬂow-feasibility problem:
+4
++10
++3
+−8
+−5
+2
+2
+7
+7
+6
+8
+6
+2
+3
+4
+1
+(a)
+Find a feasible ﬂow for this input using the Ford-Fulkerson method
+for the maximum ﬂow problem. When searching for an augmenting
+path, use DFS. Consider the neighbours (in the residual ntwork) of a
+vertex in the following order: ﬁrst the sink vertex t (if t is a neighbour)
+and then the remaining neighbours in the alphabetical order.
+(b)
+Decompose the computed ﬂow into supply-demand path ﬂows.
+(c)
+Can we increase supplies and demands at any positive
+supply/demand vertices and still have feasible ﬂow?
+
+
+Exercises – LGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+29 / 32
+3.
+Assignment of tasks to two processors.
+Consider the following problem of assigning (computing) tasks of a system to two
+communicating processors to minimize the total cost of computation and
+communication.
+We have n tasks, numbered from 1 to n. For each task i, we know its computation
+costs αi and βi on processors 1 and 2, respectively. For each pair of tasks i and j,
+we know the cost cij of the communication between these two tasks, if they are
+assigned to different processors. This cost could be zero, if the two tasks do not
+communicate. The communication cost is also zero, if the two tasks are assigned
+to the same processor.
+Below is an example input for this problem.
+Computation costs:
+Communication costs ci,j:
+i (index of the task)
+1
+2
+3
+4
+αi (computation cost on proc. 1)
+6
+5
+4
+10
+βi (computation cost on proc. 2)
+4
+10
+8
+3
+1
+2
+3
+4
+1
+0
+5
+0
+0
+2
+5
+0
+2
+6
+3
+0
+2
+0
+1
+4
+0
+6
+1
+0
+(a)
+What is the total cost when tasks 1 and 2 are assigned to processor 1 and
+tasks 3 and 4 are assigned to processor 2?
+
+
+Exercises – LGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+30 / 32
+3.
+(Cont.) Consider the following transformation from this problem to the problem of
+ﬁnding a maximum cut in the following network G:
+•
+the set of vertices: {s, t, 1, 2, . . . , n}, with vertex s representing processor 1,
+vertex t representing processor 2, and vertex i ̸∈{s, t} representing task i
+•
+for each vertex i ̸∈{s, t}, we have edge {s, i} with capacity βi and edge edge
+{i, t} with capacity αi
+•
+for each i, j other than s and t, if cij > 0, we have edge {i, j} with capacity cij
+•
+edges are undirected, (bidirectional with the same capacity in both directions).
+(b)
+Draw the network obtained for the above input of the 2-processor task
+assignment problem.
+(c)
+What is the capacity of the cut {s, 1, 2}, {t, 3, 4}?
+(d)
+In this transformation, what is the correspondence between task
+assignments in the original problem and cuts in network G?
+(e)
+Use the Ford-Fulkerson method to ﬁnd the minimum cut in the network
+which you have drawn, and conclude what is the optimal allocation of these
+4 tasks to the 2 processors. In each iteration of Ford-Fulkerson, use DFS to
+ﬁnd an augmenting path from s to t. Assume the adjacency lists are ordered
+according to the order (s, t, 1, 2, 3, 4). For example, the adjacency list of
+vertex 3 is (s, t, 2, 4).
+
+
+Exercises – SGT
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+31 / 32
+The SGT exercises refer to the following ﬂow network:
+(2)
+b
+s
+c
+d
+h
+t
+p
+a
+(7)
+(2)
+(3)
+(4)
+(5)
+(3)
+(3)
+(3)
+(1)
+(8)
+(5)
+(1)
+1.
+Trace the computation of the Ford-Fulkerson maximum-ﬂow method on
+this network. In each iteration select the augmenting path which has
+maximum capacity.
+For each iteration, show the residual network at the beginning of the
+iteration, the selected augmenting path, and the total ﬂow at the end of the
+iteration.
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 4: Network ﬂow problems; Ford-Fulkerson method
+32 / 32
+2.
+Decompose the computed maximum ﬂow into path ﬂows.
+3.
+Show a minimum cut in this network.
+Does this network have only one minimum cut?
+4.
+What is an algorithm to compute a minimum cut?
+(Hint: refer to “(b) ⇒(c)” case of the Max-ﬂow Min-cut Theorem 2.)
+5.
+How can we decide (compute) whether there is only one minimum cut in a
+given network?
+(Hint: look for a minimum cut from s and then from t.)
+6.
+If we want to modify the network given in this exercise so that the
+maximum ﬂow increases by 1 unit, how many edge capacities do we have
+to increase?
+
+
+6CCS3OME/7CCSMOME – Optimisation Methods
+Lecture 5
+Edmonds-Karp maximum-ﬂow algorithm
+Maximum bi-partite matching
+Minimum ﬂow
+Tomasz Radzik
+Department of Informatics, King’s College London
+2021/22, Second term
+
+
+Number of iterations in Ford-Fulkerson
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+2 / 25
+•
+Depends on the strategy of selecting an augmenting path p in each
+iteration.
+•
+If FORD-FULKERSON is run on a network such that all edge capacities are
+integral:
+•
+The residual capacities are integral throughout the computation, so the
+value of the current total ﬂow in G increases in each iteration by some
+integer, that is, by at least 1.
+•
+Thus, if f ∗denotes a maximum ﬂow, then the number of iterations is at
+most |f ∗|.
+•
+Hence the total running time is O(|f ∗|m).
+•
+Note that this bound does not depend on the selection strategy used.
+•
+There is no general bound on the number of iterations which would depend
+only on the size of the network (on numbers n and m).
+
+
+The Edmonds-Karp algorithm
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+3 / 25
+The Edmonds-Karp algorithm is the Ford-Fulkerson method with the following
+strategy for selecting augmenting paths:
+In each iteration select a shortest augmenting path (that is, a path with the
+fewest number of edges).
+EDMONDS-KARP(G)
+f ←zero ﬂow in G
+(f(u, v) = 0, for each (u, v) ∈E)
+loop
+1)
+Construct residual network Gf
+2)
+BFS in Gf from s to ﬁnd a shortest augmenting path p
+3)
+If there is no augmenting path in Gf, then exit
+(the current ﬂow is optimal)
+4)
+Let p be the selected augmenting path
+f ←f ↑fp
+(augment the current ﬂow with ﬂow fp)
+end of loop
+
+
+The running time of Edmonds-Karp
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+4 / 25
+•
+Each iteration takes O(m) time and there are O(nm) iterations, so the total
+running time is O(nm2).
+•
+This O(nm2) bound does not depend on the values of the edge capacities,
+and does not depend on the maximum value of a ﬂow.
+•
+The bound O(nm) on the number of iterations follows from the following
+claim.
+Claim: Let q denote the number of iterations in EDMONDS-KARP, and let
+k1, k2, k3, . . . , kq denote the lengths of the augmenting paths selected in
+iterations 1, 2, 3, . . . , q.
+We have:
+(a) 1 ≤k1 ≤k2 ≤k3 ≤. . . kq ≤n −1,
+(b) the same length appears in the sequence < k1, k2, . . . , kq > at most m
+times.
+•
+This claim immediately implies that the number of iterations q ≤nm.
+•
+We omit the proof of this claim.
+
+
+Other maximum-ﬂow algorithms
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+5 / 25
+•
+“Augmenting paths” algorithms:
+•
+Modiﬁed Edmonds-Karp algorithm – O(n2m)
+(by achieving the average time of O(n) per one iteration)
+•
+Dinic’s algorithm – O(n3)
+•
+fastest known “blocking ﬂow” algorithm – O(nm log n)
+•
+“Preﬂow-push” algorithms (not part of this module, but see textbook CLRS,
+if interested):
+•
+the generic preﬂow-push algorithm – O(n2m)
+•
+the lift-to-front algorithm – O(n3)
+•
+if special data structure used – O(nm log n)
+
+
+Resource assignment & Maximum bipartite matching
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+6 / 25
+•
+Consider the following problem (an example of “resource assignment”
+problems):
+•
+We have a number of employees E1, E2, . . . , Ep and a number of tasks
+T1, T2, . . . , Tq which should be done.
+•
+Each employee Ei can do some of the tasks, depending on the
+employee’s skills and the skills required by individual tasks.
+•
+We want to allocate tasks to employees in such a way that:
+•
+each employee gets at most one task;
+•
+each task is given to at most one employee;
+•
+each employee can get only a task which this employee can do;
+•
+the largest possible number of tasks are allocated.
+•
+This problem can be modeled as
+the maximum bipartite matching problem.
+
+
+Maximum bipartite matching (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+7 / 25
+•
+Construct a bipartite graph with nodes E1, E2, . . . , Ep on one side and
+nodes T1, T2, . . . , Tq on the other side.
+An edge (Ti, Ej) means that task Ti can be done by employee Ej.
+Ej
+T1
+T2
+T3
+E2
+E3
+E1
+Ti
+•
+A matching in a bipartite graph is a subset of edges M such that each node
+belongs to at most one edge in M.
+Ej
+T1
+T2
+T3
+E2
+E3
+E1
+Ti
+•
+In our application, a matching is a feasible allocation (each employee gets
+at most one task, each task is given to at most one employee, and each
+employee can get only a task which this employee can do).
+•
+Thus maximising the number of allocated tasks is equivalent to ﬁnding in
+the corresponding bipartite graph a matching of the maximum size.
+
+
+Solving the maximum bipartite matching as the maximum ﬂow problem
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+8 / 25
+•
+For a given bipartite graph B, construct the following ﬂow network G, where
+all edge capacities are equal to 1:
+t
+s
+bipartite graph B
+ﬂow network G
+•
+There is a one-to-one correspondence between
+matchings in B and integral ﬂows in G:
+an edge (v, u) in a given matching
+corresponds to a path ﬂow of value 1
+from s to t which passes over edge (v, u).
+
+
+Solving the maximum bipartite matching as the maximum ﬂow (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+9 / 25
+t
+s
+•
+For a matching M in B and the corresponding integral ﬂow f in G, the size
+of the matching M is equal to the value of the ﬂow f.
+•
+Thus ﬁnding a maximum-size matching in B is equivalent to ﬁnding a
+maximum integral ﬂow in G.
+•
+Use the Ford-Fulkerson method to ﬁnd a maximum ﬂow in G. Since the
+edge capacities in G are integral, the computed maximum ﬂow is integral.
+The calculated maximum ﬂow gives a maximum-size matching in B.
+•
+The running time is O(mn), where n and m are the number of nodes and
+the number of edges in B: at most n iterations (since the value of a
+maximum ﬂow in G is at most n), and each iteration takes O(m) time.
+
+
+Another problem of assigning workers to tasks
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+10 / 25
+•
+Consider the following problem:
+•
+A team of workers needs to perform p tasks.
+For each task i, the starting time ts(i),
+the ending time te(i) and the required
+number of workers are known.
+task
+ts
+te
+workers
+1
+3
+5
+4
+2
+6
+9
+2
+3
+11
+15
+5
+. . .
+. . .
+. . .
+. . .
+p
+33
+37
+3
+Additionally, a setup time t(i, j) is necessary
+for a worker to switch from task i to task j.
+t(i, j)
+1
+2
+3
+. . .
+1
+2
+5
+2
+2
+. . .
+p
+•
+Each worker is qualiﬁed to be involved in
+each task, but cannot work on more than one
+task at the same time.
+•
+Find the minimum number of workers
+to perform the required tasks according to the above rules.
+•
+What would be a right graph model for this problem?
+We can identify the tasks which a worker can
+move to after completing a given task.
+task 3
+?
+task 1
+task 2
+How to represent the required number of workers?
+What would correspond to an assignment of workers to tasks?
+
+
+Graph model
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+11 / 25
+8
+2
+g
+4
+a
+b
+7
+task 1
+task 2
+task 4
+task 3
+task 5
+task 6
+5
+j
+i
+3
+h
+d
+c
+e
+f
+g
+h
+h
+2
+g
+4
+a
+b
+7
+task 1
+task 2
+task 4
+task 3
+task 5
+task 6
+5
+j
+i
+3
+h
+d
+c
+e
+f
+g
+s
+t
+•
+Each task is represented by an edge with the ﬂow lower bound equal to
+the number of workers required for this task.
+•
+If workers can move from a task i (when completed) to another task j, then
+add an edge from the end of the edge representing task i to the beginning
+of the edge representing task j. No capacity bound for such an edge.
+•
+Add the source s, the sink t, edges from s to the beginning of each task
+and from the end of each task to t. No capacity bounds.
+
+
+Graph model (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+12 / 25
+h
+2
+g
+4
+a
+b
+7
+task 1
+task 2
+task 4
+task 3
+task 5
+task 6
+5
+j
+i
+3
+h
+d
+c
+e
+f
+g
+s
+t
+8
+2
+g
+4
+a
+b
+7
+task 1
+task 2
+task 4
+task 3
+task 5
+task 6
+5
+j
+i
+3
+h
+d
+c
+e
+f
+g
+s
+t
+h
+4
+1
+3
+3
+4
+5
+7
+2
+3
+•
+We view the obtained network as a ﬂow network.
+•
+A feasible ﬂow from s to t satisﬁes the lower bounds on the task edges.
+•
+Every feasible ﬂow corresponds to an assignment of workers to tasks.
+•
+The value of a feasible ﬂow is equal to the number of workers in the
+corresponding assignment.
+•
+Find the feasible ﬂow with minimum value – the minimum ﬂow problem.
+
+
+Minimum ﬂow problem – deﬁnition
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+13 / 25
+•
+In the minimum ﬂow problem, we wish to send the minimum amount of ﬂow
+from the source to the sink, while satisfying given upper and lower
+bounds on edge ﬂows.
+•
+Input: a ﬂow network:
+G = (V, E, l, u, s, t), where
+•
+V – set of n nodes,
+E – set of m directed edges (links)
+•
+For each (v, w) ∈E, 0 ≤l(v, w) ≤u(v, w) are the lower and upper
+bounds on the ﬂow of this edge.
+•
+Two distinguished vertices: source s and sink t. (s ̸= t)
+•
+As before, we assume (for convenience) that if (v, w) is an edge in G,
+then (w, v) is not an edge.
+•
+A feasible ﬂow from s to t is a function f :−
+→R on the edges, which
+satisﬁes the ﬂow conservation constraints at all vertices other than s and
+t, and the lower and upper capacity bounds:
+l(v, w) ≤f(v, w) ≤u(v, w).
+•
+Find a feasible ﬂow of the minimum value.
+
+
+Minimum ﬂow problem: algorithm
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+14 / 25
+•
+A minimum ﬂow can be computed using the following 2-step method:
+1.
+Compute a feasible ﬂow f, that is, a ﬂow which satisﬁes all lower and upper
+bounds on the ﬂows on edges.
+2.
+In the residual network Gf, compute a maximum ﬂow from t to s.
+The idea is that sending back the ﬂow from t to s.
+For an edge (v, w),
+l(v, w) ≤f(v, w) ≤u(v, w),
+and the residual capacities:
+cf(v, w) = u(v, w) −f(v, w)
+cf(w, v) = f(v, w) −l(v, w).
+in both directions
+positive residual capacities
+l(v,w) <= f(v,w) <= u(v,w)
+v
+w
+v
+w
+(2)
+(4)
+5 (3,9)
+With this deﬁnition of residual capacities, the feasibility of the current ﬂow will
+be maintained: the ﬂow on each edge will remain between the lower and the
+upper bounds.
+•
+The ﬁnal ﬂow, interpreted in the original network G,
+is a minimum s–t ﬂow.
+•
+Each of the two steps can be completed using
+a maximum ﬂow algorithm.
+
+
+Minimum ﬂow algorithm – ﬁrst step: compute a feasible ﬂow
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+15 / 25
+s
+t
+(4)
+(5)
+(4)
+(2)
+(5)
+(3)
+(3)
+(8)
+(1)
+(2)
+(8)
+(4)
+(3)
+s
+t
+(4)
+(5)
+(4)
+(2)
+(3,4)
+(5)
+(3)
+(3)
+(8)
+(1)
+(5,7)
+(2,5)
+(5,6)
+(2)
+(8)
+(4)
+(3)
+3
+2
+s
+t
+5
+5
+(4)
+(5)
+(4)
+(2)
+(3,4)
+(5)
+(3)
+(3)
+(8)
+(1)
+(5,7)
+(2,5)
+(5,6)
+(2)
+(8)
+(4)
+(3)
+3
+2
++4
+−5
++5
+−2
+−2
+s
+t
+5
+5
+(4)
+(5)
+(4)
+(2)
+(3,4)
+(5)
+(3)
+(8)
+(1)
+(5,7)
+(2,5)
+(5,6)
+(2)
+(8)
+(4)
+(3)
+(3)
+(x, y): lower
+and upper
+bounds;
+(x): upper
+bound,
+lower bound = 0
+•
+For each edge (v, w) with positive lower bound l(v, w), send l(u, w) units of ﬂow
+along this edges. This creates supplies and demand at various vertices.
+•
+Consider vertices s and t as having unlimited supply/demand.
+
+
+Minimum ﬂow algorithm – ﬁrst step: compute a feasible ﬂow (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+16 / 25
+s
+t
+(4)
+(5)
+(4)
+(2)
+(5)
+(3)
+(3)
+(8)
+(1)
+(2)
+(8)
+(4)
+(3)
+−5
++5
+−2
+−2
+s
+t
++4
+(4)
+(5)
+(4)
+(2)
+(1)
+(5)
+(3)
+(3)
+(8)
+(1)
+(2)
+(3)
+(1)
+(2)
+(8)
+(4)
+(3)
+Sink
+−5
++5
+−2
+−2
+s
+t
+Source
++4
+(4)
+(5)
+(4)
+(2)
+(1)
+(3)
+(3)
+(8)
+(1)
+(2)
+(3)
+(1)
+(2)
+(8)
+(4)
+(3)
+(5)
+Sink
++4
+−5
++5
+−2
+−2
+s
+(4)
+(5)
+t
+Source
+(4)
+(5)
+(4)
+(2)
+(1)
+(5)
+(3)
+(3)
+(8)
+(1)
+(2)
+(3)
+(1)
+(8)
+(4)
+(3)
+(2)
+Sink
+t
++4
+−5
++5
+−2
+−2
+s
+(4)
+(5)
+(2)
+(5)
+(2)
+Source
+(4)
+(5)
+(4)
+(2)
+(1)
+(3)
+(3)
+(8)
+(1)
+(2)
+(3)
+(1)
+(2)
+(8)
+(4)
+(3)
+(5)
+Sink
+t
+s
+(4)
+(5)
+(2)
+(5)
+(2)
+Source
+(8)
+(1)
+(2)
+(3)
+(1)
+(8)
+(2)
+(4)
+(3)
+(4)
+(5)
+(4)
+(2)
+(1)
+(5)
+(3)
+(3)
+•
+Find a feasible ﬂow which satisﬁes the supplies and demands at all vertices other
+than s and t.
+•
+Add a new source (with edges to the supply vertices) and new sink (with edges
+from the demand vertices), and use a maximum ﬂow algorithm to ﬁnd a ﬂow which
+saturates all added edges adjacent to the vertices other than s and t.
+
+
+Minimum ﬂow algorithm – second step: compute max ﬂow from t to s
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+17 / 25
+•
+If there is no ﬂow which saturates all added edges adjacent to the
+supply/demand vertices (other than s and t), then there is no feasible ﬂow
+in the original network.
+5
+t
+s
+5
+3
+3
+2
+5
+2
+7
+2
+2
+4
+2
+(4)
+(5)
+(4)
+(2)
+(3,4)
+(5)
+(3)
+(3)
+(8)
+(5,7)
+(2,5)
+(5,6)
+(2)
+(4)
+(3)
+(8)
+(1)
+•
+If a feasible ﬂow f has been found, then construct the residual network (of
+the computed feasible ﬂow) and compute a maximum ﬂow in this network
+from vertex t to vertex s.
+•
+This computation returns back to s as much ﬂow as possible, while keeping
+the ﬂow feasible. That way, when no more ﬂow can be returned to s, the
+ﬁnal ﬂow is a minimum feasible ﬂow.
+
+
+Computed minimum ﬂow
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+18 / 25
+•
+The feasible ﬂow computed in the ﬁrst step might be as shown on the
+previous slide. The value of this ﬂow is 5.
+•
+When computing maximum
+ﬂow from t to s in
+the residual network,
+the following two paths
+may be used:
+1
+5
+2
+s
+t
+2
+5
+2
+7
+2
+2
+4
+5
+3
+2
+3
+(4)
+(5)
+(4)
+(2)
+(3,4)
+(5)
+(3)
+(3)
+(8)
+(5,7)
+(2,5)
+(5,6)
+(2)
+(4)
+(3)
+(8)
+(1)
+•
+The new ﬂow is shown here.
+No further augmenting paths
+from t to s, so a maximum
+ﬂow, from t to s,
+has been computed,
+giving a minimum ﬂow
+from s to t (its value is 2).
+1
+2
+s
+t
+5
+2
+3
+3
+6
+3
+4
+4
+5
+(4)
+(5)
+(4)
+(2)
+(3,4)
+(5)
+(3)
+(3)
+(1)
+(5,7)
+(2,5)
+(5,6)
+(2)
+(4)
+(3)
+(8)
+(8)
+
+
+Minimum ﬂow algorithm – Why does it work?
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+19 / 25
+•
+In the residual network of the ﬁnal ﬂow f, no augmenting path from t to s.
+•
+This means that there is a cut (S, T) with no residual edges from T to S.
+•
+For this cut (S, T), for each edge (v, w) from S to T, f(v, w) = l(v, w), and
+for each edge (x, y) from T to S, f(v, w) = u(v, w).
+•
+The value of the ﬂow is equal the net ﬂow across the cut (S, T), which is
+equal to:
+|f| = f(S, T)
+=
+!
+(v,w)∈E: v∈S,w∈T
+l(v, w) −
+!
+(x,y)∈E: x∈T,y∈S
+u(x, y).
+•
+The value of any feasible ﬂow is at least the right-hand side above.
+•
+We conclude that the computed ﬂow is a minimum feasible ﬂow in the input
+network.
+
+
+Exercises – LGT
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+20 / 25
+1.
+Trace the computation of the Edmonds-Karp maximum-ﬂow algorithm on
+the input given below.
+For each iteration, show the residual network at the beginning of the
+iteration, the selected augmenting path, and the total ﬂow at the end of the
+iteration
+(2)
+b
+s
+c
+d
+h
+t
+p
+a
+(7)
+(2)
+(3)
+(4)
+(5)
+(3)
+(3)
+(3)
+(1)
+(8)
+(5)
+(1)
+Iteration 1
+The residual network is the same as the input network. Show on the
+diagram above the selected augmenting path (which gives the total ﬂow at
+the end of this iteration).
+
+
+Exercises – LGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+21 / 25
+Iteration 2
+Show all residual edges and
+their residual capacities.
+Show the selected
+augmenting path.
+b
+s
+c
+d
+h
+t
+p
+a
+Show the total ﬂow at the end
+of this iteration.
+(2)
+b
+s
+c
+d
+h
+t
+p
+a
+(7)
+(2)
+(3)
+(4)
+(5)
+(3)
+(3)
+(3)
+(1)
+(8)
+(5)
+(1)
+Continue, until the computation terminates.
+
+
+Exercises – LGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+22 / 25
+2.
+Decompose the computed maximum ﬂow into paths.
+3.
+Show a minimum cut in this network. Is the minimum cut unique?
+4.
+If we want to modify the network so that the maximum ﬂow increases by 1
+unit, how many edge capacities do we have to increase?
+5.
+Suggest how the Ford-Fulkerson method can be used to check if a given
+undirected graph with two distinguished vertices s and t contains an edge
+such that removal of this edge disconnects s from t (no path from s to t).
+What is the running time of this computation?
+6.
+Let k denote the length (in the number of edges) of the path selected in
+the current iteration of the Edmonds-Karp algorithm.
+Show that the path selected in the next iteration has length at least k.
+Hint: For the BFS tree computed in the current iteration, consider how the
+other residual edges (which are not in the tree) are positioned with respect
+to this tree. Then consider how the new residual edges (the edges which
+become residual in the current iteration) are positioned w.r.t. the tree.
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+23 / 25
+1.
+The following diagram shows who (employees E1, E2, . . . , E6) can
+execute which tasks (T1, T2, . . . , T6).
+E6
+T1
+T2
+T3
+T4
+T5
+T6
+E1
+E2
+E3
+E4
+E5
+Trace the execution of the Edmonds-Karp algorithm when applied to
+calculate a maximum allocation of tasks to employees in this example.
+Whenever you need to break a tie between vertices, assume that the
+vertex corresponding to T (or E) with the lower index comes ﬁrst. For
+example, the order of the adjacency list of the vertex T4 will be
+(E1, E5, E6).
+Show the computed allocation of tasks.
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+24 / 25
+2.
+In the diagram below, the 5 edges in bold represent 5 tasks. The number next to
+an edge is the required number of workers needed to complete the task. The
+other edges show how workers can proceed from one task to another. E.g., when
+task (a, b) is completed, the workers who have been working on this task can
+either proceed to task (e, f) or task (c, d), or might not be involved in other tasks.
+e
+5
+6
+5
+7
+4
+g
+h
+a
+b
+c
+d
+j
+i
+f
+We want to compute the minimum number of workers needed to complete all
+tasks.
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 5: Edmonds-Karp maximum-ﬂow algorithm
+25 / 25
+2.
+(cont.)
+(a)
+Show the corresponding instance of the minimum ﬂow problem.
+(b)
+Compute the minimum ﬂow using the method given in the lecture.
+For the ﬁrst step, take the feasible ﬂow which saturates all edges outgoing
+from the source vertex s and all edges incoming to the sink vertex t.
+For the second step, compute the maximum ﬂow from t to s in the residual
+network using the Edmonds-Karp algorithm and considering vertices in the
+alphabetical order.
+(c)
+From the computed minimum ﬂow, how are the workers assigned to the
+tasks?
+
+
+6CCS3OME/7CCSMOME – Optimisation Methods
+Lecture 6
+Minimum cost ﬂow problem
+Multicommodity ﬂow problems
+Tomasz Radzik
+Department of Informatics, King’s College London
+2021/22, Second term
+
+
+Minimum cost ﬂow problem
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+2 / 27
++5
++8
+−6
+−4
+−3
+(3,2)
+(3,3)
+(4,1)
+(6,3)
+(4,1)
+(5,7)
+(8,1)
+(3,8)
+(4,3)
+(2,3)
+(1,5)
+(1,2)
+(4,3)
+(3,2)
+(4,5)
+(2,2)
+3
+4
+4
+1
+2
+3
+1
+1
+3
+2
+4
+1
+3
+Cost of this flow:
+Is there a cheaper solution?
+1*2 + 4*7 + 3*3 + ... = 114
+A Flow Network:
+G = (V, E, u, c, d).
+• V – set of nodes,
+E – set of directed edges (links).
+• For each edge (v, w) ∈E,
+u(v, w) ≥0 is the capacity of edge (v, w)
+(the 1st number on the edge).
+• For each node v ∈V , (as in the ﬂow-feasibility problem),
+|d(v)| is the (initial) supply (if d(v) > 0)
+or demand (if d(v) < 0) at v.
+!
+v∈V d(v) = 0.
+• For each edge (v, w) ∈E,
+c(v, w) ≥0 is the cost of one unit of ﬂow on edge (v, w)
+(the 2nd number on the edge).
+
+
+Minimum cost ﬂow problem (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+3 / 27
+•
+Objective: Find a ﬂow which satisﬁes all supply and demand and has
+the minimum possible cost,
+or determine that it’s not possible to satisfy supllies/demands.
+•
+Formally, a ﬂow (in network G) is a function f : E →R, assigning ﬂows to
+edges, f(v, w) is the non-negative (amount of) ﬂow on edge (v, w),
+which satisﬁes the capacity constraints and the ﬂow conservation
+constraints.
+•
+The cost of a ﬂow f is:
+"
+(v,w)∈E
+c(v, w)f(v, w).
+•
+Capacity constraints: For each edge (v, w) ∈E, f(u, v) ≤u(v, w).
+•
+A technical assumption (for convenience):
+if (v, w) ∈E, then (w, v) ̸∈E.
+(3, 5)
+v
+w
+(2, 6)
+v
+w
+(2, 6)
+(3, 5)
+(3, 0)
+(3, 5)
+v
+w
+(2, 6)
+
+
+Flow conservation constraints
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+4 / 27
+•
+Net ﬂow outgoing from node v:
+"
+(v,x)∈E
+f(v, x) −
+"
+(z,v)∈E
+f(z, v).
+.
+v
+a
+c
+b
+net flow out of v:
+d
+e
+(a + b + c) − (d + e)
+•
+Flow conservation constraints:
+•
+the net ﬂow outgoing from each transitional node (d(v) = 0) is 0;
+•
+the net ﬂow outgoing from each “supply” node v is at most d(v);
+•
+the net ﬂow incoming to each “demand” node v is at most
+|d(v)| = −d(v) (the demand at v),
+or equivalently, the net ﬂow outgoing from v is at least d(v)
+Formally, the net ﬂow outgoing from v:
+"
+(v,x)∈E
+f(v, x) −
+"
+(z,v)∈E
+f(z, v) =
+⎧
+⎪
+⎨
+⎪
+⎩
+=
+0,
+if d(v) = 0,
+≤
+d(v),
+if d(v) > 0,
+≥
+d(v),
+if d(v) < 0.
+•
+A ﬂow satisﬁes all supplies and demands,
+if the net ﬂow outgoing from each vertex v is equal to d(v).
+
+
+Flow conservation constraints: example
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+5 / 27
++5
++8
+−6
+−4
+−3
+(3,2)
+(3,3)
+(4,1)
+(6,3)
+(4,1)
+(5,7)
+(8,1)
+(3,8)
+(4,3)
+(2,3)
+(1,5)
+(1,2)
+(4,3)
+(3,2)
+(4,5)
+(2,2)
+a
+b
+v
+s2
+t3
+t1
+g
+s1
+t2
+3
+3
+3
+1
+2
+2
+1
+1
+2
+2
+3
+1
+2
+net ﬂow out from v:
+⎧
+⎪
+⎨
+⎪
+⎩
+=
+0,
+if d(v) = 0,
+≤
+d(v),
+if d(v) > 0,
+≥
+d(v),
+if d(v) < 0.
+type of node
+node
+net ﬂow out
+supply
+d(v)
+transitional
+a, b, g, v
+0
+=
+0
+supply node
+s1
+7
+≤
+8
+s2
+4
+≤
+5
+demand nodes
+net ﬂow in
+demand
+net ﬂow out
+d(v)
+−d(v)
+t1
+5
+≤
+6
+⇔
+−5
+≥
+−6
+t2
+3
+≤
+3
+⇔
+−3
+≥
+−3
+t3
+3
+≤
+4
+⇔
+−3
+≥
+−4
+
+
+Application: Production and distribution problems
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+6 / 27
+•
+A car manufacturer produces several car models in several plants and
+ships them to several retail centres.
+•
+Each retail centre requests a speciﬁc number of cars of each model.
+•
+Determine the production plan for each plant and the shipping schedule so
+that the total cost of production and transportation is minimized.
+(Application 9.1 in Ahuja, Magnanti and Orlin’s textbook).
+•
+We can model this problem as a minimum cost ﬂow problem:
+•
+four types of nodes: plant nodes, plant/model nodes, retailer/model
+nodes and retailer nodes;
+•
+three types of edges: production edges, transportation edges and
+demand edges.
+
+
+Application: Production and distribution problems (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+7 / 27
+(90, 0)
+p1/m1
+p2/m2
+p2/m1
+p2/m2
+p2/m3
+r1/m1
+r1/m2
+r1/m3
+r2/m1
+r2/m2
+p2
+r1
+r2
+p1
+−200
+−100
++180
++120
+(100, 5)
+(80, 0.5)
+(70, 0.6)
+(50, 3)
+•
+A production edge (pi, pi/mj): capacity – maximum possible production of
+cars mj at plant pi; cost – production cost of one car mj at plant pi.
+•
+A transportation edge (pi/mj, rk/mj): transportation of cars mj from plant pi
+to retailer rk; capacity and transportation cost per one car.
+•
+A demand edge (rk/mj, rk): capacity - demand for cars mj at retailer rk.
+•
+Supplies at nodes pi (production capacities) and demands at nodes rk.
+
+
+Application: Production and distribution problems (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+8 / 27
+80
+p1/m1
+p2/m2
+p2/m1
+p2/m2
+p2/m3
+r1/m1
+r1/m2
+r1/m3
+r2/m1
+r2/m2
+p2
+r1
+r2
+p1
+−200
+−100
++180
++120
+30
+80
+50
+70
+80
+100
+30
+90
+60
+40
+30
+20
+40
+80
+20
+•
+A (integral) ﬂow corresponds to a feasible production/transportation
+schedule.
+•
+A minimum cost (integral) ﬂow gives an optimal (minimum cost)
+production/transportation schedule.
+
+
+Sending ﬂows along cheapest paths
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+9 / 27
+•
+Take a node v which has positive remaining supply;
+ﬁnd a cheapest path from v to a node w with positive remaining demand;
+send as much ﬂow as possible from v to w along this path.
+•
+Example:
+1-st path: (a, c, p)
+2-nd path: (a, i)
+3-rd path: (b, c, i)
+(5,3)
++5
++7
+−9
+−3
+(4,3)
+a
+b
+c
+i
+p
+3
+3
+7
+2
+7
+(4,1)
+(9,5)
+(8,4)
+(3,0)
+•
+The cost of this ﬂow: 2 ∗3 + 3 ∗1 + 7 ∗5 + 7 ∗4 + 3 ∗0 = 72. Not optimal.
+•
+Sometimes we have to “re-route” the ﬂow to get the optimal cost.
+
+
+Residual network
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+10 / 27
+•
+Let f be a ﬂow in network G = (V, E, u, c, d).
+•
+The residual capacity of an edge (w, v) ∈E:
+uf(w, v) = u(w, v) −f(w, v).
+capacity = 3;
+2 units of flow
+residual capacity = 1
+x (y, z)
+flow  capacity  cost
+2 (3, 5)
+(1, 5)
+w
+v
+w
+v
+•
+If (w, v) ∈E and f(w, v) > 0, then the residual capacity of a reverse
+edge (v, w) is uf(v, w) = f(w, v), and its cost is c(v, w) = −c(w, v).
+2 (3, 5)
+(1 5)
+(2, −5)
+w
+w
+v
+v
+The positive residual capacity of the reverse edge (v, w) represents
+possibility of reducing (some) ﬂow on the actual edge (w, v).
+
+
+Residual network (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+11 / 27
+2 (3, 5)
+(1 5)
+(2, −5)
+w
+w
+v
+v
+•
+The negative costs of the reverse edges ensure that sending ﬂow g(x, y)
+through a residual edge (x, y) changes the cost of the ﬂow by c(x, y)g(x, y).
+Sending ﬂow g(v, w) through a reverse residual edge (v, w) represents
+reducing the ﬂow on the actual edge (w, v) by g(v, w) and this reduces the
+cost of the ﬂow by c(w, v)g(v, w), so the cost of ﬂow changes by:
+−c(w, v)g(v, w) = c(v, w)g(v, w).
+•
+For each node v ∈V , the residual supply/demand at v is
+df(v) = d(v) −
+"
+(v,x)∈E
+f(v, x) +
+"
+(z,v)∈E
+f(z, v).
+•
+The residual network of network G with respect to ﬂow f is
+Gf = (V, Ef, uf, c, df), where Ef is the set of residual edges (edges with
+positive residual capacities).
+
+
+Example: residual networks and cheapest paths in residual networks
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+12 / 27
+new flow in input network:
+−7
+a
+b
+c
+i
+p
++7
+[2,−3]
+[3,0] 3
+[9,5]
+[1,1]
+[4,3] 3
+[3,3] 3
+[3,−1] 3
+[8,4]
+a
+b
+c
+i
+p
+[5,3] 5
++7
++5
+−9
+−3
+[4,3] 3
+[9,5] 0
+[3,0] 0
+[4,1] 0
+[8,4] 0
+a
+b
+c
+i
+p
+[5,3] 2
++7
++5
+−9
+−3
+[4,3] 0
+[9,5] 0
+[3,0] 3
+[8,4] 0
+[4,1] 3
+current flow in input network:
+residual network:
+flow in residual network:
+[3,3]
+a
+b
+c
+i
+p
++7
+[2,−3]
+[3,0]
+[9,5]
+[1,1]
+[3,−1]
+[8,4]
+[4,3]
+−7
+path:
+cost:
+(b, c, i)
+9
+(b, p, c, i)
+8
+(b, c, a, i)
+6
+(b, p, c, a, i)
+5
+
+
+Example (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+13 / 27
+[4,1] 3
+flow in residual network:
+−7
+a
+b
+c
+i
+p
++7
+[2,−3]
+[3,0] 3
+[9,5]
+[1,1]
+[4,3] 3
+[3,3] 3
+[3,−1] 3
+[8,4]
+a
+b
+c
+i
+p
+[5,3] 5
++7
++5
+−9
+−3
+[4,3] 3
+[9,5] 0
+[3,0] 0
+[4,1] 0
+new flow in input network:
+[8,4] 0
+current flow in input network:
+a
+b
+c
+i
+p
+[5,3] 2
++7
++5
+−9
+−3
+[4,3] 0
+[9,5] 0
+[3,0] 3
+[8,4] 0
+ﬂow fold
+value(fold) = 2 + 3 = 5
+cost(fold) =
+3 · 2 + 1 · 3 + 0 · 3 = 9
+ﬂow fp
+value(fp) = 3
+cost(fp) =
+(3+0+(−1)+3)·3 = 15
+ﬂow fnew = fold ↑fp
+value(fnew) =
+value(fold) + value(fp)
+= 5 + 3 = 8
+cost(fnew) =
+cost(fold) + cost(fp) =
+9 + 15 = 24
+(= 5 · 3 + 3 · 3)
+Additional cost £18 for sending the additional 3
+units through edges (a, i) and (b, p), but £3 back
+because after all we’re not using edge (a, c).
+
+
+Successive shortest path algorithm
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+14 / 27
++5
++8
+−6
+−4
+−3
+(3,2)
+(3,3)
+(4,1)
+(6,3)
+(4,1)
+(5,7)
+(8,1)
+(3,8)
+(4,3)
+(2,3)
+(1,5)
+(1,2)
+(4,3)
+(3,2)
+(4,5)
+(2,2)
+SUCCESSIVESP(G)
+f ←zero ﬂow;
+S = {v ∈V : df(v) > 0}
+while S is not empty do
+compute the residual network Gf;
+select a node v ∈S;
+{ an arbitrary node v ∈S would do }
+compute a shortest-path tree T in Gf from v
+to all nodes reachable from v;
+if there is a node w in T with residual demand (df(w) < 0) then
+P ←the path in T from v to w; { any w ∈T with df(w) < 0 would do }
+q ←min{df(v), −df(w), min{uf(x, y) : (x, y) ∈P} };
+fP ←
+the ﬂow of value q in Gf along path P ;
+f ←f ↑fP ; { update ﬂow f by sending q units of ﬂow along path P }
+if df(v) = 0 then S ←S −{v};
+else S ←S −{v}.
+
+
+Successive Shortest Paths algorithm: correctness and running time
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+15 / 27
+•
+At the end of each iteration, the current ﬂow f has the minimum cost
+among all ﬂows which satisfy the same demands and supplies as ﬂow f.
+This can be shown by induction on the number of iterations (not easy!).
+•
+Cost of residual edges can be negative, but no negative cycles.
+•
+Appropriate “h(v)” numbers can be (efﬁciently) maintained so that in each
+iteration the “re-weighted” costs are non-negative.
+The re-weighting scheme is as in Johnson’s all-pairs shortest-paths
+algorithm: ˆ
+c(v, w) = c(v, w) + h(v) −h(w).
+Thus in each iteration, the computation of a shortest path tree can be done
+by Dijkstra’s shortest path algorithm, in O(min{m log n, n2}) time.
+•
+If all input edge capacities and node supplies/demands are integral, then
+the number of iterations is at most !{d(v) : v ∈V, d(v) > 0}
+(the total
+supply in the network).
+•
+The number of iterations can be exponential in the number of nodes.
+•
+There are algorithms for the minimum cost ﬂow problem which run in
+polynomial time. The best known asymptotic running time of an algorithm
+for the minimum cost ﬂow problem is O(m2 log2 n).
+
+
+Multicommodity ﬂow problems
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+16 / 27
+•
+Input instance:
+•
+a (directed) network G = (V, E, u), where u(x, y) is the capacity of an
+edge (x, y) ∈E;
+•
+k commodities. Commodity q (1 ≤q ≤k) is speciﬁed by (sq, tq, dq),
+where
+•
+sq ∈V and tq ∈V are the origin (source) and the destination (target)
+of commodity q,
+•
+dq (> 0) is the (amount of) demand of this commodity.
+•
+Design simultaneous ﬂow of all commodities which satisﬁes the demands
+of all commodities, and optimises some speciﬁed global objective.
+•
+Application: allocation of communication paths to requests in
+telecommunication networks.
+•
+For some multicommodity ﬂow problems, ﬂows do not need to satisfy the
+edge capacity constraints.
+
+
+Example
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+17 / 27
+•
+Speciﬁcation of a network:
+q
+p
+6
+a
+b
+c
+s3
+t1
+d
+5
+3
+5
+3
+7
+6
+2
+4
+3
+2
+4
+7
+s1
+s2
+t2
+t3
+•
+Speciﬁcation of commodities:
+commodity
+source
+destination
+amount
+1
+d
+b
+3
+2
+a
+c
+6
+3
+b
+q
+4
+
+
+Example (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+18 / 27
+•
+Simultaneous ﬂow of all commodities:
+4
+a
+3
+2
+2
+4
+2
+6
+b
+p
+q
+c
+d
+s1
+s2
+t2
+s3=t1
+t3
+•
+Speciﬁcation of commodities:
+commodity
+source
+destination
+amount
+1
+d
+b
+3
+2
+a
+c
+6
+3
+b
+q
+4
+•
+Remark: this ﬂow does not satisfy the edge capacities given on the
+previous slide.
+
+
+Flow of commodities
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+19 / 27
+•
+A simultaneous ﬂow of the speciﬁed commodities consists of separate
+ﬂows of the individual commodities:
+⟨f1, f2, . . . , fq, . . . , fk⟩
+•
+A ﬂow fq of commodity q is a function fq : E →R,
+where fq(x, y) is the amount of ﬂow of commodity q on edge (x, y),
+which satisﬁes the ﬂow conservation constraints.
+(The capacity constraints not always present!)
+•
+Flow conservation for commodity q:
+the net ﬂow of commodity q outgoing from the origin sq is dq;
+the net ﬂow of commodity q incoming to the destination tq is dq
+(equivalently, the net ﬂow outgoing from tq is equal to −dq);
+the net ﬂow outgoing from each node v ∈V −{sq, tq} is equal to 0.
+•
+Formally, the ﬂow conservation constraints for commodity q says that for
+each node v, the net ﬂow from v is equal to:
+"
+(v,x)∈E
+fq(v, x) −
+"
+(z,v)∈E
+fq(z, v)
+=
+⎧
+⎪
+⎨
+⎪
+⎩
+dq,
+if v = sq,
+−dq,
+if v = tq.
+0,
+if v ∈V −{sq, tq}.
+
+
+Feasibility multicommodity-ﬂow problem
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+20 / 27
+Design simultaneous ﬂow ⟨f1, f2, . . . , fk⟩of all commodities which satisﬁes the
+capacity constrains:
+for each edge (v, w) ∈E, the total ﬂow on this edge is at most the capacity
+u(v, w) of this edge, that is,
+f(v, w) = [the total ﬂow on edge (v, w)]
+defn.
+=
+k
+"
+q=1
+fq(v, w) ≤u(v, w).
+In this example,
+f(p, q) = 3 + 2 + 4 = 9.
+4
+a
+3
+2
+2
+4
+2
+6
+b
+p
+q
+c
+d
+s1
+s2
+t2
+s3=t1
+t3
+
+
+Minimum-cost multicommodity-ﬂow problem
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+21 / 27
+•
+Each edge (v, w) ∈E, in addition to its capacity u(v, w),
+has also a cost c(v, w) associated with it.
+a
+b
+p
+q
+c
+6,3
+5,1
+3,6
+4,4
+7,2
+5,3
+4,2
+2,3
+3,5
+3,4
+d
+7,1
+2,1
+6,2
+s1
+s2
+s3=t1
+t2
+t3
+•
+The cost of a simultaneous ﬂow ⟨f1, f2, . . . , fk⟩is equal to
+"
+(v,w)∈E
+c(v, w)f(v, w) =
+"
+(v,w)∈E
+c(v, w) [f1(v, w) + f2(v, w) + · · · + fk(v, w)] .
+•
+Design simultaneous ﬂow of all commodities which satisﬁes the capacity
+constraints and has the minimum possible cost.
+
+
+Minimum-congestion multicommodity-ﬂow problem
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+22 / 27
+•
+The congestion of ﬂow on an edge (x, y) is deﬁned as:
+f(x, y), the total ﬂow on edge (x, y)
+u(x, y)
+.
+In this example, if u(p, q) = 10 and u(a, p) = 3,
+then the congestion:
+on edge (p, q) is 9/10 = 0.9 (or 90%),
+on edge (a, p) is 4/3 = 1.33... (or 133%).
+4
+a
+3
+2
+2
+4
+2
+6
+b
+p
+q
+c
+d
+s1
+s2
+t2
+s3=t1
+t3
+•
+Design simultaneous ﬂow of all commodities which minimises the
+maximum congestion, that is,
+minimise:
+max
+'f(x, y)
+u(x, y) :
+(x, y) ∈E
+(
+.
+•
+Note that the optimal (minimal) congestion may be greater than 100%.
+
+
+Computational approaches to multicommodity ﬂow problems
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+23 / 27
+•
+Specialised algorithms
+A possible approach: start with some initial simultaneous ﬂow, and
+iteratively keep improving it by re-routing (a fraction of) the ﬂow of each
+commodity onto better paths.
+Undirected edge capacities: 2; commodities: (b, c, 2), (a, b, 2), (a, c, 2).
+c
+b
+a
+←
+−
+congestion 1.5;
+cannot improve by
+rerouting one path
+−
+→
+optimal congestion 1.0
+c
+b
+a
+•
+Mathematical programming
+Express the mutlicommodity ﬂow problem as a linear program (or other
+appropriate “mathematical program”) and use the general linear
+programming methods (a number of commercial and public-domain linear
+programming packages are available).
+
+
+Exercises – LGT
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+24 / 27
+1.
+We have an input network G for a minimum-cost ﬂow problem and a ﬂow f
+in this network which satisﬁes all supply and demand requirements and
+edge capacity constraints. Argue that if f ′ is a ﬂow in the residual network
+Gf which is positive only on the edges of one cycle, then f ↑f ′ is a ﬂow in
+G which satisﬁes all supply and demand requirements and edge capacity
+constraints.
+
+
+Exercises – LGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+25 / 27
+2.
+A network and ﬂow in this network are shown below. The numbers in
+parentheses next to an edge are the capacity (the ﬁrst number) and the
+cost of this edge. The ﬂow is highlighted in red.
++8
+−6
+−4
+−3
+3
+4
+4
+1
+2
+3
+1
+1
+3
+2
+4
+1
+3
+(3,2)
+(4,3)
+(4,1)
+(6,3)
+(4,1)
+(5,4)
+(8,1)
+(3,8)
+(4,3)
+(2,3)
+(1,5)
+(4,2)
+(4,3)
+(2,2)
+(4,1)
+(1,2)
++5
+(a)
+Show that there is a negative cost cycle in the residual network.
+(b)
+Improve the cost of ﬂow by sending ﬂow along a negative cycle in the
+residual network. How does the ﬂow and the cost of ﬂow change?
+(c)
+Compute a minimum-cost ﬂow in this network using the Successive
+Shortest Paths algorithm. Give priority to the vertex with the initial
+supply +5 (when selecting from set S).
+
+
+Exercises – SGT
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+26 / 27
+Consider the following instance of the minimum-congestion
+multicommodity-ﬂow problem.
+Network:
+(1)
+b
+a
+p
+d
+c
+q
+(4)
+(4)
+(5)
+(2)
+(3)
+(3)
+(5)
+Commodities:
+commodity
+source
+destination
+demand
+1
+b
+d
+3
+2
+a
+q
+7
+3
+b
+c
+4
+
+
+Exercises – SGT (cont.)
+6CCS3OME/7CCSMOME, Lecture 6: Min-cost ﬂow, Multicommodity ﬂow
+27 / 27
+1.
+Check that the ﬂow of each commodity given in the table below satisﬁes
+the ﬂow conservation constraints. What is the maximum edge congestion?
+edge
+→
+(a, b)
+(a, q)
+(b, c)
+(b, p)
+(c, d)
+(p, d)
+(p, q)
+(q, c)
+commodity 1:
+0
+0
+2
+1
+2
+1
+0
+0
+commodity 2:
+3
+4
+0
+3
+0
+0
+3
+0
+commodity 3:
+0
+0
+3
+1
+0
+0
+1
+1
+2.
+Show that the maximum edge congestion of the above ﬂow can be
+improved by re-routing some ﬂow of commodity 3 from edge (b, c) onto the
+path ⟨b, p, q, c⟩. By how much can you reduce this way the maximum edge
+congestion? We allow fractional ﬂows (that is, ﬂows on edges can be
+fractional numbers).
+3.
+By checking the total capacity of the edges going from the set of nodes
+{a, b} to the set of the remaining nodes {c, d, p, q}, argue that for this input,
+there is no ﬂow which has the maximum edge congestion less than
+7/6 ≈1.17.
+
+
+6CCS3OME – Optimisation
+Methods
+Overview
+Tomasz Radzik and Yali Du
+Department of Informatics, King’s College London 
+2021/22, Second term 
+
+
+Teaching and office hours
+• Lecturers: 
+• Yali Du and Tomasz Radzik
+• Oﬃce Hours: 
+• 3:00-5:00 pm Monday on Teams or (N) 5.03
+• Teaching Arrangements
+• Same to the ﬁrst part
+• Ques>ons
+• Making use of KEATS page
+2
+
+
+Syllabus
+4 weeks
+• linear programming for network ﬂow; introduc>on to 
+numeric op>misa>on
+• Convexity basics: convex sets, convex func>ons
+• Gradient descent, convex op>miza>on
+• Constrained op>miza>on: projected gradient descent, 
+Lagrange mul>pliers
+3
+
+
+Reading lists
+• Stephen Boyd and Lieven Vandenberghe, “Convex 
+Op>miza>on,” Cambridge University Press, 2004. Available 
+online hWps://web.stanford.edu/~boyd/cvxbook/
+• Sébas>en Bubeck, “Convex Op>miza>on: Algorithms and 
+Complexity,” Founda>ons and Trends® in Machine Learning, 
+2015
+4
+
+
+Linear programming and network ﬂow
+• Optimisation models may get quite complicated, if we want them to be more realistic: 
+• The cost function (which we want to optimise) maybe come more complicated, as in 
+the minimum cost flow example above, and/or 
+• The constraints defining feasible solutions may become complicated. 
+• General optimisation problem
+!:
+min
+("!,…,""∈&) &(((, (), … , (*)
+• The module includes examples of such problems and computational methods for 
+solving them
+Simple (linear) cost funcCon
+c((( + .)() + ⋯
+More complex cost funcCon: 
+c(((
+1 −((/3(
++
+c(((
+1 −()/3)
++ ⋯
+5
+
+
+Convex optimisation 
+• Convex optimisation problem is defined on convex sets and
+convex functions
+A funcCon &: 4 →ℝ* is convex if and only if
+& 1
+2 ( + 1
+2 8 ≤1
+2 & ( + 1
+2 &(8)
+Set 4 is convex if and only if:
+(, 8 ∈4 ⟹1
+2 ( + 1
+2 8 ∈4
+6
+
+
+Gradient descent
+• Method to ﬁnd local op>ma of a diﬀeren>able func>on !
+• IntuiIon: gradient tells us direcIon of greatest increase, negaIve 
+gradient gives us direcIon of greatest decrease
+• Take steps in direcCons that reduce the funcCon value
+"<=> = "< −%<&!
+?("<),
+!! is the step size
+7
+
+
+Constrained optimisation
+(+
+(+,(
+4
+Projected Gradient Descent Algorithm:
+• proj" % is the projec7on of % onto the set &
+proj" % = arg min
+#∈" % −. %
+• If there are only equity constraints, we can use
+method of Lagrange mul0pliers
+8
+8
+
+
+The End
+9
+
+
+6CCS3OME – Optimisation Methods
+The principles of linear programming; 
+LPs for network flow problems; 
+introduction to numeric optimisation
+Department of Informatics, King’s College London
+Yali Du
+
+
+Optimisation: Mathematical Programing
+Optimisation is the minimization or maximization of a function subject to 
+constraints on its variables. We use the following notation: 
+• ! is the vector of variables, also called unknowns or parameters;
+• "
+! is the objective function, a (scalar) function of x that we want to maximize 
+or minimize; 
+• "
+" and ℎ" are constraint functions, which are scalar functions of ! that define
+certain equations and inequalities that the unknown vector ! must satisfy. 
+A general form
+min
+("!,…,""∈&) $
+((&), &*, … , &+)
+subject to:
+$
+, &), … , &+ ≤0,
+, = 1, … , /
+ℎ, &), … , &+ = 0,
+, = 1, … , 1
+2
+
+
+Linear Programming (LP)
+• Linear: Both objective function and constraints are linear.
+• Programming – does not refer to computer programming 
+but rather “planning” - planning of activities to obtain an 
+optimal result i.e., it reaches the specified goal best 
+(according to the mathematical model) among all feasible 
+alternatives.
+• Solutions are highly structured and can be rapidly obtained.
+min
+($!,…,$"∈() $ %*, … , %+ = )*%* + ⋯+ )+%+
+subject to:
+,**%* + ,*,%, + ⋯+ ,*+%+ ≤.*
+,-*%* + ,-,%, + ⋯+ ,-+%+ ≤.
+.
+,/*%* + ,/,%, + ⋯+ ,/+%+ ≤./
+min
+($!,…,$"∈() $ %*, … , %+ = /
+.0*
++
+)
+.%.
+subject to:
+/
+.0*
++
+,-.%. ≤.- ,
+0 = 1, … , 2
+Generic statement of LP
+An equal statement of LP
+3
+
+
+Components of a LP
+• A linear programming model consists of:
+• A set of decision variables
+• A (linear) objective function
+• A set of (linear) constraints
+• Algorithms for solving the linear programming
+• Graphical method 
+• Simplex method
+• Interior-point method
+• …
+• Commercial packages: CPLEX, MINOS, GIPALS, . . . (CPLEX as a 
+student version free of charge.)
+• Open access packages: GLPK (GNU Linear Prog. Kit), LP Solve. . . 
+4
+
+
+Feasibility and Bounded Regions 
+Feasibility:
+• We say a linear programme is feasible, if there is an 
+assignment of values to variables !3, … , !4 that satisfies all 
+constraints. Otherwise, it is infeasible. The set of all feasible 
+solutions is called the feasible region. 
+Bounded regions:
+• An assignment of values to variables !3, … , !4 for that $(!)
+is the maximum (or minimum) among all feasible 
+assignments, we say it is an optimal solution. If a 
+programme has some feasible solution but no optimal 
+solution, we say it is unbounded. 
+5
+
+
+Example: Bakery Factory
+• A bakery manufacturers two kinds of cookies, chocolate 
+chip, and caramel. The bakery forecasts the demand for at 
+least 80 caramel and 120 chocolate chip cookies daily. Due 
+to the limited ingredients and employees, the bakery can 
+manufacture at most 120 caramel cookies and 140 
+chocolate chip cookies daily. To be profitable the bakery 
+must sell at least 240 cookies daily.
+• Each chocolate chip cookie sold results in a profit of £0.75 
+and each caramel cookie produces  £0.88 profit.
+• Questions:
+• a) How many chocolate chip and caramel cookies should be made 
+daily to maximize the profit?
+• b) Compute the maximum revenue that can be generated in a day?
+6
+
+
+Steps in setting up a LP
+1.
+Determine and label the decision variables.
+2.
+Determine the objective and use the decision variables 
+to write an expression for the objective function. 
+3.
+Determine the constraints - feasible region.
+1.
+Determine the explicit constraints and write a functional 
+expression for each of them. 
+2.
+Determine the implicit constraints (e.g., nonnegativity 
+constraints). 
+7
+
+
+Formulation of the problem as a Linear 
+Program
+• 1- Decision Variables
+• !: Number of caramel 
+cookies sold daily 
+• $: Number of chocolate chip 
+cookies sold daily 
+• 2- Objective Function
+•
+" !, $ = 0.88! + 0.75$, 
+where ! and $ are non-
+negative
+•
+3- Constraints
+•
+80 ≤! ≤120
+•
+120 ≤$ ≤140
+•
+! + $ ≥240
+8
+56: max
+$,123 $ %, : = 0.88% + 0.75:
+subject to:
+80 ≤% ≤120
+120 ≤: ≤140
+% + : ≥240
+• A bakery manufacturers two kinds of 
+cookies, chocolate chip, and 
+caramel. The bakery forecasts the 
+demand for at least 80 caramel and 
+120 chocolate chip cookies daily. 
+Due to the limited ingredients and 
+employees, the bakery can 
+manufacture at most 120 caramel 
+cookies and 140 chocolate chip 
+cookies daily. To be profitable the 
+bakery must sell at least 240 cookies 
+daily.
+• Each chocolate chip cookie sold 
+results in a profit of £0.75 and each 
+caramel cookie produces  £0.88 
+profit.
+
+
+Graphical methods
+• Step 1 – setup a LP problem
+• Step 2 - Construct the graph
+• After you have selected the graphical method for solving the 
+linear programming problem, you should construct the 
+graph and plot the constraints lines.
+• Step 3 - Identify the feasible region
+• This region of the graph satisfies all the constraints in the 
+problem. Selecting any point in the feasible region yields a 
+valid solution for the objective function.
+• Step 4 - Find the optimum point
+9
+
+
+Construct the graph
+80 ≤! ≤120
+120 ≤, ≤140
+• F
+10
+
+
+Construct the graph
+80 ≤! ≤120
+120 ≤, ≤140
+! + , ≥240
+• F
+Identify the 
+feasible region
+11
+
+
+Find the optimum point
+• f(120, 120) = 0.88 (120) + 0.75 (120) = £ 195.6
+• f(100, 140) = 0.88 (100) + 0.75 (140) = £ 193
+• f(120, 140) = 0.88 (120) + 0.75 (140) = £  210.6
+• F
+Hence, the bakery should 
+manufacture 120 caramel 
+cookies and 140 chocolate 
+cookies daily to maximize the 
+profit.
+12
+
+
+Example: Bakery Factory
+• A bakery manufacturers two kinds of cookies, chocolate 
+chip, and caramel. The bakery forecasts the demand for at 
+least 80 caramel and 120 chocolate chip cookies daily. Due 
+to the limited ingredients and employees, the bakery can 
+manufacture at most 120 caramel cookies and 140 
+chocolate chip cookies daily. To be profitable the bakery 
+must sell at least 240 cookies daily.
+• Each chocolate chip cookie sold results in a profit of £0.75 
+and each caramel cookie produces  £0.88 profit.
+• Questions:
+• a) How many chocolate chip and caramel cookies should be made 
+daily to maximize the profit?
+• 120 caramel cookies and 140 chocolate cookies
+• b) Compute the maximum revenue that can be generated in a day?
+• £  210.6
+13
+
+
+No feasible solutions - Why?
+80 ≤! ≤120
+120 ≤, ≤140
+! + , ≥280
+14
+
+
+Multiple optimal solutions - Why?
+• Suppose the profit of making one caramel and chocolate 
+chip cookies are £1.
+max
+$,123 $ %, : = % + :
+subject to:
+80 ≤% ≤120
+120 ≤: ≤140
+% + : ≤240
+15
+Let C = % + :
+All solutions on the
+yellow line segment
+are optimal solutions
+with C = 240.
+C = 220
+C = 240
+
+
+Unbounded – Why?
+• Suppose you can make as many chocolate cookies as you
+want
+max
+$,123 $ %, : = % + :
+subject to:
+80 ≤% ≤120
+120 ≤:
+% + : ≥240
+16
+
+
+Integer programming and mixed integer 
+programming
+• All variables restricted to integer values: integer linear programming
+(ILP). 
+• Both real and integer variables: mixed integer linear programming
+(Mixed ILP).
+• ILP is computationally hard: no polynomial time algorithms are known. 
+LP is tractable, i.e., easy, there are polynomial-time algorithms.
+• Mixed ILP, the computational complexity grows with the number of 
+integer variables. 
+• For example, a problem with a small (constant) number of binary 
+variables may be computationally easy. But, if the number of binary 
+variables is a fixed fraction (e.g., 25%) of all variables, then the problem 
+is NP-hard. 
+• There are methods (e.g., implementations offered in CPLEX library), 
+which can solve Mixed ILP with a moderate number of integer variables 
+17
+
+
+LP for problem on graphs
+18
+
+
+Example: maximum flow
+Maximum Flow as LP 
+• Recall some notation:
+• A Flow Network: ! = ($, &, ℎ, (, ))
+• $ – set of nodes, & – set of directed edges (links). 
+• ℎ(+, ,) ≥0 is the (non-negative) capacity of each edge (+, ,). 
+• A flow is a non-negative real-valued function / ∶$ × $ ⇒3 that 
+satisfies the capacity constraints and flow conservation.
+Let’s assume ℎ(+, ,) = 0 if +, , ∉&.
+• two distinguished nodes: source ( and sink ). 
+• Problem:
+• Find the maximum possible flow from source to sink while making 
+sure to satisfy the capacity constraints of each edge and flow 
+conservation in all nodes but source and sink ones. 
+19
+
+
+Example: maximum flow
+Maximum flow problem:
+find a maximum flow from 2 to 3
+Decision
+variables: $
+-,., $
+-,/, $
+.,0, . . .
+( $
+1,2 is flow on edge (6, 7))
+20
+Example for Max Flow as LP
+Kathleen Steinh¨
+ofel (KCL)
+Lecture 3
+LP
+14 / 24
+flow 
+conservation 
+constraints 
+Capacity
+constraints 
+maximise $
+4,5 + $
+4,6 + $
+4,7 −$
+8,4
+subject to
+$
+8,5 + $
+8,4 −$
+7,8 = 0
+$
+5,9 + $
+5,: −$
+8,5 −$
+4,5 = 0
+…
+0 ≤$
+8,5 ≤8
+0 ≤$
+7,8 ≤4
+
+
+Example: maximum flow
+maximise <
+1∈3
+$
+/1 −<
+1∈3
+$
+1/
+subject to
+∑1∈3 $
+14 = ∑1∈3 $
+41 for each ? ∈6 −{2, 3}
+$
+41 ≤ℎ(?, 6)
+for each ?, 6 ∈C
+$
+41 ≥0
+for each ?, 6 ∈C
+• Objective function: Maximise the net flow from the source.
+• First set of constraints: Satisfying flow conservation for each 
+node that is not the source nor the sink; 
+• Second set of constraints: Not allowing more flow through an 
+edge than its capacity ℎ(?, 6), and 
+• Third set of constraints: Making sure all flows are non-negative. 
+21
+
+
+Example: maximum flow
+Denote that 0 = 2
+• How many variables do we have? 0E
+• How many constraints? 20E + 0 −2
+Note: We are counting a given $
+FG as a variable even though 
+(4, 5) might not be an edge of the graph. 
+• Does the number of variables matter? Yes 
+The run-time of solvers is a function over the input size, i.e., 
+the number of variables contributes to that size. The student 
+version of CPLEX is limited in the number of variables you can 
+use. 
+• Note: A good practice for actual implementations is it not to 
+add variables $
+FG if 4, 5 ∉7. 
+22
+
+
+Example: Minimum-cost flow problem
+So far, we have seen linear programmes that solve problems for which we 
+already had polynomial algorithms. 
+• However, for minimum-cost flow, we only saw a exponential time 
+algorithm (there are polynomial ones as well). 
+• Based on the methods we have seen so far, formulating the Minimum-
+cost Flow Problem as linear programme is going to offer an actual 
+improvement on the running time. (recall LPs can be solved in 
+polynomial time) 
+Let us recall notation:
+A Flow Network: ! = ($, &, ℎ, 5, 6)
+• 6(+, ,) is the amount of flow we want from + to ,. 
+• ℎ(+, ,), as before, is the capacity of each edge. 
+• 5(+, ,) is the cost to send 1 unit of flow over edge (+, ,). Therefore, 
+5 +, , /
+!" is the cost of sending /
+!" of flow over (+, ,).
+• We assume no two-way edges. (easy to deal with them if any arise) 
+23
+
+
+Example: Minimum-cost flow problem
+Minimum-cost flow problem:
+(capacities and costs on edges, 
+supplies/demands at nodes)
+Decision
+variables: $
+-,., $
+-,5, $
+.,6, . . .
+( $
+1,2 is flow on edge (6, 7))
+24
+flow 
+conservation 
+constraints 
+Capacity
+constraints 
+minimise 3$
+8,5 + $
+5,; + 2$
+8,< +…
+subject to
+$
+8,5 + $
+8,< −$
+7,8 = 8
+$
+;,= −$
+5,; −$
+:,; = −9
+…
+0 ≤$
+8,5 ≤8
+0 ≤$
+7,8 ≤4
+Minimum-cost ﬂow problem as a linear program
+6CCS3OME/7CCSMOME, Lecture 5: Linear programming
+Minimum-cost ﬂow
+problem
+(capacities
+and
+costs
+on
+edges, supplies/demands at
+nodes)
+a
+c
+d
+e
+h
+g
+p
+6, 3
+2, 2
+8, 3
+2, 1
+5, 1
+7, 2
+1, 5
+2, 1
+2, 3
+1, 5
+7, 4
+9, 3
+4, 1
+3, 2
++8
++3
++4
+-9
+b
+-6
+Linear
+program
+decision variables: fa,b, fa,g, fb,p, . . . ( fv,w: ﬂow on edge (v, w) )
+minimise:
+3fa,b + fb,p + 2fa,g + · · ·
+} objective function
+subject to:
+fa,b + fa,g −fc,a = 8
+fp,e −fb,p −fd,p = −9
+. . .
+⎫
+⎪
+⎬
+⎪
+⎭ﬂow conservation
+0 ≤fa,b ≤8
+0 ≤fc,a ≤4
+. . .
+⎫
+⎪
+⎬
+⎪
+⎭
+capacity constraints
+
+
+Example: Minimum-cost flow problem
+minimise
+<
+(!,")∈'
+5 +, , /
+!"
+subject to
+∑"∈' /
+!" −∑"∈' /
+"! = 6 + for each + ∈$
+/
+!" ≤+(+, ,)
+for each +, , ∈$
+/
+!" ≥0
+for each +, , ∈$
+• Objective function: Minimise the total cost of the flow.
+• First set of constraints: Satisfying flow conservation for each node +
+with net flow 6(+); If 6 + > 0, we say that + is a source supplying 
+6(+) units of flow. If 6 + < 0, we say that + is a sink with a demand of 
+|6 + | units of flow
+• Second set of constraints: Not allowing more flow through an edge than 
+its capacity, and
+• Third set of constraints: Making sure all flows are non-negative. 
+25
+
+
+Introduction to numeric 
+optimisation
+
+
+Outline
+• mathematical optimization
+• least-squares and linear programming 
+• convex optimization
+• an example 
+• central concepts
+27
+
+
+Optimisation: Mathematical Programing
+Optimisation is the minimization or maximization of a function subject to 
+constraints on its variables. We use the following notation: 
+• ! is the vector of variables, also called unknowns or parameters;
+• "
+! is the objective function, a (scalar) function of x that we want to maximize 
+or minimize; 
+• "
+" and ℎ" are constraint functions, which are scalar functions of ! that define
+certain equations and inequalities that the unknown vector ! must satisfy. 
+optimal solution !∗has smallest value of "
+! among all vectors that satisfy the 
+constraints 
+A general form of optimization problem 
+min $
+((&), &*, … , &+)
+subject to:
+$
+, &), … , &+ ≤0,
+, = 1, … , /
+ℎ, &), … , &+ = 0,
+, = 1, … , 1
+28
+
+
+Examples
+Portfolio optimization
+• variables: amounts invested in different assets
+• constraints: budget, max./min. investment per asset, minimum return
+• objective: overall risk or return variance
+Manufacturing planning and control
+• variables: number of items to produce daily
+• constraints: raw material, production capacity (e.g. relate to # of machines,
+employees)
+• objective: overall profits or revenue
+Machine learning (image classification, machine translation, weather
+forecast,…)
+• variables: model parameters
+• constraints: prior information, parameter limits
+• objective: measure of misfit or prediction error, plus regularization term
+29
+
+
+Solving optimization problems
+General optimization problem
+• very difficult to solve
+• methods involve some compromise, e.g., very long 
+computation time, or not always finding the solution
+Exceptions: certain problem classes can be solved efficiently 
+and reliably
+• least squares problems
+• linear programming problems
+• convex optimization problems
+30
+
+
+Least squares
+min E& −F *
+*
+Solving least squares problems
+• analytical solution: &∗= E8E 9)E8F (if E has full column rank)
+• reliable and efficient algorithms and software
+• computation time proportional to GH* (E ∈I:×+); less if 
+structured
+• a mature technology
+Using least squares
+• least squares problems are easy to recognize
+• a few standard techniques increase flexibility (e.g., weights, 
+regularization)
+31
+
+
+Linear programming
+min 5(D
+subject to
+K)
+(D ≤L), M = 1, … , P
+Solving linear programs
+• no analytical formula for solution
+• reliable and efficient algorithms and software
+• computation time (roughly) proportional to Q*P if P ≥Q; less with 
+structure
+• a mature technology
+Using linear programming
+• not as easy to recognize as least squares problems
+• a few standard tricks used to convert problems into linear programs
+(e.g., problems involving R+ −or R, -norms, piecewise-linear functions)
+32
+
+
+Convex optimization problem 
+min
+J∈ℝ$ $
+M(!)
+subject to:
+$
+N ! ≤0,
+; = 1, … , <
+• objective and constraint functions are convex: 
+$
+N =! + >, ≤=$
+N ! + >$
+N , , ; = 0, … , <
+If = + > = 1, = ≥0, > ≥0.
+• includes least-squares problems and linear programs as 
+special cases 
+33
+Convex Set
+Not a Convex Set
+%
+:
+%
+:
+
+
+Convex optimization problem 
+Solving convex optimization problems 
+• no analytical solution 
+• reliable and efficient algorithms 
+• computation time (roughly) proportional to 
+max{0O, 0E<, B} , where B is cost of evaluating $
+N’s and 
+their first and second derivatives 
+• almost a technology 
+using convex optimization 
+• often difficult to recognize
+• many tricks for transforming problems into convex form
+• surprisingly many problems can be solved via convex 
+optimization 
+34
+
+
+Example: Luminous intensity
+P lamps illuminating Q (small, flat) patches 
+intensity S- at patch T depends linearly on lamp powers U.:
+S- = <
+./+
+0
+K-.U. , K-. = V-.
+1* max{cosZ-., 0)}
+problem: achieve desired illumination S234 with bounded lamp powers 
+Note that log S- −log S234 = log S-/S234 (nonconvex)
+Now, how to solve? 
+min max
+>0*,…,+ | log T> −log T:=4 |
+subject to
+0 ≤U. ≤U/8$, V = 1, … , 2
+: = | log W |
+35
+
+
+Example: Luminous intensity
+how to solve? 
+• 1- use uniform power: DX = D, vary D
+• 2- use least-squares: 
+min E
+YZ3
+4
+FY −FG[\ E
+Round DX if DX > D]^J
+• 3- use linear programming:
+min max
+-/+,…,6|S- −S234|
+subject to
+0 ≤U. ≤U078, _ = 1, … , P
+which can be solved via linear programming
+36
+
+
+• 4. use convex optimization: problem is equivalent to 
+$
+M is convex because maximum of convex functions is convex 
+Example: Luminous intensity
+min /
+9 U = max-/+,…,6 ℎ(S-/S234)
+subject to
+0 ≤U. ≤U078, _ = 1, … , P
+with ℎ+ = max{+, +
+!}
+: = ℎ(W)
+: = | log W |
+37
+
+
+Central concept: convexity
+• Historically, linear programs were the focus in optimization 
+Initially, it was thought that the important distinction was 
+between linear and nonlinear optimization problems. But 
+some nonlinear problems turned out to be much harder 
+than others ... 
+• Now it is widely recognized that the right distinction is 
+between convex and nonconvex problems
+38
+From Terry Rockafellar’s 1993 SIAM Review survey paper
+
+
+Local minima are global minima 
+• For convex optimization problems, local minima are global 
+minima 
+• This is a very useful fact and will save us a lot of trouble! 
+Convex function
+Non-convex function
+39
+
+
+The End
+40
+
+
+Review aids
+• Convex optimization prerequisites review from Spring 2015 course, by Nicole Rafidi
+https://www.stat.cmu.edu/~ryantibs/convexopt/prerequisite_topics.pdf
+• Real analysis, calculus, and more linear algebra, videos by Aaditya Ramdas
+https://www.youtube.com/channel/UC7gOYDYEgXG1yIH_rc2LgOw/playlists?app=desktop
+• Linear algebra review, videos by Zico Kolter
+http://www.cs.cmu.edu/~zkolter/course/linalg/index.html
+• See also Appendix A of Boyd and Vandenberghe (2004) for general mathematical review
+https://web.stanford.edu/~boyd/cvxbook/bv_cvxbook.pdf
+1
+
+
+6CCS3OME – Optimisation Methods
+Basic concepts in convexity,
+convex sets, convex functions,
+Convex optimisation
+Department of Informatics, King’s College London
+Yali Du
+
+
+Last time: why convexity? 
+• Why convexity? Simply put: because we can broadly 
+understand and solve convex optimization problems
+• Nonconvex problems are mostly treated on a case by case 
+basis 
+• Reminder: an optimization problem is of the form
+min
+!∈ℝ! $
+$(&)
+subject to:
+$
+% & ≤0,
++ = 1, … , /
+ℎ% & = 0,
++ = 1, … , 1
+& ∈ℝ& is the optimization variable;
+$
+$: 5& →5 is the objective or cost function; 
+$
+%: 5& →5, + = 1, … , / are the inequality constraint 
+functions
+ℎ%: 5& →5, + = 1, … , 1 are the equality constraint 
+functions
+&∗is optimal solution that has smallest value of $
+$ among 
+all vectors that satisfy the constraints 
+2
+
+
+Outline
+• Convex sets
+• Examples
+• Key properties
+• Operations preserving convexity 
+• likewise, for convex functions 
+3
+
+
+Convex Sets
+line segment between !7 and !8 : all points 
+! = #!7 + 1 −# !8
+with 0 ≤ # ≤ 1.
+convex set: contains line segment between any two points in 
+the set 
+• That is, if !, ( ∈*, then #! + 1 −# ( ∈* for all # ∈[0,1]
+4
+Convex Set
+Not a Convex Set
+&
+9
+&
+9
+
+
+Examples of Convex Sets
+• Line Segments: * = {#! + (1 −#)(: # ∈[0,1]} for some 
+x, ( ∈ℝ:
+• Lines, planes, hyperplanes, etc. also define convex sets
+5
+&
+9
+
+
+Examples of Convex Sets
+• Line : * = {#! + (1 −#)( ∶# ∈ℝ} for some !, ( ∈ℝ:
+&
+9
+; = 1
+; = 1.2
+; = 0.6
+; = −0.2
+; = 0
+6
+
+
+Examples of Convex Sets
+• Half spaces: * = {! ∈ℝ: ∶
+6@! + 7 ≤0} for some 6 ∈ℝ:
+and 7 ∈ℝ
+7
+A(& + C = 0
+&) + &* = 0 in this case.
+
+
+Examples of Convex Sets
+Balls of Radius 9: * = {! ∈ℝ: ∶
+! 8 ≤:} for some  : ≥
+0 ∈ℝ
+! ! =
+!"! =
+#
+#$%
+&
+!#
+!
+• This is called the Euclidean norm or Euclidean distance 
+because ! −( 8 is equal to the length of the line segment 
+between the points ! and (
+8
+
+
+Convex Combinations and convex hull
+convex combination of the points < = {!(7), … , ! D ∈ℝ:}:
+any point of the form
+! = #7!(7) + ⋯+ #D! D
+with #7 + ⋯+ #D = 1, #E ≥0
+convex hull: Let * be the set of all points ( that can be 
+obtained as convex combinations of the ! ∈<.* is a convex 
+set called the convex hull of <
+9
+
+
+Convex Combinations and convex hull
+convex hull:
+* = {! = #7! 7 + ⋯+ #D! D |#7 + ⋯+ #D = 1, #E ≥0}
+proof
+! = D7!(7) + ⋯+ DD! D
+( = D′7!(7) + ⋯+ DD
+F ! D
+F = #! + 1 −# ( = D7
+FF!(7) + ⋯+ DD
+FF! D
+where DE
+FF = #DE + (1 −#)DE
+F and ∑EG7
+D
+DE
+FF = 1. This proves
+that F ∈*. Thus, * is a convex set.
+In the special case H = 2, * is just a line segment
+10
+
+
+Convex functions
+11
+
+
+Convex Functions
+A function J: * →ℝ: is convex if * is a convex set and
+J #! + 1 −# ( ≤#J ! + 1 −# J(()
+for all !, ( ∈* and # ∈[0,1]
+• J is called concave if −J is convex
+• J is strictly convex if * is convex and 
+J #! + 1 −# ( < #J ! + 1 −# J(()
+for all !, ( ∈*, ! ≠( and # ∈[0,1]
+12
+Smiley face
+
+
+Examples
+convex:
+• affine: !" + $ on %,for any !, $ ∈%
+• exponential: (!", for any ! ∈%
+• powers: "#on %++, for ) ≥1 or ) ≤0
+• powers of absolute value: " $ on %, for . ≥1
+• negative entropy: "log" on %++
+concave:
+• affine: !" + $ on %,for any !, $ ∈%
+• powers: "#on %++, for 0 ≤) ≤1
+• logarithm: log" on %++ 
+Note:
+%++ indicate positive reals.
+affine functions are convex and concave.
+13
+
+
+First-order condition
+• J is differentiable if * is open and the gradient 
+∇J ! = (OJ !
+O!7
+, … , OJ !
+O!:
+)
+exist at each ! ∈*
+1st-order condition: differentiable J with convex domain is 
+convex iff
+J ( ≥J ! + ∇J !
+( −! for all !, ( ∈*
+i.e. first-order approximation of J is global underestimator
+14
+$ & + $+ & (9 −&)
+$(9)
+
+
+First-order condition
+• i.e. first-order approximation of J is global underestimator
+15
+Image: Lane Vosbury, Seminole State 
+College
+
+
+Second-order condition
+• J is twice differentiable if * is open and the Hessian 
+∇8J ! , 
+∇8J ! EH = O8J !
+O!EO!H
+, P, P = 1, … , Q
+exist at each ! ∈*
+2nd-order conditions: for twice differentiable J with convex 
+domain 
+J is convex if and only if
+∇8J ! ≽0 for all ! ∈*
+i.e. the hessian is positive semi-definite (all of the eigenvalues
+are nonnegative).
+16
+
+
+Second-order conditions
+Special case when * ⊆ℝ
+• A twice continuously differentiable function J: * →ℝwith 
+* ⊆ℝis convex if * is a convex set and
+T8J
+T!8 !′ ≥0
+for all !′ ∈*
+• This is likely the definition that you saw in high school 
+Calculus
+17
+
+
+Operations Preserving Convexity
+practical methods for establishing convexity of a function 
+1. verify definition 
+2. for twice differentiable functions, show ∇8J ! ≽0
+3. show that J is obtained from simple convex functions by 
+operations that preserve convexity 
+• nonnegative weighted sum
+• composition with affine function
+• pointwise maximum and supremum 
+• …
+18
+
+
+Operations Preserving Convexity
+• Nonnegative weighted sums of convex functions are 
+convex, i.e., if J
+7: ℝ: →ℝand J
+8: ℝ: →ℝare convex 
+functions and U7, U8 ≥0, then
+V ! = U7J
+7 ! + U8J
+8(!)
+is a convex function.
+19
+
+
+Operations Preserving Convexity
+• Composition with an affine function, i.e., if J: ℝ: →ℝis a 
+convex function and W ∈ℝ:×J, 7 ∈ℝ:, then V: ℝJ →ℝ
+given by
+V ! = J(W! + 7)
+is a convex function.
+20
+
+
+Operations Preserving Convexity
+• Pointwise maximum of convex functions are convex, i.e., if 
+J
+7: ℝ: →ℝand J
+8: ℝ: →ℝare convex functions, then
+V ! = max J
+7 ! , J
+8(!)
+is a convex function.
+21
+
+
+Operations Preserving Convexity
+• Pointwise supremum, i.e., if J(!, () is convex in ! ∈ℝ: for 
+each fixed ( ∈Z then
+V ! = sup
+K∈L
+J(!, ()
+is a convex function.
+• Note: A maximum of a set must be an element of the set. A 
+supremum need not be.
+22
+
+
+Convex optimisation
+23
+
+
+General Optimization
+min
+M∈ℝ! J
+N(!)
+subject to:
+J
+E ! ≤0,
+P = 1, … , _
+ℎE ! = 0,
+P = 1, … , a
+• ! ∈b: is the optimization variable;
+• J
+N: b: →b is the objective or cost function; 
+• J
+E: b: →b, P = 1, … , _ are the inequality constraint 
+functions
+• ℎE: b: →b, P = 1, … , a are the equality constraint functions
+Optimal value
+a∗= inf{J
+N ! |J
+E ! ≤0, ℎE ! = 0, ∀P}
+24
+$
+$ is not necessarily convex
+Constraints do not need to 
+be linear
+
+
+Optimal and locally optimal points 
+• ! is feasible if ! ∈dom&
+' and it satisfies the constraints
+• a feasible ! is optimal if &
+' ! = (∗; ))*+ is the set of optimal points 
+• ! is locally optimal if there is an * > 0 such that ! is optimal for 
+min
+,
+&
+'(0)
+Subject to
+&
+# ! ≤0,
+4 = 1, … , 7,
+ℎ# ! = 0,
+4 = 1, … , (
+0 −!
+! ≤*
+examples (with : = 1, 7 = ( = 0)
+• &
+' ! = %
+- , dom&
+' = ;++: (∗= 0, no optimal point
+• &
+' ! = −log !, dom&
+' = ;++: (∗= −∞, no optimal point
+• &
+' ! = 4!! −4! + 3, dom&
+' = ;: (∗= 2, ! = 0.5 is optimal
+• &
+' ! = !. −3!, dom&
+' = ;: (∗= −∞, ! = 0.1 is locally optimal
+P, Q = Q- −RQ
+
+
+Implicit constraints
+• the standard form optimization problem has an implicit constraint 
+" ∈2 =∩%&'
+(
+dom7
+% ∩%&)
+$
+ℎ%
+• we call 2 the domain of the problem
+• The constraints 7
+% " ≤0, ℎ% " = 0 are the explicit constraints
+• a problem is unconstrained if it has no explicit constraints (m = p = 
+0) 
+Example:
+min 7
+' " = −<
+%&)
+*
+log($% −!%
++")
+is an unconstrained problem with implicit constraints !%
++" < $%
+
+
+Example
+max
+M∈ℝ" −!7 log !7 −!8 log !8
+subject to:
+!7 + !8 = 1
+!7 ≥0
+!8 ≥0
+Alternatively:
+min
+M∈ℝ" !7 log !7 + !8 log !8
+subject to:
+1 −!7 −!8 = 0
+−!7 ≤0
+−!8 ≤0
+27
+Maximize entropy
+Minimize
+negative entropy
+
+
+Convex Optimization
+min
+M∈ℝ! J
+N(!)
+subject to:
+J
+E ! ≤0,
+P = 1, … , _
+ℎE ! = 0,
+P = 1, … , a
+In a convex optimization problem J
+N, J
+7, … , J
+J must be convex 
+and ℎ7, … , ℎS must be affine, i.e., ℎE ! = 6@! + 7
+28
+
+
+Convex Optimization
+min
+M∈ℝ! J
+N(!)
+subject to:
+J
+E ! ≤0,
+P = 1, … , _
+ℎE ! = 0,
+P = 1, … , a
+The constraints form a convex set: if !, ( ∈ℝ: both satisfy all 
+of the constraints, then so does any D! + 1 −D ( for D ∈
+[0,1]
+29
+
+
+Local and Global Optima
+• Every local optimum of a convex optimization problem is a 
+global optimum: let ! be a local minimum, ( a global 
+minimum, and J ! > J(()
+30
+&
+9
+5
+! is a local minimum implies 
+that there exists a radius b
+such that for all points 
+!′ within the ball of radius b
+of !,
+J ! ≤J(!′)
+
+
+5
+Local and Global Optima
+• Every local optimum of a convex optimization problem is a 
+global optimum: let ! be a local minimum, ( a global 
+minimum, and J ! > J(()
+31
+&
+9
+T
+Let 0 = EF + 1 −E !
+E =
+;
+2 ! −F !
+then
+! −0 ! = E ! −F !
+= ;
+2 < ;
+
+
+Local and Global Optima
+• Every local optimum of a convex optimization problem is a 
+global optimum: let ! be a local minimum, ( a global 
+minimum, and J ! > J(()
+32
+By convexity,
+& 0 ≤E& ! + 1 −E & F
+< &(!)
+And
+& ! ≤&(0)
+So, & ! < &(!), which is a 
+contradiction
+5
+&
+9
+T
+
+
+Linear Programming Problems
+For c ∈ℝ:, 7 ∈ℝJ, A ∈ℝJ×:
+min
+M∈ℝ! U@!
+subject to: 
+i! ≤7
+33
+
+
+Quadratic Programming Problems
+For j ∈ℝ:×:, c ∈ℝ:, 7 ∈ℝJ, i ∈ℝJ×:
+min
+M∈ℝ!
+1
+2 !@j! + U@!
+subject to:  
+i! ≤7
+34
+Recall U must be positive 
+semidefinite for this to 
+be a convex optimization 
+problem
+
+
+Least Squares Regression
+• Given data points !(7), … , ! V ∈ℝand ((7), … , ( V ∈ℝ, 
+find the best fit line
+min
+W,X∈ℝk
+EG7
+V
+( E −l! E + 7
+8
+35
+&
+9
+This is a convex optimization problem, why?
+
+
+Least Squares Regression
+• Given data points !(7), … , ! V ∈ℝY and ((7), … , ( V ∈ℝ, 
+find the best fit polynomial of degree T
+min
+W,X∈ℝk
+EG7
+V
+( E −U@!(E) + 7
+8
+36
+This is a convex optimization problem, why?
+
+
+The End
+37
+
+
+6CCS3OME – Optimisation Methods
+Gradient methods, stochastic
+optimisation
+Department of Informatics, King’s College London
+Yali Du
+
+
+Why gradient descent?
+2
+Convex function
+Non-convex function
+
+
+Outline
+• Gradient descent
+• Backtracking line search
+• Optimality criterion
+• Subgradients
+• Stochastic gradient descent
+3
+
+
+Gradient Descent
+• Method to find local optima of differentiable a function !
+• Intuition: gradient tells us direction of greatest increase, negative 
+gradient gives us direction of greatest decrease
+• Take steps in directions that reduce the function value
+• Definition of derivative guarantees that if we take a small enough 
+step in the direction of the negative gradient, the function will 
+decrease in value
+• How small is small enough?
+4
+
+
+Gradient Descent
+Consider unconstrained, smooth convex optimization 
+min! !(&)
+That is, ! is convex and differentiable with dom ! = +". 
+Denote optimal criterion value by ,∗= min! !(&), and a 
+solution by &∗.
+Gradient Descent Algorithm:
+• Pick an initial point &$ ∈+", repeat
+&%&' = &% −/%0! &% ,
+2 = 1,2,3 …
+where /% is the 2%( step size (sometimes called learning rate)
+5
+
+
+Gradient Descent
+6
+) * = *!
+*(#) = −4
+Step size:  .8
+
+
+Gradient Descent
+7
+) * = *!
+*(%) = −4 −.8 ⋅2 ⋅(−4)
+*(#) = −4
+Step size:  .8
+
+
+Gradient Descent
+8
+) * = *!
+*(%) = 2.4
+*(#) = −4
+Step size:  .8
+
+
+Gradient Descent
+9
+) * = *!
+*(%) = 0.4
+*(!) = 2.4 −.8 ⋅2 ⋅2.4
+*(%) = 2.4
+*(#) = −4
+Step size:  .8
+
+
+Gradient Descent
+10
+) * = *!
+*(!) = −1.44
+*(%) = 2.4
+*(#) = −4
+Step size:  .8
+
+
+Gradient Descent
+11
+) * = *!
+*(!) = −1.44
+*(%) = 2.4
+*(#) = −4
+*(&) = 0.31104
+*(') = −0.5184
+*(() = .864
+Step size:  .8
+When do we stop?
+Possible Stopping Criteria:  
+iterate until ∇)(*))
+≤;
+for ; > 0
+
+
+Gradient Descent
+12
+) * = *!
+*(!) = −1.44
+*(%) = 2.4
+*(#) = −4
+*(&) = 0.31104
+*(') = −0.5184
+*(() = .864
+*((#) = −8.84296> −07, with ; = 1>*+
+Step size:  .8
+When do we stop?
+Possible Stopping Criteria:  
+iterate until ∇)(*))
+≤;
+for ; > 0
+
+
+Gradient Descent
+13
+Step size: .9
+
+
+Gradient Descent
+14
+Step size: .2
+
+
+Gradient Descent
+15
+Step size matters!
+
+
+Gradient descent interpretation 
+At each iteration, consider the expansion 
+! " ≈! $ + ∇! $ ! " −$ +
+"
+#$ ∥" −$ ∥#
+#
+Quadratic approximation, replacing usual Hessian ∇#!($) by 
+"
+$ +
+• ! $ + ∇! $ ! " −$ : linear approximation to !
+•
+"
+#$ ∥" −$ ∥#
+# : proximity term to $, with weight 1/(2-) 
+Choose next point " = $% to minimize quadratic approximation: 
+$% = $ −/∇!($)
+i.e., $% is a solution of ∇&! " = 0.
+Note:
++ is an Identity matrix
+16
+
+
+Example
+17
+Blue point is x, red point is
+*, = argmin- ) * + ∇) * . G −* +
+%
+!/ ∥G −* ∥!
+!
+
+
+Backtracking line search
+18
+
+
+Line Search
+• Instead of picking a fixed step size that may or may not 
+actually result in a decrease in the function value, we can 
+consider minimizing the function along the direction 
+specified by the gradient to guarantee that the next 
+iteration decreases the function value
+• In other words choose, !!"# ∈arg min
+$% & )(!! −,∇) !! )
+• This is called exact line search
+• This optimization problem can be expensive to solve exactly 
+• However, if ) is convex, this is a univariate convex optimization 
+problem
+19
+
+
+Backtracking Line Search
+• Instead of exact line search, could simply use a strategy that 
+finds some step size that decreases the function value (one 
+must exist)
+• Backtracking line search: start with a large step size, /, and 
+keep shrinking it until
+! &% −/∇! &%
+< ! &% −9
+• This always guarantees a decrease, but it may not decrease 
+as much as exact line search
+• Still, this is typically much faster in practice as it only requires a few 
+function evaluations
+20
+
+
+Backtracking Line Search
+One way to adaptively choose the step size is to use 
+backtracking line search: 
+• First fix parameters 0 < ; < 1 and 0 < < ≤1/2
+• At each iteration, start with / = /I"I%, and while 
+! &% −/∇! &%
+> ! &% −< ⋅/ ⋅∇! &%
+J
+J
+Shrink / = ;/.
+• Else perform gradient descent update 
+&%&' = &% −/∇! &%
+Simple and tends to work well in practice (further 
+simplification: just take < = 1/2 ) 
+21
+Iterations continue until 
+a step size is found that 
+decreases the function 
+“enough”
+
+
+Backtracking Line Search
+22
+K = .2, M = .99
+
+
+Backtracking Line Search
+23
+K = .1, M = .3
+
+
+Optimality criterion
+24
+
+
+Optimality criterion for differentiable !
+!
+• unconstrained problem: & is optimal if and only if 
+& ∈dom !
+$, ∇!
+$ & = 0
+• & is optimal if and only if it is feasible and 
+∇!
+$ & N A −& ≥0 for all feasible A
+Proof:
+!
+$ A ≥!
+$ & + ∇!
+$ & N A −&
+!
+$ A −!
+$ & ≥∇!
+$ & N A −&
+!
+$ A −!
+$ & ≥0 for all feasible A
+Thus & is optimal.
+Not all convex functions are differentiable, can we 
+still apply gradient descent?
+
+
+Gradients of Convex Functions
+• For a differentiable convex function D(&) its gradients yield 
+linear underestimators
+*
+O(*)
+26
+
+
+Gradients of Convex Functions
+• For a differentiable convex function D(&) its gradients yield 
+linear underestimators
+*
+O(*)
+27
+
+
+Gradients of Convex Functions
+• For a differentiable convex function D(&) its gradients yield 
+linear underestimators: zero gradient corresponds to a 
+global optimum
+*
+O(*)
+28
+
+
+Subgradients
+29
+
+
+Subgradients
+Recall that for convex and differentiable ), 
+) / ≥) ! + ∇) ! ' / −! for all !, /,
+That is, linear approximation always underestimates )
+30
+A subgradient of a convex ! at & is any D ∈+" such that 
+! A ≥! & + DN A −& for all A
+• Always exists for convex functions
+• If ! differentiable at &, then D = ∇! & uniquely
+• For nonconvex !, same definition works, however, 
+subgradients need not exist
+
+
+Examples of subgradients
+• Consider !: 3 →3, ! $ = |$|
+• For $ ≠0, unique subgradient 8 = sign $
+• For $ = 0, subgradient 8 is any element of [−1, 1] 
+31
+*
+)(*)
+
+
+Examples of subgradients
+Consider ! $ = max(!
+" $ , !
+# $ ) for !
+", !
+# convex, differentiable
+• If !
+" $ > !
+#($), subgradient 8 = ∇!
+"($)
+• If !
+# $ > !
+"($), subgradient 8 = ∇!
+#($)
+• If !
+" $ = !
+# $ , ∇!
+"($) and ∇!
+#($) are both subgradients (and 
+so are all convex combinations of these)
+32
+) *
+
+
+Subgradient method
+Now consider ! convex, having dom ! = +", but not 
+necessarily differentiable 
+Subgradient method: like gradient descent, but replacing 
+gradients with subgradients. Pick an initial point &$ ∈+",
+repeat
+&%&' = &% −/%EP(&%),
+2 = 1,2,3 …
+where /% is the 2%( step size, and EP(&%) is a subgradient of !
+at &%
+33
+
+
+Subgradient Descent
+34
+Step Size: .9
+
+
+Diminishing Step Size Rules
+• A fixed step size may not result in convergence for non-
+differentiable functions
+• Instead, can use a diminishing step size:
+• Required property: step size must decrease as number of iterations 
+increase but not too quickly that the algorithm fails to make 
+progress
+• Common diminishing step size rules:
+• ,! =
+(
+)"! for some 4 > 0, 7 ≥0
+• ,! = (
+! for some 4 > 0
+35
+
+
+Subgradient Descent
+36
+Diminishing Step Size
+
+
+Theoretical Guarantees
+• The hard work in convex optimization is to identify 
+conditions that guarantee quick convergence to within a 
+small error of the optimum
+• Let !
+QRS%
+(%) =
+min
+%!∈{$,…,%} !(&%!)
+• For a fixed step size, /, we are guaranteed that 
+lim
+%→Y!
+QRS%
+(%) −inf
+! ! & ≤H(/)
+where H(/) is some positive constant that depends on /
+• If ) is differentiable, then we have 8 , = 0 whenever , is small 
+enough
+37
+Convergence theorems for gradient descent. By Robert m. Gower, 2019.
+(more on rates of convergence later)
+
+
+Stochastic gradient
+descent
+38
+
+
+Stochastic gradient descent 
+• Consider minimizing an average of functions 
+min 1
+I J
+IZ'
+[
+!
+I(&)
+As ∇∑IZ'
+[ !
+I(&) = ∑IZ'
+[
+∇!
+I(&), gradient descent would 
+repeat: 
+&%&' = &% −/% J
+IZ'
+[
+∇!
+I(&%\') ,
+2 = 1,2,3 …
+• In comparison, stochastic gradient descent or SGD (or 
+incremental gradient descent) repeats: 
+&%&' = &% −/% ∇!
+I"(&%), 2 = 1,2,3 …
+where L% ∈{1, … , I} is some chosen index at iteration 2
+39
+
+
+Stochastic gradient descent 
+• Two rules for choosing index L% at iteration 2:
+• Randomized rule: choose 9! ∈{1, … , =} uniformly at random
+• Cyclic rule: choose 9! = 1,2, … , =, 1,2, … , =
+• Randomized rule is more common in practice. For 
+randomized rule, note that 
+O ∇!
+I" &
+= ∇!(&)
+so we can view SGD as using an unbiased estimate of the 
+gradient at each step 
+• Main appeal of SGD:
+• Iteration cost is independent of = (number of functions) 
+• Can also be a big savings in terms of memory usage 
+40
+
+
+Example: stochastic regression 
+Given data points &('), … , & [ ∈ℝ] and A('), … , A [ ∈ℝ, 
+find the best fit polynomial of degree Q
+min
+^∈ℝJ
+IZ'
+[
+A I −RN&(I) J
+Gradient computation ∇! R = '
+[ ∑IZ'
+[ 2 A I −RN& I
+& I is 
+doable when I is moderate, but not when I is huge 
+Full gradient (also called batch) versus stochastic gradient:
+• One batch update costs @(=A)
+• One stochastic update costs @(A)
+Clearly, e.g., 10K stochastic steps are much more affordable 
+41
+
+
+The End
+42
+
+
+6CCS3OME – Optimisation Methods
+Constrained Optimisation
+Department of Informatics, King’s College London
+Yali Du
+
+
+Outline
+• Projected Gradient Descent
+• Feasible Direction Methods (Franke-Wolfe)
+• Duality and Lagrange Multipliers
+2
+
+
+Constrained convex problems 
+min
+! $(&)
+subject to:
+& ∈)
+• $ ⋅: ,-./0& $1.,23-.
+• ) ⊆5"
+Example: minimize $(&, 7) subject to & ∈[9, :] and 7 ∈[,, <]?
+• This is much more challenging than the univariate case!
+• The optima can occur at a critical point, ∇$ = 0, or anywhere on the 
+boundary of the rectangle determined by 9, :, ,, <!
+a
+b
+d
+c
+3
+
+
+Projected Gradient Descent
+Projected Gradient Descent Algorithm:
+• Pick an initial point &# ∈), repeat
+&$%& = proj' &$ −E$F$
+#(&$) ,
+2 = 1,2,3 …
+where E$ is the 2$( step size and proj' 7 is a Eclidean projection of 7
+onto the set )
+proj' K = arg min
+!∈' ∥& −K ∥*
+*
+4
+works well if projection 
+onto ! can be
+computed efficiently
+quadratic minimization 
+
+
+Projected Gradient Descent
+• Given a set ! ⊆ℝ", the projection of a point $ ∈ℝ" onto !
+is the point & ∈! such that the distance between & and $ is 
+less than or equal to the distance between $ and any other 
+&# ∈!
+5
+$!
+$!"#
+!
+%
+
+
+Examples of Projections
+Can project under different notions of distance as well
+proj& $ = arg min
+'∈& ∥& −$ ∥)
+)
+• Project on to ! = {&: & ≤0}?
+proj' & + = O &+, if &+ ≤0
+0, otherwise
+• Project on to ! = {&: & ) ≤1}?
+proj'(&) = W
+&, if & * ≤1
+&
+& *
+, otherwise
+6
+
+
+Example of PGD
+7
+Gradient descent on * $, , = $ −2 $ −$ −2
+, −2 + .5 , −2 $
+starting at (−5, −2) with step size .1
+
+
+Example of PGD
+8
+Projected gradient descent on * $, , = $ −2 $ −$ −2
+, −2 +
+.5 , −2 $ starting at (−5, −2) with step size .1
+Constraint $ ≤0, , ≤0
+
+
+Projected Gradient Descent
+• Advantages:
+• Only one additional step on top of gradient descent
+• Fast for simple constraints, e.g., & ≥0
+• Essentially the same convergence guarantees as gradient descent (if 
+you can compute the projection)
+• Disadvantages
+• Can be expensive if every step takes you outside the set of 
+constraints or if the constraint set is complicated
+• Inaccuracy of the projection computation can be a cause of 
+convergence issues
+9
+
+
+Feasible direction methods 
+Generate a feasible sequence {&7} ⊆! with iterations 
+&789 = &7 + :7;7
+where ;7 is a feasible direction (s.t. &7 + :7;7 ∈!)
+• Question: can we guarantee feasibility while enforcing cost 
+improvement? 
+10
+
+
+Franke-Wolfe
+Frank-Wolfe algorithm was developed by Philip Wolfe and 
+Marguerite Frank 
+11
+
+
+Conditional Gradients (Franke-Wolfe)
+• An alternative to projected gradient descent:  the Frank-
+Wolfe algorithm
+• To minimize a convex function over a convex set, it suffices to solve 
+a series of linear optimization problems
+• Specifically, approximate $
+# by its first order Taylor expansion at the 
+current estimate, and minimize this function over the set of 
+constraints
+• Take a step towards this new optimum
+12
+
+
+Conditional Gradients (Franke-Wolfe)
+• Formally, <
+: & ≈<
+: &7 + ∇<
+: &7 ;(& −&7)
+• Compute Y$ ∈arg min
+!∈' $
+# &$ + ∇$
+# &$ ,(& −&$)
+• Set &$%& = &$ + [(Y$ −&$)
+13
+$!
+<!
+$!"#
+!
+
+
+Conditional Gradients (Franke-Wolfe)
+• Formally, <
+: & ≈<
+: &7 + ∇<
+: &7 ;(& −&7)
+• Compute Y$ ∈arg min
+!∈' ∇$
+# &$ ,&
+• Set &$%& = &$ + [(Y$ −&$)
+14
+$!
+<!
+$!"#
+!
+
+
+Conditional Gradients (Franke-Wolfe)
+• Start with an initial point !! ∈#, repeat
+$" = arg min
+#∈% !, -.
+!(!")
+!"&' = (1 −3")!"+3"$"
+Note that there is no projection; update is solved directly over #
+• Default step size 3" =
+(
+(&" , 5 = 0,1,2, …
+• Note for any 0 ≤3" ≤1, we have !"&' ∈# by convexity. We can 
+rewrite update as 
+!"&' = !" + 3"($" −!")
+• i.e., we are moving less and less in the direction of the 
+linearization minimizer as the algorithm proceeds 
+15
+https://www.stat.cmu.edu/~ryantibs/convexopt/lectures/frank-wolfe.pdf
+
+
+!
+16
+
+
+Conditional Gradients (Franke-Wolfe)
+17
+min
+%,' $ −.25 $ + , −.25 $
+such that 
+$ + , ≤1
+0 ≤$, , ≤1
+($#, ,#) = (0.1,0.7)
+
+
+Conditional Gradients (Franke-Wolfe)
+18
+min
+%,' $ −.25 $ + , −.25 $
+such that 
+$ + , ≤1
+0 ≤$, , ≤1
+($#, ,#) = (0.1,0.7)
+B* = (−0.3,0.9)
+<# = 1,0
+($$, ,$) = (0.7, 0.23)
+
+
+Conditional Gradients (Franke-Wolfe)
+19
+min
+%,' $ −.25 $ + , −.25 $
+such that 
+$ + , ≤1
+0 ≤$, , ≤1
+($$, ,$) = (0.7, 0.23)
+B* = (0.9, −0.03)
+<$ = 0,1
+($(, ,()
+= (0.35,0.615)
+
+
+Conditional Gradients (Franke-Wolfe)
+20
+min
+%,' $ −.25 $ + , −.25 $
+such that 
+$ + , ≤1
+0 ≤$, , ≤1
+($(, ,() = (0.35,0.615)
+B* = (0.2,0.73)
+<( = 0,0
+($), ,)) = (0.21,0.369)
+
+
+Example of Franke-Wolfe
+21
+Frank-Wolfe on * $, , = $ −2 $ −$ −2
+, −2 + .5(, −2)^2
+starting at (−5, −2) with diminishing step size 
+$
+$"!
+Constraint −5 ≤$ ≤0, −5 ≤, ≤0
+
+
+Stopping Criteria
+• Let A & = <
+: &7 + ∇<
+: &7 ; & −&7
+• Because $
+# is convex, we must have that \ & ≤$
+# & for all & ∈)
+• Further, as &$ is feasible, we have \ Y$ ≤$
+# &∗≤$
+#(&$), where 
+&∗is any minimizer of $
+# on )
+• We can use this as a stopping criteria, in other words, stop when 
+$
+# &$ −\ Y$ ≤] for some ] > 0
+22
+
+
+Conditional Gradients (Franke-Wolfe)
+• Advantages:
+• Only one additional step on top of gradient descent
+• Fast for constraints in which the linear optimization can be 
+computed efficiently, e.g., & ∈,-./0& ℎ1``(7(&), … , 7(0))
+• Disadvantages
+• Can only be used for bounded constraint sets
+• Still requires solving an extra optimization problem at each iteration
+23
+
+
+Duality and Lagrange 
+Multipliers
+24
+
+
+Outline
+• Lagrange dual function 
+• Lagrange dual problem 
+• Weak and strong duality 
+• KKT conditions
+25
+
+
+Lagrangian
+Consider general minimization problem
+min
+!∈ℝ!
+$
+$(&)
+subject to:
+$
+% & ≤0,
++ = 1, … , /
+ℎ% & = 0,
++ = 1, … , 1
+Need not be convex, but of course we will pay special attention to convex case 
+We define the Lagrangian as:
+2 &, 3, 4 = $
+$ & + 6
+%&'
+(
+3%$
+% & + 6
+%&'
+)
+4%ℎ%(&)
+• Incorporate constraints into a new objective function
+• 3% is Lagrange multiplier associated with $
+% & ≤0, with 3% ≥0
+• 4% is Lagrange multiplier associated with ℎ%(&) = 0
+• The Lagrange multipliers can be thought of as enforcing soft constraints
+26
+
+
+Example
+max
+',G∈ℝ&C
+subject to:
+& + C = 1
+D &, C, F9 = −&C + F9 ⋅1 −& −C
+27
+We have & = C, & + C = 1,
+thus & = C = .5
+is the only critical point of D
+ND
+& = −C −F9 = 0
+ND
+C = −& −F9 = 0
+ND
+F9
+= 1 −& −C = 0
+
+
+Lagrange multiplier
+min
+#∈ℝ* .
+!(!)
+subject to:
+ℎ* ! = 0,
+; = 1, … , <
+Lagrange multiplier theorem:
+if !∗is a local minimum of the constrained optimization problem 
+and -ℎ' !∗, … , -ℎ,(!∗) are linearly independent, then there exists 
+a =∗∈ℝ, such that -? !∗, =∗= 0
+This is also called the method of Lagrange multipliers, i.e. a strategy 
+for finding the local maxima and minima of a function subject 
+to equality constraints
+28
+
+
+Lagrange dual function
+• Lagrange dual function: \: 51×52 →5,
+\ c, d = inf
+! e(&, c, d)
+= inf
+! (&
+" ' + )
+#$%
+&
+*#&
+# ' + )
+#$%
+'
++#ℎ# ' )
+• Constructing a dual function by minimizing the Lagrangian over the 
+primal variables
+• \ c, d = −∞for some c and d
+lower bound property: if c ≽0, then \(c, d) ≤h∗
+proof: if i
+& is feasible and c ≽0, then 
+$
+# i
+& ≥e i
+&, c, d ≥inf
+! e(&, c, d) = \(c, d)
+minimizing over all feasible i
+& gives h∗≥\ c, d
+• recall that h∗is the optimal value of the primal problem.
+29
+
+
+Example: Least-norm solution of linear 
+equations 
+minimize &;&
+Subject to
+Q& = R
+Dual function
+• Lagrangian D &, S, F = &;& + F; Q& −R
+• to minimize D over &, set gradient equal to zero: 
+∇D &, F = 2& + Q;F ⇒& = −(1/2)Q;F
+• Plug in D to obtain A:
+A F = D −1
+2 Q;F , F
+= −1
+4 F; Q Q;F −R;F
+a concave function of ν 
+lower bound property: X∗≥−9
+J F; Q Q;F −R;F for all Z
+30
+
+
+Example: standard form LP
+minimize [;&
+Subject to
+Q& = R, & ≥0
+Dual function
+Lagrangian
+D &, S, F = [;& + F; Q& −R −S;&
+= −R;F + [ + Q;F −S ;&
+• D is affine in &, hence
+A S, F = inf
+' D &, S, F = ]−R;Z,
+Q;F −S + [ = 0
+−∞,
+otherwise
+A is linear on affine domain {(S, F)|Q;F −S + [ = 0}, thus
+concave.
+lower bound property: X∗≥−R;F a< Q;F + [ ≽0
+31
+
+
+Example: two-way partitioning 
+minimize &,l&
+Subject to
+&+
+* = 1, 3 = 1,2, … , .
+• a nonconvex problem; feasible set contains 2" discrete points
+• interpretation: partition {1, . . . , .} in two sets; l
++3 is cost of assigning 
+3, p to the same set; −l
++3 is cost of assigning to different sets 
+dual function 
+\ d = inf
+!
+&,l& + q
++
+d+ &+
+* −1
+= inf
+! &, l + <39\ d
+& −r,d
+= O−r,d, l + <39\ d ≽0
+−∞, otherwise
+lower bound property: h∗≥−r,d, if l + <39\ d ≽0
+example: d = −c456(l )r gives bound h∗≥.c456(l )
+32
+
+
+The dual problem
+Lagrange dual problem 
+max
+7,9
+\ c, d
+subject to:
+c ≥0
+• finds best lower bound on h∗, obtained from Lagrange dual function 
+• a convex optimization problem; optimal value denoted <∗
+• c, d are dual feasible if c ≽0, c, d ∈tuv\
+• often simplified by making implicit constraint (λ, ν) ∈dom g explicit 
+• example: standard form LP and its dual 
+minimize M+$
+Subject to
+N$ = O, $ ≥0
+maxmize −O+S
+Subject to
+N+S + M ≽0
+33
+
+
+Weak and Strong Duality
+Weak Duality: <∗≤h∗
+• always holds (for convex and nonconvex problems) 
+• can be used to find nontrivial lower bounds for difficult problems . For 
+example, solving the SDP
+maximize −r,d
+subject to
+l + <39\ d ≽0
+gives a lower bound for the two-way partitioning problem
+Strong Duality: <∗= h∗
+• does not hold in general 
+• (usually) holds for convex problems 
+• conditions that guarantee strong duality in convex problems are called 
+constraint qualifications 
+34
+
+
+Weak and Strong Duality
+Duality gap: Given primal feasible & and dual feasible S, Z, the 
+quantity 
+<(&) −A(S, Z)
+is called the duality gap between & and S, Z. Note that
+< & −<(&∗) ≤<(&) −A(S, Z)
+so if the duality gap is zero, then & is primal optimal (and 
+similarly, S, Z are dual optimal) 
+Also from an algorithmic viewpoint, provides a stopping 
+criterion: if <(&) −A(S, Z) ≤c,then we are guaranteed that
+<(&) −< &∗≤c
+Very useful, especially in conjunction with iterative methods
+…
+35
+
+
+Slater’s Condition
+For any optimization problem of the form
+min
+'∈ℝ( <
+:(&)
+subject to:
+<
+U & ≤0,
+a = 1, … , e
+ℎU & = 0,
+a = 1, … , X
+where <
+:, … , <
+V are convex functions, strong duality holds if 
+there exists an & such that
+<
+U & < 0,
+a = 1, … , e
+ℎU & = 0,
+a = 1, … , X
+36
+
+
+Complementary Slackness
+• Suppose that there is zero duality gap
+• Let &∗be an optimum of the primal and (S∗, F∗) be an 
+optimum of the dual
+$
+# &∗= \ c∗, d∗
+= inf
+!
+$
+# & + q
++:&
+1
+c+
+∗$
++ & + q
++:&
+2
+d+
+∗ℎ+(&)
+≤$
+# &∗+ q
++:&
+1
+c+
+∗$
++ &∗+ q
++:&
+2
+d+
+∗ℎ+ &∗
+= $
+# &∗+ q
++:&
+1
+c+
+∗$
++ &∗
+≤$
+# &∗
+37
+
+
+Complementary Slackness
+h
+UW9
+V
+SU
+∗<
+U &∗= 0
+• As S ≥0 and <
+U &U
+∗≤0, this can only happen if
+SU
+∗<
+U &∗= 0 for all a
+• If $
++ &∗< 0, then c+
+∗= 0
+• If c+
+∗> 0, then $
++(&∗) = 0
+ONLY applies when there is no duality gap
+38
+
+
+Karush-Kuhn-Tucker Conditions
+KKT conditions (for differentiable <
+U, ℎU): 
+1. primal constraints: for all ;, .
+* !∗≤0, for all ;, ℎ* !∗= 0,  
+2. dual constraints: For all ;, @*
+∗≥0
+3. complementary slackness: For all ;, @*
+∗.
+* !∗
+= 0, ; = 1, … , B
+4. gradient of Lagrangian with respect to ! vanishes:
+∇#? !∗, @∗, =∗= ∇&
+" ' + )
+#$%
+&
+*#∇&
+# ' + )
+#$%
+'
++#∇ℎ#(') = 0
+From page 37-38, if strong duality holds and &, c, d are optimal, then they 
+must satisfy the KKT conditions 
+39
+
+
+KKT conditions
+• We already known that if strong duality holds and !, @, = are 
+optimal, then they must satisfy the KKT conditions 
+• What about the opposite statement? 
+If D
+!, E
+@, D
+= satisfy KKT for a convex problem, then they are optimal.
+Proof:
+• from complementary slackness: .
+!(D
+!) = ?(D
+!, E
+@, D
+=)
+• from 4th condition (and convexity): F( E
+@, D
+=) = ?(D
+!, E
+@, D
+=)
+hence, .
+!(D
+!) = F( E
+@, D
+=)
+• 4th condition can be replaced with the requirement that zero be 
+an element of the subgradient for nondifferentiable functions
+40
+
+
+Example: Quadratic Minimization
+min
+#∈ℝ*
+1
+2 !-G! + H-!
+subject to:
+I! = J
+and G is positive semidefinite 
+• This problem is convex and strong duality holds as long as there 
+exists a feasible point (from Slater’s condition)
+? !, = = 1
+2 !-G! + H-! + =-(I! −J)
+• KKT conditions imply:
+41
+XY
+$ = Z$ + M + N+S = 0
+XY
+S = N$ −O = 0
+Z
+N+
+N
+0
+$∗
+S∗= −M
+O
+Only need to solve a linear system!
+
+
+Convex Duality in Practice
+• Often used to construct nicer optimizations problems or to 
+solve a constrained optimization problem by hand
+• Sometimes the dual has special properties that make it 
+more useful than the primal problem, e.g., for support 
+vector machines in ML, or make it easier to solve
+• Often the dual perspective gives new insights into the 
+primal problem and its solution
+• For convex problems with zero duality gap, if we solve the 
+primal and dual problems simultaneously, distance between 
+best primal and dual values gives an upper bound on the 
+error
+42
+
+
+The End
+43

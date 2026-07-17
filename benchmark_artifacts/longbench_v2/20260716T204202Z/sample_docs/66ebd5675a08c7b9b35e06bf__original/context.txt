@@ -1,0 +1,2147 @@
+Enabling Collaborative Test-Time Adaptation in Dynamic Environment via Federated Learning
+Jiayuan Zhang
+State Key Laboratory of Virtual
+Reality Technology and Systems,
+School of Computer Science and
+Engineering, Beihang University
+Beijing, China
+zhangjiayuan@buaa.edu.cn
+Xuefeng Liu∗
+State Key Laboratory of Virtual
+Reality Technology and Systems,
+School of Computer Science and
+Engineering, Beihang University,
+Zhongguancun Laboratory
+Beijing, China
+liu_xuefeng@buaa.edu.cn
+Yukang Zhang
+Shenzhen International Graduate
+School, Tsinghua University
+Shenzhen, China
+zhangyuk21@mails.tsinghua.edu.cn
+Guogang Zhu
+State Key Laboratory of Virtual
+Reality Technology and Systems,
+School of Computer Science and
+Engineering, Beihang University
+Beijing, China
+buaa_zgg@buaa.edu.cn
+Jianwei Niu
+State Key Laboratory of Virtual
+Reality Technology and Systems,
+School of Computer Science and
+Engineering, Beihang University,
+Zhongguancun Laboratory
+Beijing, China
+niujianwei@buaa.edu.cn
+Shaojie Tang
+Jindal School of Management, The
+University of Texas at Dallas
+Richardson, TX, US
+shaojie.tang@utdallas.edu
+ABSTRACT
+Deep learning models often suffer performance degradation when
+test data diverges from training data. Test-Time Adaptation (TTA)
+aims to adapt a trained model to the test data distribution using un-
+labeled test data streams. In many real-world applications, it is quite
+common for the trained model to be deployed across multiple de-
+vices simultaneously. Although each device can execute TTA inde-
+pendently, it fails to leverage information from the test data of other
+devices. To address this problem, we introduce Federated Learning
+(FL) to TTA to facilitate on-the-fly collaboration among devices
+during test time. The workflow involves clients (i.e., the devices)
+executing TTA locally, uploading their updated models to a central
+server for aggregation, and downloading the aggregated model
+for inference. However, implementing FL in TTA presents many
+challenges, especially in establishing inter-client collaboration in
+dynamic environment, where the test data distribution on differ-
+ent clients changes over time in different manners. To tackle these
+challenges, we propose a server-side Temporal-Spatial Aggregation
+(TSA) method. TSA utilizes a temporal-spatial attention module
+∗Corresponding author.
+Permission to make digital or hard copies of all or part of this work for personal or
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. Copyrights for components of this work owned by others than the
+author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or
+republish, to post on servers or to redistribute to lists, requires prior specific permission
+and/or a fee. Request permissions from permissions@acm.org.
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+© 2024 Copyright held by the owner/author(s). Publication rights licensed to ACM.
+ACM ISBN 979-8-4007-0490-1/24/08
+https://doi.org/10.1145/3637528.3671908
+to capture intra-client temporal correlations and inter-client spa-
+tial correlations. To further improve robustness against temporal-
+spatial heterogeneity, we propose a heterogeneity-aware augmen-
+tation method and optimize the module using a self-supervised ap-
+proach. More importantly, TSA can be implemented as a plug-in to
+TTA methods in distributed environments. Experiments on multiple
+datasets demonstrate that TSA outperforms existing methods and
+exhibits robustness across various levels of heterogeneity. The code
+is available at https://github.com/ZhangJiayuan-BUAA/FedTSA.
+CCS CONCEPTS
+• Computing methodologies →Distributed algorithms.
+KEYWORDS
+Federated Learning, Test-Time Adaptation, Temporal-Spatial Ag-
+gregation
+ACM Reference Format:
+Jiayuan Zhang, Xuefeng Liu, Yukang Zhang, Guogang Zhu, Jianwei Niu,
+and Shaojie Tang. 2024. Enabling Collaborative Test-Time Adaptation in
+Dynamic Environment via Federated Learning. In Proceedings of the 30th
+ACM SIGKDD Conference on Knowledge Discovery and Data Mining (KDD
+’24), August 25–29, 2024, Barcelona, Spain. ACM, New York, NY, USA, 12 pages.
+https://doi.org/10.1145/3637528.3671908
+1
+INTRODUCTION
+Deep learning models can achieve remarkable performance under
+the assumption that training and testing data originate from the
+same distribution. Unfortunately, this assumption is often violated
+when trained models are deployed in the real-world environments.
+For instance, autonomous driving systems may be influenced by
+lighting conditions, weather variations, and sensor degradation.
+The shifts in test data distribution typically lead to severe model
+
+
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+Jiayuan Zhang et al.
+Area A
+Area C
+Area B
+Deployment
+Server
+Devices
+Collaboration
+(a) Structure of multi-device system
+Area A
+Area B
+Area C
+(b) Different spatial areas
+0
+1
+2
+3
+4
+5
+A
+B
+C
+Area
+Time 
+Rainy
+Snowy
+Cloudy
+(c) Distinct temporal variation trends
+Figure 1: An illustrative example of a multi-device system in
+dynamic testing environment.
+performance drop [28]. Although classic methods like Domain Gen-
+eralization (DG) [8, 9, 34] and Domain Adaptation (DA) [22, 35, 38]
+can mitigate the aforementioned issues, they fail to utilize the infor-
+mation of the test data, resulting in insufficient model robustness.
+To improve the model’s robustness to challenging dynamic environ-
+ment, Test-Time Adaptation (TTA) [36, 39, 40, 45, 46] has emerged
+as a promising approach, which adapts the trained model on-the-fly
+using test samples.
+In many real-world applications, such as smart healthcare [30,
+31] and autonomous driving [37, 47], a trained model is typically
+deployed across multiple clients. As shown in Figure 1(a), multiple
+devices deploy the same model trained under ideal clear weather,
+while the collected test images are affected by various weather
+conditions, including rain, snow, and clouds. Although each de-
+vice can perform TTA independently to adapt its local model, this
+approach does not capitalize on the information from test data avail-
+able on other devices. Through collaboration, devices can leverage
+the temporal-spatial correlations between clients to better adapt
+to the dynamic environment. For example, in Figure 1(c), Area A
+and Area B undergo similar test distribution shift, and can achieve
+better adaptation results through collaboration. Additionally, Area
+C can benefit from Area A and B, as the new distribution shift
+encountered in Area C at time 5 has already been observed in the
+other two areas. However, due to privacy protection constraints,
+devices typically cannot share private data with each other.
+To facilitate collaboration between devices, we introduce Fed-
+erated Learning (FL) [16] into TTA (TTFL), enabling information
+exchange without sharing private test data. The overall training par-
+adigm involves clients (i.e., the devices) first executing TTA locally
+and uploading their adapted models to a central server for aggrega-
+tion. Then, the server aggregates these local models and sends them
+back to the clients for inference. In this workflow, determining the
+aggregation weight for each client is the key to achieving effective
+inter-client collaboration. While there are many methods for deter-
+mining server aggregation weights in existing FL [12, 29, 44], they
+lack exploration of the temporal-spatial correlations among clients
+in dynamic testing scenarios. Unlike the stationary training data
+typically used in FL [10, 23, 27], the test data distribution on each
+client in TTFL continually changes over time. It is challenging to
+establish inter-client collaboration in such dynamic environment,
+where different areas exhibit varying trends of change, referred to
+as temporal-spatial heterogeneity. The collaboration relationship
+between clients is typically asymmetrical and dynamic. For exam-
+ple, in Figure 1(b) and 1(c), Area A and B may benefit little from
+collaborating with Area C, but Area C can enhance its robustness
+to rainy conditions at time 5 by leveraging Area A/B’s historical
+information. Considering the above challenges, our research goal
+is:
+How to establish inter-client collaboration on-the-fly in dynamic
+testing environment?
+To achieve this goal, we propose a novel server-side Temporal-
+Spatial Aggregation method, namely TSA. To capture the temporal-
+spatial correlations, TSA employs a temporal-spatial module (TS-
+Block) based on self-attention mechanism, which dynamically ad-
+justs the aggregation weights by analyzing the changing patterns
+of data distribution shift over time. To further improve robustness
+to the temporal-spatial heterogeneity, we propose a heterogeneity-
+aware augmentation method, we propose a heterogeneity-aware
+augmentation method, which involves masking irrelevant atten-
+tion scores based on the degree of heterogeneity in both time and
+space dimensions. Due to the lack of data on the server, aggrega-
+tion weight is typically untrainable. TSA stores historical informa-
+tion from each client’s past updates on the server and updates the
+temporal-spatial module using self-supervised loss. In this paper,
+our main contributions are as follows:
+• To improve the model’s robustness to test data distribution shifts
+in dynamic environment, we introduce FL to enable inter-client
+collaborative TTA, which may shed light on many practical multi-
+device applications.
+• We propose a novel server-side model aggregation method, TSA,
+which explores the temporal-spatial correlations in the test data
+on different clients to obtain the dynamic collaboration matrix.
+• TSA can be implemented as a plug-in to TTA methods in dis-
+tributed environments. Experiments on multiple datasets demon-
+strate that TSA outperforms existing methods and exhibits ro-
+bustness across various levels of heterogeneity.
+2
+RELATED WORK
+2.1
+Test-time Adaptation
+TTA focuses on a challenging setting in addressing model robust-
+ness to distribution shift, where only trained model and unlabeled
+test data are available. One line of methods, like NORM [32] and
+DUA [25], updates the batch normalization (BN) [13] statistics com-
+puted on the training set to align with the distribution of the test set.
+We refer to them as TTA-bn. Different from the methods mentioned
+above that do not require gradient computation for model updates,
+another line of methods adapts the model using self-supervised
+losses [3, 5, 26, 36]. These methods can be solved by the classic
+Stochastic Gradient Descent (SGD) method, which we refer to as
+TTA-grad. For instance, SHOT [21] aims to reduce the expected en-
+tropy of individual predictions while increasing the entropy of the
+predicted classes across the entire test set. TSA primarily focuses
+
+
+Enabling Collaborative Test-Time Adaptation in Dynamic Environment via Federated Learning
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+on establishing inter-client collaboration, orthogonal to the TTA
+methods chosen on each client.
+2.2
+Federated Learning
+The goal of FL is to enable collaborative training of models across
+multiple clients while preserving privacy. As the foundational
+model, FedAvg [24] is the template of most existing FL methods.
+Given that data on local clients is often not independently and
+identically distributed (i.e., non-iid), many efforts have been made
+to mitigate the negative impact of this spatial heterogeneity on
+model performance [6, 11, 41, 48]. Some efforts introduce regular-
+ization terms during the local optimization process on the clients.
+For instance, FedProx [20] applies regularization items at the model
+level to align local models with the global model, MOON [19] aligns
+features between the client and server, and pFedSD [15] utilizes
+previous round’s local model for knowledge distillation to prevent
+catastrophic forgetting. More similar with our method, other meth-
+ods seek to benefit through the design of personalized model aggre-
+gation strategies. Based on the attention mechanism, FedAMP [12]
+designs an attention-inducing function that allows similar models
+to aggregate with large weight. pFedGraph [44] infers the collabo-
+ration graph based on pairwise model similarity and dataset size
+at server. However, these approaches are designed for the setting
+that the training data on clients is stationary. In a dynamic envi-
+ronment, the collaborative relationship among clients continuously
+evolves with the changing distributions of local test data, making
+the modeling of inter-client collaboration more challenging.
+Some recent works [1, 14, 33, 43] have explored the use of TTA
+to enhance the robustness of FL against unknown test distribution
+shifts. However, these methods require adjustments in the model
+training phase, such as modifying model structure or training loss.
+Additionally, they do not consider that better model adaptation
+can be achieved through inter-client collaboration in dynamic test-
+ing scenarios. TSA operates independently of the training phase,
+offering better adaptability to different trained models. Moreover,
+TSA enhance the adaptability to dynamic testing environment by
+fostering collaboration between clients.
+3
+PRELIMINARIES
+FL Formulation. The global optimization object of FL with 𝑁
+clients, can be formulated as
+min
+ˆ
+𝚯
+F ( ˆ
+𝚯; 𝐷𝑡𝑟𝑎𝑖𝑛) =
+min
+{𝜃1𝜃2...𝜃𝑁}
+𝑁
+∑︁
+𝑖=1
+𝜔𝑖F𝑖(𝜃𝑖; 𝐷𝑡𝑟𝑎𝑖𝑛
+𝑖
+),
+(1)
+where ˆ
+Θ represents the collection of local models, and 𝐷𝑡𝑟𝑎𝑖𝑛is
+the set of training data. F𝑖, 𝜃𝑖and 𝐷𝑡𝑟𝑎𝑖𝑛
+𝑖
+are the local loss function,
+local model parameters and local training dataset for the i-th client.
+𝜔𝑖represents the weight of the i-th client in the global objective,
+typically determined based on the proportion of its local dataset
+𝐷𝑡𝑟𝑎𝑖𝑛
+𝑖
+to the global total dataset.
+Test-time FL (TTFL) Formulation. TTFL focus on how to
+adapt a trained model 𝜃𝑠to each client’s test data distribution at
+test-time, with an adaptation rule F only using unlabeled test data
+𝐷𝑡𝑒𝑠𝑡. The objective function can be formulated as
+min
+ˆ
+𝚯
+F ( ˆ
+𝚯; 𝐷𝑡𝑒𝑠𝑡) =
+min
+{𝛿𝜃1,𝛿𝜃2,...,𝛿𝜃𝑁}
+𝑁
+∑︁
+𝑖=1
+𝜔𝑖F𝑖(𝜃𝑠+ 𝛿𝜃𝑖; 𝐷𝑡𝑒𝑠𝑡
+𝑖
+), (2)
+where 𝛿𝜃𝑖is the updated model parameters. Due to each client’s
+test data batches originate from a continually changing environ-
+ment, the local optimization objective for the i-th client can be
+further expressed as
+F𝑖(𝜃𝑠+ 𝛿𝜃𝑖; 𝐷𝑡𝑒𝑠𝑡
+𝑖
+) =
+∑︁
+T𝑡
+𝑖∈𝐷𝑡𝑒𝑠𝑡
+𝑖
+𝜔𝑡
+𝑖F𝑖(𝜃𝑠+ 𝛿𝜃𝑡
+𝑖; T𝑡
+𝑖)
+(3)
+where T𝑡
+𝑖
+∈𝐷𝑡𝑒𝑠𝑡
+𝑖
+represents a batch of test data for the i-th
+client at the t-th time slot, and 𝜔𝑡
+𝑖represents the proportion of
+the update for each time slot. Compared to FL, TTFL framework
+exhibits the following characteristics:
+1) Test-time only: There is no need to utilize multi-client model
+training like in the FL framework, adaptation is performed only us-
+ing a trained model and the distributed streaming test data batches.
+2) Temporal heterogeneity: In addition to the common spatial
+heterogeneity stemming from non-iid data among clients in FL,
+TTFL also confronts the challenge of temporal heterogeneity within
+clients, where the test data distribution continually changes over
+time.
+3) Online inference: FL optimizes the model through multiple
+rounds of communication between clients and the server, but such
+overhead is impractical in the TTFL setting, where predictions
+should to be made in real time.
+4
+METHOD
+4.1
+Overview of TSA
+In this section, we elaborate the details of our method. As shown
+in Figure 2, our proposed method consists of model updates on
+the client side and information aggregation on the server side. In
+each communication round, our process starts at the client side
+to perform local TTA, where each local client adapts the trained
+model 𝜃𝑠using test data T𝑡
+𝑖collected at time slot t (STEP 1). Then
+the model updates 𝛿𝜃𝑡
+𝑖, along with clients’ indicators 𝑝𝑡
+𝑖from all
+clients, are uploaded to the server for model aggregation (STEP 2).
+On the server side, upon receiving clients’ indicators 𝑝𝑡
+𝑖, the
+server stores them in a memory bank P and uses them as input to
+the TS-Block. TS-Block comprises a Temporal Self-Attention module
+for capturing temporal patterns and a Spatial Self-Attention module
+for determining collaboration weights W𝑡. In both modules, a self-
+attention mechanism is applied to identify the correlations among
+inputs across both temporal and spatial dimensions. Moreover, a
+heterogeneity-aware augmentation is introduced, enhancing ro-
+bustness by adding mask at temporal and spatial dimensions to the
+attention module’s output. Finally, the TS-Block is updated with
+self-supervised loss to get a learnable aggregation weight 𝑊𝑡
+𝑖𝑗for
+each client 𝑖at time 𝑡and the aggregated updates 𝛿𝜃
+𝑡
+𝑖is calculated
+using this weight (STEP 3). Note that our self-attention mechanism
+is trainable, it offers more flexibility when exploring inter-client
+temporal-spatial dependencies.
+
+
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+Jiayuan Zhang et al.
+···
+Client 1
+Client 2
+Client n
+···
+Client Group
+Time
+Memory Bank
+Time
+Space
+Q
+K
+V
+Q
+K
+V
+Temporal Module
+Spatial Module
+Temporal
+Mask
+Time
+Spatial
+Mask
+ST-BLOCK
+Augmented
+···
+···
+···
+···
+···
+···
+Temporal
+Attention
+Spatial
+Attention
+TS-BLOCK
+Prediction
+Client 1
+Client 2
+Client n
+STEP 1
+STEP 3
+STEP 4
+Sever
+STEP 5
+Input
+Stream Data
+···
+···
+···
+···
+···
+Space
+Inference
+aggregated model
+adapted model
+origin model
+TTA
+Aggregation
+STEP 2
+Figure 2: Framework overview of TSA.
+Having obtained the aggregated model𝛿𝜃
+𝑡
+𝑖from the server (STEP
+4), each client i initializes the model 𝜃𝑡+1
+𝑖
+based on 𝛿𝜃
+𝑡
+𝑖and com-
+pletes the prediction of the test data T𝑡
+𝑖(STEP 5).
+In the following parts, we first define the optimization problem
+within this framework in section 4.2. Following this, we decompose
+the optimization problem into local TTA updates on the client side
+and temporal-spatial aggregation on the server side, detailed in
+sections 4.3 and 4.4.
+4.2
+Optimization Problem of TSA
+For the sake of brevity, we abbreviate 𝜃𝑠+𝛿𝜃𝑡
+𝑖as 𝜃𝑡
+𝑖in the following
+text. In the aforementioned process, the optimization objective of
+TSA is to enhance the aggregated model’s adaptation capability
+to the test data across all time slots. Specifically, at time slot 𝑡, we
+propose to formulate it as minimizing the TTA loss of the aggregate
+model:
+min
+ˆ
+𝚯,W
+F ( ˆ
+𝚯) =
+min
+{𝜃𝑡
+𝑖},W
+𝑁
+∑︁
+𝑖=1
+𝜔𝑖F𝑖(
+𝑁
+∑︁
+𝑗=1
+W𝑡
+𝑖𝑗𝜃𝑡
+𝑗; T𝑡
+𝑖)
+(4)
+𝑠.𝑡.
+𝑁
+∑︁
+𝑗=1
+W𝑡
+𝑖𝑗= 1, ∀𝑖; W𝑡
+𝑖𝑗≥0, ∀𝑖, 𝑗,
+where W𝑡∈R𝑁×𝑁is the collaboration matrix whose (𝑖, 𝑗)-th
+element reflects the collaboration relationship between the 𝑖-th and
+the 𝑗-th clients. Unlike previous formulation like equation (3), our
+formulation naturally demands the aggregated model to achieve
+better adaptation performance, thereby ensuring acceptable results
+through single-round communication.
+Equation (4) optimizes both local models and the collaboration
+matrix. A straightforward way to tackling this optimization prob-
+lem is alternately optimizing both factors locally on the client side.
+However, this approach requires each client to access all other
+clients’ models
+n
+𝜃𝑡
+𝑗, ∀𝑗≠𝑖
+o
+, which incurs additional communica-
+tion and computational overheads. In this paper, we decompose the
+original Equation (4) into two parts: (1) Optimize local models
+
+𝜃𝑡
+𝑖
+	
+on the client side, (2) Optimize the collaboration matrix W𝑡on the
+server side.
+4.3
+Local Test-Time Adaptation
+Clients adapt the trained model using local test data batches. With-
+out loss of generality, the optimization objective of the 𝑖-th client at
+time slot 𝑡is to minimize the empirical task-driven loss to pursue
+local model utility while keeping the collaboration matrix𝑊𝑡fixed:
+min
+𝜃𝑡
+𝑖
+F𝑖(𝜃𝑡
+𝑖; T𝑡
+𝑖)
+(5)
+where the local model 𝜃𝑡
+𝑖is based on the aggregated model
+Í𝑁
+𝑗=1 W𝑡
+𝑖𝑗𝜃𝑡
+𝑗sent from the server, which implicitly injects collabo-
+ration knowledge into the local model and T𝑡
+𝑖is the input test data
+batch at the i-th time slot.
+Our proposed TSA operates independently from the local train-
+ing process and can support both TTA-grad and TTA-bn mentioned
+in section 2.1 simultaneously. For TTA-grad, each client optimizes
+the model in an unsupervised manner, like entropy minimization
+loss [21, 36], contrastive learning [3], etc. Specifically, entropy min-
+imization is a widely used approach in TTA for sharpening model
+prediction and enforcing prediction confidence.
+
+
+Enabling Collaborative Test-Time Adaptation in Dynamic Environment via Federated Learning
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+F𝑖= −
+∑︁
+𝑚
+𝑝𝑚( ˆ
+𝑦) log𝑝𝑚( ˆ
+𝑦).
+(6)
+where 𝑝𝑚( ˆ
+𝑦) is the softmax probability of the 𝑚-th class. TTA-
+grad can be addressed by using gradient descent-based approaches,
+allowing the application of common optimizers such as Adam [17],
+SGD [2], etc. TTA-bn replaces the batch normalization (BN) activa-
+tion statistics obtained during training with those calculated during
+testing. Specifically, BN normalizes the pre-activations, and the
+input for channel 𝑐of a layer can be denoted as 𝑥(𝑐)
+𝑛:
+𝜇(𝑐) =
+1
+𝑁′𝐻𝑊
+∑︁
+𝑛,ℎ,𝑤
+𝑥(𝑐)
+𝑛ℎ𝑤
+(7)
+𝜎(𝑐)2 =
+1
+𝑁′𝐻𝑊
+∑︁
+𝑛,ℎ,𝑤
+(𝑥𝑛ℎ𝑤−𝜇(𝑐)2)
+where 𝑁′, 𝐻, and 𝑊are the number of examples in a batch
+and their dimensionalities (height and width), respectively. TTA-bn
+can be solved by computing 𝜇(𝑐) and 𝜎(𝑐)2 during the forward
+propagation phase.
+4.4
+Temporal-Spatial Aggregation
+4.4.1
+The challenges of optimizing W on the server side. Based on
+Equation (4), the server should optimize the collaboration matrix
+W𝑡while keeping the local models
+
+𝜃𝑡
+𝑖
+	
+fixed.
+min
+W𝑡
+𝑁
+∑︁
+𝑖=1
+F𝑖(
+𝑁
+∑︁
+𝑗=1
+W𝑡
+𝑖𝑗𝜃𝑡
+𝑗, T𝑡
+𝑖)
+(8)
+𝑠.𝑡.
+𝑁
+∑︁
+𝑗=1
+W𝑡
+𝑖𝑗= 1, ∀𝑖; W𝑡
+𝑖𝑗≥0, ∀𝑖, 𝑗
+However, in the framework of FL, the server is unable to access
+the clients’ optimization function {𝐹𝑖(·)} and local data
+
+𝐷𝑡𝑒𝑠𝑡
+𝑖
+	.
+The result of Equation (8) can only be approximated through al-
+ternative tasks. Existing methods often depend on heuristic rules.
+For example, FedAvg [24] uses the number of local samples on
+clients as an estimate for determining collaboration weights. More
+fine-grained approaches like FedAMP [12], pFedGraph [44], and
+LDAWA [29] suggest that clients with more similar model param-
+eters should be assigned higher collaboration weights. However,
+above heuristic rule has following limitations:
+• Lack of flexibility. The assumption that clients with higher
+similarity should be assigned greater collaboration weights
+is not necessarily valid. This may create a positive feedback
+loop where initially similar models become increasingly alike
+after rounds of collaborative aggregation, making it difficult
+to model potentially dynamic collaborative relationships in
+TTFL.
+• Failure to leverage the temporal-spatial dependencies. Under-
+standing temporal relationships aids the server in modeling
+client spatial collaboration. Moreover, as temporal changes
+are usually gradual, incorporating this information can miti-
+gate errors from random collaborative decisions, reducing
+error accumulation in TTFL.
+• Challenge in solving constrained optimization problem. Equa-
+tion (8) represents a constrained optimization problem, pos-
+ing challenges for solution.
+To address these limitations, we design a temporal-spatial at-
+tention block (TS-Block), which can better explore of collaborative
+relationships between clients. Firstly, the trainable attention mech-
+anism offers more flexibility and can avoid the positive feedback
+loop of similarity-based collaboration. Secondly, the designed TS-
+Block naturally capture the correlations between different clients
+in temporal-spatial dimensions. For the challenges for solution, the
+attention mechanism ensures the normalization and non-negativity
+of Equation (8).
+4.4.2
+Temporal-Spatial Attention Module. We design a Temporal-
+Spatial Module (TS-Block) based on self-attention mechanism to
+explore temporal-spatial dependencies. The core of the TS-Block
+consists of two components: A Temporal Self-Attention module that
+captures the temporal patterns and a Spatial Self-Attention module
+that obtains the collaboration weights W𝑡. From the perspective of
+specific implementation, the trained models usually have a large
+number of parameters, while the parameter changes {𝛿𝜃𝑖} after
+local TTA are relatively small in value, making it difficult to reflect
+the local data distribution. TSA requires clients to upload their
+local feature means as indicators 𝑝𝑡
+𝑖, and the server retains these
+indicators from each round in a memory bank P, where the input
+to the TS-Block is sampled. Given that changes in data distribution
+over time in the real world are typically continuous and gradual,
+the sampling strategy—termed most recent time priority—selects the
+𝑇time slots closest to the current one. This approach prioritizes the
+most recent temporal data, ensuring that the sampled information
+is relevant and up-to-date for the current context. The Temporal
+Self-Attention module and the Spatial Self-Attention module are
+sequentially connected to capture the dynamic temporal-spatial
+dependencies among clients.
+Temporal Attention Mechanism. To formulate self-attention
+operations, we use the following slice notations. For a tensor X ∈
+P𝑇×𝑁×𝐷, the 𝑡-th time slot slice is the matrix X𝑡:: ∈P𝑁×𝐷and
+the 𝑖-th client slice is X:𝑖: ∈P𝑇×𝐷, where 𝑇is the length of the
+time slot, 𝑁is the number of clients, and 𝐷is the dimension of the
+clients’ indicators.
+In TTFL, the test data distribution shifts are changing over time
+(e.g., lighting condition, weather changes), and these changes are
+typically continuous and gradual. Thus, we employ a temporal self-
+attention module to utilize historical information from nearby time
+slots. Formally, for client 𝑖, we first obtain the query, key and value
+matrices as:
+𝑄(𝑇)
+𝑖
+= 𝑋:𝑖:𝑊𝑇
+𝑄, 𝐾(𝑇)
+𝑖
+= 𝑋:𝑖:𝑊𝑇
+𝐾,𝑉(𝑇)
+𝑖
+= 𝑋:𝑖:𝑊𝑇
+𝑉,
+(9)
+where𝑊𝑇
+𝑄,𝑊𝑇
+𝐾∈R𝐷×𝐷are learnable parameters.𝑊𝑇
+𝑉is initialized
+as the identity matrix 𝐼, thus 𝑉(𝑇)
+𝑖
+= 𝑋:𝑖:. Then, we apply self-
+attention operations in the temporal dimension and obtain the
+temporal dependencies of client 𝑖as:
+𝐴(𝑇)
+𝑖
+=
+𝑄(𝑇)
+𝑖
+· (𝐾(𝑇)
+𝑖
+)⊤
+√
+𝐷
+.
+(10)
+
+
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+Jiayuan Zhang et al.
+It can be seen that temporal self-attention can discover different
+temporal relationships for different clients. Then, we can obtain
+the output of the temporal attention module as:
+𝑇𝐴(𝑋:𝑖:) = 𝑠𝑜𝑓𝑡𝑚𝑎𝑥(𝐴(𝑇)
+𝑖
+)𝑉(𝑇)
+𝑖
+= 𝑋𝑇𝐴.
+(11)
+Spatial Attention Mechanism. The above output, denoted as
+𝑋𝑇𝐴, is subsequently used as the input for the spatial attention
+module. The spatial attention module is designed to capture dy-
+namic spatial dependencies among clients. Formally, at time 𝑡, we
+first obtain the query, key, and value matrices as:
+𝑄(𝑆)
+𝑡
+= 𝑋𝑇𝐴
+𝑡:: 𝑊𝑆
+𝑄, 𝐾(𝑆)
+𝑡
+= 𝑋𝑇𝐴
+𝑡:: 𝑊𝑆
+𝐾,𝑉(𝑆)
+𝑡
+= 𝑋𝑇𝐴
+𝑡:: 𝑊𝑆
+𝑉,
+(12)
+where 𝑊𝑆
+𝑄,𝑊𝑆
+𝐾∈R𝐷×𝐷are learnable parameters. 𝑊𝑆
+𝑉is initial-
+ized as the identity matrix 𝐼, thus 𝑉(𝑆)
+𝑡
+= 𝑋𝑇𝐴
+𝑡:: . Then, we apply
+self-attention operations in the spatial dimension to model the
+collaborations among all clients at time 𝑡as:
+𝐴(𝑆)
+𝑡
+= 𝑄(𝑆)
+𝑡
+· (𝐾(𝑆)
+𝑡
+)⊤
+√
+𝐷
+.
+(13)
+The obtained attention scores 𝐴(𝑆)
+𝑡
+∈R𝑁×𝑁serve as the inter-
+client collaboration matrix 𝑊𝑡. It can be seen that the clients can
+obtain different attention scores at different time slots. The spatial
+attention module can be used to capture the dynamic spatial de-
+pendencies among clients. Moreover, the attention scores naturally
+satisfy non-negativity and normalization constraint in Equation (8).
+Finally, we can obtain the output of the spatial attention module
+by multiplying the attention scores with the value matrix as:
+𝑆𝐴(𝑋𝑇𝐴
+𝑡:: ) = 𝑠𝑜𝑓𝑡𝑚𝑎𝑥(𝐴(𝑆)
+𝑡
+)𝑉(𝑆)
+𝑡
+= 𝑋𝑇𝑆𝐴.
+(14)
+Heterogeneity-aware Augmentation. In the above process,
+each client collaborates with every other client to some degree.
+However, in practice, it is often sufficient for a client to collaborate
+with only a subset of other clients. Collaborating with unrelated
+clients may, in fact, degrade model performance. To enhance robust-
+ness against temporal and spatial heterogeneity, we mask out parts
+of the irrelevant collaboration. This process is conducted based
+on the degree of heterogeneity, termed as heterogeneity-aware
+augmentation.
+For client 𝑖, the clients providing helpful information can be di-
+vided into two categories: (1) those whose current data distribution
+is similar to that of client 𝑖, and (2) those that have encountered data
+in their historical distribution similar to client 𝑖. Specifically, we
+calculate the cosine similarity of clients’ indicators at the current
+time slot 𝑡to measure the similarity between clients, and discard
+collaborations with similarity value below average 𝜏. The resulting
+mask is denoted as 𝑀𝑐𝑢𝑟
+𝑡
+, where each item 𝑚𝑐𝑢𝑟
+𝑖𝑗
+can be formulated
+as:
+𝑚𝑐𝑢𝑟
+𝑖𝑗
+=
+(
+0
+cos(𝑝𝑡
+𝑖, 𝑝𝑡
+𝑗) < 𝜏
+1
+cos(𝑝𝑡
+𝑖, 𝑝𝑡
+𝑗) ≥𝜏.
+(15)
+The above 𝑀𝑐𝑢𝑟
+𝑡
+only considers the current time slot 𝑡and does
+not utilize temporal information. We further use the attention score
+𝐴(𝑆)
+𝑡
+to refine the mask, which is calculated based on temporal
+attention and includes the historical information of the client. By
+doing so, TSA can not only debias collaboration based on current
+test distribution, but also capture the long-range temporal depen-
+dencies. To this end, we denote the attention score between client
+𝑖and client 𝑗as 𝑎(𝑆)
+𝑖𝑗. 1) For two non-collaborating clients, a high
+attention score 𝑎𝑖𝑗(i.e., 𝑚𝑐𝑢𝑟
+𝑖𝑗
+= 0) will add a relationship between
+the two clients. The probability of engaging in collaboration is de-
+termined by sampling from a Bernoulli distribution Bern(𝑎(𝑆)
+𝑖𝑗). 2)
+For two collaborating clients (i.e., 𝑚𝑐𝑢𝑟
+𝑖𝑗
+= 1), if they exhibit low
+temporal dependency, their interaction will be masked based on
+a probability drawn from a Bernoulli distribution, Bern(1 −𝑎(𝑆)
+𝑖𝑗).
+The enhanced spatial mask is denoted as 𝑀𝑠𝑝𝑎
+𝑡
+.
+Similarly, as intra-client test data distribution changes over time,
+not all temporal information is helpful for the current moment. A
+temporal mask matrix 𝑀𝑡𝑒𝑚
+𝑖
+is also added in the temporal dimen-
+sion to select patterns close to the current moment, where each
+element is sampled from a Bernoulli distribution Bern(𝑎(𝑇)
+𝑡𝑖𝑡𝑗). The
+design of the mask ensures that historical information with lower
+temporal similarity has a higher probability of being masked. The
+final augmented output 𝑋𝑇𝑆𝐴′ obtained after applying mask 𝑀𝑡𝑒𝑚
+and 𝑀𝑠𝑝𝑎.
+𝑇𝐴(𝑋:𝑖:) = 𝑠𝑜𝑓𝑡𝑚𝑎𝑥(𝐴(𝑇)
+𝑖
+⊙𝑀𝑡𝑒𝑚
+𝑖
+)𝑋:𝑖: = 𝑋𝑇𝐴′,
+(16)
+𝑆𝐴(𝑋𝑇𝐴′
+𝑡:: ) = 𝑠𝑜𝑓𝑡𝑚𝑎𝑥(𝐴(𝑆)
+𝑡
+⊙𝑀𝑠𝑝𝑎
+𝑡
+)𝑋𝑇𝐴′
+𝑡::
+= 𝑋𝑇𝑆𝐴′,
+(17)
+where ⊙indicates the Hadamard product. In this way, the aug-
+mented output not only absorbs information from similar relation-
+ships in both temporal and spatial dimensions, but also introduces
+random noise to mitigate the issue of similar clients carrying little
+information.
+4.4.3
+Model Training. Intuitively, clients with more similar data
+distributions should have a larger collaboration ratio. Furthermore,
+since the aggregated model is expected to perform well once down-
+loaded from the server, it should effectively reflect the characteris-
+tics of the local test data. Based on the considerations mentioned
+above, we propose a self-supervised loss as follows:
+𝐿𝑡𝑠𝑎= ||𝑋𝑇𝑆𝐴−𝑋|| + 𝜆||𝑋𝑇𝑆𝐴−𝑋𝑇𝑆𝐴′ ||.
+(18)
+The first term represents a regularization loss, aiming to ensure
+that the models, after aggregation through the TS-Block, remain
+close to the original local models. The second term denotes a robust-
+ness loss, aiming to enhance the aggregated model’s robustness to
+heterogeneity by minimizing the divergence between the model’s
+outputs before and after enhancement. In summary, the entire train-
+ing procedure can be summarized into four stages:
+• Sample 𝑋from the server’s memory bank P and feed it into
+the TS-Block to obtain the output 𝑋𝑇𝑆𝐴. Meanwhile, feed 𝑋
+again and perform heterogeneity-aware augmentation on
+the attention mechanism to obtain the output 𝑋𝑇𝑆𝐴′.
+• Calculate the self-supervised loss 𝐿𝑡𝑠𝑎by Equation (18).
+• Optimize the TS-block using backpropagation.
+• Finally, use the obtained 𝐴(𝑆)
+𝑡
+by Equation (13) as the col-
+laboration weight 𝑊𝑡for model aggregation at time 𝑡and
+obtain the aggregated model.
+
+
+Enabling Collaborative Test-Time Adaptation in Dynamic Environment via Federated Learning
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+5
+EXPERIMENTS
+In this section, we design experiments to answer the following
+research questions:
+RQ1: How is the adaptation performance of TSA compared to
+various baselines?
+RQ2: How do different designed sub-modules of TSA contribute
+to the model performance?
+RQ3: How does TSA perform with regard to diverse degree of
+spatio-temporal heterogeneity?
+RQ4: How does TSA utilize temporal and spatial correlations to
+obtain better collaboration matrix?
+5.1
+Experimental Settings
+5.1.1
+Dataset & Setup. We evaluate TSA on a the two common
+corruption benchmarks: adapting a model trained on CIFAR-10
+to CIFAR-10-C, and CIFAR-100 to CIFAR-100-C. These corrupted
+datasets are obtained by applying 15 kinds of corruption with 5
+different severity levels on the test and validation images of the
+original CIFAR [18] datasets. Following the previous work, we
+report the average accuracy across all corruptions and clients at
+the highest severity level. We obtain the pre-trained model from
+RobustBench benchmark [4], including ResNet8 [7] for CIFAR10
+→CIFAR10-C, and ResNext29 [42] for CIFAR100 →CIFAR100-C.
+Then, we change the test corruption at the highest severity 5 one
+by one to simulate the the test distribution continually changes
+with time. The test data is partitioned across 20 clients to simulate
+distributed data in FL. The batch size for streaming test data arriving
+over time is 10, and the sequence of distribution shift may vary
+across different clients. SGD optimizer [2] is adopted with learning
+rate of 1.0 × 10−4. In TSA, the learning rate for the TS-Block is set
+to 10−3, 𝑇is set to 10, and 𝜆is set to 1. More details can be seen in
+Appendix A.
+5.1.2
+Baselines. We compare our proposed TSA with 10 baselines.
+• Local: each client performs TTA methods locally.
+• FedAvg[24]: it is a classical FL method that obtains a global
+model through model average.
+• Fedavg+FT: it is a simple form of PFL method, obtaining a
+personalized model by fine-tuning the global model with local data.
+• FedProx[20]: it involves adding a regularization term during
+local optimization to enhance robustness against heterogeneity.
+• FedAVGM[10]: it incorporates a momentum update mecha-
+nism during the global model aggregation, considering past update
+directions in the current update process.
+• FedAMP[12]: it establishes pairwise collaborations between
+clients with similar data.
+• MOON[19]: it utilizes the similarity between model represen-
+tations to correct the local training of individual parties,
+• pFedSD[15]: it allow clients to distill the knowledge of previous
+personalized models to current local models.
+• pFedGraph[44]: it infers the collaboration graph based on
+pairwise model similarity and dataset size at server.
+• LDAWA[29]: it aggregates weights at the layer-level according
+to the measure of angular divergence between the clients’ model
+and the global model.
+5.1.3
+Definition of temporal and spatial heterogeneity. To facilitate
+the quantification of heterogeneity, we define the temporal and
+spatial heterogeneity in test-time FL. Can refer to appendix A.2 for
+specific examples.
+Definition 1 (Temporal Heterogeneity). Define the temporal
+heterogeneity for the 𝑖-th client TH𝑖as the frequency of distribution
+changes in streaming data over time.
+TH𝑖= 𝑇𝑐𝑜𝑛
+𝑇
+(19)
+where 𝑇𝑐𝑜𝑛is the length of time slots with consistent distribution
+shift and 𝑇is the total length of all time slots. TH𝑖∈(0, 1], with
+values closer to 1 indicating stronger heterogeneity. TH𝑖= 1 indicates
+that the distribution of test data arriving in each time slice is different.
+Definition 2 (Spatial Heterogeneity). Define the spatial het-
+erogeneity at time 𝑡SH𝑡as the diversity of data among different
+clients.
+SH𝑡= 𝑁𝑐𝑙𝑠
+𝑁
+(20)
+where 𝑁𝑐𝑙𝑠is the number of client clusters with consistent distri-
+bution shift and 𝑁is the total number of clients. SH𝑡∈(0, 1], with
+values closer to 1 indicating stronger heterogeneity. When SH𝑡= 1
+means that all clients have different distribution shifts.
+5.2
+Performance Comparison (RQ1)
+We tested the effects of two TTA methods, TTA-grad and TTA-bn,
+on CIFAR10-C and CIFAR100-C in two scenarios, one with spatial
+heterogeneity SH𝑡= 0.2 (i.e., NIID) and the other is IID, under
+TH𝑖= 0.02. We run all deep learning models with 5 different seeds
+and report the average performance and their standard deviations.
+It is worth noting that the TTA-bn method does not require back-
+ward optimization, whereas many state-of-the-art methods, such as
+FedProx, MOON, pFedSD and LDAWA, are based on local updates.
+Therefore, in the TTA-bn results, the predictions of these methods
+are consistent with those of FedAvg.
+As shown in Table 1, our TSA outperforms all other compet-
+itive baselines across all datasets. It can be observed that in the
+presence of spatial heterogeneity, directly using the FedAvg leads
+to a decline in model performance after aggregation. In contrast,
+personalized federated learning (PFL) methods can offer a certain
+improvement in performance. However, in IID scenario, utilizing
+FedAvg to aggregate more information can achieve better results
+than other PFL methods. TSA demonstrates flexibility across differ-
+ent scenarios, achieving good performance under both non-IID and
+IID conditions. By comparing the performance among baselines,
+regularization-based methods like FedProx, MOON, pFedSD have
+limited effects in solving spatial heterogeneity. The explanation for
+this is that TTA typically only updates locally for one round, and
+these methods need more rounds of updates locally to become more
+effective. Approaches that directly improve the global aggregation
+method, such as FedAMP and pFedGraph, can yield better results.
+This also indicates that TSA’s approach to improving model aggre-
+gation is suitable for TTFL scenarios and is orthogonal to local TTA
+methods.
+
+
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+Jiayuan Zhang et al.
+Table 1: Performance comparison for all corruptions
+NIID
+IID
+CIFAR-10-C
+CIFAR-100-C
+CIFAR-10-C
+CIFAR-100-C
+Method
+TTA-grad
+TTA-bn
+TTA-grad
+TTA-bn
+TTA-grad
+TTA-bn
+TTA-grad
+TTA-bn
+No-Adapt
+35.19±0.27
+35.19±0.27
+30.22±0.12
+30.22±0.12
+35.19±0.27
+35.19±0.27
+30.22±0.12
+30.22±0.12
+Local
+49.37±0.32
+56.93±0.26
+52.85±0.32
+55.99±0.34
+49.37±0.32
+56.93±0.26
+52.85±0.32
+55.99±0.34
+FedAvg
+54.40±0.36
+56.52±0.21
+51.63±0.17
+57.13±0.43
+57.28±0.19
+61.29±0.04
+62.60±0.31
+63.96±0.31
+FedAvg+FT
+54.07±0.52
+56.52±0.21
+47.83±0.58
+57.13±0.43
+49.84±1.19
+61.29±0.04
+61.75±0.59
+63.96±0.31
+FedProx
+53.86±0.62
+56.52 ±0.21
+53.00±0.38
+57.13±0.43
+55.03±0.29
+61.29±0.04
+62.27±0.67
+63.96±0.31
+FedAvgM
+54.52±1.54
+56.34±0.59
+52.31±0.46
+57.13±0.43
+55.12±0.75
+61.29±0.04
+54.60±0.27
+63.96±0.31
+FedAMP
+55.88±0.24
+57.27±0.25
+55.57±0.46
+58.62±0.39
+56.43±0.77
+57.26±0.07
+61.70±0.63
+58.24±0.44
+MOON
+54.66±0.42
+56.52±0.21
+54.26±0.27
+57.13±0.43
+53.87±0.16
+61.29±0.04
+62.38±0.23
+63.96±0.31
+pFedSD
+54.17±0.29
+56.52±0.21
+53.33±0.37
+57.13±0.43
+53.72±0.14
+61.29±0.04
+62.25±0.33
+63.96±0.31
+pFedGraph
+55.68±0.74
+57.24±0.24
+57.01±0.38
+58.73±0.38
+56.79±0.53
+57.44±0.09
+62.52±0.30
+58.73±0.63
+LDAWA
+54.31±0.36
+56.52±0.21
+53.61±0.33
+57.13±0.43
+55.23±0.30
+61.29±0.04
+62.38±0.41
+63.96±0.31
+Ours
+57.32±0.36
+60.27±0.23
+58.03±0.38
+62.93±0.29
+57.41±0.12
+61.56±0.52
+62.63±0.36
+63.72±0.34
+w/o time
+w/o aug
+FedTSA
+TS-sim
+S-sim
+(a)
+(b)
+Figure 3: Ablation study of our proposed TSA.
+5.3
+Ablation Study (RQ2)
+To analyze the effects of sub-modules in our TSA framework, we
+perform ablation studies with four variants:
+• S-sim: (not trainable) Similar to FL, this variant uses the similar-
+ity between clients at the current time slot for model aggregation.
+• TS-sim: (not trainable) This variant employs the temporal-
+spatial attention mechanism of our TS-Block, where the parameters
+are initialized as an identity matrix and not trained.
+• w/o time: (trainable) This variant retains the spatial attention
+module, discards the temporal attention module, and is optimized
+using our self-supervised loss.
+• w/o aug: (trainable) This variant removes the heterogeneity-
+aware augmentation and retains only the regularization loss com-
+ponent.
+As observed in Figure 3, our method beats the other variants.
+The comparison between S-sim and TS-sim reveals that our non-
+trainable TS-Block can still achieve better performance than tradi-
+tional aggregation methods, which highlights the advantages of the
+method structure. The experimental results comparing w/o time
+and FedTSA validate the necessity of jointly modeling both spatial
+and temporal information, which justifies the importance of con-
+sidering the temporal dimension to enhance overall performance.
+This demonstrates the significance of incorporating the temporal
+dimension. The noticeable performance decline in the w/o aug ex-
+periments indicates the effectiveness of our heterogeneous-aware
+adaptive augmentation. In summary, each designed sub-module
+positively impacts performance improvement.
+5.4
+Robustness Analysis (RQ3)
+FedTSA
+(a) CIFAR10-C
+FedTSA
+(b) CIFAR10-C
+FedTSA
+(c) CIFAR100-C
+FedTSA
+(d) CIFAR100-C
+Figure 4: Robustness to Temporal-Spatial Heterogeneity.
+To explore the robustness of our TSA, we conducted experiments
+across varying degrees of spatial and temporal heterogeneity on
+CIFAR100-C. Specially, when spatial heterogeneity SH𝑡changes,
+
+
+Enabling Collaborative Test-Time Adaptation in Dynamic Environment via Federated Learning
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+the temporal heterogeneity TH𝑖is fixed at 0.02. And when TH𝑖
+changes, the SH𝑡is fix at 0.2.
+For spatial heterogeneity, as shown in Fig 4(a) and 4(c), our
+method significantly outperforms others. It can be seen that all
+of the methods performance generally decreases with increasing
+heterogeneity. Specifically, the FedAvg method shows the least ro-
+bustness to heterogeneity. TSA shows minor performance drops
+with the increase in spatial heterogeneity, indicating the strength
+in handling spatially heterogeneous data. It’s noteworthy that PFL
+methods, like FedAMP, pFedGraph, underperform compared to
+FedAvg in low spatial heterogeneity, suggesting they may discard
+usable information during model aggregation. In contrast, TSA
+achieves results comparable to FedAvg in low heterogeneity sce-
+narios, highlighting its effectiveness in leveraging available infor-
+mation in such conditions.
+For temporal heterogeneity, as shown in Fig 4(b) and 4(d), TSA
+also demonstrates superior performance over other methods across
+different degrees of temporal heterogeneity, indicating its robust-
+ness and effectiveness in handling temporal variations in data. The
+role of the TS-Block is to leverage temporal-spatial relationships to
+better establish collaboration among clients. When temporal hetero-
+geneity is low, the distribution shifts change slowly and continually
+over time. Intuitively, historical information is more correlated
+with the current task, thus aiding in the more effective establish-
+ment of a collaborative matrix for the current task. Specifically,
+the heterogeneity-aware augmentation randomly mask elements
+with lower temporal correlation to the current time slot’s task. As
+temporal heterogeneity increases, the number of masked elements
+increases, which in turn leads to a reduction in the amount of
+temporal information introduced.
+5.5
+Collaboration Relationship Analysis (RQ4)
+(a) FedAMP
+(b) pfedgraph
+(c) TSA(ours)
+Figure 5: Visualization of collaboration matrix
+To demonstrate why utilizing the inter-client temporal-spatial re-
+lationships can lead to better collaborative relationships, we visual-
+ize the collaboration matrices of several representative works. This
+case study test 10 clients on CIFAR-100. The clients can be divided
+into three groups: 1-4 (group1), 5-7 (group2), and 8-10 (group3). In
+the time slot shown in Figure 5 5, group1 and group3 can obtain
+assistance from group2’s historical information through collabora-
+tion with group2. For specific experimental scenarios, please refer
+to the appendix. As shown in Figure 5, compared to the other two
+methods, FedTSA is able to establish a more distinct cluster struc-
+ture for the three groups. Furthermore, FedTSA obtains more accu-
+rate temporal-spatial information, indicating that both group1 and
+group3 have established collaborative relationships with group2.
+Figure 6: The time-varying collaborative matrix for client 1
+obtained through TSA
+6
+CONCLUSION AND FUTURE WORK
+In this paper, we introduce FL to enable inter-client collaborative
+TTA, which can further improve each client’s robustness to distribu-
+tion shift of local test data. We set forth a test-time FL optimization
+formulation and provide a two-stage solution strategy separately
+for the client side and the server side. To better establish inter-
+client collaboration in dynamic environment, we propose a novel
+server-side model aggregation method, TSA, which explores the
+temporal-spatial correlations to obtain the collaboration matrix.
+Experiments demonstrate the effectiveness of our method. More
+importantly, TSA can be implemented as a plug-in to TTA methods
+in distributed environments and may shed light on many practical
+multi-device applications. A limitation of TSA is that it can only
+operate under the condition of synchronous client activity. In the
+future, there will be efforts to extend it to asynchronous states.
+ACKNOWLEDGMENT
+This work was supported by the National Natural Science Founda-
+tion of China under Grants 62372028 and 62372027.
+REFERENCES
+[1] Wenxuan Bao, Tianxin Wei, Haohan Wang, and Jingrui He. 2023. Adaptive
+Test-Time Personalization for Federated Learning. In Thirty-seventh Conference
+on Neural Information Processing Systems.
+[2] Léon Bottou. 2010. Large-scale machine learning with stochastic gradient descent.
+In Proceedings of COMPSTAT’2010: 19th International Conference on Computational
+StatisticsParis France, August 22-27, 2010 Keynote, Invited and Contributed Papers.
+Springer, 177–186.
+[3] Dian Chen, Dequan Wang, Trevor Darrell, and Sayna Ebrahimi. 2022. Contrastive
+test-time adaptation. In Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition. 295–305.
+[4] Francesco
+Croce,
+Maksym
+Andriushchenko,
+Vikash
+Sehwag,
+Edoardo
+Debenedetti, Nicolas Flammarion, Mung Chiang, Prateek Mittal, and Matthias
+Hein. 2021. RobustBench: a standardized adversarial robustness benchmark. In
+Thirty-fifth Conference on Neural Information Processing Systems Datasets and
+Benchmarks Track. https://openreview.net/forum?id=SSKZPJCt7B
+[5] Yulu Gan, Yan Bai, Yihang Lou, Xianzheng Ma, Renrui Zhang, Nian Shi, and Lin
+Luo. 2023. Decorate the newcomers: Visual domain prompt for continual test
+time adaptation. In Proceedings of the AAAI Conference on Artificial Intelligence,
+Vol. 37. 7595–7603.
+[6] Avishek Ghosh, Justin Hong, Dong Yin, and Kannan Ramchandran. 2019.
+Robust federated learning in a heterogeneous environment.
+arXiv preprint
+arXiv:1906.06629 (2019).
+[7] Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. 2016. Deep residual
+learning for image recognition. In Proceedings of the IEEE conference on computer
+vision and pattern recognition. 770–778.
+[8] Dan Hendrycks, Steven Basart, Norman Mu, Saurav Kadavath, Frank Wang, Evan
+Dorundo, Rahul Desai, Tyler Zhu, Samyak Parajuli, Mike Guo, et al. 2021. The
+many faces of robustness: A critical analysis of out-of-distribution generalization.
+
+
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+Jiayuan Zhang et al.
+In Proceedings of the IEEE/CVF International Conference on Computer Vision. 8340–
+8349.
+[9] Dan Hendrycks, Norman Mu, Ekin D Cubuk, Barret Zoph, Justin Gilmer, and
+Balaji Lakshminarayanan. 2019. Augmix: A simple data processing method to
+improve robustness and uncertainty. arXiv preprint arXiv:1912.02781 (2019).
+[10] Tzu-Ming Harry Hsu, Hang Qi, and Matthew Brown. 2019. Measuring the effects
+of non-identical data distribution for federated visual classification. arXiv preprint
+arXiv:1909.06335 (2019).
+[11] Wenke Huang, Mang Ye, and Bo Du. 2022. Learn from others and be yourself in
+heterogeneous federated learning. In Proceedings of the IEEE/CVF Conference on
+Computer Vision and Pattern Recognition. 10143–10153.
+[12] Yutao Huang, Lingyang Chu, Zirui Zhou, Lanjun Wang, Jiangchuan Liu, Jian Pei,
+and Yong Zhang. 2021. Personalized cross-silo federated learning on non-iid data.
+In Proceedings of the AAAI conference on artificial intelligence, Vol. 35. 7865–7873.
+[13] Sergey Ioffe and Christian Szegedy. 2015. Batch normalization: Accelerating deep
+network training by reducing internal covariate shift. In International conference
+on machine learning. pmlr, 448–456.
+[14] Liangze Jiang and Tao Lin. 2022. Test-Time Robust Personalization for Federated
+Learning. In The Eleventh International Conference on Learning Representations.
+[15] Hai Jin, Dongshan Bai, Dezhong Yao, Yutong Dai, Lin Gu, Chen Yu, and Lichao
+Sun. 2022. Personalized edge intelligence via federated self-knowledge distillation.
+IEEE Transactions on Parallel and Distributed Systems 34, 2 (2022), 567–580.
+[16] Peter Kairouz, H Brendan McMahan, Brendan Avent, Aurélien Bellet, Mehdi Ben-
+nis, Arjun Nitin Bhagoji, Kallista Bonawitz, Zachary Charles, Graham Cormode,
+Rachel Cummings, et al. 2021. Advances and open problems in federated learning.
+Foundations and Trends® in Machine Learning 14, 1–2 (2021), 1–210.
+[17] Diederik P Kingma and Jimmy Ba. 2014. Adam: A method for stochastic opti-
+mization. arXiv preprint arXiv:1412.6980 (2014).
+[18] Alex Krizhevsky, Geoffrey Hinton, et al. 2009. Learning multiple layers of features
+from tiny images. (2009).
+[19] Qinbin Li, Bingsheng He, and Dawn Song. 2021. Model-contrastive federated
+learning. In Proceedings of the IEEE/CVF conference on computer vision and pattern
+recognition. 10713–10722.
+[20] Tian Li, Anit Kumar Sahu, Manzil Zaheer, Maziar Sanjabi, Ameet Talwalkar,
+and Virginia Smith. 2020. Federated optimization in heterogeneous networks.
+Proceedings of Machine learning and systems 2 (2020), 429–450.
+[21] Jian Liang, Dapeng Hu, and Jiashi Feng. 2020. Do we really need to access the
+source data? source hypothesis transfer for unsupervised domain adaptation. In
+International conference on machine learning. PMLR, 6028–6039.
+[22] Mingsheng Long, Yue Cao, Zhangjie Cao, Jianmin Wang, and Michael I Jordan.
+2018. Transferable representation learning with deep adaptation networks. IEEE
+transactions on pattern analysis and machine intelligence 41, 12 (2018), 3071–3085.
+[23] Mi Luo, Fei Chen, Dapeng Hu, Yifan Zhang, Jian Liang, and Jiashi Feng. 2021. No
+fear of heterogeneity: Classifier calibration for federated learning with non-iid
+data. Advances in Neural Information Processing Systems 34 (2021), 5972–5984.
+[24] Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and
+Blaise Aguera y Arcas. 2017. Communication-efficient learning of deep net-
+works from decentralized data. In Artificial intelligence and statistics. PMLR,
+1273–1282.
+[25] M Jehanzeb Mirza, Jakub Micorek, Horst Possegger, and Horst Bischof. 2022. The
+norm must go on: Dynamic unsupervised domain adaptation by normalization. In
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition.
+14765–14775.
+[26] Muhammad Jehanzeb Mirza, Pol Jané Soneira, Wei Lin, Mateusz Kozinski, Horst
+Possegger, and Horst Bischof. 2023. ActMAD: Activation Matching to Align
+Distributions for Test-Time-Training. In Proceedings of the IEEE/CVF Conference
+on Computer Vision and Pattern Recognition. 24152–24161.
+[27] Liangqiong Qu, Yuyin Zhou, Paul Pu Liang, Yingda Xia, Feifei Wang, Ehsan
+Adeli, Li Fei-Fei, and Daniel Rubin. 2022. Rethinking architecture design for
+tackling data heterogeneity in federated learning. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition. 10061–10071.
+[28] Joaquin Quionero-Candela, Masashi Sugiyama, Anton Schwaighofer, and NeilD.
+Lawrence. 2008. Dataset Shift in Machine Learning.
+https://doi.org/10.7551/
+mitpress/9780262170055.001.0001
+[29] Yasar Abbas Ur Rehman, Yan Gao, Pedro Porto Buarque De Gusmão, Mina Al-
+ibeigi, Jiajun Shen, and Nicholas D Lane. 2023. L-DAWA: Layer-wise Divergence
+Aware Weight Aggregation in Federated Self-Supervised Visual Representation
+Learning. In Proceedings of the IEEE/CVF International Conference on Computer
+Vision. 16464–16473.
+[30] Nicola Rieke, Jonny Hancox, Wenqi Li, Fausto Milletari, Holger R Roth, Shadi
+Albarqouni, Spyridon Bakas, Mathieu N Galtier, Bennett A Landman, Klaus Maier-
+Hein, et al. 2020. The future of digital health with federated learning. NPJ digital
+medicine 3, 1 (2020), 119.
+[31] Adam Sadilek, Luyang Liu, Dung Nguyen, Methun Kamruzzaman, Stylianos
+Serghiou, Benjamin Rader, Alex Ingerman, Stefan Mellem, Peter Kairouz, Elaine O
+Nsoesie, et al. 2021. Privacy-first health research with federated learning. NPJ
+digital medicine 4, 1 (2021), 132.
+[32] Steffen Schneider, Evgenia Rusak, Luisa Eck, Oliver Bringmann, Wieland Brendel,
+and Matthias Bethge. 2020. Improving robustness against common corruptions
+by covariate shift adaptation. Advances in neural information processing systems
+33 (2020), 11539–11551.
+[33] Yue Tan, Chen Chen, Weiming Zhuang, Xin Dong, Lingjuan Lyu, and Guodong
+Long. 2024. Is heterogeneity notorious? taming heterogeneity to handle test-time
+shift in federated learning. Advances in Neural Information Processing Systems 36
+(2024).
+[34] Jonathan Tremblay, Aayush Prakash, David Acuna, Mark Brophy, Varun Jampani,
+Cem Anil, Thang To, Eric Cameracci, Shaad Boochoon, and Stan Birchfield. 2018.
+Training deep networks with synthetic data: Bridging the reality gap by domain
+randomization. In Proceedings of the IEEE conference on computer vision and
+pattern recognition workshops. 969–977.
+[35] Eric Tzeng, Judy Hoffman, Kate Saenko, and Trevor Darrell. 2017. Adversar-
+ial discriminative domain adaptation. In Proceedings of the IEEE conference on
+computer vision and pattern recognition. 7167–7176.
+[36] Dequan Wang, Evan Shelhamer, Shaoteng Liu, Bruno Olshausen, and Trevor
+Darrell. 2020. Tent: Fully Test-Time Adaptation by Entropy Minimization. In
+International Conference on Learning Representations.
+[37] Jiadai Wang, Jiajia Liu, and Nei Kato. 2018. Networking and communications in
+autonomous driving: A survey. IEEE Communications Surveys & Tutorials 21, 2
+(2018), 1243–1274.
+[38] Mei Wang and Weihong Deng. 2018. Deep visual domain adaptation: A survey.
+Neurocomputing 312 (2018), 135–153.
+[39] Qin Wang, Olga Fink, Luc Van Gool, and Dengxin Dai. 2022. Continual test-time
+domain adaptation. In Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition. 7201–7211.
+[40] Shuai Wang, Daoan Zhang, Zipei Yan, Jianguo Zhang, and Rui Li. 2023. Feature
+alignment and uniformity for test time adaptation. In Proceedings of the IEEE/CVF
+Conference on Computer Vision and Pattern Recognition. 20050–20060.
+[41] Xinghao Wu, Xuefeng Liu, Jianwei Niu, Guogang Zhu, and Shaojie Tang. 2023.
+Bold but Cautious: Unlocking the Potential of Personalized Federated Learning
+through Cautiously Aggressive Collaboration. In Proceedings of the IEEE/CVF
+International Conference on Computer Vision. 19375–19384.
+[42] Saining Xie, Ross Girshick, Piotr Dollár, Zhuowen Tu, and Kaiming He. 2017.
+Aggregated residual transformations for deep neural networks. In Proceedings of
+the IEEE conference on computer vision and pattern recognition. 1492–1500.
+[43] Jian Xu and Shao-Lun Huang. 2023. A Joint Training-Calibration Framework
+for Test-Time Personalization with Label Shift in Federated Learning. In Pro-
+ceedings of the 32nd ACM International Conference on Information and Knowledge
+Management. 4370–4374.
+[44] Rui Ye, Zhenyang Ni, Fangzhao Wu, Siheng Chen, and Yanfeng Wang. 2023. Per-
+sonalized federated learning with inferred collaboration graphs. In International
+Conference on Machine Learning. PMLR, 39801–39817.
+[45] Longhui Yuan, Binhui Xie, and Shuang Li. 2023. Robust test-time adaptation in
+dynamic scenarios. In Proceedings of the IEEE/CVF Conference on Computer Vision
+and Pattern Recognition. 15922–15932.
+[46] Marvin Zhang, Sergey Levine, and Chelsea Finn. 2022. Memo: Test time robust-
+ness via adaptation and augmentation. Advances in Neural Information Processing
+Systems 35 (2022), 38629–38642.
+[47] Qixun Zhang, Huan Sun, Zhiqing Wei, and Zhiyong Feng. 2020. Sensing and
+communication integrated system for autonomous driving vehicles. In IEEE INFO-
+COM 2020-IEEE Conference on Computer Communications Workshops (INFOCOM
+WKSHPS). IEEE, 1278–1279.
+[48] Zhuangdi Zhu, Junyuan Hong, and Jiayu Zhou. 2021. Data-free knowledge
+distillation for heterogeneous federated learning. In International conference on
+machine learning. PMLR, 12878–12889.
+A
+IMPLEMENTATION DETAILS
+A.1
+Local TTA methods
+To demonstrate that TSA can be used as a plugin in conjunction
+with existing TTA methods, this paper tests two classic types of
+TTA methods: TTA-grad [3, 5, 26, 36] and TTA-bn [25, 32]. Both
+methods enable inter-client collaboration through model parame-
+ters’ aggregation. The key difference lies in whether the local update
+process requires the use of backpropagation (BP) optimization al-
+gorithm. Specifically, the TTA-grad method need BP optimization
+process and is more sensitive to the local learning rate. Such a
+selection method demonstrates the versatility of our approach.
+
+
+Enabling Collaborative Test-Time Adaptation in Dynamic Environment via Federated Learning
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+A.2
+Setups
+An example of Temporal Heterogeneity. Client 𝑖’s testing is
+conducted over 750 time slots and a certain distribution shift persists
+for 50 time slots, then TH𝑖= 50/750 = 0.067. TH𝑖ranges between 0
+and 1, with values closer to 1 indicating stronger heterogeneity.
+An example of Spatial Heterogeneity. At time slot 𝑡, there are
+20 clients with 5 different data distributions, then SH𝑡= 5/20 = 0.25.
+SH𝑡ranges between 0 and 1, with values closer to 1 indicating
+stronger heterogeneity.
+B
+SUPPLEMENTARY EXPERIMENTAL
+RESULTS
+B.1
+Effect of Hyperparameters in FedTSA.
+T
+(a) CIFAR10-C - T
+T
+(b) CIFAR100-C - T
+(c) CIFAR10-C - 𝜆
+(d) CIFAR100-C - 𝜆
+Figure 7: Effect of Hyperparameters in FedTSA.
+Effect of 𝑇. 𝑇is the parameter that controls the length of the
+time slot sampled from the memory bank P. When 𝑇=1, the model
+utilizes only the information from the current time slot and does
+not leverage the temporal correlation among clients. Conversely,
+excessively long time slots can accentuate temporal heterogeneity,
+and the introduction of irrelevant temporal information may also
+lead to a decline in adaptation effectiveness. We conducted exper-
+iments with the spatial heterogeneity SH𝑡= 0.2 to verify this
+hypothesis, and the results are shown in Figure 7(a) and 7(b). It can
+be seen that when 𝑇is small, the introduced temporal information
+is limited. As 𝑇increases, leverage more temporal information can
+enhance model performance. However, with further increase in 𝑇,
+the presence of temporal heterogeneity leads to the incorporation of
+some irrelevant information, resulting in a gradual decline in model
+performance. Furthermore, we find that near the optimal time slot
+length𝑇, the accuracy does not change significantly, indicating that
+FedTSA is robust to variations in 𝑇.
+Effect of 𝜆. 𝜆is the parameter that balances the weights between
+the regularization loss and the robustness loss in Equation 18 dur-
+ing training. When 𝜆=0, only the regularization loss is used to keep
+the adapted models close to the original local models. A moderate 𝜆
+value, on the other hand, aids in improving the model’s robustness
+to heterogeneity. Conversely, an excessively large 𝜆may disrupt
+model training by causing the training algorithm to overly concen-
+trate on enhancing robustness through the application of the mask
+mentioned in 4.4, thus diminishing the adaptation effectiveness. To
+test this hypothesis, we conducted experiments with𝑇set to 10, and
+the results are displayed in Figure 7(c) and 7(d). When 𝜆is small, the
+model exhibits limited robustness to heterogeneity. As 𝜆increases,
+the integration of robustness loss can improve model performance.
+However, further increases in 𝜆may lead to inefficiencies in the
+training process due to the constraint that the divergence between
+the outputs of the model before and after enhancement should be
+minimized, resulting in a gradual decline in model performance.
+B.2
+Performance comparison across
+corruptions.
+To demonstrate the performance of our proposed FedTSA under
+various corruptions, we conduct tests under scenarios of (1) spatial
+IID, and temporal heterogeneity and (2) spatial heterogeneity, tem-
+poral IID. The classification accuracy on CIFAR10 and CIFAR100
+under scenarios (1) and (2) is shown in Table 2 and Table 3 respec-
+tively. In Table 2, the clients’ data distribution is spatially IID and
+temporally non-IID with TH𝑖= 0.02. Conversely, in Table 3, the
+clients’ data distribution is temporally IID and spatially non-IID
+with SH𝑡= 0.25. We change the type of the current corruption at
+the highest severity 5 as time goes on, and sample data for inference
+as well as adaptation. From Table 2 and Table 3, we can observe
+that under most corruption conditions, our method has shown su-
+perior performance compared to previous methods, verifying the
+effectiveness of FedTSA to adapt the model under temporal and
+spatial heterogeneity.
+B.3
+The experimental results of the case study
+In the case study, the temporal heterogeneity TH𝑖= 0.02, with
+clients 1-4, 5-7, and 8-10 belonging to the same group. The distribu-
+tion shift trends over time for group1 and group2 are similar, while
+the trend for group1 and group3 is exactly opposite. Figure 5 is
+derived from Table 4 with added gray time slot. It can be observed
+that in this time slot, both group1 and group3 can benefit from the
+’Snow’ distribution shift of group2 in the previous time slot. The
+final experimental results of this time slot also demonstrate that
+FedTSA can bring a significant improvement in the performance of
+the aggregated model.
+
+
+KDD ’24, August 25–29, 2024, Barcelona, Spain.
+Jiayuan Zhang et al.
+Table 2: Performance comparison under spatial IID and temporal heterogeneity
+Time
+𝑡
+Method
+Gaussian
+Shot
+Impulse
+Defocus
+Glass
+Motion
+Zoom
+Snow
+Frost
+Fog
+Brightness
+Contrast
+Elastic
+Pixelate
+Jpeg
+Mean
+CIFAR10-C
+Source
+37.30
+38.44
+26.08
+28.99
+33.92
+27.44
+30.21
+34.53
+32.89
+10.63
+36.46
+23.53
+37.51
+0.4143
+43.70
+30.54
+Local
+61.11
+61.94
+54.13
+61.65
+55.47
+57.93
+60.58
+59.27
+59.13
+45.76
+63.18
+30.63
+59.53
+62.96
+63.78
+57.14
+FedAvg
+65.34
+66.04
+59.22
+65.97
+59.74
+62.17
+64.95
+63.32
+63.02
+48.99
+67.70
+33.04
+64.41
+67.71
+68.90
+61.37
+FedAMP
+61.22
+62.15
+54.39
+61.81
+55.63
+58.10
+60.81
+59.53
+59.39
+45.91
+63.44
+30.80
+59.83
+63.24
+64.02
+57.35
+pFedGraph
+61.26
+62.21
+54.44
+61.82
+55.75
+58.09
+60.81
+59.55
+59.33
+45.90
+63.46
+30.83
+59.80
+63.28
+64.03
+57.37
+FedTSA(ours)
+65.28
+66.06
+59.21
+66.64
+59.93
+62.49
+65.25
+63.11
+63.57
+49.55
+67.88
+32.97
+64.56
+67.70
+69.28
+61.57
+CIFAR100-C
+Source
+14.05
+16.64
+34.76
+41.60
+19.35
+38.15
+43.32
+36.48
+27.63
+20.96
+54.91
+17.24
+35.02
+11.45
+41.73
+30.22
+Local
+51.59
+53.02
+50.26
+65.13
+50.77
+63.23
+65.07
+58.10
+58.17
+51.10
+66.70
+61.25
+56.67
+59.98
+51.57
+57.51
+FedAvg
+57.33
+58.60
+56.74
+69.07
+57.51
+68.94
+70.92
+64.29
+64.19
+57.44
+72.40
+67.36
+63.70
+66.33
+57.56
+63.50
+FedAMP
+51.96
+53.39
+50.47
+65.52
+51.12
+63.66
+65.49
+58.36
+58.56
+51.39
+67.10
+61.66
+57.11
+60.39
+52.01
+57.88
+pFedGraph
+52.05
+53.42
+50.48
+65.60
+51.19
+63.61
+65.49
+58.39
+58.64
+51.39
+67.08
+61.64
+57.14
+60.46
+52.06
+57.91
+FedTSA(ours)
+57.56
+58.75
+57.23
+69.73
+56.27
+69.18
+71.05
+64.33
+64.60
+56.44
+73.10
+67.77
+63.30
+66.58
+58.21
+63.61
+Table 3: Performance comparison under spatial heterogeneity and temporal IID.
+Method
+Gaussian
+Shot
+Impulse
+Defocus
+Glass
+Motion
+Zoom
+Snow
+Frost
+Fog
+Brightness
+Contrast
+Elastic
+Pixelate
+Jpeg
+Mean
+CIFAR10-C
+Source
+37.30
+38.44
+26.08
+28.99
+33.92
+27.44
+30.21
+34.53
+32.89
+10.63
+36.46
+23.53
+37.51
+0.4143
+43.70
+30.54
+Local
+55.27
+52.70
+56.46
+48.25
+55.30
+50.87
+58.25
+46.40
+55.58
+52.45
+58.48
+45.80
+51.75
+56.12
+49.00
+52.85
+FedAvg
+61.49
+56.33
+60.15
+50.26
+61.14
+53.02
+63.64
+50.17
+60.02
+53.88
+63.53
+50.95
+55.86
+59.55
+52.36
+56.82
+FedAMP
+62.04
+57.12
+61.29
+52.32
+61.83
+55.28
+63.87
+51.69
+60.83
+55.89
+63.94
+52.16
+56.70
+61.32
+53.65
+58.00
+pFedGraph
+61.66
+56.41
+61.01
+51.87
+61.18
+54.44
+63.70
+51.60
+60.23
+55.17
+63.44
+52.42
+56.46
+60.22
+53.56
+57.56
+FedTSA(ours)
+62.16
+57.59
+61.72
+52.58
+61.91
+55.36
+63.96
+50.87
+61.33
+56.67
+64.36
+51.37
+57.15
+61.78
+53.23
+58.14
+CIFAR100-C
+Source
+14.05
+16.64
+34.76
+41.60
+19.35
+38.15
+43.32
+36.48
+27.63
+20.96
+54.91
+17.24
+35.02
+11.45
+41.73
+30.22
+Local
+50.68
+54.84
+56.29
+55.56
+51.77
+54.06
+59.04
+51.24
+54.80
+54.43
+57.43
+51.30
+53.15
+57.56
+54.87
+54.47
+FedAvg
+52.14
+43.19
+63.30
+48.91
+53.90
+49.31
+65.61
+46.71
+54.31
+49.38
+61.93
+45.47
+51.57
+57.00
+56.34
+53.27
+FedAMP
+62.04
+57.12
+61.29
+52.32
+61.83
+55.28
+63.87
+51.69
+60.83
+55.89
+63.94
+52.16
+56.70
+61.32
+53.65
+58.00
+pFedGraph
+61.66
+56.41
+61.01
+51.87
+61.18
+54.44
+63.70
+51.60
+60.23
+55.17
+63.44
+52.42
+56.46
+60.22
+53.56
+57.56
+FedTSA(ours)
+57.33
+58.60
+56.74
+71.07
+57.51
+68.94
+70.92
+64.29
+64.19
+57.44
+72.40
+67.36
+63.70
+66.33
+57.56
+63.63
+Table 4: The experimental scenario and performance comparison of the case study.
+Time
+𝑡
+Client 1-4
+Gaussian
+Shot
+Impulse
+Defocus
+Glass
+Motion
+Zoom
+Snow
+Frost
+Fog
+Brightness
+Contrast
+Elastic
+Pixelate
+Jpeg
+Mean
+Client 5-7
+Shot
+Impulse
+Defocus
+Glass
+Motion
+Zoom
+Snow
+Frost
+Fog
+Brightness
+Contrast
+Elastic
+Pixelate
+Jpeg
+Gaussian
+Mean
+Client 8-10
+Jpeg
+Pixelate
+Elastic
+Contrast
+Brightness
+Fog
+Frost
+Snow
+Zoom
+Motion
+Glass
+Defocus
+Impulse
+Shot
+Gaussian
+Mean
+No-Adapt
+20.85
+19.55
+34.65
+26.70
+33.40
+33.45
+35.45
+31.80
+27.15
+36.30
+31.75
+27.70
+25.80
+20.40
+23.75
+28.58
+FedAMP
+48.00
+54.75
+61.35
+53.30
+60.05
+61.60
+62.30
+59.05
+58.60
+58.30
+52.15
+54.75
+54.45
+51.65
+54.80
+56.34
+pFedGraph
+47.00
+51.90
+61.05
+51.20
+58.45
+62.50
+63.25
+59.75
+55.95
+58.55
+50.30
+54.00
+52.50
+50.80
+53.65
+55.39
+FedTSA(ours)
+48.95
+61.15
+62.25
+54.90
+60.15
+63.75
+63.75
+63.05
+58.35
+59.90
+54.00
+58.15
+58.15
+57.45
+56.40
+58.69

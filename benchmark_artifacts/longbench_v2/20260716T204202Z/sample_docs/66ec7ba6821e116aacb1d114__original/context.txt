@@ -1,0 +1,6536 @@
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+Enhancing Mobile Voice Assistants with WorldGaze 
+Sven Mayer1 
+Gierad Laput2,1 
+Chris Harrison1 
+1Human-Computer Interaction Institute 
+2Apple Inc. 
+Carnegie Mellon University, Pittsburgh, PA, USA 
+One Apple Park Way, Cupertino, CA, USA 
+{sven.mayer, chris.harrison}@cs.cmu.edu 
+gierad@apple.com 
+Figure 1. WorldGaze simultaneously opens the front and rear camera on smartphones. The front camera is used to track the user’s 
+3D head vector, which is then raycast into the world as seen by the rear camera. This allows users to intuitively define an object or 
+region of interest using their head gaze, which voice assistants can utilize for more precise and natural interactions (right bottom). 
+ABSTRACT 
+Contemporary voice assistants require that objects of interest 
+be specified in spoken commands. Of course, users are often 
+looking directly at the object or place of interest – fine-
+grained, contextual information that is currently unused. We 
+present WorldGaze, a software-only method for smartphones 
+that provides the real-world gaze location of a user that voice 
+agents can utilize for rapid, natural, and precise interactions. 
+We achieve this by simultaneously opening the front and rear 
+cameras of a smartphone. The front-facing camera is used to 
+track the head in 3D, including estimating its direction vec­
+tor. As the geometry of the front and back cameras are fixed 
+and known, we can raycast the head vector into the 3D world 
+scene as captured by the rear-facing camera. This allows the 
+user to intuitively define an object or region of interest using 
+their head gaze. We started our investigations with a qualita­
+tive exploration of competing methods, before developing a 
+functional, real-time implementation. We conclude with an 
+evaluation that shows WorldGaze can be quick and accurate, 
+opening new multimodal gaze+voice interactions for mobile 
+voice agents. 
+Author Keywords
+WorldGaze; interaction techniques; mobile interaction. 
+CSS Concepts
+• Human-centered computing~Interaction techniques 
+Permission to make digital or hard copies of all or part of this work for personal or 
+classroom use is granted without fee provided that copies are not made or distrib­
+uted for profit or commercial advantage and that copies bear this notice and the full 
+citation on the first page. Copyrights for components of this work owned by others 
+than the author(s) must be honored. Abstracting with credit is permitted. To copy 
+otherwise, or republish, to post on servers or to redistribute to lists, requires prior 
+specific permission and/or a fee. Request permissions from Permissions@acm.org. 
+CHI '20, April 25–30, 2020, Honolulu, HI, USA 
+© 2020 Copyright is held by the owner/author(s). Publication rights licensed to 
+ACM. ISBN 978-1-4503-6708-0/20/04…$15.00 
+https://doi.org/10.1145/3313831.3376479 
+INTRODUCTION 
+Today’s voice assistants lack fine-grained contextual aware­
+ness, requiring users to be unambiguous in their voice com­
+mands. In a smart home setting, one cannot simply say “turn 
+that up” without providing extra context, even when the ob­
+ject of use would be obvious to humans in the room (e.g., 
+when watching TV, cooking on a stove, listening to music on 
+a sound system). This problem is particularly acute in mobile 
+voice interactions, where users are on the go and the physical 
+context is constantly changing. Even with GPS, mobile voice 
+agents cannot resolve questions like “when does this close?” 
+or “what is the rating of this restaurant?” (see Figure 1). 
+Users are often directly looking at the objects they are inquir­
+ing about. This real-world gaze location is an obvious source 
+of fine-grained, contextual information that could both re­
+solve ambiguities in spoken commands and enable more 
+rapid and human-like interactions [51]. Indeed, multimodal 
+gaze+voice input has long been recognized as a potent com­
+bination, starting with seminal work in 1980 by Bolt [10]. 
+However, prior gaze-augmented voice agents generally re­
+quire environments to be pre-registered or otherwise con­
+strained, and most often employ head-worn or fixed sensing 
+infrastructure to capture gaze. This precludes true mobility, 
+especially for popular form factors such as smartphones. 
+In this work, we aimed to develop a practical implementa­
+tion of ad-hoc, real-world gaze location sensing for use with 
+mobile voice agents. Critically, our implementation is soft­
+ware only, requiring no new hardware or modification of the 
+environment. It works in both static indoor scenes as well as 
+outdoor streetscapes while walking. This is achieved by sim­
+ultaneously opening the front and rear cameras of a 
+smartphone, offering a combined field of view of just over 
+200 degrees on the latest generation of smartphones. The 
+front-facing camera is used to track the head in 3D, including 
+Paper 352
+Page 1
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+  
+ 
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+its direction vector (i.e., 6DOF). As the geometry of the front 
+and back cameras is fixed and known, along with all of the 
+lens intrinsics, we can raycast the head vector into the 3D 
+world scene as captured by the rear-facing camera. 
+This allows the user to intuitively define an object or region 
+of interest using their head gaze. Voice assistants can then 
+use this extra contextual information to make inquiries that 
+are more precise and natural. In addition to streetscape ques­
+tions, such as “is this restaurant good?”, WorldGaze can also 
+facilitate rapid interactions in density instrumented smart en­
+vironments, including automatically resolving otherwise am­
+biguous actions, such as “go”, “play” and “stop.” We also 
+believe WorldGaze could help to socialize mobile AR expe­
+riences, currently typified by people walking down the street 
+looking down at their devices. We believe our approach can 
+help people better engage with the world and the people 
+around them, while still offering powerful digital interactions 
+through voice. 
+We started our investigations with a qualitative study that 
+helped to ground our design and assess user acceptability. 
+With encouraging results, we then moved to development of 
+a functional, real-time prototype, constraining ourselves to 
+hardware found on commodity smartphones. We conclude 
+the paper with a performance evaluation that shows World-
+Gaze can be quick and accurate, highlighting the potential of 
+multimodal mobile interactions. 
+RELATED WORK 
+Tracking a user’s gaze for interactive purposes has been the 
+subject of research for many decades. We first position this 
+paper with respect to the large multimodal interaction litera­
+ture. We then briefly review the gaze tracking literature, fo­
+cusing on mobile systems, followed by discussion on exist­
+ing mobile approaches for inferring geospatial and physical 
+context. Finally, we conclude with systems that combine 
+both gaze and voice, which is most relevant to WorldGaze. 
+Multimodal Interaction 
+A wide variety of multimodal interaction techniques have 
+been considered that combine two or more input modalities 
+to enable more accurate or expressive interactions. For ex­
+ample, combining pen and finger input on touchscreens has 
+been an area of particular interest, e.g., Cami et al. [12], and 
+Hinckley et al. [24]. Researchers have also looked at com­
+bining touch and gaze for enhanced selection or enabling 
+new functionality, e.g., Pfeuffer et al. [36]. Speech combined 
+with gestures [11][37] or handwriting [2] has been used to 
+overcome individual drawbacks. Clark et al. [14] offer a 
+comprehensive survey on multimodal techniques incorporat­
+ing speech input. WorldGaze contributes to this literature, 
+and like most other multimodal techniques, it offers unique 
+interactions that move beyond what speech or gaze can offer 
+alone. 
+Gaze Pointing
+Bolt’s pioneering work (“put that there” [10]) used mid-air 
+pointing to select objects at a distance. This paved the way 
+for follow-up research which explored the usability of mul­
+timodal input, including deictic hand gestures [47], mid-air 
+pointing [31] [32], and eye tracking, such as MAGIC point­
+ing [50]. Zhai et al. [50] took advantage of clutching mech­
+anisms (e.g., mouse + gaze or hand gesture + gaze) for target 
+selection, helping to mitigate the “Midas touch” effect inher­
+ent in gaze-driven interactions [24]. 
+Following Bolt and Zhai’s seminal work, more sophisticated 
+approaches for gaze pointing have emerged. For instance, 
+Drewes et al. [15] proposed using a stationary eye tracker to 
+support mobile phone interactions. Mardanbegi and Han­
+sen [30] extend this idea, using gaze-based selection for wall 
+displays. More recently, Orbits [16] explored a gaze tracking 
+technique based on smooth pursuit coupling, while Schwei­
+gert et al. [44] investigated gaze direction for targeting and 
+mid-air pointing as a selection trigger. This prior work illus­
+trates the value and feasibility of gaze as an input channel, 
+all of which inspired the direction of our work. 
+Geospatial Mobile Interactions
+Knowledge about a user’s physical context is especially val­
+uable for computers that are mobile. Armed with such infor­
+mation, these devices provide users with more timely and 
+contextually relevant information. Technologies like GPS 
+and WiFi localization offer coarse location information that 
+could identify e.g., which Starbucks the user is standing in 
+front of (i.e., city block scale), but they are not precise 
+enough to resolve e.g., which exact business the user is in­
+quiring about without specifying a name. 
+Bluetooth beacons and ultrasonic localization systems are 
+more targeted, offering room-scale accuracy (or better), 
+which is sufficient to resolve questions with a single applica­
+ble local target, such as “what is this printer’s name?”. How­
+ever, these techniques fail when there are multiple applicable 
+targets (“turn on”), even when a category is provided (“what 
+model car is this?” when standing in a parking lot). As noted 
+by Schmidt et al. [42] “there is more to context than loca­
+tion”. We agree and believe gaze to be among the strongest 
+and natural complementary channels. 
+Object Context + Voice Interactions
+Glenn et al [20] presented one of the earliest systems com­
+bining gaze and voice. Follow-up work has focused on spe­
+cific tasks, for example, Koons et al. [27] built a system 
+combing speech, gaze, and hand gestures for map manipula­
+tion, while Acartürk et al. [1] proposed using gaze and voice 
+to enable interaction with computers for the elderly. Other 
+researchers have explored using voice within context-spe­
+cific situations. For example, Roider et al. [40] and Neßelrath 
+et al. [34] used gaze and eye tracking on dashboards to ena­
+ble expressive car-based interactions. Regardless of the con­
+text, researchers have shown that multi-modal systems con­
+sistently outperform single-modality approaches, e.g., 
+Miniotas et al. [33] and Zhang et al. [51]. 
+Paper 352
+Page 2
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+  
+ 
+  
+   
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+ 
+ 
+  
+ 
+ 
+ 
+  
+  
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+  
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+  
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+  
+ 
+  
+ 
+  
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+           
+                             
+                      
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+CHI 2020 Paper
+EXPLORATORY STUDY 
+To understand the implications of using gaze+voice aug­
+mented assistants in everyday scenarios, we devised a Wiz­
+ard-of-Oz experiment. This allowed us to gather user feed­
+back on the use of WorldGaze against competitor techniques, 
+without implementation limitations. 
+Setup
+As an exemplary task, we asked participants to retrieve six 
+pieces of information (e.g., opening hours, ratings, phone 
+numbers) about five restaurants within view on a busy com­
+mercial street. Participants completed this task three times, 
+using one of three randomly ordered (Latin Square) 
+METHODS: Touch, Voice, and WorldGaze. In the Touch con­
+dition, we asked participants to use Google Maps to query 
+information (app already open on the smartphone). In the 
+Voice condition, we used a Wizard-of-Oz voice assistant 
+(triggered by “Hey Siri”) that always returned the correct an­
+swer. Finally, in the WorldGaze condition, the voice assistant 
+similarly returned the correct answer. Gaze was not tracked, 
+but the experimenter asked participants to look at the restau­
+rant in question while inquiring. For all methods, question 
+order was randomized, with the added constraint that the 
+same restaurant was never the target twice in a row. 
+Procedure 
+After welcoming participants, we explained the study, an­
+swered all open questions, and then asked them to give in­
+formed consent. We then went through the three conditions 
+on the street in Latin Square order. After each condition, we 
+asked participants to fill out a System Usability Scale 
+(SUS) [11] (10-items on a 5-point Likert scale) and a raw 
+NASA TLX questionnaire [22] (6-items on a 21-point Likert 
+scale) and a single question on future use desirability (7­
+point Likert scale). Lastly, we conducted an exit interview 
+capturing general feedback. 
+Participants
+We recruited 12 participants (9 male and 3 female) from our 
+institution with a mean age of 25.5 years (SD = 3.3). For this 
+study, we only recruited participants with at least introduc­
+tory coursework in HCI. The study took roughly 30 minutes, 
+and participants were compensated $10 for their time. 
+Quantitative Feedback 
+After calculating the SUS score [11] between 0 and 100, we 
+ran a Shapiro-Wilk normality test. As p < .003, we per­
+formed a Friedman test revealing a significant effect of 
+METHOD on SUS rating (χ2(2) = 6.000, p = .0498, �" = .75); 
+see Figure 2 left. As post-hoc tests, we performed Wilcoxon 
+rank sum test with Bonferroni correction. However, the post-
+hoc tests did not reveal any significant difference (p > .05). 
+After calculating the raw NASA TLX score [22], we ran a 
+Shapiro-Wilk normality test. With p < .002, we performed 
+an additional Friedman test for raw TLX revealing a signif­
+icant effect of METHOD on raw TLX rating (χ2(2) = 7.787, 
+p = .020, �" = .45); see Figure 2 center. For post-hoc tests 
+we performed Wilcoxon rank sum test with Bonferroni 
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+SUS 
+TLX 
+Future Use 
+Figure 2. Left: System Usability Scale for our three conditions 
+(lower is better). Center: raw NASA TLX rating (lower is bet­
+ter). Right: Rating of future use desirability (high is better). 
+correction and found that Touch had a significantly higher 
+task load than Voice (p = .039); all other combinations 
+(p > .05). For Future Use we also ran a Shapiro-Wilk nor­
+mality test (p < .001). Thus, we performed a third Friedman, 
+which revealed no significant effect of METHOD on Future 
+Use (χ2(2) = 1.929, p = .381, �" = .08); see Figure 2 right. 
+As Shapiro-Wilk normality showed the normal distribution 
+was not violated (p > .052), we performed a one-way 
+ANOVA, which revealed that there was no significant effect 
+of METHOD on Task Completion Time (TCT) (F(2,22) 
+= 0.013, p = .987, �" < .01), with Touch (M = 7.9 sec, 
+SD = 4.1), Voice (M = 7.9 sec, SD = 4.3), and WorldGaze 
+(M = 8.2 sec, SD = 4.9). However, as WorldGaze requires 
+less words to be articulated, utterance duration is shorter. 
+Qualitative Feedback 
+One researcher transcribed the interviews (M = 15min) [9], 
+and then two researchers on the team affinity dia­
+grammed [21] printed quotes to identify high-level themes, 
+which we now summarize: 
+Easy and Natural: Most participants found WorldGaze to be 
+a natural interaction (P1,2,4,6-9,11). Eleven participants (P1­
+7,8-12) articulated that WorldGaze is easy to use, “implicit 
+input with [WorldGaze] would be striking” (P9) and “a very 
+discreet way to get information” (P8). For example, P3 
+said WorldGaze is “providing a more intuitive and real-time 
+detailed inquiry” and P4 stated that “gaze is more socially 
+acceptable”. 
+Useful and Fast: Five participants (P5,7,9,12) expressed that 
+“[WorldGaze] would be useful to have” P5. Eight partici­
+pants (P1-3,5-7,10,11) saw utility in the possibility of disam­
+biguating between objects and places, for instance, P7 said 
+“I feel like inputting the gaze will help solve some of the ac­
+curacy problems that make voice assistants unreliable.” Par­
+ticipants also identified that WorldGaze is useful for situa­
+tions where the name of the object/place is unknown 
+(P3,5,7,11). Additionally, six participants (P1-3,5,7,8) com­
+mented on the speed of WorldGaze, noting that touch felt 
+slower: “[WorldGaze] is faster - or it feels faster anyway ­
+less frustrating” (P2). 
+Novelty and Usability: As one would expect with a new in­
+put modality, several participants stated that they would have 
+Paper 352
+Page 3
+
+
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+  
+ 
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+  
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+to get used to WorldGaze before feeling comfortable (P2,3,8, 
+10,11). We also received feedback that WorldGaze required 
+the user to hold the phone fairly high (P1,2,8-12). Five par­
+ticipants (P3,4,6,8,9) expressed concerns about accessibility 
+(“[people with] low vision” P8) and social acceptance (“peo­
+ple may think I’m recording them” P4). We also received 
+feedback on feasibility, with participants stating that World-
+Gaze may not work for places that are far away (P2­
+4,7,9,11), objects which are too close (P1,6,7), and that the 
+latest generation of phones would be needed (P1,2,4). 
+Use Scenarios: Participants envisioned many uses for 
+WorldGaze, including asking questions about products in 
+stores or menu items in restaurants (P6,7,9,10,12). Interact­
+ing with smart home objects, such as controlling the TV or 
+lighting, was mentioned by four participants (P5,6,7,10). 
+Also mentioned were use cases in museums (P4,8), naviga­
+tion support (P2,9), and for desktop computer interaction 
+(P3,5), e.g., MAGIC pointing [50]. 
+Enhanced Feedback: Seven participants expressed a desire 
+for better feedback in WorldGaze (P1,2,4,5,7,9,10), for ex­
+ample, an indicator that WorldGaze had selected the correct 
+target (e.g. displaying a map or image of the restaurant). Six 
+participants proposed improvements (P1,3,7,9,11), including 
+an overlay on the camera view (e.g., outline on the place of 
+interest). In cases where the system selected the wrong loca­
+tion, participants proposed various resolution strategies, in­
+cluding giving multiple options based on the likelihood, us­
+ing mid-air gestures, and a mode where the current gaze tar­
+get was announced out loud. Finally, P8 mentioned a desire 
+to use WorldGaze in concert with silent speech [46] and also 
+conventional touch interaction. 
+New Interactions: Six participants (P1,4,6,7,11,12) sug­
+gested the system could be integrated into smart glasses (“the 
+most frictionless option” P11) or added to camera-equipped 
+smart devices (e.g., Facebook Portal, Google Nest Hub). An­
+other feature envisioned was to use WorldGaze to rapidly 
+compare multiple objects or places (P2,5,9). Finally, partici­
+pants suggested that WorldGaze could be a proactive system 
+(P2,4,8), wherein a virtual assistant knows a user’s focus and 
+“could make recommendations” (P3) on the go. 
+IMPLEMENTATION 
+Our exploratory study gave us confidence that our technique 
+would be quick, natural, and appreciated by users. The next 
+challenge was figuring out how to create such an interaction 
+technique without having to instrument the user or environ­
+ment in any manner, and ideally, use only sensors already 
+present in contemporary smartphones. We decided on a cam­
+era-only approach, taking advantage of recent trends in mo­
+bile hardware. 
+Platform Selection 
+At the time of writing, only iOS 13.0 and later permitted front 
+and back cameras to be opened simultaneously, and it is for 
+this reason that we selected iPhones as the platform for our 
+proof-of-concept implementation. That said, this is not an 
+innate hardware limitation; Android devices could have sim­
+ilar capabilities in the near future. 
+Device & Field of View 
+We used an iPhone XR for development and testing. This has 
+a rear 12MP camera with a 67.3° field of view (FOV) and a 
+7MP front-facing camera with a 56.6° FOV. We note this 
+FOV is considerably narrower than the most recent genera­
+tion of flagship phones, including the Galaxy S10 series at 
+123°, iPhone 11 at 120°, Huawei P30 Pro at 120°, Asus ROG 
+at 120°, and OnePlus 7 Pro at 117°. For front-facing (i.e., 
+“selfie”) cameras, higher-end models often feature a FOV of 
+around 90° (e.g., Pixel 3 at 97°, and LG V40 at 90°), which 
+we found to be more than sufficient to fully capture the head, 
+even at closer ranges, such as when reading the screen. This 
+increased FOV trend looks set to continue, and over time, 
+one can expect these high-end camera features to trickle 
+down to mid-tier phones, especially if there were additional 
+driver applications such as WorldGaze. 
+We also note that with techniques such as visual odometry 
+and SLAM [8] [17] – like that employed in Apple’s ARKit – 
+an object could still be addressed with gaze even if it is not 
+currently seen in the rear camera view. Instead, the gaze vec­
+tor could be projected into a 3D scene model stored in 
+memory to much the same effect. 
+Head Gaze Ray Casting
+Having selected iOS as our development platform, we could 
+also leverage capabilities provided by the ARKit 3 SDK. 
+This includes a robust face API offering six-degree-of-free­
+dom tracking using the front-facing camera. We use the for­
+ward-facing head vector (GazeVector) to extend a ray out 
+from the bridge of the nose, which we then project into the 
+scene captured by the rear-facing camera. This vector is used 
+in subsequent processes, such as performing hit testing with 
+elements in the world (e.g., restaurants or smart home de­
+vices). On an iPhone XR, this process runs at 30 FPS 
+with ~50 ms of latency. 
+Object Recognition & Segmentation
+A raycast into a scene denotes an area of interest, but it does 
+not immediately provide a well-defined item of interest. 
+Some items are large (e.g., restaurant facade), while others 
+are small (e.g., bus stop sign). It may be that a user is looking 
+at a menu on a restaurant window vs. the restaurant as a 
+whole, also suggesting a hierarchy of foci. Thus, a parallel 
+process is needed to resolve a user’s true gaze intent, which 
+then serves as an input parameter to e.g., voice assistants. 
+Most straightforward is to use vision-based object recogni­
+tion systems, such as Yolo [39], Google Vision [19], Reti­
+naNet [29], and DenseCap [26], which provide bounding 
+boxes. Even tighter semantic segmentation can be achieved 
+with pipelines such as SegNet [5] and Mask R-CNN [23], 
+which provide object contours. Although default models 
+generally provide only generic class names (e.g., “Car”, but 
+not “2019 Honda Civic”), they can also be trained to recog­
+nize specific object if given sufficient data. For example, 
+Paper 352
+Page 4
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+many mobile AR SDKs (e.g., Vuforia [48]) allow developers 
+to preregister specific objects and places for later recogni­
+tion, and this is the approach we foresee in a commercial im­
+plementation of WorldGaze. There could also be a cloud-me­
+diated library where e.g., brick and mortar businesses and 
+consumer goods manufacturers register their storefronts and 
+wares. 
+As a proof of concept, we use Apple’s Vision Framework [3] 
+for object recognition and tracking. This API allows devel­
+opers to register both 3D objects (e.g., cars, appliances and 
+furniture via the ARReferenceObject API), as well as planar 
+images (e.g., business logos and street signage via the AR-
+ReferenceImage API). We chose this over other similar 
+packages chiefly for its excellent performance on the iPhone 
+XR (hardware accelerated using Apple’s A12 Bionic chip), 
+allowing our whole stack to run at camera frame rate. 
+For each frame, we rank order all identified targets by confi­
+dence, using the minimum 3D distance of the gaze ray to the 
+centroid of the object, weighted by the size of the object. The 
+latter helps improve robustness in the case of nested objects. 
+A fully probabilistic approach could also be powerful, lever­
+aging frameworks that handle inputs with uncertainty [43]. 
+Voice Assistant Integration
+The final piece of our full stack implementation is integration 
+with a voice agent. For this, we start by using the continuous 
+listening feature on iOS combined with speech-to-text [4]. 
+More specifically, we listen for “Hey Siri” as a keyword to 
+start transcription of a voice query. We then search this text 
+string for ambiguous nouns (e.g., “this” and “that place”), 
+replacing instances with the name of the object with the high­
+est gaze probability (see previous section). We note that 
+more advanced NLP methods could handle more complex 
+phrasings, but our search and replace approach was sufficient 
+as a prototype. In a commercia implementation, the updated 
+phrase would be pushed back into the conventional voice as­
+sistant stack. However, to better control the user experience 
+for testing and demonstration, we constrain the possible an­
+swers using a query-reply lookup table. 
+Comparative Approaches
+Voice-only query approaches require users to be very ex­
+plicit in defining objects or places of interest. At the time of 
+writing, we found that even when standing directly in front 
+of a Starbucks, asking Apple’s Siri “when does Starbucks 
+close?” required an additional voice step of confirming the 
+Starbucks nearest to the user; see Video Figure. In general, 
+geolocation technologies like GPS and WiFi positioning are 
+too coarse for selecting individual storefronts, and of course, 
+you often wish to inquire about something across the street 
+or ahead of you. Indoors, you might wish to specify some­
+thing as small as a thermostat in a dense scene of potential 
+target objects. As before, voice is more useful for interacting 
+with objects father away, not ones directly in front of you, 
+where touch input might be more effective, and thus even 
+centimeter indoor location in not a panacea for ambiguous 
+voice queries. 
+Of course, WorldGaze is not the only option for specifying a 
+distant, yet well-defined target without explicit speech. For 
+example, instead of looking at a target, one could orient their 
+phone towards it, which is how most mobile AR applications 
+work today. While certainly more practical, it has the down­
+side of having to “live through your phone” and makes rapid, 
+ad hoc inquiries harder – one would have to launch the pass-
+through AR app to specify the target with any degree of ac­
+curacy. Another option is pointing with the hands [10], 
+though this generally requires precise motion track­
+ing [31] [32] and currently generation phones do not capture 
+the hands unless they are fully extended outwards or held in 
+front of the head, which is hardly natural. 
+Battery Life Implications
+Although WorldGaze could be launched as a standalone ap­
+plication, we believe it is more likely for WorldGaze to be 
+integrated as a background service that wakes upon a voice 
+assistant trigger (e.g., “Hey Siri”). Although opening both 
+cameras and performing computer vision processing is en­
+ergy consumptive, the duty cycle would be so low as to not 
+significantly impact battery life of today’s smartphones. It 
+may even be that only a single frame is needed from both 
+cameras, after which they can turn back off (WorldGaze 
+startup time is 7 sec). Using bench equipment, we estimated 
+power consumption at ~0.1 mWh per inquiry. 
+EVALUATION 
+We conducted a second study to evaluate the tracking and 
+targeting performance of our proof-of-concept WorldGaze 
+implementation. 
+Setup
+In this study, participants were asked to stand in front of a 
+wall at three different distances (DISTANCE: 1m, 2m, and 4m) 
+while holding a phone and pointing with head gaze at 15 dif­
+ferent targets (TARGET). The targets where arranged in a 5×3 
+grid with a center-to-center spacing of 80cm; Figure 4. Each 
+target was registered as a separate object in the phone’s 
+WorldGaze database. The order of the three DISTANCE con­
+ditions was balanced using a Latin Square design, while the 
+order of the targets was fully randomized (repeated three 
+times each). 
+Procedure 
+After welcoming participants, we explained the study proce­
+dure and answered any questions. We then familiarized par­
+ticipants with the WorldGaze technique. Importantly, we 
+gave no feedback (visual or otherwise) of the gaze ray to par­
+ticipants so as to not influence their targeting behavior. Gaze 
+targets were announced one at time by the experimenter. Par­
+ticipants verbally announced (e.g., “ok”) when they were 
+looking at the requested target, and the experimenter pressed 
+a space bar on a laptop study interface, which recorded the 
+selected object as reported by WorldGaze running on the 
+phone, as well as accessory information for later analysis like 
+the gaze vector. The next trial began automatically. 
+Paper 352
+Page 5
+
+
+ 
+                     
+                        
+ 
+Distance 
+Horizontal 
+Vertical 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+CHI 2020 Paper
+Figure 
+ 3. Left: 
+ error 
+ vs. user 
+ distance 
+ from 
+ wall. Center: 
+ error 
+ 
+with 
+ respect 
+ to 
+ target 
+ horizontal 
+ placement. 
+ Right: 
+ error 
+ based 
+ 
+on 
+ target 
+ vertical 
+ placement. 
+ 
+Participants
+We recruited 12 participants (9 male, and 3 female) from our 
+institution with a mean age of 28.9 years (SD = 5.8). The 
+only requirement was that they had no locomotor impair­
+ment. The study took approximately 20 minutes and partici­
+pants were compensated $10 for their time. 
+Results 
+In total, participants gaze-selected 1620 targets (12 partici­
+pants, 5×3 grid of targets, 3 repeats per target, and 3 distance 
+conditions). Overall, across all conditions and participants, 
+we found a mean tracking error in real-world coordinates of 
+0.71m (SD = 0.47). Note that this result is cross-user (i.e., 
+“out of the box” accuracy), with no per-user or post hoc 
+global corrections. We first processed the tracking data so 
+that the grid aligned from all sessions. In line with prior re­
+lated work, we filtered outlier trials with error exceeding 
+mean+3SD [31] [32], which removed 11 targets. The mean 
+error was lower when standing close to the wall, and highest 
+when farther away. 
+A Shapiro-Wilk normality test showed that the Error is not 
+normally distributed (p < .038), thus, we performed a three-
+way ART RM-ANOVA [49]. The analyses revealed a statis­
+tically significant influence of DISTANCE on Error 
+(F(2,483.0) = 19.6, p < .001); see Figure 3 left. When 
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+breaking error out by HORIZONTAL and VERTICAL accuracy, 
+we find statistically significant impact on Error (F(4,483.0) 
+= 50.8, p<.001; F(2,483.0) = 521.5, p < .001; respectively); 
+see Figure 3 center and right. Further we found that all two-
+way interaction effects are significant (p < .002), but none of 
+the three-way interactions (p = .755). 
+The center column was the least error-prone (Figure 3 center 
+and right), perhaps because it was always closest and it is 
+easier to look straight ahead. Our results also show that tar­
+gets situated higher are more precise, which is advantageous 
+since most foci of interest in outdoor scenes are located at 
+eye height or above (e.g., signage). Finally, Figure 4 shows 
+an overall correlation between target placement and error, 
+which is in line with errors shown for traditional mid-air 
+pointing using head-finger raycasting (c.f., Mayer et al. 
+[31][32]). Overall, we are confident that our current imple­
+mentation could be used to select small but sparse objects, 
+such as a lamp on a table, and is certainly accurate for most 
+outdoor uses. 
+EXAMPLE USES 
+We now briefly describe example interactions in three use 
+domains where we believe WorldGaze could be particularly 
+useful: streetscapes, smart homes/offices, and retail. Please 
+also see our Video Figure for a real-time demonstration of 
+our implementation. 
+Streetscapes
+It is not uncommon to see people walking down the street 
+looking at their smartphones; see Figure 1, left. With suffi­
+ciently wide-angle lenses, WorldKit could allow for natural, 
+rapid, and targeted voice inquiries. For example, a user could 
+look at a store front and ask, “when does this open?” World-
+Gaze fills in the ambiguous “this” with the target business, 
+allowing the voice agent to reply intelligently. Similarly, a 
+user could ask “what is the rating for this place” or even 
+“make me a reservation for 2 at 7pm”; see Figure 5. 
+Retail 
+Retail settings are also ripe for augmentation, as they are full 
+of a great variety of objects that customers might wish to 
+know more information about; see Figure 6. For example, a 
+customer could ask, “does this come in any other colors?” in 
+regard to a sofa they are evaluating. Likewise, they could 
+also say “add this to my wishlist”. It would also be trivial to 
+extend WorldGaze to handle multiple sequential targets, al­
+lowing for comments such as “what is the price difference 
+between this… and this.” 
+Figure 
+ 5. WorldGaze, in 
+ concert 
+ with 
+ a 
+ voice 
+ agent, 
+ could 
+ ena-
+ble 
+ much more 
+ natural 
+ and rapid retrieval 
+ of 
+ information about 
+ 
+e.g., 
+ businesses 
+ while walking 
+ down 
+ a 
+ street. 
+ 
+Figure 
+ 4. Mean 
+ gaze 
+ error 
+ for 
+ the 
+ 15 
+ targets 
+ at 
+ three 
+ distances. 
+ 
+Error 
+ is 
+ highest 
+ in 
+ the 
+ lower 
+ right 
+ corner, 
+ where 
+ participants 
+ 
+had to 
+ look over 
+ their 
+ right 
+ arm t
+ o 
+ see 
+ the 
+ target. 
+ 
+Paper 352
+Page 6
+
+
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+Figure 6. In retail settings, WorldGaze-augmented shopping 
+apps could allow users to rapidly retrieve item information. We 
+also implemented an example interaction of a user specifying 
+two targets in one voice inquiry. 
+Smart Homes and Offices 
+Finally, WorldGaze could also facilitate rapid interactions in 
+density instrumented smart environments, automatically re­
+solving otherwise ambiguous verbs, such as play, go, and 
+stop; see Figure 7. For example, a user could say “on” to 
+lights or a TV, or “down” to a TV or thermostat. WorldGaze 
+offers the necessary context to resolve these ambiguities and 
+trigger the right command; see Video Figure. 
+LIMITATIONS & FUTURE WORK 
+As noted previously, our current WorldGaze implementation 
+is constrained by the rear camera’s field of view – wider-an­
+gle lenses mean more of the world is gaze addressable. For­
+tunately, the current trend in smartphones is to include wide 
+angle lenses, with some models exceeding 120°. While this 
+falls short of human vision, with roughly a 135° horizontal 
+FOV per eye [18], it is sufficient to capture the majority of a 
+scene in front of a user. Overall, we foresee this FOV gap 
+diminishing overtime, especially if capabilities such as 
+WorldGaze are an additional driving factor. 
+That said, we note that a limited FOV might be partially 
+overcome through future integration of techniques like visual 
+odometry and SLAM [8] [17], which can iteratively build a 
+3D world scene in memory. As the smartphone’s 3D position 
+in the scene is known, along with the live head vector, user 
+could gaze at previously captured objects with no difference 
+in the interaction. 
+We also note that we started our implementation efforts uti­
+lizing both eye gaze and head orientation, which would pro­
+vide a fine-grained gaze vector perfect for WorldGaze. We 
+tested numerous state-of-the-art algorithms [6], [28], 
+[35][52], but found accuracy to be severely lacking for our 
+particular use case. WorldGaze operates at longer ranges 
+than most screen-based gaze interactions, which exacerbates 
+error; e.g., ±15° angular error equates to meter-scale inaccu­
+racies when looking at objects four meters away. Instead, we 
+decided to build our proof-of-concept implementation on 
+head gaze alone, which is more stable and accurate (chiefly 
+because there are plenty of facial landmarks onto which to fit 
+a 3D head model). Of course, aiming with one’s head is less 
+Figure 7. WorldGaze could be especially useful in settings with 
+many IoT appliances, where extra context could be used to re­
+solve otherwise ambiguous verbs, like go, play or start. 
+natural than gazing with the eyes, and so we are hopeful that 
+eye tracking sensors and algorithms capable of running on 
+mobile devices will continue to improve. 
+CONCLUSION 
+We have presented our work on WorldGaze, an interaction 
+technique leveraging front and rear smartphone cameras that 
+allows users to denote an object or region of interest with 
+their head direction. With computer-vision-based object 
+recognition, we can identify what e.g., business or IoT device 
+a user is looking at, which we can pass as extra physical con­
+text to voice agents like Siri and Alexa, making them consid­
+erably more natural and contextually aware. We show 
+through qualitative and quantitative studies that such a fea­
+ture would be welcomed by users and is accurate to around 
+one meter in the world. Finally, as remarked by our partici­
+pants, WorldGaze could prove valuable in form factors be­
+yond smartphones, such as smart glasses, which we hope to 
+explore in the future. 
+REFERENCES 
+[1] Cengiz Acartürk, João Freitas, Mehmetcal Fal, and 
+Miguel Sales Dias. 2015. Elderly Speech-Gaze Inter­
+action. In International Conference on Universal Ac­
+cess in Human-Computer Interaction. Springer, 
+Cham, 3-12. DOI: https://doi.org/10.1007/978-3-319­
+20678-3_1 
+[2] Lisa Anthony, Jie Yang, and Kenneth R. Koedinger. 
+2005. Evaluation of multimodal input for entering 
+mathematical equations on the computer. In CHI '05 
+Extended Abstracts on Human Factors in Computing 
+Systems (CHI EA ’05). ACM, New York, NY, USA, 
+1184-1187. DOI: 
+http://dx.doi.org/10.1145/1056808.1056872 
+[3] Apple Vision Framework. 2019. URL: https://devel­
+oper.apple.com/documentation/vision 
+[4] Apple Speech Framework. 2019. URL: https://devel­
+oper.apple.com/documentation/speech 
+[5] Vijay Badrinarayanan, Kendall Alex, and Cipolla 
+Roberto. 2017. Segnet: A deep convolutional encoder-
+decoder architecture for image segmentation. IEEE 
+Paper 352
+Page 7
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+transactions on pattern analysis and machine intelli­
+gence 39.12: 2481-2495. DOI: 
+http://dx.doi.org/10.1109/TPAMI.2016.2644615 
+[6] Tadas Baltrušaitis, Peter Robinson, and Louis-Philippe 
+Morency. 2016. OpenFace: An open source facial be­
+havior analysis toolkit. In IEEE Winter Conference on 
+Applications of Computer Vision (WACV ’16). IEEE, 
+1-10. DOI: 
+http://dx.doi.org/10.1109/WACV.2016.7477553 
+[7] Tanya R. Beelders, and Pieter J. Blignaut. 2011. The 
+Usability of Speech and Eye Gaze as a Multimodal In­
+terface for a Word Processor. Speech Technologies, 
+386-404. DOI: http://dx.doi.org/10.5772/16604 
+[8] Tim Bailey, and Hugh Durrant-Whyte. 2006. Simulta­
+neous localization and mapping (SLAM): Part II. 
+IEEE robotics & automation magazine 13, no. 3, 108­
+117. IEEE. DOI: 
+http://dx.doi.org/10.1109/MRA.2006.1678144 
+[9] Ann Blandford, Dominic Furniss, and Stephann Ma­
+kri. 2016. Qualitative HCI research: Going behind the 
+scenes. Synthesis lectures on human-centered infor­
+matics, 9(1), 1-115. DOI: https://doi.org/ 
+10.2200/S00706ED1V01Y201602HCI034 
+[10] Richard A. Bolt. 1980. Put-that-there: Voice and ges­
+ture at the graphics interface. In Proceedings of the 
+7th annual conference on Computer graphics and in­
+teractive techniques (SIGGRAPH ’80). ACM, New 
+York, NY, USA, 262-270. DOI: 
+http://dx.doi.org/10.1145/800250.807503 
+[11] John Brooke. 1996. SUS-A quick and dirty usability 
+scale. Usability evaluation in industry, 189(194), 4-7. 
+[12] Drini Cami, Fabrice Matulic, Richard G. Calland, 
+Brian Vogel, and Daniel Vogel. 2018. Unimanual 
+Pen+Touch Input Using Variations of Precision Grip 
+Postures. In Proceedings of the 31st Annual ACM 
+Symposium on User Interface Software and Technol­
+ogy (UIST '18). ACM, New York, NY, USA, 825­
+837. DOI: https://doi.org/10.1145/3242587.3242652 
+[13] Ishan Chatterjee, Robert Xiao, and Chris Harrison. 
+2015. Gaze+Gesture: Expressive, Precise and Tar­
+geted Free-Space Interactions. In Proceedings of the 
+2015 ACM on International Conference on Multi-
+modal Interaction (ICMI ’15). ACM, New York, NY, 
+USA. DOI: https://doi.org/10.1145/2818346.2820752 
+[14] Leigh Clark, Phillip Doyle, Diego Garaialde, Emer 
+Gilmartin, Stephan Schlögl, Jens Edlund, Matthew 
+Aylett, João Cabral, Cosmin Munteanu, and Benjamin 
+Cowan. 2018. The State of Speech in HCI: Trends, 
+Themes and Challenges. In Proceedings of the Inter­
+acting with Computers. DOI: 
+https://doi.org/10.1093/iwc/iwz016 
+[15] Heiko Drewes, Alexander De Luca, and Albrecht 
+Schmidt. 2007. Eye-gaze interaction for mobile 
+phones. In Proceedings of the 4th international con­
+ference on mobile technology, applications, and sys­
+tems and the 1st international symposium on Com­
+puter human interaction in mobile technology (Mobil­
+ity ’07). ACM, New York, NY, USA, 364-371. DOI: 
+http://dx.doi.org/10.1145/1378063.1378122 
+[16] Augusto Esteves, Eduardo Velloso, Andreas Bulling, 
+and Hans Gellersen. 2015. Orbits: Gaze Interaction for 
+Smart Watches using Smooth Pursuit Eye Movements. 
+In Proceedings of the 28th Annual ACM Symposium 
+on User Interface Software & Technology (UIST ’15). 
+ACM, New York, NY, USA, 457-466. DOI: 
+https://doi.org/10.1145/2807442.2807499 
+[17] Jorge Fuentes-Pacheco, José Ruiz-Ascencio, and Juan 
+Manuel Rendón-Mancha. 2015. Visual simultaneous 
+localization and mapping: a survey. Artificial Intelli­
+gence Review 43, no. 1, 55-81. DOI: 
+https://doi.org/10.1007/s10462-012-9365-8 
+[18] Alastair G. Gale. 1997. Human response to visual 
+stimuli. In The perception of visual information. 
+Springer, New York, NY, 127-147. DOI: 
+https://doi.org/10.1007/978-1-4612-1836-4_5 
+[19] Google Cloud Vision AI. 2019. 
+https://cloud.google.com/vision/automl/object-detec­
+tion/docs/ 
+[20] Floyd A. Glenn III, Helene P. Iavecchia, Lorna V. 
+Ross, James M. Stokes, William J. Weiland, Daniel 
+Weiss, and Allen L. Zaklad. 1986. Eyevoice-con­
+trolled interface. In Proceedings of the Human Fac­
+tors Society, 322-326. DOI: 
+https://doi.org/10.1177/154193128603000402 
+[21] Gunnar Harboe, and Elaine M. Huang. 2015. Real-
+World Affinity Diagramming Practices: Bridging the 
+Paper-Digital Gap. In Proceedings of the 33rd Annual 
+ACM Conference on Human Factors in Computing 
+Systems (CHI ’15). ACM, New York, NY, USA, 95– 
+104. DOI: http://dx.doi.org/10.1145/2702123.2702561 
+[22] Sandra G. Hart. 2006. NASA-task load index (NASA­
+TLX); 20 years later. In Proceedings of the human 
+factors and ergonomics society annual meeting, Vol. 
+50, No. 9, 904-908, Los Angeles, CA, Sage publica­
+tions. DOI: https://doi.org/10.1037/e577632012-009 
+[23] Kaiming He, Gkioxari Georgia, Dollár Piotr, and 
+Girshick Ross. 2017. Mask R-CNN. In Proceedings of 
+the IEEE international conference on computer vision. 
+IEEE, 2961-2969. DOI: 
+http://dx.doi.org/10.1109/TPAMI.2018.2844175 
+[24] Ken Hinckley, Koji Yatani, Michel Pahud, Nicole 
+Coddington, Jenny Rodenhouse, Andy Wilson, Hrvoje 
+Benko, and Bill Buxton. 2010. Pen + touch = new 
+tools. In Proceedings of the 23nd annual ACM sympo­
+sium on User interface software and technology (UIST 
+’10). ACM, New York, NY, USA, 27-36. DOI: 
+https://doi.org/10.1145/1866029.1866036 
+Paper 352
+Page 8
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+   
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+  
+ 
+ 
+ 
+ 
+ 
+  
+  
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+[25] Ron Jacob. 1995. Eye tracking in advanced interface 
+design. In Virtual Environments and Advanced Inter­
+face Design. New York: Oxford University Press, 
+258-288. 
+[26] Justin Johnson, Andrej Karpathy, and Li Fei-Fei. 
+2016. Densecap: Fully convolutional localization net­
+works for dense captioning. In Proceedings of the 
+IEEE Conference on Computer Vision and Pattern 
+Recognition (CVPR ‘16). IEEE 4565-4574. DOI: 
+https://doi.org/10.1109/CVPR.2016.494 
+[27] David B. Koons, Carlton J. Sparrell, and Kristinn R. 
+Thorisson. 1993. Integrating simultaneous input from 
+speech, gaze, and hand gestures. MIT Press: Menlo 
+Park, CA, 257-276. 
+[28] Kyle Krafka, Aditya Khosla, Petr Kellnhofer, Harini 
+Kannan, Suchendra Bhandarkar, Wojciech Matusik, 
+and Antonio Torralba. 2016. Eye tracking for every­
+one. In Proceedings of the IEEE conference on com­
+puter vision and pattern recognition 2016 (CVPR 
+’16). IEEE, 2176-2184. DOI: 
+https://doi.org/10.1109/CVPR.2016.239 
+[29] Tsung-Yi Lin, Piotr Dollár, Ross Girshick, Kaiming 
+He, Bharath Hariharan, and Serge Belongie. 2017. 
+Feature pyramid networks for object detection. In Pro­
+ceedings of the IEEE conference on computer vision 
+and pattern recognition (CVPR ’17). IEEE, 2117­
+2125. DOI: https://doi.org/10.1109/CVPR.2017.106 
+[30] Diako Mardanbegi, and Dan Witzner Hansen. 2011. 
+Mobile gaze-based screen interaction in 3D environ­
+ments. In Proceedings of the 1st Conference on Novel 
+Gaze-Controlled Applications (NGCA ’11). ACM, 
+New York, NY, USA, Article 2, 4 pages. DOI: 
+http://dx.doi.org/10.1145/1983302.1983304 
+[31] Sven Mayer, Katrin Wolf, Stefan Schneegass, and 
+Niels Henze. 2015. Modeling Distant Pointing for 
+Compensating Systematic Displacements. In Proceed­
+ings of the 33rd Annual ACM Conference on Human 
+Factors in Computing Systems (CHI ’15). ACM, New 
+York, NY, USA, 4165-4168. DOI: 
+https://doi.org/10.1145/2702123.2702332 
+[32] Sven Mayer, Valentin Schwind, Robin Schweigert, 
+and Niels Henze. 2018. The Effect of Offset Correc­
+tion and Cursor on Mid-Air Pointing in Real and Vir­
+tual Environments. In Proceedings of the 2018 CHI 
+Conference on Human Factors in Computing Systems 
+(CHI ’18). ACM, New York, NY, USA, Paper 653, 13 
+pages. DOI: https://doi.org/10.1145/3173574.3174227 
+[33] Darius Miniotas, Oleg Špakov, Ivan Tugoy, and I. 
+Scott MacKenzie. 2006. Speech-augmented eye gaze 
+interaction with small closely spaced targets. In Pro­
+ceedings of the 2006 symposium on Eye tracking re­
+search & applications (ETRA ’06). ACM, New York, 
+NY, USA, 67-72. DOI: 
+http://dx.doi.org/10.1145/1117309.1117345 
+[34] Robert Neßelrath, Mohammad Mehdi Moniri, and Mi­
+chael Feld. 2016. Combining speech, gaze, and micro-
+gestures for the multimodal control of in-car func­
+tions. In Proceedings of the 12th International Confer­
+ence on Intelligent Environments (IE ’16). IEEE. DOI: 
+http://dx.doi.org/10.1109/IE.2016.42 
+[35] Alexandra Papoutsaki, Patsorn Sangkloy, James Las-
+key, Nediyana Daskalova, Jeff Huang, and James 
+Hays. 2016. Webgazer: Scalable webcam eye tracking 
+using user interactions. In Proceedings of the Twenty-
+Fifth International Joint Conference on Artificial In­
+telligence-IJCAI 2016. 
+[36] Ken Pfeuffer, Jason Alexander, Ming Ki Chong, and 
+Hans Gellersen. 2014. Gaze-touch: combining gaze 
+with multi-touch for interaction on the same surface. 
+In Proceedings of the 27th annual ACM symposium 
+on User interface software and technology (UIST '14). 
+ACM, New York, NY, USA, 509-518. DOI: 
+https://doi.org/10.1145/2642918.2647397 
+[37] Bastian Pfleging, Stefan Schneegass, and Albrecht 
+Schmidt. 2012. Multimodal interaction in the car: 
+combining speech and gestures on the steering wheel. 
+In Proceedings of the 4th International Conference on 
+Automotive User Interfaces and Interactive Vehicular 
+Applications (AutomotiveUI ’12). ACM, New York, 
+NY, USA, 155-162. DOI: 
+http://dx.doi.org/10.1145/2390256.2390282 
+[38] Katrin Plaumann, Matthias Weing, Christian Winkler, 
+Michael Müller, and Enrico Rukzio. 2018. Towards 
+accurate cursorless pointing: the effects of ocular 
+dominance and handedness. Personal Ubiquitous 
+Comput. 22, 4 (August 2018), 633-646. DOI: 
+https://doi.org/10.1007/s00779-017-1100-7 
+[39] Joseph Redmon, Santosh Divvala, Ross Girshick, and 
+Ali Farhadi. 2016. You only look once: Unified, real-
+time object detection. In Proceedings of the IEEE con­
+ference on computer vision and pattern recognition 
+(CVPR ’16). IEEE, 779-788. DOI: 
+https://doi.org/10.1109/CVPR.2016.91 
+[40] Florian Roider, Lars Reisig, and Tom Gross. 2018. 
+Just Look: The Benefits of Gaze-Activated Voice In­
+put in the Car. In Adjunct Proceedings of the 10th In­
+ternational Conference on Automotive User Interfaces 
+and Interactive Vehicular Applications (Automo­
+tiveUI ’18). ACM, New York, NY, USA, 210-214. 
+DOI: https://doi.org/10.1145/3239092.3265968 
+[41] David Rozado, Alexander McNeill, and Daniel Mazur. 
+2016. Voxvisio – Combining Gaze And Speech For 
+Accessible Hci. In Proceedings of RESNA/NCART 
+2016. 
+[42] Albrecht Schmidt, Michael Beigl, and Hans Gellersen. 
+1999. There is more to context than location. Comput­
+ers & Graphics 23.6, 893-901. DOI: 
+https://doi.org/10.1016/S0097-8493(99)00120-X 
+Paper 352
+Page 9
+
+
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+  
+ 
+ 
+  
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+CHI 2020 Paper
+CHI 2020, April 25–30, 2020, Honolulu, HI, USA
+[43] Julia Schwarz, Scott Hudson, Jennifer Mankoff, and 
+Andrew D. Wilson. 2010. A framework for robust and 
+flexible handling of inputs with uncertainty. In Pro­
+ceedings of the 23nd annual ACM symposium on User 
+interface software and technology (UIST ’10). ACM, 
+New York, NY, USA, 47-56. DOI: 
+https://doi.org/10.1145/1866029.1866039 
+[44] Robin Schweigert, Valentin Schwind, and Sven 
+Mayer. 2019. EyePointing: A Gaze-Based Selection 
+Technique. In Proceedings of Mensch und Computer 
+2019 (MuC ’19). ACM, New York, NY, USA, 719­
+723. DOI: https://doi.org/10.1145/3340764.3344897 
+[45] Valentin Schwind, Sven Mayer, Alexandre Comeau-
+Vermeersch, Robin Schweigert, and Niels Henze. 
+2018. Up to the Finger Tip: The Effect of Avatars on 
+Mid-Air Pointing Accuracy in Virtual Reality. In Pro­
+ceedings of the 2018 Annual Symposium on Com-
+puter-Human Interaction in Play (CHI PLAY ’18). 
+ACM, New York, NY, USA, 477-488. DOI: 
+https://doi.org/10.1145/3242671.3242675 
+[46] Ke Sun, Chun Yu, Weinan Shi, Lan Liu, and Yu­
+anchun Shi. 2018. Lip-Interact: Improving Mobile De­
+vice Interaction with Silent Speech Commands. In 
+Proceedings of the 31st Annual ACM Symposium on 
+User Interface Software and Technology (UIST ’18). 
+ACM, New York, NY, USA, 581-593. DOI: 
+https://doi.org/10.1145/3242587.3242599 
+[47] Daniel Vogel, and Ravin Balakrishnan. 2005. Distant 
+freehand pointing and clicking on very large, high res­
+olution displays. In Proceedings of the 18th annual 
+ACM symposium on User interface software and tech­
+nology (UIST ’05). ACM, New York, NY, USA, 33­
+42. DOI: http://dx.doi.org/10.1145/1095034.1095041 
+[48] Vuforia. URL: https://developer.vuforia.com 
+[49] Jacob O. Wobbrock, Leah Findlater, Darren Gergle, 
+and James J. Higgins. 2011. The aligned rank trans­
+form for nonparametric factorial analyses using only 
+anova procedures. In Proceedings of the SIGCHI Con­
+ference on Human Factors in Computing Systems 
+(CHI '11). ACM, New York, NY, USA, 143-146. 
+DOI: https://doi.org/10.1145/1978942.1978963 
+[50] Shumin Zhai, Carlos Morimoto, and Steven Ihde. 
+1999. Manual and gaze input cascaded (MAGIC) 
+pointing. In Proceedings of the SIGCHI conference on 
+Human Factors in Computing Systems (CHI ’99). 
+ACM, 246-253. DOI: 
+http://dx.doi.org/10.1145/302979.303053 
+[51] Qiaohui Zhang, Atsumi Imamiya, Kentaro Go, and 
+Xiaoyang Mao. 2004. Resolving ambiguities of a gaze 
+and speech interface. In Proceedings of the 2004 sym­
+posium on Eye tracking research & applications 
+(ETRA ’04). ACM, New York, NY, USA, 85-92. 
+DOI: https://doi.org/10.1145/968363.968383 
+[52] Xucong Zhang, Yusuke Sugano, M. Fritz, and An­
+dreas Bulling. 2015. Appearance-based gaze estima­
+tion in the wild. In Proceedings of the IEEE confer­
+ence on computer vision and pattern recognition 2015 
+(CVPR ’15). IEEE, 4511-4520. DOI: 
+https://doi.org/10.1109/CVPR.2015.7299081 
+Paper 352
+Page 10
+
+
+Selecting Real-World Objects via User-Perspective Phone 
+Occlusion 
+Yue Qin 
+Chun Yu 
+Wentao Yao 
+Tsinghua University 
+Tsinghua University 
+Tsinghua University 
+Beijing, China 
+Beijing, China 
+Beijing, China 
+qiny19@mails.tsinghua.edu.cn 
+chunyu@tsinghua.edu.cn 
+yaowt19@mails.tsinghua.edu.cn 
+Jiachen Yao 
+Chen Liang 
+Yueting Weng 
+Tsinghua University 
+Tsinghua University 
+Tsinghua University 
+Beijing, China 
+Beijing, China 
+Beijing, China 
+yaojc20@mails.tsinghua.edu.cn 
+lliangchenc@163.com 
+wengyt19@mails.tsinghua.edu.cn 
+Yukang Yan 
+Tsinghua University 
+Beijing, China 
+yanyukanglwy@gmail.com 
+ABSTRACT 
+Perceiving the region of interest (ROI) and target object by smart­
+phones from the user’s frst-person perspective can enable diverse 
+spatial interactions. In this paper, we propose a novel ROI input 
+method and a target selecting method for smartphones by utilizing 
+the user-perspective phone occlusion. This concept of turning the 
+phone into real-world physical cursor benefts from the propriocep­
+tion, gets rid of the constraint of camera preview, and allows users 
+to rapidly and accurately select the target object. Meanwhile, our 
+method can provide a resizable and rotatable rectangular ROI to 
+disambiguate dense targets. We implemented the prototype system 
+by positioning the user’s iris with the front camera and estimating 
+the rectangular area blocked by the phone with the rear camera 
+simultaneously, followed by a target prediction algorithm with 
+the distance-weighted Jaccard index. We analyzed the behavioral 
+models of using our method and evaluated our prototype system’s 
+pointing accuracy and usability. Results showed that our method 
+is well-accepted by the users for its convenience, accuracy, and 
+efciency. 
+CCS CONCEPTS 
+• Human-centered computing → Pointing; Human computer 
+interaction (HCI); Interaction techniques. 
+KEYWORDS 
+object selection, smartphone interaction 
+This work is licensed under a Creative Commons Attribution International 
+4.0 License. 
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+© 2023 Copyright held by the owner/author(s). 
+ACM ISBN 978-1-4503-9421-5/23/04. 
+https://doi.org/10.1145/3544548.3580696 
+Yuanchun Shi 
+Tsinghua University 
+Beijing, China 
+shiyc@tsinghua.edu.cn 
+ACM Reference Format: 
+Yue Qin, Chun Yu, Wentao Yao, Jiachen Yao, Chen Liang, Yueting Weng, 
+Yukang Yan, and Yuanchun Shi. 2023. Selecting Real-World Objects via User-
+Perspective Phone Occlusion. In Proceedings of the 2023 CHI Conference on 
+Human Factors in Computing Systems (CHI ’23), April 23–28, 2023, Hamburg, 
+Germany. ACM, New York, NY, USA, 13 pages. https://doi.org/10.1145/ 
+3544548.3580696 
+1 INTRODUCTION 
+Mobile computing allows us to quickly and easily connect and 
+interact with a large number of nearby ubiquitously distributed 
+appliances or get information from nearby objects. Using the cam­
+era to perceive the physical world is an intuitive way to enable 
+the phone to interact with in-sight objects. For example, after con­
+frming the interaction target via the rear camera, the smartphone 
+can directly trigger the APP function bound to the target [15, 17] 
+(e.g., scanning the QR code, issuing the user-defned command, or 
+displaying a control interface), or perform multi-modal interaction 
+combined with voice and gestures [43]. One of the key issues is 
+how to make the smartphone quickly and accurately identify the 
+target the user sees. 
+Traditional methods ofer two types of solutions. The frst is to 
+actively turn on the camera and render the camera preview on the 
+screen. The user confrms the on-screen target by tapping it or point­
+ing an on-screen selector (such as a crosshair) at the target. These 
+methods usually require multiple steps, such as opening the cam­
+era preview, waiting for the screen to render the camera preview, 
+aligning the camera preview to the target, confrming the target, 
+and fnally speaking voice commands or interacting with gestures. 
+This multi-step approach can be heavy if a user wants to perform a 
+quick one-shot interaction (e.g., asking "how much is that"). Some 
+past works showed that reducing the explicit wake-up steps or 
+the visual dependence of the screen can signifcantly improve the 
+interaction efciency and user experience [50, 57, 66, 67]. Extend­
+ing this idea to camera-based target selection, the second type of 
+method allows the user to directly confrm the target through the 
+direction the mobile phone camera is pointing or the direction the 
+
+
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+Qin, et al. 
+Figure 1: Phone-occlusion-based object selection technique. 
+A user raises the phone and approximately blocks the target 
+from the frst-person perspective. 
+face is facing while the screen is of [31, 43]. This method greatly 
+simplifes the interaction process and allows users to directly input 
+voice commands or gestures after raising the phone. However, such 
+methods face the problem of inaccurate pointing due to the lack of 
+visual feedback, which exacerbates the tensions and insecurities 
+of the users [20, 48]. Our work aims to improve the efciency and 
+accuracy of spatial interaction with smartphones without opening 
+the camera preview and reduce user insecurity due to the lack of 
+visual feedback. 
+In this paper, we propose to use a novel selection tool to simul­
+taneously improve the efciency, accuracy, and user experience of 
+interacting with in-sight objects using smartphones, i.e., a resizable 
+and rotatable rectangular region of interest (ROI) provided by the 
+user-perspective phone occlusion. When the users want to interact 
+with the objects in sight, they raise the phone, block the target from 
+their perspective, and trigger the gesture commands or speak di­
+rectly to the voice assistant. Our approach benefts from three parts. 
+First, this posture makes it easy for the front and rear cameras to 
+capture the face and target to sense the environment. Second, this 
+approach gets rid of the constraint of camera preview by utilizing 
+the visual feedback provided by the phone case. This allows users 
+to easily be confdent that they have selected the target accurately 
+while omitting the interactive steps related to the camera preview. 
+Third, users can freely rotate or move the phone closer to or further 
+away from the face to get a resizable and rotatable rectangular ROI. 
+Compared to ray-based methods (e.g., pointing or gazing), using 
+the resizable and rotatable rectangular ROI as the area cursor can 
+easily select sparse targets. At the same time, utilizing the similarity 
+of the ROI and the geometric features of the target to disambiguate 
+dense or overlapping scenarios is potential. 
+In this paper, we mainly study the following three questions: 
+RQ1: How do users mentally map the occluded area (ROI) to a 
+specifc target? 
+RQ2: Based on the existing state-of-the-art algorithm, what is 
+the pointing accuracy of our method? 
+RQ3: What is the diference in user experience between our 
+method and traditional methods? 
+In this work, we frst developed an algorithm to calculate the 
+rectangular area occluded by the phone through the images of 
+the front and rear cameras. Then by collecting and analyzing user 
+occlusion behaviors, we designed a target prediction algorithm to 
+map the occlusion rectangle to the target object with the distance-
+weighted Jaccard index. Then we conducted two user studies to 
+evaluate the accuracy of the occlusion area estimation algorithm 
+and the user experience when using our prototype system. The 
+results showed that our prototype system could achieve an average 
+pointing error of 1.28°±0.96°, and users generally agreed that the 
+occlusion-based target selection technique is convenient, accurate, 
+and efcient. 
+2 RELATED WORK 
+2.1 The 3D Target Selection Techniques 
+Many diferent 3D target selection techniques are designed for dif­
+ferent application scenarios and devices. The survey by Argelaguet 
+et al. divides them into several categories according to diferent 
+characteristics [5]. 
+According to the selection tool, the target selection technique 
+can be classifed into the virtual hand, ray-casting, and area/volume 
+cursor. Using virtual hands to touch the objects directly is proved 
+efcient when the user is close to the target [22, 52, 64]. Using 
+ray-casting combined with visual feedback can efectively select 
+small, dense, and far objects [29, 37]. The area cursor can quickly 
+select sparse objects [26, 37], but additional disambiguation steps 
+are required if multiple objects are in the selection area [18]. 
+Given the diferent starting points, the 3D target selection tech­
+nique could be divided into several categories, including: 1) Body-
+centered ray-casting [45–47], such as fnger-rooted ray cast [11, 32], 
+head-gaze ray cast [43, 65, 70], eye-gaze ray cast [69], eye-fnger 
+ray cast [20, 40], or a combination of above [34, 56]. 2) Device-
+centered ray-casting, which leverages the orientation of device 
+(e.g., controller [41], smartwatch [3], and mobile phone[2, 59])). 
+Our method is similar to eye-fnger ray-casting but at the same 
+time has the feature of an area cursor to select sparse targets quickly. 
+In addition, we introduce a disambiguation mechanism using ROI 
+geometric similarity (distance-weighted Jaccard index) to further 
+support dense and overlapping objects. 
+2.2 Target Selection on Smartphones 
+Speed and accuracy are critical indicators when using smartphones 
+to perform one-shot interactions with in-sight objects. Most of 
+the above methods cannot be used for smartphones due to smart­
+phones’ lack of sensing capabilities or feedback mechanisms. The 
+head-rooted or device-centered ray-casting is mainly considered in 
+previous works. 
+Device-centered approaches often require rendering the camera 
+preview on the phone screen. To select the target, the user taps 
+the target on the screen [12, 62] or fnely adjusts the orientation of 
+the phone to align the on-screen selection tool at the target (e.g., 
+the crosshair rendered in the center of the screen) [54, 55]. This ap­
+proach has been applied to many augmented reality (AR) scenarios 
+[28, 68]. However, such methods relying heavily on visual feedback 
+
+
+Selecting Real-World Objects via User-Perspective Phone Occlusion 
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+can compromise the efciency and smooth user experience due to 
+the multiple interaction steps required before issuing voice/gesture 
+commands. 
+For the head-rooted approach, previous work suggested using 
+head orientation or eye gaze to select the target for voice input 
+with smartphones [43]. If the camera preview and the gaze-ray 
+are not rendered on screen, such methods will face the problem of 
+pointing inaccurately. Mayer et al. reported that the state-of-the-art 
+algorithms could only achieve around ±10° angular error for the 
+head-gaze and around ±15°angular error for the eye-gaze to select 
+distant targets using the smartphone [43, 44]). This inaccuracy 
+comes from two reasons. For head gaze, people feel it difcult to 
+perceive the actual orientation of the head and feel strained [36]. 
+For the eye gaze, a slight iris shift in the image may bring about 
+a considerable gaze direction change, which is computationally 
+unfriendly [33]. 
+Our approach benefts from the use case of the handheld smart­
+phone. Using the front and rear cameras to perceive the occlusion 
+area, we can efectively avoid the above two problems and provide 
+higher accuracy (around ±1.28° for ray-casting). On the one hand, 
+our method does not require the user to control the orientation of 
+the head and the phone fnely. On the other hand, we only need to 
+estimate the 2D coordinates of the iris relative to the center of the 
+front image to get the eye-phone virtual ray rather than estimate 
+the slight ofsets of the iris relative to the eye for sensing eye-gaze, 
+which will be discussed in the next section. 
+2.3 User-Perspective Interaction 
+The most related works to our work are user-perspective 3D object 
+selection techniques. These methods use the feld of view of the 
+user’s eyes as a 2D interaction plane. The previous works can 
+mainly divide into two categories, image plane metaphor (similar 
+to eye-fnger ray-casting) and magic lenses paradigm (a class of 
+see-through interfaces or transparent area cursor). Image plane 
+techniques require the users to align the target with a hand-held 
+aperture [20] or with their fngers [7, 40, 49]. Magic Lenses work 
+by overlaying a transparent tool glass onto the target to reveal 
+hidden information, enhance data of interest, or suppress distracting 
+information [9, 39, 42, 61]. 
+User-perspective techniques have proven to be more natural and 
+efcient than the device-centric approaches because "we do not 
+have to live with the phone’s eyes" [8, 60]. However, the double-
+vision problem is an important issue that restricts the use of user-
+perspective techniques in the real world; that is, it almost impossible 
+to "align the target with the user’s fnger" in the real world. For 
+example, when the user’s gaze is focused on the distant object, the 
+closer fnger will split into two ghosts. Conversely, if the user’s gaze 
+is focused on the closer fnger, the distant object will be split into 
+two ghosts. This means that the users cannot know which selection 
+tool to use unless they closes one eye or randomly chooses one of 
+the two ghosts according to the dominant eye efect. Not only the 
+ray-based user’s perspective techniques but also the transparent 
+magic lenses face such problem. 
+Our approach is diferent from all of the above. We recommend 
+using an ’opaque’ occlusion rectangle as the selection tool to solve 
+the double-vision problem in the real world. When the user is 
+looking at the distant target, although the selection tool will split 
+into two ghosts, only one occluded area is invisible to the user, i.e., 
+the intersection area of the two rectangle ghosts. This occlusion 
+area is easily understood and recognized by the user. Additionally, 
+we study how to utilize the resizable and rotatable rectangular area 
+cursor to disambiguate dense or overlapping scenarios, which is 
+suitable for use with smartphones. 
+3 ALGORITHM AND IMPLEMENTATION 
+In this section, we introduce the principles of occlusion-based ob­
+ject selection via smartphones. We designed a three-stage pipeline 
+to implement the occlusion-based object selection system on the 
+mobile phone. The three components of the pipeline are occlusion 
+rectangle estimation, object detection, and target prediction. We 
+opened the front and rear cameras to take pictures simultaneously. 
+3.1 Occlusion Rectangle Estimation 
+The occlusion rectangle estimation algorithm aims to estimate the 
+rectangular area which is not visible to the user in the rear camera 
+image of the phone. We frst use the MediaPipe Iris [1, 23] to locate 
+the 3D positions of the user’s irises, which uses the RGB image 
+from the front camera of the phone with a depth error of less than 
+10% [24]. And then, according to the known and fxed geometric 
+relationship between the front and rear cameras, we can obtain 
+the occlusion area under the user’s perspective in the rear camera 
+image. Figure 2 and Equation 1 show the calculation principle of 
+the occlusion rectangle estimation. 
+�� 
+�� = (�� − �� ) + (�� − �� ) ∗ 
+(1)
+�� 
+By locating the 2D pixel coordinates of the iris from the front 
+camera image, �
+� 
+�
+� can be obtained. The eye-phone distance �� can 
+be estimated by MediaPipe Iris [23]. �� is the fxed distance be­
+tween the corner of the phone and the front camera. �� is the 
+fxed distance between the front and rear cameras. The �� and 
+�� can be obtained when the phone is produced. We use the rear 
+dual camera of the phone to estimate the target-phone distance �� . 
+The above parameters can also be estimated with the smartphones’ 
+front/rear true depth cameras (e.g., structured-light and LiDAR for 
+depth sensing). 
+Analyzing the theoretical estimation error of our method is use­
+ful for understanding its theoretical accuracy. Consider Equation 1, 
+we can get the error formula of the estimator as Equation 2, where 
+�
+� 
+�
+� is the 2D x-coordinate of the iris in the front-camera image (the 
+y-coordinate is similar), and �
+� 
+�
+� is the x-coordinate of a corner of 
+the occlusion rectangle in the rear-camera image. 
+d�� = −d�� 
+1
+1 
+(�� − �� ) 
+�� 
++ ( 
++
+)d�� + 
+d�� − 
+d�� 
+(2)
+�� 
+�� 
+�� 
+�� 
+� 2 
+� 
+2 
+� 
+� 
+Considering the typical values of practically applicable scenarios 
+(e.g., �� , ��,�� are around 5cm, 30cm, 400cm), we can fnd that the 
+efect of d�� can be approximately ignored due to its small efect 
+on estimation error. In practice, estimating the depth of the iris (i.e., 
+�� , around 10% estimation error [24]) is inaccurate compared to 
+estimating the coordinates of the iris in the front camera image (i.e., 
+
+
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+Qin, et al. 
+(a) Front Image 
+(b) Rear Image 
+(c) Geometric Relationship 
+Figure 2: The geometric schematic diagram of the projection 
+point from the iris to the rear-camera image. The orange, 
+blue, and red rectangles represent the right eye, the left eye, 
+and the user’s overall invisible area. 
+�� /�� , around 0.3° estimation error). According to the above analysis, 
+it can be roughly concluded that the theoretical estimation accuracy 
+of our approach is around 1°. In particular, when �� = �� = 0, the 
+estimation error is only afected by the 2D coordinate of the iris in 
+the front image (i.e., �
+� 
+�
+� ), but not by the depth of �� and �� . In this 
+case, the error can be further reduced to around 0.3°. The actual 
+pointing accuracy will be measured in Study 2. 
+3.2 Object Detection 
+After obtaining the occlusion rectangle in the rear camera image, 
+we performed the object detection algorithm to locate the bounding 
+boxes of all interactable objects. For the object detection or recogni­
+tion tasks, neural networks and deep learning have shown strong 
+performance in recent years [19, 21, 38, 51, 53], and there have 
+been several models which can run on mobile phones in real-time 
+[14, 30]. As a proof of concept, we used the YOLOv4 framework 
+[10] as the object detection backend in our prototype system. 
+3.3 Target Prediction 
+The occlusion rectangle denotes a region of interest (ROI), but it 
+does not immediately provide a well-defned object of interest. In 
+our target prediction algorithm, we use Bayes’ theorem (Equation 
+3) to estimate the probability of each candidate object. 
+� (�� |�) ∝ � (� |�� ) ∗ � (�� ) 
+(3) 
+In Equation 3, � represents the occlusion rectangle, �� is the k-th 
+target in the rear image. � (�� ) is the prior probability of selecting 
+the k-th target. We assume that � (�� ) is equal for all objects. From 
+the equation, we can fnd that the target prediction algorithm relies 
+on the modeling of the user’s behavior model � (� |�� ) which will 
+be discussed in Study 1, that is, the probability distribution of the 
+occlusion rectangle when the user wants to select a certain object. 
+3.4 Implementation 
+We implemented our system on the iPhone 12 Pro, which had a 
+width of 7.1 cm, a height of 14.6 cm, and a weight of 187g. We used 
+its rear wide-angle dual camera to capture 70° feld of view (FOV) 
+RGB-D images and its front camera to capture 56° FOV RGB images. 
+At the same time, according to the gravity direction sensed by the 
+mobile phone’s intrinsic measurement unit (IMU), we rotated and 
+normalized the camera images to facilitate iris tracking and object 
+recognition. 
+As a proof of concept, we built an application to take photos 
+on the mobile phone and deployed the iris tracking and object 
+recognition algorithm on a server in the local area network. The 
+server has an Intel(R) Xeon(R) E5-2640 v4 @ 2.40GHz CPU and a 
+TITAN Xp GPU for calculations. The neural network models used 
+for iris tracking and object recognition consume 259 MB of Memory. 
+The average time for image processing is around 731ms, including 
+498ms for network transmission, 138ms for iris tracking on one 
+core of CPU, 28ms for object detection on a single GPU, and 67ms 
+for other calculations on CPU. 
+4 STUDY 1: UNDERSTANDING USER 
+BEHAVIOR 
+We frst conducted a user study to investigate users’ target selec­
+tion behavior with phone occlusion, collecting data to analyze and 
+model the behavioral term in Equation 3. Since it is easy to pre­
+dict which objects the user wants to select for scenes with sparse 
+targets, we mainly focus on the user’s behavior in dense and over­
+lapping scenarios. In this study, we aim to collect: 1) images from 
+the user’s perspective (containing the opaque phone), 2) images 
+from the user’s perspective when the phone is transparent (to get 
+the area that the user cannot see due to the opaque phone), 3) im­
+ages from the phone’s rear camera and 4) the 3D coordinates and 
+orientations of two eyes, the phone and all objects in the scene. 
+Since we cannot acquire some of the data above simultaneously 
+in a real-world setting (e.g., the phone area and the occluded area 
+from the user’s perspective), we conducted this study in a simu­
+lated VR environment refer to the previous work [16, 35]. We built 
+a VR application and virtual scene to collect the above data. The 
+data is analyzed ofine, so there are no real-time target selection 
+algorithms running in the VR application. 
+4.1 Participants 
+We recruited 11 participants (7 male and 4 female) from our institu­
+tion. The average age of participants was 22.7 years. All of them 
+were right-handed. The whole study took around 20 minutes for 
+each participant. Each participant received $10 for compensation. 
+
+
+Selecting Real-World Objects via User-Perspective Phone Occlusion 
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+4.2 Apparatus and Platform 
+We built a virtual room-scale scenario containing 49 common ob­
+jects in VR (shown in Figure 3), and used the HTC Vive VR headset 
+to render the environment. We fxed a VIVE Tracker on the phone 
+case to simulate a real phone which is similar to the work of Bai et al. 
+[6]. The simulated phone (including the phone case and the tracker) 
+weighs 130g, whose gripping sense is similar to a real phone, and 
+the size is the same as iPhone 12 Pro. The simulated phone is similar 
+in weight to a real phone, but the weight distribution is slightly 
+diferent. The size of virtual objects in VR is the same as real-world 
+ones. We also used a Vive controller to control the experiment 
+process. 
+(a) VR Scene 
+(b) Experiment Environment 
+(c) VR Phone 
+Figure 3: The VR indoor scene from the participant’s frst-
+person perspective, experiment environment, and simulated 
+phone. The targets are marked with diferent colors to facili­
+tate readers to distinguish. 
+4.3 Task 
+The tasks are composed of three sessions. In each session, the user 
+stands in a specifc position to select 49 objects in the room, as 
+shown in Figure 3. Each object is required to be selected one time 
+in one session. The order of selection is randomly shufed. In total, 
+there are 147 (3 × 49) tasks for each participant. 
+4.4 Procedure 
+We frst described the concept of occlusion-based target selection 
+method. Before the experiment, participants got themselves famil­
+iarized with the operations. They then followed instructions and 
+performed operations step by step. We told the participants that 
+they could complete tasks naturally according to their own un­
+derstanding. Participants were also told that they should try to 
+make it possible for others to predict their target based on their 
+phone’s location. In other words, the participants were not told 
+the specifc rules and standards of the occlusion interaction, but 
+"blocked" the target naturally, quickly, and accurately according to 
+their understanding. At the beginning of each task, a red arrow wid­
+get is displayed at the center of the screen indicating the position 
+of the target. Meanwhile, the contour of the target is constantly 
+fickering. When the participant confrms the target, he should 
+press the button on the Vive controller to start collecting data, and 
+the target will no longer fash. When the participant raises the 
+phone and blocks the target, he needs to press the button again 
+to end the recording. A two-minute break was placed after each 
+session. During the experiment, The experimenter frequently asked 
+participants "Why do you hold your phone in that specifc position" 
+to obtain the users’ thoughts and feedback. 
+4.5 Analysis of the results 
+We collected the data of 1617 selections from 11 participants. On 
+average, each selection took 1.39 seconds for each participant. All 
+participants reported that the gripping feelings of the simulated 
+phone in VR had no diference from that of a real-world phone. 
+Because the positions of the two iris are diferent, there will be 
+two diferent occlusion rectangles in the rear camera image cor­
+responding to the left eye and the right eye. The frst issue we 
+care about is how users will deal with this double-vision problem. 
+Users reported that they were more inclined to stare at distant 
+objects rather than focus on the nearby phone screen and used 
+the "invisible area" as a psychological selection box. We have two 
+assumptions about the "invisible area." The frst one is that the user 
+only adopts the image seen by the dominant eye during the cogni­
+tive process. Under this assumption, the invisible area corresponds 
+to the occlusion rectangle of a specifc eye. The second assumption 
+is that the "invisible area" is the area the user with either eye cannot 
+see. Under this assumption, the invisible area corresponds to the 
+intersection area of the two occlusion rectangles formed by the left 
+and right eyes. From Figure 4a, we found that the data are clustered 
+into one cluster, and the data for any user under the dominant eye 
+assumption is of-center. The above evidence leads us to believe 
+that ocular dominance plays a small role in our method and could 
+be ignored. Therefore, in the following, we defne occlusion rectan­
+gle as the intersection of two rectangular areas in the rear camera 
+image. 
+Our second focus is where the users will place the occlusion 
+rectangle (i.e., the phone) in their feld of view. From Figure 4b, we 
+observed that users generally held the phone vertically or horizon­
+tally, and rarely tilted it. Through interviews with users, we found 
+that users tended to spend less efort to achieve their purposes. 
+Sometimes the users did not raise the phone to fully overlap the 
+target but held it lower than the target a little bit to save physical 
+efort. Therefore, the coordinates of the center point in Figure 4a 
+will be slightly lower. 
+On the whole, users had similar thoughts and behaviors, from 
+which we concluded our observations with three points: 1) Users 
+believed that the most accurate position is to align the phone’s 
+
+
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+Qin, et al. 
+(a) 
+(b) 
+(c) 
+(d) 
+Figure 4: Characteristics of user behavior. (a) shows the ofset between the center of the occlusion rectangle and the center 
+of the target under the three assumptions separately, i.e., left/right eye only and the intersection of two occlusion rectangles 
+generated by the left and right eyes respectively (Cyclops’ eye). (b) shows that users mostly use horizontal or vertical phone 
+orientation. (c) shows how many ratios of users tend to occlude the target horizontally or vertically as the aspect ratios of 
+target change (d) shows the relationship between the user’s eye-phone distance and the target size. The data of user-1 in (d) is 
+highlighted to refect intra-user and cross-user trends. 
+center with the target’s center (as shown in 4a); 2) Users tended to 
+rotate the phone to match the object’s main axis (as shown in 4c); 
+It means holding the phone horizontally for fat and wide objects, 
+and holding the phone vertically for thin and tall objects. 3) Users 
+deemed that putting the phone closer/further to their eyes to select 
+larger/smaller targets made sense (as shown in 4d). 
+Considering the above factors, we chose distance-weighted Jac­
+card index to establish our target prediction algorithm (shown in 
+Equation 4). It can refect on the consistency of two rectangles, 
+including 1) the center-to-center ofset between the phone and 
+target, 2) the orientation of the phone, and 3) the size of the oc­
+cluded rectangle. While it is feasible to represent the target as an 
+irregularly shaped mask and model its probability distribution, as 
+a proof-of-concept, we only approximate the target as a rectangu­
+lar bounding box. Firstly, we considered the rectangular bounding 
+box of the object �� and the occlusion rectangle of the phone � 
+as two-dimensional uniform distribution. We then keep its mean 
+vector � and covariance matrix Σ and transform them into Gauss­
+ian function �� and � with the maximum value of 1. We use the 
+weighted Jaccard index �W to measure the similarity between the 
+occlusion rectangle and a single target, which is widely used to 
+measure the similarity between sets and geometric shapes. When 
+the occlusion rectangle and the target completely coincide, �W 
+reaches its maximum value of 1. 
+� (x) = exp(−(x − �� )� Σ−1 (x − �� )) 
+� 
+�� (x) = exp(−(x − �� )� Σ−1 (x − �� )) 
+� 
+∫ 
+(4)
+min(� ,�� )�� 
+�W (� ,�� ) = ∫ 
+max(� ,�� )�� 
+A trick we found to efectively improve the accuracy of object 
+prediction with distance-weighted Jaccard index is to infate small 
+objects. Due to the limited length of users’ arm, it’s hard to get a 
+rectangle small enough to exactly cover a small and distant target. 
+Therefore, we empirically zoomed those small-size bounding boxes 
+�∗ℎ
+to 
+= 1 ∗ 10−2 and kept their aspect ratio, where � and ℎ is the 
+�� ∗�� 
+width and height of the bounding box, �� and �� is the focal length 
+of the camera intrinsic matrix. In our target prediction algorithm, 
+we use �W (� ,�� ) to approximate � (� |�� ). We fnally compare the 
+shape similarity between the occlusion rectangle and all targets 
+and choose one with the highest probability. 
+4.6 Evaluation of Behavior Model 
+We evaluated the accuracy of our target prediction algorithm with 
+the other three existing white-box baselines on the data set. All se­
+tups were the same except the similarity metrics. The four methods 
+are as follows: 
+Center-to-Area Distance (C2A) . This implementation is similar 
+to the bubble cursor[25], which uses the closest distance from the 
+center point of the occlusion area to the target as the metric. If 
+the center of the occlusion rectangle is inside multiple objects, we 
+choose the object with the smallest area. 
+Center-to-Center Distance (C2C) . This implementation uses the 
+distance from the center point of the occlusion area to the center 
+point of the target as the metric. 
+Intersection over Union (IoU) . This implementation uses the 
+IoU ratio of two rectangles as the metric. 
+Our method. This implementation uses the distance-weighted 
+Jaccard index �W as the metric (described in Equation 4). 
+Table 1 shows that our method (accuracy: 96.6%) outperformed 
+the baselines. The center-to-center distance also shows good per­
+formance. 
+Table 1: The accuracy of the four similarity metrics on the 
+evaluation data set. 
+Method 
+C2A 
+C2C 
+IoU 
+Ours 
+Accuracy 
+91.5% 
+92.6% 
+84.0% 
+96.6% 
+
+
+Selecting Real-World Objects via User-Perspective Phone Occlusion 
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+5 STUDY 2: EVALUATION OF POINTING 
+ERROR 
+This experiment is used to study the user’s ability to control the oc­
+clusion area and evaluate our prototype system’s average pointing 
+error of the occluded area estimation. We collected images cap­
+tured by smart phones and analyze it ofine. The overall selection 
+accuracy of our prototype system will be evaluated in Study 3. 
+5.1 Participants 
+We recruited 12 participants (10 male and 2 female) from our institu­
+tion. The average age of participants was 21.4 years, with an average 
+height of 173.2±6.1 cm, and an average arm length of 53.2±4.8cm. 
+All of them were right-handed and familiar with smartphones. The 
+whole study took around 20 minutes and each participant received 
+$10 for compensation. 
+5.2 Apparatus 
+We conducted this experiment in a real room instead of in VR. 
+We used iPhone 12 Pro as the experimental device, which always 
+remained a black screen. We hung a 15cm × 15cm crosshair target 
+on the wall, which was 150cm above the ground. This study was 
+conducted in a bright and clean environment. We did not use other 
+equipment except the smartphone and the crosshair target. 
+5.3 Design and Procedure 
+The experimenter frst gave a brief introduction to participants, 
+asking for their demographic information and answering their 
+questions. During the experiment, participants were asked to stand 
+between 1m and 4m from the target and were required to hold the 
+phone and raise it naturally with their dominant hand. When the 
+corner of the phone (i.e., the intersection of two edges) was aimed 
+at the center of the crosshair from their perspective, they had to 
+tap on the touchscreen to capture two images by the front and rear 
+cameras simultaneously. We did not provide participants feedback, 
+so they could not learn during the process. Participants were asked 
+to complete the experiment as quickly and naturally as possible 
+without compromising accuracy. 
+We employed a within-subjects design with three factors as Eye-
+Target Distance (1m, 2m, 4m; three levels), Eye-Phone Distance (25cm, 
+50cm; two levels) and Corner of the Phone (four corners; four levels). 
+Participants had to complete 24 sessions (3 Eye-Target Distance × 
+2 Eye-Phone Distance × 4 Corners). We used a Latin square to bal­
+ance the order of the tasks. In each session, participants performed 
+actions 10 times (raising the phone and tapping the touchscreen), 
+with 5 times using only left eye to observe the target (closed right 
+eye), and vice versa. A twenty-second break was arranged after 
+each session. 
+5.4 Result 
+We performed the occlusion rectangle estimation algorithm for all 
+the data and calculated the pointing error between the projection 
+of the phone’s corner and the center of the crosshair. The pointing 
+error is mainly composed of two parts, the algorithm (mainly) and 
+the muscle jitter. In total, we collected 2880 points (12 × 3 × 2 × 
+4 × 10). We fltered outlier trials with errors exceeding 3 ∗ � refer 
+to the prior related work [43], which removed 13 points. Figure 
+5 and Table 2 indicated the distributions of the phone and the 
+corresponding pointing accuracy with diferent factors in detail. 
+The pointing error (in angle) refers to the angle formed by the 
+center of the rear camera, the estimated point, and the center of 
+the crosshair. The ’Top-Left’ in the fgure refers to the corner under 
+the user’s perspective when the user holds the phone vertically. 
+Correspondingly, the rear camera of the iPhone 12 Pro is located 
+near the ’Top-Right’ corner. 
+Figure 5: The distribution of the projection points of each 
+corner of the phone with respect to the target point. 
+According to the analysis of Equation 2, we can fnd that the 
+main factor causing the estimation error is the inaccuracy of the 
+iris depth estimation, which corresponds to the radially outward 
+distribution in Figure 5. This inaccuracy grows as �� becomes 
+larger, which explains why the ’Top-Right’ corner in Table 2 is the 
+most accurate, as it is the closest to the camera. 
+A Shapiro-Wilk normality test showed that the Error is not nor­
+mally distributed (� = .002), so we performed a three-way ART RM­
+ANOVA [63]. The results showed signifcant efects of all Eye-Phone 
+Distance (�1,10 = 10.745, � = .008), Eye-Target Distance (�2,20 = 
+11.885, � < .001), and Corner of the Phone (�3,30 = 61.613, � < .001) 
+on the Error. We further performed the post-hoc Wilcoxon signed-
+rank tests on Eye-Target Distance and Corner of the Phone, respec­
+tively. For the Eye-Target Distance, the diference between 1m and 
+2m and between 1m and 4m is signifcant (� < .05). For the Corner of 
+the Phone, all pairwise diferences are signifcant (� < .002), except 
+between the bottom-left corner and the bottom-right corner. 
+In summary, our current implementation achieved an average 
+corner error of the occluded area estimation of 1.28°±0.96°, which 
+was acquired with a generalized model without calibrations toward 
+users. The average pointing error was further reduced to 0.65°±0.52° 
+if we calibrated for each participant. 
+
+
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+Qin, et al. 
+Table 2: The pointing accuracy measured by angular error (mean±SD). The three factors are the Eye-Phone Distance (Arm), 
+Eye-Target Distance (Target), and the Corner of the Phone. 
+Arm 
+Target 
+Average 
+Corner of the Phone 
+Top-Left 
+Top-Right 
+Bottom-Right 
+Bottom-Left 
+50cm 
+1m 
+2m 
+4m 
+0.98°±0.12° 
+0.89°±0.15° 
+0.81°±0.09° 
+0.54°±0.11° 
+0.49°±0.06° 
+0.39°±0.06° 
+2.24°±0.27° 
+1.41°±0.11° 
+1.39°±0.16° 
+1.85°±0.18° 
+1.50°±0.21° 
+1.26°±0.26° 
+1.42°±1.02° 
+1.08°±0.7° 
+0.99°±0.74° 
+25cm 
+1m 
+2m 
+4m 
+1.17°±0.09° 
+1.05°±0.18° 
+0.92°±0.10° 
+0.73°±0.14° 
+0.60°±0.06° 
+0.59°±0.09° 
+2.18°±0.30° 
+1.88°±0.20° 
+1.69°±0.30° 
+1.76°±0.39° 
+2.10°±0.41° 
+1.98°±0.25° 
+1.48°±1.05° 
+1.41°±1.07° 
+1.31°±0.99° 
+Average 
+0.98°±0.46° 
+0.57°±0.38° 
+1.81°±1.08° 
+1.77°±1.01° 
+1.28°±0.96° 
+6 STUDY 3: USER EXPERIENCE 
+We conducted a third user study to evaluate our prototype system’s 
+efciency, accuracy, and usability. 
+6.1 Candidate Methods 
+We chose three existing camera-based object selection techniques 
+from previous works [43, 54] as our baseline for comparison (i.e., 
+Photograph, Snapshot, and Head-Gaze). In addition to the three 
+existing baseline methods, we propose two additional methods to 
+extend the concept of using the phone as a real-world physical 
+cursor (i.e., Center Cursor and Corner Cursor). Except for the frst 
+baseline of opening the camera to take pictures, the other methods 
+do not require rendering the camera preview. The six candidate 
+methods all use Center-to-Center Distance as the similarity measure 
+and are described below. 
+M1. Photograph. The phone renders the rear camera preview 
+in full-screen, with a red point fxed at the center of the screen to 
+prompt the direction of the phone to the user. The object closest to 
+the red cursor would be selected (measured by Center-to-Center 
+Distance in section 4.6). The camera and screen preview remain 
+open throughout the experiment. We use the camera’s standard 
+feld of view (1x) instead of the wide-range camera. 
+M2. Snapshot. The object closest to the center of the rear camera 
+image would be selected. This method is similar to M1. Photograph, 
+but the phone’s screen remains dark all the time. 
+M3. Head-Gaze. The user holds the phone in front of the face 
+and uses head orientation as the virtual ray to select targets. The 
+object with a minimum angular to the head-ray would be selected. 
+The phone’s screen remains dark all the time. This method is a 
+reference to the implementation of WorldGaze [43]. 
+M4. Center Cursor. Similar to occlusion, the user needs to aim 
+at the target with the center of the screen from the frst-person 
+perspective instead of using the entire occlusion area. While there 
+is not technically diferent from the M6. Occlusion, the user’s mental 
+model is subtly diferent. Unlike the Snapshot (M2), this method 
+uses the eye-phone ray to aim at the target. 
+M5. Corner Cursor. Similar to occlusion, the user holds the 
+phone vertically and aims at the target with the upper left corner 
+of the screen from the frst-person perspective if the participant 
+is right-handed (use the upper right corner if the participant is 
+left-handed). This method was chosen because using the corners to 
+point to the target may be more accurate than using the center of 
+the screen refer to Equation 2. 
+M6. Occlusion (Ours). The user raises the phone to occlude the 
+target from the frst-person perspective. The phone’s screen remains 
+dark all the time. The similarity is measured by Center-to-Center 
+Distance instead of our more accurate distance-weighted Jaccard 
+index to avoid better target prediction algorithms confounding the 
+advantages of the design itself so that it can be compared with the 
+baseline more fairly. 
+Assuming that the sensing techniques can be signifcantly im­
+proved in the future, we make some improvements to the baseline 
+method to eliminate the limitations of the current techniques and 
+focus on the interaction designs themselves. 
+For baseline M1 (Photograph) in the real world, waking up the 
+camera preview and waiting for rendering has certain disadvantages 
+in efciency compared to the last fve methods that support direct 
+input of the intent after raising the phone. Assuming that in the 
+future, the camera preview can be opened automatically when 
+the user is raising the phone, we simplify the wake-up gesture 
+in this study and render the camera preview all the time for M1 
+(Photograph). The user can trigger the photo by simply tapping the 
+screen. 
+In order to solve the problem of inaccurate estimation of the 
+head-gaze using the smartphone, we asked the user to wear the 
+head-worn camera when performing the Head-Gaze technique (M3). 
+The relative orientation between the camera and the user’s head is 
+calibrated so that the system can accurately measure the ground 
+truth of head orientations. The users were informed to ignore the 
+negative impacts of that head-worn camera while rating. 
+The existing algorithm is used without special modifcation when 
+users use the occlusion-base method. 
+6.2 Participants 
+We recruited 13 participants (6 males, 7 females) from the local insti­
+tution. The average age of participants was 23.8 years. All of them 
+had experience with smartphones. This study took approximately 
+30 minutes. Each participant received $10 for compensation. 
+6.3 Apparatus and Platform 
+We conducted this study in a 7.4m length × 5.6m width × 2.8m 
+height indoor environment, where we prepared 31 electrical de­
+vices as interactable candidates. The scene and objects are shown 
+
+
+Selecting Real-World Objects via User-Perspective Phone Occlusion 
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+in Figure 6. Each device had a unique identifer to make itself rec­
+ognizable, even if its appearance was the same as others. We used 
+iPhone 12 Pro as our experimental device on which we could build 
+our prototype system. 
+Figure 6: The indoor scene of this study from the participant’s 
+frst-person perspective. The 31 selectable electronic devices 
+are marked in the fgure. 
+The six selection techniques employed the same neural network 
+model for object recognition, which was trained with 30 pictures 
+of the scene from diferent perspectives. For 97.39% of the tasks 
+during the experiment, the object recognition algorithm correctly 
+recognized the target. 
+6.4 Experiment Design and Procedure 
+The participant’s task is designed to obtain the device’s name. Par­
+ticipants need to focus on the user experience of the target selec­
+tion process. First, an experimenter introduced the six diferent 
+object selection methods and the interactable devices in the envi­
+ronment. Participants only listened to a brief how-to guide without 
+understanding the technical details. Participants attempted each 
+technique in the Latin square order and selected the objects freely. 
+When they tap the screen, the phone will speak the name of the se­
+lected device via voice feedback and display its name on the screen. 
+Besides, participants were asked to stand in a fxed position and 
+put their hands down after each task. We measured the time cost 
+of each selection. After participants had fully experienced each 
+technique, we interviewed them to collect their subjective feedback. 
+We asked them to fll out the NASA-TLX [27] questionnaire on a 
+7-point Likert scale and the System Usability Scale (SUS) [13] on a 
+5-point Likert scale as the metrics to evaluate user experience. 
+6.5 Result 
+The completion time of the process, the accuracy of target selection, 
+and participants’ subjective ranking for the six object selection 
+techniques are shown in Figure 7. 
+One-way RM ANOVA were performed to compare the efect of 
+Methods on Time and Accuracy with post-hoc T-tests. Friedman 
+tests were performed to compare the efect of Methods on subjective 
+scores with post-hoc Wilcoxon signed rank tests. 
+6.5.1 Time. Result showed signifcant efects of Methods (�5,12 = 
+16.326, � < .001) on Time. Post-hoc tests showed that our method 
+(M6, Occlusion, mean=1.00s, SD=0.24s) was signifcantly (� < .05) 
+faster than Photograph (M1, mean=1.65s, SD=0.43s), Snapshot (M2, 
+mean=1.20s, SD=0.24s), Head-Gaze (M3, mean=1.59s, SD=0.46s) and 
+Corner Cursor (M5, mean=1.25s, SD=0.47s). There was no signif­
+cant diference between our method (M6) and Center Cursor (M4, 
+mean=1.03s, SD=0.23s). 
+When using the Snapshot (M2) and Head-Gaze (M3), some users 
+showed a moment of hesitation before tapping the screen. Users 
+reported that it usually required more time to confrm the pointing 
+direction due to a lack of visual feedback because it is easy to choose 
+the wrong target if the user is not focused. For Photograph (M1), 
+although we told the user that they can aim at the target more 
+freely, and the algorithm will choose the closest object, most users 
+tended to make the on-screen selection tool fall closer to the target 
+for psychological comfort. This process of fne-tuning the phone’s 
+orientation made the Photograph (M1) signifcantly slower than 
+Snapshot (M2). For the Corner Cursor (M5), the user felt the double 
+vision efect which confused the users when looking at the corner 
+of the phone. For the Center Cursor (M4) and Occlusion (M6), users 
+reported that the visual feedback provided by the phone case allows 
+them to easily confrm that they have correctly selected the target, 
+so they can tap the screen to take a photo without hesitation. 
+6.5.2 Accuracy. Result showed signifcant efects of Methods on 
+Accuracy (�5,12 = 31.049, � < .001). Post-hoc tests showed that our 
+method (M6, mean=95.9%, SD=4.5%) was signifcantly (� < .05) 
+more accurate than Snapshot (M2, mean=85.3%, SD=7.4%), Head-
+Gaze (M3, mean=65.6%, SD=14.4%) and the Corner Cursor (M5, 
+mean=87.0%, SD=9.1%). Our method (M6) showed no signifcant 
+diference compared to methods Photograph (M1, mean=99.4%, 
+SD=1.7%) and Center Cursor (M4, mean=96.1%, SD=5.0%). 
+When using the Snapshot (M2) and Head-Gaze (M3), users com­
+plained that the lack of visual feedback restricted the accurate 
+selection, especially for Head-Gaze (M3). Sometimes users think 
+that they are pointing at the target accurately, but the ground truth 
+is very deviated. For the Corner Cursor (M5), users reported that 
+sometimes the double vision efect confused the correct phone cor­
+ner locations. Users generally report that the Photogrash is the most 
+accurate because they can see the cursor on the screen. 
+6.5.3 Subjective Feedback. Friedman tests showed that Methods 
+makes a signifcant infuence on both NASA-TLX (� < .001) and SUS 
+(� < .001). Post-hoc tests showed that our method (M6) provides 
+signifcantly (� < .05) lower task load (NASA-TLX) and higher 
+system usability (SUS) than Snapshot (M2), Head-Gaze (M3), Center 
+Cursor (M4) and Corner Cursor (M5). 
+By conducting interviews with users, we found that 11 out of 
+13 users prefer one particular technique: U3, U8, and U10 tend 
+to use Photograph (M1); U2 tends to use Center Cursor (M4); U1, 
+U4, U7, U9, U11, U12, and U13 tend to use Occlusion (M6). Users 
+generally think that diferent methods have their own advantages 
+and disadvantages, and we summarize them below. 
+Photograph: Users appreciated that Photograph is easy to un­
+derstand and can accurately select dense and small targets with the 
+visual feedback of the camera preview. Negative comments from 
+users mainly focus on: objects on the screen look too small; indirect 
+
+
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+Qin, et al. 
+Figure 7: Completion time, accuracy of target selection, and user’s subjective feedback on the six methods. The score range of 
+the subjective feedback is from 1 to 7 for NASA-TLX and 0 to 100 for SUS (higher score represents a more positive evaluation). 
+The standard deviation and statistical signifcance (p<.05) are marked in the fgure. 
+pointing via camera preview is not as natural as user-perspective 
+pointing. 
+Snapshot: The comments were polarized. A few users with a 
+good sense of self (U5 and U6) appreciated Snapshot for being faster 
+than Photograph. Other users were prone to making mistakes. Users, 
+even the most skilled part, complain that the lack of visual feedback 
+makes them less confdent and more frustrated. 
+Head-Gaze: Inaccuracy was considered the most severe problem 
+with Head-Gaze. The lack of visual feedback problem is more promi­
+nent than Snapshot. Many users indicated that their self-perceived 
+head orientation was completely diferent from the ground truth, 
+and it is unnatural to control the head to point precisely at the 
+target while looking at it. We think that using eye-gaze instead of 
+head-gaze is a better way for users to select targets, but users will 
+not be able to look at the phone screen simultaneously in this case. 
+Center Cursor: Users praised the user-perspective approach for 
+being natural and comfortable. The main problem of Center Cursor 
+is that since the phone is entirely black,users feel it is difcult 
+to estimate exactly where the center of the screen is. However, 
+estimating the center of the screen from the outline and pointing 
+at the target rarely selects the wrong target. 
+Corner Cursor: Users complained about the double-vision prob­
+lem. Unlike Center Cursor and Occlusion, which can visually see the 
+occlusion area, the Corner Cursur is completely split into two vir­
+tual images from the user’s perspective. This makes this approach 
+feel unnatural to the user. 
+Occlusion: Almost all users agreed that the concept of using 
+the phone as a real-world physical cursor was novel and creative 
+when they frst touched it. They also felt this method is simple 
+and comfortable after attempts. Users reported low psychological 
+pressure and high efciency because when they feel some overlap 
+between the phone and the target or cannot see the target, they 
+can easily trust that the target can be accurately selected. No users 
+little impact during a one-shot interaction, it can cause arm fatigue 
+during multiple consecutive uses. 
+Overall, our method is comparable in accuracy to Photograph and 
+faster than existing baseline methods. Users consider it convenient 
+and efcient. 
+7 DISCUSSION 
+7.1 Example Uses 
+Our approach provides visual context to support various vision-
+based context-aware interactions with in-sight objects, such as 
+controlling the nearby ubiquitously distributed appliances [17], 
+getting information from the objects, or performing custom actions. 
+For interactions with only one possible intent, such as turning 
+on a device that is turned of, scanning the QR code, or performing 
+a user-defned command (e.g., pet dog corresponds to opening a 
+shopping app to buy dog food), just one wake-up gesture is enough. 
+The iPhone supports associating a double tap on the back of the 
+phone with a user-defned shortcut command. Using our method, 
+the double-tap shortcut can be varied according to the selected 
+target. 
+If the intent is not clear enough, multimodal interactions can be 
+combined with gestures or voice. Gestures with diferent semantics 
+can be defned for diferent devices. For example, we can adjust 
+the volume by selecting the TV or smart speaker and swiping up 
+or down on the right side of the screen. Or users can perform a 
+select-drag-select-release gesture between devices to mirror what’s 
+playing on one screen to the other or copy confguration informa­
+tion between devices. Combining voice allows users to perform 
+variable interactions, such as asking "how much is that" [43], asking 
+the robot to "clean up that place" [32], saying "turn on" or "play 
+music" to the device, or say "translate that" abroad on the road. 
+complained about the double-vision problem. Compared to other 
+7.2 Activation Methods 
+methods, one disadvantage of Occlusion is that it requires the user 
+Our method’s role in interaction depends on the goal of the interac­
+to raise the phone to a higher position. While this extra efort has a 
+tion task. A complete interaction process should include wake-up, 
+
+
+Selecting Real-World Objects via User-Perspective Phone Occlusion 
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+spacial object selection, and intent input. Our technique focuses on 
+the target selecting step, but the other two parts are also essential. 
+Users can activate our feature using a predefned gesture (e.g., 
+double tap the back of the phone) or wake-up word (e.g., turn on the 
+cameras after saying "Hi, Siri"). At the same time, our rectangular 
+ROI provides a clear spatial intention. If the semantic analysis fnds 
+that the user’s voice has a clear interaction intention with the target, 
+we have the opportunity to get rid of the wake-up words entirely 
+and achieve the ideal of natural wake-up-free voice interaction 
+(e.g., directly say "turn on" without "Hi, Siri"). In future work, the 
+wake-up-free voice interaction using the occluded area as the visual 
+cues can be studied. 
+7.3 Design Implications 
+Based on research fndings from user experiments, we try to sum­
+marize some generalized design implications for 3D object selection. 
+Accuracy, efciency, ease of understanding and control are the four 
+important factors we focus on that afect the user experience. 
+Providing appropriate visual feedback is an efective way to 
+ensure accuracy. For Snapshot and Head-Gaze, failure to provide 
+visual feedback can lead to lower accuracy and undermine user con­
+fdence. Our method uses the phone case to provide visual feedback, 
+enabling one-shot interactions without the camera preview. In the 
+future, rendering perspective-correct camera review on the screen 
+(i.e., making the phone look like transparent glass [4, 58]) has the 
+potential to provide more efective visual feedback for confrming 
+the target and disambiguation for dense scenarios. 
+To ensure efciency and ease of understanding and control, 
+choosing capabilities that match the user’s psychology and prof­
+ciency is desirable. We think user-perspective interaction is more 
+natural than device-centric interaction in our application scenario if 
+we can solve the double-vision problem. The motion control process 
+of blocking the target is more like grabbing the target in mid-air 
+by hand, a basic human profciency ability. In the future, inspired 
+by our method, we can study better solutions to the double-vision 
+problem in various scenarios, such as VR/AR/large-screen displays, 
+to enable user perspective interaction to work better. 
+7.4 Limitations and Future Work 
+Our prototype’s object detection algorithm only recognized a pre­
+defned object collection. In the future, we should consider allowing 
+users to register a new object by themselves, download an object’s 
+recognition model from the Internet to their smartphones, or per­
+form object recognition by sending images to the cloud. 
+Using the smartphone as a rotatable and scalable rectangle occlu­
+sion box can select one of two small targets side by side by ofsetting 
+to one side. However, a post-hoc disambiguation process may be 
+necessary when faced with three or more dense small objects and 
+the target cannot be determined. 
+Our prototype’s current object recognition backend can only 
+output a rectangle bounding box for each target, which may be 
+inappropriate for those objects with complicated form factors (e.g., 
+a sickle-shaped object). In the future, we can use a more accurate 
+object segmentation model to enclose the object compactly and 
+model it with a more refned distribution instead of a bivariate 
+normal distribution. 
+Since the estimation error of the depth is the main factor caus­
+ing the estimation error of the occlusion rectangle, it can be im­
+proved by using the smartphones’ front/rear true depth cameras 
+(e.g., structured-light and LiDAR for depth sensing) in the future. 
+Most commercial smartphones are large enough to adopt the 
+presented occlusion-based target selection technique. However, 
+holding a small smartphone vertically (e.g., smaller than 4.7 inches) 
+may increase selection ambiguity since there are no invisible over­
+lapped regions from users’ perspective anymore. To address this 
+issue, users can hold the smartphone horizontally to block objects 
+or roughly treat the phone with ghosting as an occluded area. 
+8 CONCLUSION 
+In this work, we present a novel object selection technique based on 
+user-perspective phone occlusion which allows the user to quickly 
+and easily interact with a large number of nearby objects. By analyz­
+ing the users’ behavior in target selection, we model the users’ be­
+havior as a distance-weighted Jaccard index. Our three experiments 
+show our method performs well in both efciency and accuracy. 
+Users agree that our method is convenient, accurate, efcient, and 
+can be used as the preferred choice for one-time interactions with 
+in-sight objects on smartphones. 
+ACKNOWLEDGMENTS 
+This work is supported by the Natural Science Foundation of China 
+under Grant no. 62132010, and by Beijing Key Lab of Networked 
+Multimedia, the Institute for Guo Qiang, Tsinghua University, Insti­
+tute for Artifcial Intelligence, Tsinghua University (THUAI), and by 
+2025 Key Technological Innovation Program of Ningbo City under 
+Grant No.2022Z080. 
+REFERENCES 
+[1] Artsiom Ablavatski, Andrey Vakunov, Ivan Grishchenko, Karthik Raveendran, 
+and Matsvei Zhdanovich. 2020. Real-time Pupil Tracking from Monocular Video 
+for Digital Puppetry. https://doi.org/10.48550/ARXIV.2006.11341 
+[2] Heikki Ailisto, Lauri Pohjanheimo, Pasi Välkkynen, Esko Strömmer, Timo 
+Tuomisto, and Ilkka Korhonen. 2006. Bridging the physical and virtual worlds by 
+local connectivity-based physical selection. Personal and Ubiquitous Computing 
+10, 6 (2006), 333–344. 
+[3] Amr Alanwar, Moustafa Alzantot, Bo-Jhang Ho, Paul Martin, and Mani Srivastava. 
+2017. SeleCon: Scalable IoT Device Selection and Control Using Hand Gestures. 
+In Proceedings of the Second International Conference on Internet-of-Things Design 
+and Implementation (Pittsburgh, PA, USA) (IoTDI ’17). Association for Computing 
+Machinery, New York, NY, USA, 47–58. https://doi.org/10.1145/3054977.3054981 
+[4] Daniel Andersen, Voicu Popescu, Chengyuan Lin, Maria Eugenia Cabrera, 
+Aditya Shanghavi, and Juan Wachs. 2016. A Hand-Held, Self-Contained Sim­
+ulated Transparent Display. In 2016 IEEE International Symposium on Mixed 
+and Augmented Reality (ISMAR-Adjunct). IEEE, Piscataway, NJ, USA, 96–101. 
+https://doi.org/10.1109/ISMAR-Adjunct.2016.0049 
+[5] Ferran Argelaguet and Carlos Andujar. 2013. A survey of 3D object selection 
+techniques for virtual environments. Computers & Graphics 37, 3 (2013), 121–136. 
+[6] Huidong Bai, Li Zhang, Jing Yang, and Mark Billinghurst. 2021. Bringing full-
+featured mobile phone interaction into virtual reality. Computers & Graphics 97 
+(2021), 42–53. https://doi.org/10.1016/j.cag.2021.04.004 
+[7] Amartya Banerjee, Jesse Burstyn, Audrey Girouard, and Roel Vertegaal. 2012. 
+MultiPoint: Comparing laser and manual pointing as remote input in large display 
+interactions. International Journal of Human-Computer Studies 70, 10 (2012), 690– 
+702. https://doi.org/10.1016/j.ijhcs.2012.05.009 Special issue on Developing, 
+Evaluating and Deploying Multi-touch Systems. 
+[8] Domagoj Baričević, Cha Lee, Matthew Turk, Tobias Höllerer, and Doug A. Bow­
+man. 2012. A hand-held AR magic lens with user-perspective rendering. In 2012 
+IEEE International Symposium on Mixed and Augmented Reality (ISMAR). IEEE, 
+Piscataway, NJ, USA, 197–206. https://doi.org/10.1109/ISMAR.2012.6402557 
+[9] Eric A. Bier, Maureen C. Stone, Ken Pier, William Buxton, and Tony D. DeRose. 
+1993. Toolglass and Magic Lenses: The See-through Interface. In Proceedings 
+
+
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+Qin, et al. 
+of the 20th Annual Conference on Computer Graphics and Interactive Techniques 
+(Anaheim, CA) (SIGGRAPH ’93). Association for Computing Machinery, New 
+York, NY, USA, 73–80. https://doi.org/10.1145/166117.166126 
+[10] Alexey Bochkovskiy, Chien-Yao Wang, and Hong-Yuan Mark Liao. 2020. YOLOv4: 
+Optimal Speed and Accuracy of Object Detection. 
+https://doi.org/10.48550/ 
+ARXIV.2004.10934 
+[11] Richard A. Bolt. 1980. “Put-That-There”: Voice and Gesture at the Graphics 
+Interface. SIGGRAPH Comput. Graph. 14, 3 (July 1980), 262–270. https://doi.org/ 
+10.1145/965105.807503 
+[12] Sebastian Boring, Dominikus Baur, Andreas Butz, Sean Gustafson, and Patrick 
+Baudisch. 2010. Touch Projector: Mobile Interaction through Video. Association for 
+Computing Machinery, New York, NY, USA, 2287–2296. https://doi.org/10.1145/ 
+1753326.1753671 
+[13] John Brooke et al. 1996. SUS-A quick and dirty usability scale. Usability evaluation 
+in industry 189, 194 (1996), 4–7. 
+[14] Yuxuan Cai. 2020. YOLObile: Real-time object detection on mobile devices via 
+compression-compilation co-design. Ph.D. Dissertation. Northeastern University. 
+[15] Kaifei Chen, Jonathan Fürst, John Kolb, Hyung-Sin Kim, Xin Jin, David E. Culler, 
+and Randy H. Katz. 2018. SnapLink: Fast and Accurate Vision-Based Appliance 
+Control in Large Commercial Buildings. Proc. ACM Interact. Mob. Wearable 
+Ubiquitous Technol. 1, 4, Article 129 (Jan. 2018), 27 pages. https://doi.org/10.1145/ 
+3161173 
+[16] Yifei Cheng, Yukang Yan, Xin Yi, Yuanchun Shi, and David Lindlbauer. 2021. 
+SemanticAdapt: Optimization-Based Adaptation of Mixed Reality Layouts Lever­
+aging Virtual-Physical Semantic Connections. In The 34th Annual ACM Sym­
+posium on User Interface Software and Technology (Virtual Event, USA) (UIST 
+’21). Association for Computing Machinery, New York, NY, USA, 282–297. 
+https://doi.org/10.1145/3472749.3474750 
+[17] Adrian A. de Freitas, Michael Nebeling, Xiang ’Anthony’ Chen, Junrui Yang, 
+Akshaye Shreenithi Kirupa Karthikeyan Ranithangam, and Anind K. Dey. 2016. 
+Snap-To-It: A User-Inspired Platform for Opportunistic Device Interactions. In 
+Proceedings of the 2016 CHI Conference on Human Factors in Computing Systems 
+(San Jose, California, USA) (CHI ’16). Association for Computing Machinery, New 
+York, NY, USA, 5909–5920. https://doi.org/10.1145/2858036.2858177 
+[18] William Delamare, Céline Coutrix, and Laurence Nigay. 2013. Mobile Point­
+ing Task in the Physical World: Balancing Focus and Performance While Dis­
+ambiguating. In Proceedings of the 15th International Conference on Human-
+Computer Interaction with Mobile Devices and Services (Munich, Germany) (Mo­
+bileHCI ’13). Association for Computing Machinery, New York, NY, USA, 89–98. 
+https://doi.org/10.1145/2493190.2493232 
+[19] Kaiwen Duan, Song Bai, Lingxi Xie, Honggang Qi, Qingming Huang, and Qi 
+Tian. 2019. Centernet: Keypoint triplets for object detection. In Proceedings of 
+the IEEE/CVF International Conference on Computer Vision. IEEE, Piscataway, NJ, 
+USA, 6569–6578. 
+[20] Andrew Forsberg, Kenneth Herndon, and Robert Zeleznik. 1996. Aperture Based 
+Selection for Immersive Virtual Environments. In Proceedings of the 9th Annual 
+ACM Symposium on User Interface Software and Technology (Seattle, Washington, 
+USA) (UIST ’96). Association for Computing Machinery, New York, NY, USA, 
+95–96. https://doi.org/10.1145/237091.237105 
+[21] Ross Girshick. 2015. Fast r-cnn. In Proceedings of the IEEE international conference 
+on computer vision. IEEE, Piscataway, NJ, USA, 1440–1448. 
+[22] Taesik Gong, Hyunsung Cho, Bowon Lee, and Sung-Ju Lee. 2019. Knocker: 
+Vibroacoustic-Based Object Recognition with Smartphones. Proc. ACM Interact. 
+Mob. Wearable Ubiquitous Technol. 3, 3, Article 82 (sep 2019), 21 pages. https: 
+//doi.org/10.1145/3351240 
+[23] Google. 2020. MediaPipe Iris. Website. https://google.github.io/mediapipe/ 
+solutions/iris. 
+[24] Google. 2020. MediaPipe Iris: Real-time Iris Tracking & Depth Estimation. Web­
+site. https://ai.googleblog.com/2020/08/mediapipe-iris-real-time-iris-tracking. 
+html. 
+[25] Tovi Grossman and Ravin Balakrishnan. 2005. The Bubble Cursor: Enhancing 
+Target Acquisition by Dynamic Resizing of the Cursor’s Activation Area. As­
+sociation for Computing Machinery, New York, NY, USA, 281–290. 
+https: 
+//doi.org/10.1145/1054972.1055012 
+[26] Tovi Grossman and Ravin Balakrishnan. 2006. The Design and Evaluation of 
+Selection Techniques for 3D Volumetric Displays. In Proceedings of the 19th 
+Annual ACM Symposium on User Interface Software and Technology (Montreux, 
+Switzerland) (UIST ’06). Association for Computing Machinery, New York, NY, 
+USA, 3–12. https://doi.org/10.1145/1166253.1166257 
+[27] Sandra G Hart and Lowell E Staveland. 1988. Development of NASA-TLX (Task 
+Load Index) : Results of Empirical and Theoretical Research. Advances in Psy­
+chology 52, 6 (1988), 139–183. 
+[28] Jeremy Hartmann and Daniel Vogel. 2018. An Evaluation of Mobile Phone 
+Pointing in Spatial Augmented Reality. In Extended Abstracts of the 2018 CHI 
+Conference on Human Factors in Computing Systems (Montreal QC, Canada) 
+(CHI EA ’18). Association for Computing Machinery, New York, NY, USA, 1–6. 
+https://doi.org/10.1145/3170427.3188535
+[29] Ken Hinckley, Randy Pausch, John C. Goble, and Neal F. Kassell. 1994. A Survey of 
+Design Issues in Spatial Input. In Proceedings of the 7th Annual ACM Symposium 
+on User Interface Software and Technology (Marina del Rey, California, USA) 
+(UIST ’94). Association for Computing Machinery, New York, NY, USA, 213–222. 
+https://doi.org/10.1145/192426.192501 
+[30] Rachel Huang, Jonathan Pedoeem, and Cuixian Chen. 2018. YOLO-LITE: A Real-
+Time Object Detection Algorithm Optimized for Non-GPU Computers. In 2018 
+IEEE International Conference on Big Data (Big Data). IEEE, Piscataway, NJ, USA, 
+2503–2510. https://doi.org/10.1109/BigData.2018.8621865 
+[31] Ltd. Huawei Device Co. 2021. This Button Can Do More Things Than Expected. 
+Website. https://consumer.huawei.com/za/support/article-list/article-detail/en­
+us15759678/. 
+[32] Runchang Kang, Anhong Guo, Gierad Laput, Yang Li, and Xiang ’Anthony’ Chen. 
+2019. Minuet: Multimodal Interaction with an Internet of Things. In Symposium 
+on Spatial User Interaction (New Orleans, LA, USA) (SUI ’19). Association for 
+Computing Machinery, New York, NY, USA, Article 2, 10 pages. https://doi.org/ 
+10.1145/3357251.3357581 
+[33] Mohamed Khamis, Florian Alt, and Andreas Bulling. 2018. The Past, Present, 
+and Future of Gaze-Enabled Handheld Mobile Devices: Survey and Lessons 
+Learned. In Proceedings of the 20th International Conference on Human-Computer 
+Interaction with Mobile Devices and Services (Barcelona, Spain) (MobileHCI ’18). 
+Association for Computing Machinery, New York, NY, USA, Article 38, 17 pages. 
+https://doi.org/10.1145/3229434.3229452 
+[34] Mikko Kytö, Barrett Ens, Thammathip Piumsomboon, Gun A. Lee, and Mark 
+Billinghurst. 2018. Pinpointing: Precise Head- and Eye-Based Target Selection for 
+Augmented Reality. In Proceedings of the 2018 CHI Conference on Human Factors in 
+Computing Systems (Montreal QC, Canada) (CHI ’18). Association for Computing 
+Machinery, New York, NY, USA, 1–14. https://doi.org/10.1145/3173574.3173655 
+[35] Cha Lee, Scott Bonebrake, Tobias Hollerer, and Doug A. Bowman. 2009. A 
+replication study testing the validity of AR simulation in VR for controlled 
+experiments. In 2009 8th IEEE International Symposium on Mixed and Augmented 
+Reality. IEEE, Piscataway, NJ, USA, 203–204. https://doi.org/10.1109/ISMAR. 
+2009.5336464 
+[36] SangYoon Lee, Jinseok Seo, Gerard Jounghyun Kim, and Chan-Mo Park. 2003. 
+Evaluation of pointing techniques for ray casting selection in virtual envi­
+ronments. In Third International Conference on Virtual Reality and Its Appli­
+cation in Industry, Zhigeng Pan and Jiaoying Shi (Eds.), Vol. 4756. Interna­
+tional Society for Optics and Photonics, SPIE, Bellingham, WA, USA, 38 – 44. 
+https://doi.org/10.1117/12.497665 
+[37] Jiandong Liang and Mark Green. 1993. Geometric modeling using six degrees of 
+freedom input devices. , 217–222 pages. 
+[38] Tsung-Yi Lin, Piotr Dollár, Ross Girshick, Kaiming He, Bharath Hariharan, and 
+Serge Belongie. 2017. Feature pyramid networks for object detection. In Pro­
+ceedings of the IEEE conference on computer vision and pattern recognition. IEEE, 
+Piscataway, NJ, USA, 2117–2125. 
+[39] Julian Looser, Mark Billinghurst, and Andy Cockburn. 2004. Through the Looking 
+Glass: The Use of Lenses as an Interface Tool for Augmented Reality Interfaces. 
+In Proceedings of the 2nd International Conference on Computer Graphics and 
+Interactive Techniques in Australasia and South East Asia (Singapore) (GRAPHITE 
+’04). Association for Computing Machinery, New York, NY, USA, 204–211. https: 
+//doi.org/10.1145/988834.988870 
+[40] Julian Looser, Mark Billinghurst, Raphaël Grasset, and Andy Cockburn. 2007. 
+An Evaluation of Virtual Lenses for Object Selection in Augmented Reality. In 
+Proceedings of the 5th International Conference on Computer Graphics and Inter­
+active Techniques in Australia and Southeast Asia (Perth, Australia) (GRAPHITE 
+’07). Association for Computing Machinery, New York, NY, USA, 203–210. 
+https://doi.org/10.1145/1321261.1321297 
+[41] Yiqin Lu, Chun Yu, and Yuanchun Shi. 2020. Investigating bubble mechanism 
+for ray-casting to improve 3d target acquisition in virtual reality. In 2020 IEEE 
+Conference on Virtual Reality and 3D User Interfaces (VR). IEEE, Piscataway, NJ, 
+USA, 35–43. 
+[42] Diako Mardanbegi, Benedikt Mayer, Ken Pfeufer, Shahram Jalaliniya, Hans 
+Gellersen, and Alexander Perzl. 2019. EyeSeeThrough: Unifying Tool Selection 
+and Application in Virtual Environments. In 2019 IEEE Conference on Virtual 
+Reality and 3D User Interfaces (VR). IEEE, Piscataway, NJ, USA, 474–483. https: 
+//doi.org/10.1109/VR.2019.8797988 
+[43] Sven Mayer, Gierad Laput, and Chris Harrison. 2020. Enhancing Mobile Voice 
+Assistants with WorldGaze. In Proceedings of the 2020 CHI Conference on Human 
+Factors in Computing Systems (Honolulu, HI, USA) (CHI ’20). Association for 
+Computing Machinery, New York, NY, USA, 1–10. 
+https://doi.org/10.1145/ 
+3313831.3376479 
+[44] Sven Mayer, Valentin Schwind, Robin Schweigert, and Niels Henze. 2018. The 
+Efect of Ofset Correction and Cursor on Mid-Air Pointing in Real and Virtual 
+Environments. In Proceedings of the 2018 CHI Conference on Human Factors in 
+Computing Systems (Montreal QC, Canada) (CHI ’18). Association for Computing 
+Machinery, New York, NY, USA, 1–13. https://doi.org/10.1145/3173574.3174227 
+[45] Sven Mayer, Katrin Wolf, Stefan Schneegass, and Niels Henze. 2015. Modeling 
+Distant Pointing for Compensating Systematic Displacements. In Proceedings of 
+the 33rd Annual ACM Conference on Human Factors in Computing Systems (Seoul, 
+
+
+Selecting Real-World Objects via User-Perspective Phone Occlusion 
+Republic of Korea) (CHI ’15). Association for Computing Machinery, New York, 
+NY, USA, 4165–4168. https://doi.org/10.1145/2702123.2702332 
+[46] Mark R Mine. 1995. Virtual environment interaction techniques. 
+[47] Kai Nickel and Rainer Stiefelhagen. 2003. Pointing Gesture Recognition Based 
+on 3D-Tracking of Face, Hands and Head Orientation. In Proceedings of the 5th 
+International Conference on Multimodal Interfaces (Vancouver, British Columbia, 
+Canada) (ICMI ’03). Association for Computing Machinery, New York, NY, USA, 
+140–146. https://doi.org/10.1145/958432.958460 
+[48] Dan R. Olsen and Travis Nielsen. 2001. Laser Pointer Interaction. In Proceedings 
+of the SIGCHI Conference on Human Factors in Computing Systems (Seattle, Wash­
+ington, USA) (CHI ’01). Association for Computing Machinery, New York, NY, 
+USA, 17–22. https://doi.org/10.1145/365024.365030 
+[49] Jefrey S. Pierce, Andrew S. Forsberg, Matthew J. Conway, Seung Hong, Robert C. 
+Zeleznik, and Mark R. Mine. 1997. Image Plane Interaction Techniques in 3D 
+Immersive Environments. In Proceedings of the 1997 Symposium on Interactive 3D 
+Graphics (Providence, Rhode Island, USA) (I3D ’97). Association for Computing 
+Machinery, New York, NY, USA, 39–f. https://doi.org/10.1145/253284.253303 
+[50] Yue Qin, Chun Yu, Zhaoheng Li, Mingyuan Zhong, Yukang Yan, and Yuanchun Shi. 
+2021. ProxiMic: Convenient Voice Activation via Close-to-Mic Speech Detected by 
+a Single Microphone. In Proceedings of the 2021 CHI Conference on Human Factors 
+in Computing Systems (Yokohama, Japan) (CHI ’21). Association for Computing 
+Machinery, New York, NY, USA, Article 8, 12 pages. https://doi.org/10.1145/ 
+3411764.3445687 
+[51] Joseph Redmon, Santosh Divvala, Ross Girshick, and Ali Farhadi. 2016. You 
+only look once: Unifed, real-time object detection. In Proceedings of the IEEE 
+conference on computer vision and pattern recognition. IEEE, Piscataway, NJ, USA, 
+779–788. 
+[52] Jie Ren, Yueting Weng, Chengchi Zhou, Chun Yu, and Yuanchun Shi. 2020. Un­
+derstanding Window Management Interactions in AR Headset + Smartphone 
+Interface. In Extended Abstracts of the 2020 CHI Conference on Human Factors in 
+Computing Systems (Honolulu, HI, USA) (CHI EA ’20). Association for Computing 
+Machinery, New York, NY, USA, 1–8. https://doi.org/10.1145/3334480.3382812 
+[53] Shaoqing Ren, Kaiming He, Ross Girshick, and Jian Sun. 2015. Faster r-cnn: 
+Towards real-time object detection with region proposal networks. Advances in 
+neural information processing systems 28 (2015), 91–99. 
+[54] Michael Rohs and Antti Oulasvirta. 2008. Target Acquisition with Camera 
+Phones When Used as Magic Lenses. In Proceedings of the SIGCHI Confer­
+ence on Human Factors in Computing Systems (Florence, Italy) (CHI ’08). As­
+sociation for Computing Machinery, New York, NY, USA, 1409–1418. https: 
+//doi.org/10.1145/1357054.1357275 
+[55] Michael Rohs, Antti Oulasvirta, and Tiia Suomalainen. 2011. Interaction with 
+Magic Lenses: Real-World Validation of a Fitts’ Law Model. Association for Com­
+puting Machinery, New York, NY, USA, 2725–2728. https://doi.org/10.1145/ 
+1978942.1979343 
+[56] Robin Schweigert, Valentin Schwind, and Sven Mayer. 2019. EyePointing: A 
+Gaze-Based Selection Technique. In Proceedings of Mensch Und Computer 2019 
+(Hamburg, Germany) (MuC’19). Association for Computing Machinery, New 
+York, NY, USA, 719–723. https://doi.org/10.1145/3340764.3344897 
+[57] Ke Sun, Chun Yu, and Yuanchun Shi. 2019. Exploring Low-Occlusion Qwerty 
+Soft Keyboard Using Spatial Landmarks. ACM Trans. Comput.-Hum. Interact. 26, 
+4, Article 20 (June 2019), 33 pages. https://doi.org/10.1145/3318141 
+[58] Yuko Unuma, Takehiro Niikura, and Takashi Komuro. 2014. See-through Mobile 
+AR System for Natural 3D Interaction. In Proceedings of the Companion Publication 
+of the 19th International Conference on Intelligent User Interfaces (Haifa, Israel) 
+(IUI Companion ’14). Association for Computing Machinery, New York, NY, USA, 
+CHI ’23, April 23–28, 2023, Hamburg, Germany 
+17–20. https://doi.org/10.1145/2559184.2559198 
+[59] Pasi Välkkynen, Marketta Niemelä, and Timo Tuomisto. 2006. Evaluating Touch­
+ing and Pointing with a Mobile Terminal for Physical Browsing. In Proceedings of 
+the 4th Nordic Conference on Human-Computer Interaction: Changing Roles (Oslo, 
+Norway) (NordiCHI ’06). Association for Computing Machinery, New York, NY, 
+USA, 28–37. https://doi.org/10.1145/1182475.1182479 
+[60] Klen Čopič Pucihar, Paul Coulton, and Jason Alexander. 2013. Evaluating Dual-
+View Perceptual Issues in Handheld Augmented Reality: Device vs. User Perspec­
+tive Rendering. In Proceedings of the 15th ACM on International Conference on Mul­
+timodal Interaction (Sydney, Australia) (ICMI ’13). Association for Computing Ma­
+chinery, New York, NY, USA, 381–388. https://doi.org/10.1145/2522848.2522885 
+[61] John Viega, Matthew J. Conway, George Williams, and Randy Pausch. 1996. 3D 
+Magic Lenses. In Proceedings of the 9th Annual ACM Symposium on User Interface 
+Software and Technology (Seattle, Washington, USA) (UIST ’96). Association for 
+Computing Machinery, New York, NY, USA, 51–58. https://doi.org/10.1145/ 
+237091.237098 
+[62] Thomas Vincent, Laurence Nigay, and Takeshi Kurata. 2013. Precise Pointing 
+Techniques for Handheld Augmented Reality. In Human-Computer Interaction – 
+INTERACT 2013, Paula Kotzé, Gary Marsden, Gitte Lindgaard, Janet Wesson, and 
+Marco Winckler (Eds.). Springer Berlin Heidelberg, Berlin, Heidelberg, 122–139. 
+[63] Jacob O. Wobbrock, Leah Findlater, Darren Gergle, and James J. Higgins. 2011. 
+The Aligned Rank Transform for Nonparametric Factorial Analyses Using Only
+Anova Procedures. Association for Computing Machinery, New York, NY, USA, 
+143–146. https://doi.org/10.1145/1978942.1978963 
+[64] Robert Xiao, Gierad Laput, Yang Zhang, and Chris Harrison. 2017. Deus EM 
+Machina: On-Touch Contextual Functionality for Smart IoT Appliances. Association 
+for Computing Machinery, New York, NY, USA, 4000–4008. https://doi.org/10. 
+1145/3025453.3025828 
+[65] Yukang Yan, Yingtian Shi, Chun Yu, and Yuanchun Shi. 2020. HeadCross: Ex­
+ploring Head-Based Crossing Selection on Head-Mounted Displays. Proc. ACM 
+Interact. Mob. Wearable Ubiquitous Technol. 4, 1, Article 35 (March 2020), 22 pages. 
+https://doi.org/10.1145/3380983 
+[66] Yukang Yan, Chun Yu, Yingtian Shi, and Minxing Xie. 2019. PrivateTalk: Activat­
+ing Voice Input with Hand-On-Mouth Gesture Detected by Bluetooth Earphones. 
+In Proceedings of the 32nd Annual ACM Symposium on User Interface Software 
+and Technology (New Orleans, LA, USA) (UIST ’19). Association for Computing 
+Machinery, New York, NY, USA, 1013–1020. https://doi.org/10.1145/3332165. 
+3347950 
+[67] Zhican Yang, Chun Yu, Fengshi Zheng, and Yuanchun Shi. 2019. ProxiTalk: 
+Activate Speech Input by Bringing Smartphone to the Mouth. Proc. ACM Interact. 
+Mob. Wearable Ubiquitous Technol. 3, 3, Article 118 (Sept. 2019), 25 pages. https: 
+//doi.org/10.1145/3351276 
+[68] Jibin Yin, Chengyao Fu, Xiangliang Zhang, and Tao Liu. 2019. Precise Target 
+Selection Techniques in Handheld Augmented Reality Interfaces. IEEE Access 7 
+(2019), 17663–17674. https://doi.org/10.1109/ACCESS.2019.2895219 
+[69] Shumin Zhai, Carlos Morimoto, and Steven Ihde. 1999. Manual and Gaze In­
+put Cascaded (MAGIC) Pointing. In Proceedings of the SIGCHI Conference on 
+Human Factors in Computing Systems (Pittsburgh, Pennsylvania, USA) (CHI 
+’99). Association for Computing Machinery, New York, NY, USA, 246–253. 
+https://doi.org/10.1145/302979.303053 
+[70] Ben Zhang, Yu-Hsiang Chen, Claire Tuna, Achal Dave, Yang Li, Edward Lee, and 
+Björn Hartmann. 2014. HOBS: Head Orientation-Based Selection in Physical 
+Spaces. In Proceedings of the 2nd ACM Symposium on Spatial User Interaction 
+(Honolulu, Hawaii, USA) (SUI ’14). Association for Computing Machinery, New 
+York, NY, USA, 17–25. https://doi.org/10.1145/2659766.2659773
