@@ -350,6 +350,23 @@ CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_ll
 evaluator endpoints before it starts the command. For benchmark runs, set
 `CLIENT_CMD` to the desired benchmark command.
 
+### Direct Qwen3.6 LongBench-v2 Client
+
+The direct ablation reuses the Qwen3.6 executor service and runs through
+`submit client`; it does not need the evaluator service, local embeddings, or a
+client GPU. Set both endpoint variables to the executor URL so the client waits
+for only that service, then use `long_bench_v2/run_api_benchmark.py` with
+`--api-provider openai_compatible`, `--row-types original`,
+`--context-window-tokens 65536`, and `--max-output-tokens 8`.
+
+The runner sends the same strict non-thinking MCQ prompt in one direct chat
+request. Overlength requests follow LongBench-v2 middle truncation, and every run
+writes a new protected directory under `benchmark_artifacts/longbench_v2_api/`.
+See the direct-ablation section in
+[`HPC_RUNBOOK.md`](HPC_RUNBOOK.md) for smoke and full commands, and
+[`LONGBENCH_PARAMETER_REFERENCE.md`](LONGBENCH_PARAMETER_REFERENCE.md) for the
+recorded truncation and retry fields.
+
 ## Cache Hydration
 
 By default in scratch mode, the role scripts use the node-local cache directly:

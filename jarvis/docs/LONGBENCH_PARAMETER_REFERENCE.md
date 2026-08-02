@@ -18,6 +18,42 @@ Each item is intentionally short so it can be used while tuning one run at a tim
   overlapping chunk text, tokenizer offset maps, embeddings, metadata, and FAISS
   state during ingest.
 
+For the direct Qwen3.6 ablation, use `submit client` with the default 32 GB. It
+loads the source JSON and Qwen tokenizer but does not load embedding or
+reranking models and does not need a client GPU.
+
+## Direct API Baseline Parameters
+
+- `--api-provider openai_compatible`: Sends one OpenAI-compatible chat request
+  per benchmark row to the local vLLM executor.
+
+- `--api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL"`: Uses the running executor
+  service. The runner appends `/chat/completions` to this `/v1` base URL.
+
+- `--api-model Qwen/Qwen3.6-35B-A3B`: Must match the vLLM served model name.
+
+- `--row-types original`: Runs the 503 official LongBench-v2 questions. Do not
+  include `exact` or `semantic` in the direct ablation; those rows measure cache
+  reuse behavior.
+
+- `--context-window-tokens 65536`: Must match the executor's
+  `EXECUTOR_MAX_MODEL_LEN`. The runner reserves the output allowance, measures
+  the final Qwen chat request, and keeps the first and last halves when it must
+  truncate an overlength prompt.
+
+- `--max-output-tokens 8`: Matches the saved strict-MCQ system run. The local
+  payload also fixes temperature at `0` and sends
+  `chat_template_kwargs.enable_thinking=false`.
+
+- `--max-retries`: Attempts per row. The local default is `5`. Exhausted rows
+  remain in the denominator with `api_status=error`.
+
+Each new run uses `benchmark_artifacts/longbench_v2_api/<run_id>/`. The manifest
+records `truncated_row_count`, `context_window_tokens`, `input_token_budget`,
+`total_request_attempts`, `api_error_count`, strict prompt style, temperature,
+and thinking mode. Bridge rows include the before/after prompt-token counts and
+whether that row was middle-truncated.
+
 ## Semantic Cache Environment Variables
 
 - `SEMANTIC_CACHE_SEARCH_MODE`: Selects the LongBench retrieval path.

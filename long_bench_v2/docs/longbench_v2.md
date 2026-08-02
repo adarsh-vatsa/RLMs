@@ -501,7 +501,7 @@ Useful options:
 
 ## STEP 8 - Run Plain API Baseline
 
-Use `long_bench_v2/run_api_benchmark.py` to run the same prepared CSV rows as direct full-context API calls. This runner defaults to direct Anthropic, but can also use OpenRouter with any provider-supported model id. It does not use retrieval, RLM, embeddings, reranking, persistent cache state, or any cache route metadata during inference. It sends the full context from `data.json` plus the formatted multiple-choice question directly to the selected model, parses the final A/B/C/D answer, and writes comparable artifacts under `benchmark_artifacts/longbench_v2_api/<run_id>/`.
+Use `long_bench_v2/run_api_benchmark.py` to run the same prepared CSV rows as direct full-context API calls. This runner defaults to direct Anthropic, and also supports OpenRouter or a local OpenAI-compatible endpoint. It does not use retrieval, embeddings, reranking, persistent cache state, or any cache route metadata during inference. It sends the full context from `data.json` plus the formatted multiple-choice question directly to the selected model, parses the final A/B/C/D answer, and writes comparable artifacts under `benchmark_artifacts/longbench_v2_api/<run_id>/`.
 
 Start with the sampled suite:
 
@@ -514,7 +514,7 @@ python long_bench_v2/run_api_benchmark.py \
   --manifest-note "LongBench-v2 plain API uncached baseline"
 ```
 
-The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_api_eval_report.json` under `benchmark_artifacts/longbench_v2_api/<run_id>/`. Very large LongBench-v2 contexts may exceed the provider context window; those rows are recorded as `api_status=error` and counted in the manifest unless `--fail-fast` is set.
+The runner writes `predictions.jsonl`, `bridge_rows.jsonl`, `bridge_rows.csv`, `manifest.json`, and `official_longbench_v2_api_eval_report.json` under a new `benchmark_artifacts/longbench_v2_api/<run_id>/` directory. It refuses to reuse an existing run directory.
 
 To run the same plain API baseline through OpenRouter credits, switch providers and use an OpenRouter model id. The Anthropic model below is an example, not a requirement:
 
@@ -530,16 +530,37 @@ python long_bench_v2/run_api_benchmark.py \
 
 For OpenRouter, set `OPENROUTER_API_KEY`. If `--api-provider openrouter` is used without `--api-model`, the runner defaults to `anthropic/claude-sonnet-4.5`. OpenRouter uses provider-specific model ids, so direct Anthropic ids like `claude-sonnet-4-5` should not be used for OpenRouter runs. OpenRouter API errors are logged from the response body in `api_error`. For clean comparisons, use the same chosen model family across the cache runner, RLM runner, and plain API runner unless the experiment is explicitly about model choice.
 
+For the direct local Qwen3.6 ablation, use the original 503 LongBench-v2 rows and the same strict MCQ prompt, output cap, non-thinking mode, and 65,536-token executor limit as the saved Jarvis system run:
+
+```bash
+python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --row-types original \
+  --api-provider openai_compatible \
+  --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
+  --api-model Qwen/Qwen3.6-35B-A3B \
+  --context-window-tokens 65536 \
+  --max-output-tokens 8 \
+  --output-dir benchmark_artifacts \
+  --manifest-note "Jarvis Qwen3.6 direct full-context ablation"
+```
+
+The local path uses the Qwen tokenizer and native chat template to measure the final request. Requests that exceed the configured input budget keep equal token portions from the beginning and end, matching LongBench-v2's middle-truncation policy. The manifest and bridge rows record original/final prompt tokens and truncation counts. Local requests retry up to five times by default; an exhausted row remains in the denominator as an incorrect `api_status=error` result.
+
 Useful options:
 
 - `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
 - `--source-json-path PATH`: original LongBench-v2 JSON used to recover full context text by `source_id`. Default: `benchmark_data/long_bench_v2/data.json`.
 - `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
 - `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
-- `--api-provider NAME`: API provider, either `anthropic` or `openrouter`. Default: `anthropic`.
-- `--api-model MODEL`: API model. Default: `claude-sonnet-4-5` for Anthropic and `anthropic/claude-sonnet-4.5` for OpenRouter.
+- `--api-provider NAME`: API provider: `anthropic`, `openrouter`, or `openai_compatible`. Default: `anthropic`.
+- `--api-model MODEL`: API model. The local default is `Qwen/Qwen3.6-35B-A3B`.
+- `--api-base-url URL`: local OpenAI-compatible `/v1` base URL. It falls back to `OPENAI_COMPAT_EXECUTOR_BASE_URL`, then `OPENAI_COMPAT_BASE_URL`.
 - `--api-key-env NAME`: environment variable used for the API key. Default: `ANTHROPIC_API_KEY` for Anthropic and `OPENROUTER_API_KEY` for OpenRouter. You do not need to add this if your API key is defined in `.env`.
 - `--max-output-tokens N`: maximum output tokens per API call. Default: `256`.
+- `--context-window-tokens N`: local served-model context limit used for middle truncation. Default: `65536`.
+- `--max-retries N`: attempts per row. Default: `5` locally and `1` for hosted providers.
 - `--fail-fast`: stop immediately on the first API error instead of recording the failed row and continuing.
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
 - `--manifest-note TEXT`: optional note stored in `manifest.json`.

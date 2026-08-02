@@ -801,7 +801,68 @@ intentionally want to resume from an existing benchmark cache namespace. Do not
 delete `/local/$USER/llm_caching` unless you intentionally want to force model
 downloads again on that node.
 
-## 13. Stop Services After The Experiment
+## 13. Run The Direct Qwen3.6 Ablation
+
+This baseline sends each original LongBench-v2 example to the same Qwen3.6
+executor in one chat request. It keeps the strict MCQ prompt, temperature `0`,
+eight-token output cap, and disabled thinking from the system run, while
+bypassing retrieval, embeddings, reranking, cache state, and multi-call
+execution. It uses only the 503 `original` rows; `exact` and `semantic` are
+cache-behavior fixtures rather than additional official benchmark questions.
+
+First run a small client check against the existing executor. Point the evaluator
+URL at the executor too so `run_client.sh` waits for only that one service:
+
+```bash
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EXECUTOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=32G \
+CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --row-types original \
+  --max-rows 3 \
+  --api-provider openai_compatible \
+  --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
+  --api-model Qwen/Qwen3.6-35B-A3B \
+  --context-window-tokens 65536 \
+  --max-output-tokens 8 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-qwen36-direct-smoke' \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+After verifying the smoke artifact, run all 503 original rows:
+
+```bash
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EXECUTOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=32G \
+CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --row-types original \
+  --api-provider openai_compatible \
+  --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
+  --api-model Qwen/Qwen3.6-35B-A3B \
+  --context-window-tokens 65536 \
+  --max-output-tokens 8 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-qwen36-direct-full-original' \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+The runner writes a new timestamped directory under
+`benchmark_artifacts/longbench_v2_api/` and refuses to reuse an existing run
+directory. Inputs above the available budget are tokenized with Qwen's chat
+template and truncated from the middle, retaining the beginning and end. Check
+`truncated_row_count`, `api_error_count`, `total_request_attempts`, and
+`answer_accuracy` in `manifest.json` before comparing the direct result with the
+saved system run's 503-row `original` accuracy.
+
+## 14. Stop Services After The Experiment
 
 The vLLM service jobs are long-running servers. They do not stop automatically
 when a client job finishes.
@@ -817,7 +878,7 @@ Confirm:
 squeue -u "$USER"
 ```
 
-## 14. Clean Node-Local Scratch
+## 15. Clean Node-Local Scratch
 
 `/local` is per node, so cleanup must run on the node you want to clean. The
 cleanup script defaults to dry-run behavior and removes nothing unless

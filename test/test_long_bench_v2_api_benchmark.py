@@ -7,6 +7,7 @@ import tempfile
 import types
 import urllib.error
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import patch
 from pathlib import Path
 
@@ -14,11 +15,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from long_bench_v2.run_api_benchmark import (
     ARTIFACT_SUBDIR,
+    DEFAULT_CONTEXT_WINDOW_TOKENS,
+    DEFAULT_OPENAI_COMPAT_MODEL,
     DEFAULT_OPENROUTER_MODEL,
+    OPENAI_COMPAT_SYSTEM_PROMPT,
     _build_default_api_client_factory,
     build_arg_parser,
     normalize_api_args,
     parse_api_usage,
+    prepare_openai_compatible_messages,
     run_longbench_api_benchmark,
 )
 
@@ -153,6 +158,49 @@ class FakeOpenRouterErrorOpener:
         )
 
 
+class FakeTokenizer:
+    def encode(self, text, add_special_tokens=False):
+        return [ord(char) for char in text]
+
+    def decode(self, token_ids, skip_special_tokens=True):
+        return "".join(chr(token_id) for token_id in token_ids)
+
+    def apply_chat_template(
+        self,
+        messages,
+        add_generation_prompt=True,
+        tokenize=True,
+        enable_thinking=True,
+    ):
+        self.enable_thinking = enable_thinking
+        rendered = "".join(
+            f"<{message['role']}>{message['content']}</{message['role']}>"
+            for message in messages
+        )
+        if add_generation_prompt:
+            rendered += "<assistant>"
+        return self.encode(rendered)
+
+
+class FakeOpenAICompatibleOpener(FakeOpenRouterOpener):
+    pass
+
+
+class FakeOpenAICompatibleErrorOpener:
+    def __init__(self, calls):
+        self.calls = calls
+
+    def __call__(self, request, timeout=120):
+        self.calls.append(json.loads(request.data.decode("utf-8")))
+        raise urllib.error.HTTPError(
+            request.full_url,
+            503,
+            "Service Unavailable",
+            hdrs={},
+            fp=io.BytesIO(b'{"error":{"message":"temporary failure"}}'),
+        )
+
+
 class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
     def test_cli_defaults_to_anthropic_sonnet(self):
         parser = build_arg_parser()
@@ -170,6 +218,42 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(args.api_provider, "openrouter")
         self.assertEqual(args.api_model, DEFAULT_OPENROUTER_MODEL)
         self.assertEqual(args.api_key_env, "OPENROUTER_API_KEY")
+
+    def test_cli_openai_compatible_defaults(self):
+        parser = build_arg_parser()
+        args = normalize_api_args(parser.parse_args(["--api-provider", "openai_compatible"]))
+
+        self.assertEqual(args.api_model, DEFAULT_OPENAI_COMPAT_MODEL)
+        self.assertEqual(args.api_key_env, "")
+        self.assertEqual(args.api_base_url, "http://127.0.0.1:8000/v1")
+        self.assertEqual(args.context_window_tokens, DEFAULT_CONTEXT_WINDOW_TOKENS)
+        self.assertEqual(args.max_retries, 5)
+
+    def test_middle_truncation_keeps_prompt_beginning_and_end(self):
+        row = _suite_row("row_1", "original")
+        row["context"] = "BEGIN-" + ("middle " * 400) + "-END"
+        tokenizer = FakeTokenizer()
+        empty_messages = [
+            {"role": "system", "content": OPENAI_COMPAT_SYSTEM_PROMPT},
+            {"role": "user", "content": ""},
+        ]
+        chat_overhead = len(tokenizer.apply_chat_template(empty_messages))
+        context_window = chat_overhead + 700 + 8
+
+        messages, metadata = prepare_openai_compatible_messages(
+            row,
+            tokenizer,
+            context_window_tokens=context_window,
+            max_output_tokens=8,
+        )
+
+        self.assertTrue(metadata["prompt_truncated"])
+        self.assertLessEqual(metadata["prompt_tokens_after_truncation"], context_window - 8)
+        self.assertGreater(metadata["prompt_tokens_removed"], 0)
+        self.assertFalse(tokenizer.enable_thinking)
+        self.assertTrue(messages[1]["content"].startswith("Context:\nBEGIN-"))
+        self.assertIn("-END", messages[1]["content"])
+        self.assertTrue(messages[1]["content"].endswith("A, B, C, or D."))
 
     def test_openrouter_client_factory_reads_environment_key(self):
         parser = build_arg_parser()
@@ -327,6 +411,127 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_row["delta_output_tokens"], 25)
         self.assertEqual(prediction_row["prediction"], "C")
 
+    def test_fake_openai_compatible_run_uses_qwen_direct_payload(self):
+        calls = []
+
+        def fake_factory():
+            return {
+                "api_key": "",
+                "url": "http://executor.example:8000/v1/chat/completions",
+                "opener": FakeOpenAICompatibleOpener(calls),
+            }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source_path = root / "data.json"
+            suite_path = root / "suite.csv"
+            source_path.write_text(json.dumps([_source_row("row_1")]), encoding="utf-8")
+            with suite_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(_suite_row("row_1").keys()))
+                writer.writeheader()
+                writer.writerow(_suite_row("row_1", "original"))
+
+            args = types.SimpleNamespace(
+                suite_csv=suite_path,
+                source_json_path=source_path,
+                row_types="original",
+                max_rows=0,
+                api_provider="openai_compatible",
+                api_model="Qwen/Qwen3.6-35B-A3B",
+                api_base_url="http://executor.example:8000/v1",
+                api_key_env="",
+                max_output_tokens=8,
+                context_window_tokens=4096,
+                max_retries=2,
+                fail_fast=False,
+                output_dir=root / "artifacts",
+                manifest_note="local direct test",
+            )
+
+            run_longbench_api_benchmark(
+                args,
+                client_factory=fake_factory,
+                tokenizer_factory=lambda _: FakeTokenizer(),
+            )
+
+            run_dir = next((root / "artifacts" / ARTIFACT_SUBDIR).iterdir())
+            manifest = json.loads((run_dir / "manifest.json").read_text())
+            bridge_row = json.loads((run_dir / "bridge_rows.jsonl").read_text().splitlines()[0])
+
+        payload = calls[0]["body"]
+        self.assertEqual(payload["model"], "Qwen/Qwen3.6-35B-A3B")
+        self.assertEqual(payload["max_tokens"], 8)
+        self.assertEqual(payload["temperature"], 0)
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
+        self.assertEqual(payload["messages"][0], {"role": "system", "content": OPENAI_COMPAT_SYSTEM_PROMPT})
+        self.assertEqual(payload["messages"][1]["role"], "user")
+        self.assertIn("Context:", payload["messages"][1]["content"])
+        self.assertIn("Choices:", payload["messages"][1]["content"])
+        self.assertEqual(manifest["api_provider"], "openai_compatible")
+        self.assertEqual(manifest["context_window_tokens"], 4096)
+        self.assertEqual(manifest["input_token_budget"], 4088)
+        self.assertEqual(manifest["system_prompt_style"], "strict")
+        self.assertFalse(manifest["thinking_enabled"])
+        self.assertEqual(manifest["total_request_attempts"], 1)
+        self.assertFalse(bridge_row["prompt_truncated"])
+        self.assertEqual(bridge_row["api_attempt_count"], 1)
+
+    def test_openai_compatible_retry_exhaustion_is_counted_as_incorrect(self):
+        calls = []
+
+        def fake_factory():
+            return {
+                "api_key": "",
+                "url": "http://executor.example:8000/v1/chat/completions",
+                "opener": FakeOpenAICompatibleErrorOpener(calls),
+            }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source_path = root / "data.json"
+            suite_path = root / "suite.csv"
+            source_path.write_text(json.dumps([_source_row("row_1")]), encoding="utf-8")
+            with suite_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(_suite_row("row_1").keys()))
+                writer.writeheader()
+                writer.writerow(_suite_row("row_1", "original"))
+
+            args = types.SimpleNamespace(
+                suite_csv=suite_path,
+                source_json_path=source_path,
+                row_types="original",
+                max_rows=0,
+                api_provider="openai_compatible",
+                api_model="Qwen/Qwen3.6-35B-A3B",
+                api_base_url="http://executor.example:8000/v1",
+                api_key_env="",
+                max_output_tokens=8,
+                context_window_tokens=4096,
+                max_retries=3,
+                fail_fast=False,
+                output_dir=root / "artifacts",
+                manifest_note="",
+            )
+
+            with patch("long_bench_v2.run_api_benchmark.time.sleep"):
+                run_longbench_api_benchmark(
+                    args,
+                    client_factory=fake_factory,
+                    tokenizer_factory=lambda _: FakeTokenizer(),
+                )
+
+            run_dir = next((root / "artifacts" / ARTIFACT_SUBDIR).iterdir())
+            manifest = json.loads((run_dir / "manifest.json").read_text())
+            bridge_row = json.loads((run_dir / "bridge_rows.jsonl").read_text().splitlines()[0])
+
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(manifest["api_error_count"], 1)
+        self.assertEqual(manifest["total_request_attempts"], 3)
+        self.assertEqual(bridge_row["api_attempt_count"], 3)
+        self.assertEqual(bridge_row["api_status"], "error")
+        self.assertIn("temporary failure", bridge_row["api_error"])
+        self.assertFalse(bridge_row["answer_correct"])
+
     def test_openrouter_error_records_provider_response_text(self):
         calls = []
 
@@ -413,6 +618,43 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_row["api_status"], "error")
         self.assertIn("input too long", bridge_row["api_error"])
         self.assertFalse(bridge_row["answer_correct"])
+
+    def test_existing_run_directory_is_not_reused(self):
+        calls = []
+
+        def fake_factory():
+            return FakeClient(calls)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source_path = root / "data.json"
+            suite_path = root / "suite.csv"
+            source_path.write_text(json.dumps([_source_row("row_1")]), encoding="utf-8")
+            with suite_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(_suite_row("row_1").keys()))
+                writer.writeheader()
+                writer.writerow(_suite_row("row_1", "original"))
+
+            args = types.SimpleNamespace(
+                suite_csv=suite_path,
+                source_json_path=source_path,
+                row_types="original",
+                max_rows=0,
+                api_provider="anthropic",
+                api_model="claude-sonnet-4-5",
+                api_key_env="ANTHROPIC_API_KEY",
+                max_output_tokens=256,
+                fail_fast=False,
+                output_dir=root / "artifacts",
+                manifest_note="",
+            )
+            fixed_time = datetime(2026, 8, 2, 20, 0, tzinfo=timezone.utc)
+
+            with patch("long_bench_v2.run_api_benchmark.datetime") as mock_datetime:
+                mock_datetime.now.return_value = fixed_time
+                run_longbench_api_benchmark(args, client_factory=fake_factory)
+                with self.assertRaises(FileExistsError):
+                    run_longbench_api_benchmark(args, client_factory=fake_factory)
 
 
 if __name__ == "__main__":

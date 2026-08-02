@@ -56,10 +56,26 @@ REPORT_FILENAME = "official_longbench_v2_api_eval_report.json"
 DEFAULT_API_PROVIDER = "anthropic"
 DEFAULT_API_MODEL = "claude-sonnet-4-5"
 DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5"
+DEFAULT_OPENAI_COMPAT_MODEL = "Qwen/Qwen3.6-35B-A3B"
+DEFAULT_OPENAI_COMPAT_BASE_URL = "http://127.0.0.1:8000/v1"
+DEFAULT_CONTEXT_WINDOW_TOKENS = 65536
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_SYSTEM_PROMPT = (
     "Answer the multiple-choice question using only the provided context. "
     "Return only the final answer choice letter: A, B, C, or D."
+)
+OPENAI_COMPAT_SYSTEM_PROMPT = (
+    "You are solving a long-context multiple-choice question using ONLY the "
+    "provided documents. The query includes choices A, B, C, and D. Silently "
+    "check each option against the documents before answering. The correct "
+    "choice must satisfy every constraint in the question and every substantive "
+    "claim in the answer choice. It must be directly supported by the documents, "
+    "not just compatible with them. Reject choices that are only partially "
+    "supported, too narrow, too broad, overstate the evidence, add unsupported "
+    "causal claims, skip required implications, or are merely mentioned in the "
+    "documents. If more than one option seems plausible, choose the option best "
+    "supported by the overall evidence and the exact wording of the question. "
+    "Return exactly one capital letter: A, B, C, or D. Do not explain."
 )
 
 
@@ -71,6 +87,97 @@ def _write_jsonl(path: Path, rows: list[dict]) -> None:
 
 def build_api_prompt(row: dict) -> str:
     return f"{API_SYSTEM_PROMPT}\n\nContext:\n{row['context']}\n\n{build_query(row)}"
+
+
+def build_openai_compatible_messages(row: dict) -> list[dict]:
+    return [
+        {"role": "system", "content": OPENAI_COMPAT_SYSTEM_PROMPT},
+        {"role": "user", "content": f"Context:\n{row['context']}\n\n{build_query(row)}"},
+    ]
+
+
+def _token_ids(value: Any) -> list[int]:
+    if hasattr(value, "tolist"):
+        value = value.tolist()
+    if value and isinstance(value[0], list):
+        value = value[0]
+    return list(value)
+
+
+def _chat_token_count(tokenizer: Any, messages: list[dict]) -> int:
+    return len(
+        _token_ids(
+            tokenizer.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                enable_thinking=False,
+            )
+        )
+    )
+
+
+def _middle_tokens(token_ids: list[int], limit: int) -> list[int]:
+    if len(token_ids) <= limit:
+        return list(token_ids)
+    if limit <= 0:
+        return []
+    head = limit // 2
+    tail = limit - head
+    return token_ids[:head] + token_ids[-tail:]
+
+
+def prepare_openai_compatible_messages(
+    row: dict,
+    tokenizer: Any,
+    context_window_tokens: int,
+    max_output_tokens: int,
+) -> tuple[list[dict], dict]:
+    if context_window_tokens <= max_output_tokens:
+        raise ValueError("--context-window-tokens must exceed --max-output-tokens")
+
+    messages = build_openai_compatible_messages(row)
+    input_budget = context_window_tokens - max_output_tokens
+    original_prompt_tokens = _chat_token_count(tokenizer, messages)
+    if original_prompt_tokens <= input_budget:
+        return messages, {
+            "prompt_truncated": False,
+            "prompt_tokens_before_truncation": original_prompt_tokens,
+            "prompt_tokens_after_truncation": original_prompt_tokens,
+            "prompt_tokens_removed": 0,
+            "context_window_tokens": context_window_tokens,
+            "input_token_budget": input_budget,
+        }
+
+    user_content = messages[1]["content"]
+    user_token_ids = _token_ids(tokenizer.encode(user_content, add_special_tokens=False))
+    empty_messages = [messages[0], {"role": "user", "content": ""}]
+    chat_overhead = _chat_token_count(tokenizer, empty_messages)
+    keep_tokens = min(len(user_token_ids), max(0, input_budget - chat_overhead))
+
+    while True:
+        truncated_user_ids = _middle_tokens(user_token_ids, keep_tokens)
+        truncated_user = tokenizer.decode(truncated_user_ids, skip_special_tokens=True)
+        truncated_messages = [messages[0], {"role": "user", "content": truncated_user}]
+        final_prompt_tokens = _chat_token_count(tokenizer, truncated_messages)
+        if final_prompt_tokens <= input_budget:
+            break
+        overflow = final_prompt_tokens - input_budget
+        next_keep_tokens = max(0, keep_tokens - overflow)
+        if next_keep_tokens == keep_tokens:
+            next_keep_tokens = max(0, keep_tokens - 1)
+        if keep_tokens == 0:
+            raise ValueError("System prompt and chat template exceed the configured input budget")
+        keep_tokens = next_keep_tokens
+
+    return truncated_messages, {
+        "prompt_truncated": True,
+        "prompt_tokens_before_truncation": original_prompt_tokens,
+        "prompt_tokens_after_truncation": final_prompt_tokens,
+        "prompt_tokens_removed": original_prompt_tokens - final_prompt_tokens,
+        "context_window_tokens": context_window_tokens,
+        "input_token_budget": input_budget,
+    }
 
 
 def _extract_response_text(response: Any) -> str:
@@ -164,6 +271,7 @@ def build_eval_report(run_dir: Path, bridge_rows: list[dict], manifest: dict) ->
         "row_type_counts": manifest["row_type_counts"],
         "by_row_type": manifest["by_row_type"],
         "api_error_count": manifest["api_error_count"],
+        "truncated_row_count": manifest["truncated_row_count"],
         "failing_rows": failing_rows,
     }
 
@@ -178,6 +286,17 @@ def _build_default_api_client_factory(args: argparse.Namespace) -> Callable[[], 
 
         def factory():
             return {"api_key": api_key, "url": OPENROUTER_CHAT_COMPLETIONS_URL}
+
+        return factory
+
+    if args.api_provider == "openai_compatible":
+        api_key = os.getenv(args.api_key_env) if args.api_key_env else ""
+
+        def factory():
+            return {
+                "api_key": api_key,
+                "url": args.api_base_url.rstrip("/") + "/chat/completions",
+            }
 
         return factory
 
@@ -212,9 +331,29 @@ def _call_anthropic(client: Any, args: argparse.Namespace, prompt: str) -> Any:
 
 def normalize_api_args(args: argparse.Namespace) -> argparse.Namespace:
     if getattr(args, "api_model", None) is None:
-        args.api_model = DEFAULT_OPENROUTER_MODEL if args.api_provider == "openrouter" else DEFAULT_API_MODEL
+        if args.api_provider == "openrouter":
+            args.api_model = DEFAULT_OPENROUTER_MODEL
+        elif args.api_provider == "openai_compatible":
+            args.api_model = DEFAULT_OPENAI_COMPAT_MODEL
+        else:
+            args.api_model = DEFAULT_API_MODEL
     if getattr(args, "api_key_env", None) is None:
-        args.api_key_env = "OPENROUTER_API_KEY" if args.api_provider == "openrouter" else "ANTHROPIC_API_KEY"
+        if args.api_provider == "openrouter":
+            args.api_key_env = "OPENROUTER_API_KEY"
+        elif args.api_provider == "openai_compatible":
+            args.api_key_env = os.getenv("OPENAI_COMPAT_API_KEY_ENV", "")
+        else:
+            args.api_key_env = "ANTHROPIC_API_KEY"
+    if getattr(args, "api_base_url", None) is None:
+        args.api_base_url = (
+            os.getenv("OPENAI_COMPAT_EXECUTOR_BASE_URL")
+            or os.getenv("OPENAI_COMPAT_BASE_URL")
+            or DEFAULT_OPENAI_COMPAT_BASE_URL
+        )
+    if not hasattr(args, "context_window_tokens"):
+        args.context_window_tokens = DEFAULT_CONTEXT_WINDOW_TOKENS
+    if getattr(args, "max_retries", None) is None:
+        args.max_retries = 5 if args.api_provider == "openai_compatible" else 1
     return args
 
 
@@ -255,19 +394,81 @@ def _call_openrouter(client: Any, args: argparse.Namespace, prompt: str) -> dict
     return json.loads(raw)
 
 
-def _call_api(client: Any, args: argparse.Namespace, prompt: str) -> Any:
+def _call_openai_compatible(client: Any, args: argparse.Namespace, messages: list[dict]) -> dict:
+    if isinstance(client, dict):
+        api_key = _coerce_text(client.get("api_key"))
+        url = _coerce_text(client.get("url"))
+        opener = client.get("opener") or urllib.request.urlopen
+    else:
+        api_key = _coerce_text(getattr(client, "api_key", ""))
+        url = _coerce_text(getattr(client, "url", ""))
+        opener = getattr(client, "opener", urllib.request.urlopen)
+    if not url:
+        url = args.api_base_url.rstrip("/") + "/chat/completions"
+
+    payload = {
+        "model": args.api_model,
+        "messages": messages,
+        "max_tokens": args.max_output_tokens,
+        "temperature": 0,
+        "chat_template_kwargs": {"enable_thinking": False},
+    }
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    request = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    try:
+        with opener(request, timeout=120) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"OpenAI-compatible HTTP {exc.code}: {body}") from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f"OpenAI-compatible request failed: {exc}") from exc
+    return json.loads(raw)
+
+
+def _call_api(
+    client: Any,
+    args: argparse.Namespace,
+    prompt: str,
+    messages: Optional[list[dict]] = None,
+) -> Any:
     if args.api_provider == "anthropic":
         return _call_anthropic(client, args, prompt)
     if args.api_provider == "openrouter":
         return _call_openrouter(client, args, prompt)
+    if args.api_provider == "openai_compatible":
+        if messages is None:
+            raise ValueError("OpenAI-compatible requests require chat messages")
+        return _call_openai_compatible(client, args, messages)
     raise ValueError(f"Unsupported --api-provider: {args.api_provider}")
+
+
+def _load_tokenizer(model: str) -> Any:
+    try:
+        from transformers import AutoTokenizer
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Transformers is required for OpenAI-compatible prompt truncation. "
+            "Install the Jarvis client dependencies first."
+        ) from exc
+    return AutoTokenizer.from_pretrained(model, trust_remote_code=True)
 
 
 def run_longbench_api_benchmark(
     args: argparse.Namespace,
     client_factory: Optional[Callable[[], Any]] = None,
+    tokenizer_factory: Optional[Callable[[str], Any]] = None,
 ) -> None:
     args = normalize_api_args(args)
+    if args.max_retries < 1:
+        raise ValueError("--max-retries must be at least 1")
     suite_csv = Path(args.suite_csv)
     source_json_path = Path(args.source_json_path)
     row_types = _parse_csv_values(args.row_types)
@@ -283,7 +484,7 @@ def run_longbench_api_benchmark(
     started_at = datetime.now(timezone.utc)
     run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
     out_dir = Path(args.output_dir) / ARTIFACT_SUBDIR / run_id
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=False)
 
     predictions_path = out_dir / "predictions.jsonl"
     bridge_rows_path = out_dir / "bridge_rows.jsonl"
@@ -300,6 +501,10 @@ def run_longbench_api_benchmark(
     if client_factory is None:
         client_factory = _build_default_api_client_factory(args)
     client = client_factory()
+    tokenizer = None
+    if args.api_provider == "openai_compatible":
+        tokenizer_factory = tokenizer_factory or _load_tokenizer
+        tokenizer = tokenizer_factory(args.api_model)
 
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
@@ -307,13 +512,38 @@ def run_longbench_api_benchmark(
     for idx, row in enumerate(selected_rows, start=1):
         print(f"[LONGBENCH-V2-API] Row {idx}/{len(selected_rows)}: {row['case_id']}")
         prompt = build_api_prompt(row)
+        messages = None
+        truncation = {
+            "prompt_truncated": False,
+            "prompt_tokens_before_truncation": 0,
+            "prompt_tokens_after_truncation": 0,
+            "prompt_tokens_removed": 0,
+            "context_window_tokens": 0,
+            "input_token_budget": 0,
+        }
+        if tokenizer is not None:
+            messages, truncation = prepare_openai_compatible_messages(
+                row,
+                tokenizer,
+                args.context_window_tokens,
+                args.max_output_tokens,
+            )
         generation = ""
         api_status = "ok"
         api_error = ""
         response = None
+        api_attempt_count = 0
         t0 = time.time()
         try:
-            response = _call_api(client, args, prompt)
+            while api_attempt_count < args.max_retries:
+                api_attempt_count += 1
+                try:
+                    response = _call_api(client, args, prompt, messages=messages)
+                    break
+                except Exception:
+                    if api_attempt_count >= args.max_retries:
+                        raise
+                    time.sleep(1)
             generation = _extract_response_text(response)
             usage = parse_api_usage(response, args.api_model, success=True)
         except Exception as exc:
@@ -370,8 +600,10 @@ def run_longbench_api_benchmark(
                 "api_model": args.api_model,
                 "api_status": api_status,
                 "api_error": api_error,
+                "api_attempt_count": api_attempt_count,
                 "api_usage_summary": usage["raw"],
                 "usage_parse_status": usage["usage_parse_status"],
+                **truncation,
             }
         )
 
@@ -385,6 +617,8 @@ def run_longbench_api_benchmark(
     correct_count = sum(1 for row in bridge_rows if row["answer_correct"])
     row_type_counts = dict(sorted(Counter(row["row_type"] for row in bridge_rows).items()))
     error_count = sum(1 for row in bridge_rows if row["api_status"] == "error")
+    truncated_count = sum(1 for row in bridge_rows if row["prompt_truncated"])
+    total_request_attempts = sum(row["api_attempt_count"] for row in bridge_rows)
 
     manifest = {
         "run_id": run_id,
@@ -408,7 +642,10 @@ def run_longbench_api_benchmark(
         "api_provider": args.api_provider,
         "api_model": args.api_model,
         "max_output_tokens": args.max_output_tokens,
+        "max_retries": args.max_retries,
         "api_error_count": error_count,
+        "total_request_attempts": total_request_attempts,
+        "truncated_row_count": truncated_count,
         "artifacts": {
             "predictions": str(predictions_path),
             "bridge_rows": str(bridge_rows_path),
@@ -425,6 +662,18 @@ def run_longbench_api_benchmark(
             "reason": "Plain API baseline is intentionally uncached",
         },
     }
+    if args.api_provider == "openai_compatible":
+        manifest.update(
+            {
+                "api_base_url": args.api_base_url,
+                "context_window_tokens": args.context_window_tokens,
+                "input_token_budget": args.context_window_tokens - args.max_output_tokens,
+                "truncation_policy": "middle_keep_first_last",
+                "system_prompt_style": "strict",
+                "temperature": 0,
+                "thinking_enabled": False,
+            }
+        )
     if args.manifest_note:
         manifest["note"] = args.manifest_note
 
@@ -451,15 +700,37 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-json-path", type=Path, default=DEFAULT_SOURCE_JSON)
     parser.add_argument("--row-types", type=str, default=DEFAULT_ROW_TYPES)
     parser.add_argument("--max-rows", type=int, default=0, help="Cap selected rows after filtering (0 means all)")
-    parser.add_argument("--api-provider", choices=["anthropic", "openrouter"], default=DEFAULT_API_PROVIDER)
+    parser.add_argument(
+        "--api-provider",
+        choices=["anthropic", "openrouter", "openai_compatible"],
+        default=DEFAULT_API_PROVIDER,
+    )
     parser.add_argument("--api-model", type=str, default=None)
+    parser.add_argument(
+        "--api-base-url",
+        type=str,
+        default=None,
+        help="OpenAI-compatible /v1 base URL. Defaults to the executor endpoint environment variable.",
+    )
     parser.add_argument(
         "--api-key-env",
         type=str,
         default=None,
-        help="Environment variable used for the API key. Defaults to ANTHROPIC_API_KEY or OPENROUTER_API_KEY by provider.",
+        help="Environment variable used for the API key. Local OpenAI-compatible endpoints may leave this unset.",
     )
     parser.add_argument("--max-output-tokens", type=int, default=256)
+    parser.add_argument(
+        "--context-window-tokens",
+        type=int,
+        default=DEFAULT_CONTEXT_WINDOW_TOKENS,
+        help="Served model context limit used for OpenAI-compatible middle truncation.",
+    )
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=None,
+        help="Request attempts per row. Defaults to 5 locally and 1 for hosted providers.",
+    )
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_artifacts"))
     parser.add_argument("--manifest-note", type=str, default="")
