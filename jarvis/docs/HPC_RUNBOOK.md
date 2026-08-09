@@ -825,6 +825,95 @@ intentionally want to resume from an existing benchmark cache namespace. Do not
 delete `/local/$USER/llm_caching` unless you intentionally want to force model
 downloads again on that node.
 
+## 12A. Audit And Smoke The Fast Hybrid v1
+
+Follow `docs/longbench_v2_hierarchical_retrieval_plan_20260808.md` as the
+governing architecture and experiment plan. Keep the iterative command above as
+the historical control; do not start a full hybrid run until the route audit,
+three-source request smoke, diagnostic sample, and 30-50-source gate pass.
+
+The route audit loads only the Qwen3.6 tokenizer. It does not load the embedding
+or reranker models, connect to FAISS, read cache state, or call either vLLM
+service:
+
+```bash
+LLM_PROVIDER=openai_compatible \
+WAIT_FOR_ENDPOINTS=0 \
+CLIENT_MEM=32G \
+CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=hybrid
+
+uv run python long_bench_v2/run_benchmark.py \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --child-tokens 7500 \
+  --child-overlap-tokens 750 \
+  --route-audit-only \
+  --output-dir benchmark_artifacts' \
+  bash adarsh-rlms/jarvis/run.sh submit client-gpu
+```
+
+Read `suggested_smoke_source_ids` from the resulting
+`benchmark_artifacts/longbench_v2_route_audit/<run_id>/route_audit.json`. Replace
+the three placeholder IDs below, then submit the request smoke against the
+running 262,144-token executor and separate evaluator:
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=96G \
+CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=hybrid
+export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
+export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=2
+export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
+uv run python long_bench_v2/run_benchmark.py \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --cache-reset \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original \
+  --source-ids ordinary_id,largest_fit_id,smallest_overlength_id \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --child-tokens 7500 \
+  --child-overlap-tokens 750 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-l40s-fast-hybrid-v1-smoke' \
+  bash adarsh-rlms/jarvis/run.sh submit client-gpu
+```
+
+Accept this smoke only when:
+
+- `hybrid_route_counts` contains at least one `direct_fit` and one
+  `dense_child_packed` row.
+- Every non-cache row has `final_rendered_input_tokens <= 240000`.
+- `api_error_count`, `context_length_error_count`, and invalid-choice count are
+  zero.
+- The packed row has positive document embeddings, ranks all document children,
+  and reports `reranker_enabled=false`.
+- Manifest call totals reconcile with bridge-row executor and semantic-verifier
+  totals.
+
+Run the same command with fixed 12-18-source and then 30-50-source ID lists for
+the paired gates. Preserve each source list in the manifest via `--source-ids`.
+Only after those gates pass should the full `original,exact,semantic` hybrid run
+be submitted with a fresh namespace and `--cache-reset`.
+
 ## 13. Run The Direct Qwen3.6 Ablation
 
 This baseline sends each original LongBench-v2 example to the same Qwen3.6

@@ -1,60 +1,62 @@
-# Agent Project Index
+# Agent Working Guide
 
-Use this file as a compact index. Read the linked source files only when the task needs implementation detail.
+This repository is a rapidly changing research prototype. Optimize for the current task and current behavior, not for preserving an architecture that may already be obsolete.
 
-## Project Purpose
+## Evidence Order
 
-- `adarsh-rlms` researches and benchmarks a two-stage semantic cache for autonomous LLM workflows.
-- The system combines local Qwen3 embedding/reranking roles, FAISS vector search, Anthropic executor/evaluator roles, source provenance, knowledge extraction, corpus namespace isolation, and benchmark evaluation.
-- Avoid hardcoding unstable model IDs from docs. Confirm exact model constants in `semantic_cache_system.py` before editing model-related code.
+When sources disagree, use this order:
 
-## Source Of Truth Index
+1. The user's current request.
+2. Executable code, tests, and configuration.
+3. Focused documentation for the subsystem being changed.
+4. `README.md` and broad architecture documents.
 
-- `docs/system_architecture.md`: full architecture, component behavior, data flow, scenarios, and return shapes.
-- `semantic_cache_system.py`: core implementation and constants, including model roles, cache controller, persistence, routing, and pricing.
-- `README.md`: setup, run commands, benchmark examples, artifact layout, and current results summary.
-- `long_bench_v2/run_benchmark.py`: modified LongBench-v2 cache benchmark orchestration.
-- `long_bench_v2/run_api_benchmark.py`: plain full-context LongBench-v2 API baseline.
-- `long_bench_v2/run_rlm_benchmark.py`: uncached LongBench-v2 RLM baseline.
+`README.md`, `docs/system_architecture.md`, plans, benchmark reports, and other prose may be incomplete or stale. Use them for context, not as authoritative specifications. Do not read large documents by default; inspect only the sections relevant to the task. Verify claims against the current code and tests before relying on them.
 
-## Core Architecture Map
+If documentation conflicts with behavior, follow the requested behavior and current executable evidence. Mention the mismatch when it matters, and update the relevant documentation only when that is in scope.
 
-- `EmbeddingEngine`: local query/document embedding role.
-- `FAISSIndex`: vector index wrapper with metadata and persistence.
-- `Reranker`: local cross-encoder relevance gate for document retrieval.
-- `ExecutionMetrics`: cache/API/cost/provenance counters.
-- `SemanticCacheController`: cache lookup, document retrieval, synthesis, grounding, consensus, fact extraction, save/load, and corpus validation.
-- `Router`: dispatches simple extraction-style tasks to evaluator-class models and complex synthesis to executor-class models.
-- `AutonomousAgent`: framework-agnostic cached query facade.
+## Project Orientation
 
-Cache/search flow:
-- Check exact cache matches inside the source/corpus bucket.
-- Use embedding + FAISS dragnet for near candidates.
-- Use evaluator/sniper logic for semantic-equivalence cache hits.
-- Query the extracted knowledge/fact index for cross-query reuse.
-- On miss, retrieve documents with FAISS + reranker and synthesize a grounded answer.
-- Verify provenance/consensus, then store the answer, embedding, and extracted facts.
-- Apply context-collapse protections for oversized cached results.
+- `semantic_cache_system.py`: main semantic-cache implementation and current model, routing, persistence, and pricing behavior.
+- `long_bench_v2/`: LongBench-v2 runners and supporting tools. Read the runner being changed before modifying benchmark behavior.
+- `test/`: executable expectations and focused regression tests.
+- `jarvis/`: local/HPC serving and launch scripts with their own focused documentation.
+- `docs/`: design context, experiment reports, and plans; not guaranteed to describe the current implementation.
+- `benchmark_artifacts/`, `benchmark_data/`, and `benchmark_fixtures/`: experimental inputs and outputs. Treat historical artifacts as read-only unless the user asks to regenerate or edit them.
 
-## Benchmark Guidance
+Use `rg` to find the current implementation rather than relying on class names, model names, flows, or return shapes described in prose. In particular, confirm model and pricing constants in code before changing model-related behavior.
 
-- LongBench-v2 work is in `long_bench_v2/`; use `long_bench_v2/run_benchmark.py` for cache runs, `long_bench_v2/run_api_benchmark.py` for full-context API baselines, and `long_bench_v2/run_rlm_benchmark.py` for uncached RLM baselines.
-- Benchmark data and fixtures live under `benchmark_data/` and `benchmark_fixtures/`.
-- LongBench benchmark outputs and reusable cache state live under `benchmark_artifacts/longbench_v2*`; treat historical artifacts as read-only unless the user explicitly requests edits or regeneration.
-- Preserve persistent cache reuse, namespace derivation, manifest fields, and `delta_cost_usd` reproducibility when changing benchmark code.
+## Prototype Engineering Rules
 
-## Coding Guidelines
+- Write the smallest clear change that satisfies the request.
+- Prefer direct code over new abstractions, indirection, configuration, compatibility layers, or extension points.
+- Do not preserve an existing idea merely because it appears intentional in an old document. Preserve it only when the current task, callers, tests, or reproducibility requirements justify it.
+- Remove code, imports, branches, and comments made obsolete by your change within the touched scope.
+- Do not add speculative fallbacks or handle scenarios that the current system cannot reach.
+- Avoid broad refactors and unrelated cleanup. Every changed line should trace to the request.
+- Match the surrounding style unless changing it is necessary for the task.
 
-- Keep changes scoped and reproducible; prefer existing patterns over new abstractions.
-- Preserve corpus namespace isolation and load-time mismatch refusal.
-- Keep pricing and benchmark cost assumptions centralized in `MODEL_FAMILY_PRICING_USD_PER_1K` in `semantic_cache_system.py`.
-- Prefer `uv` workflows for Python commands in this repo when practical.
-- Update relevant docs when architecture, benchmark flow, public return shapes, or evaluation assumptions change.
+## Comments And Documentation
 
-## Agent Behavior
+- Prefer clear names and straightforward control flow over explanatory comments.
+- Add a comment only when it explains a non-obvious reason, constraint, or tradeoff that the code cannot express.
+- Do not narrate what the next line does, leave commented-out code, or add decorative section comments.
+- Keep docstrings limited to useful contracts or surprising behavior.
+- Documentation should follow the implementation. Do not distort code to match stale prose.
+- Update only the narrow documentation affected by a user-facing command, contract, or workflow change; do not refresh unrelated documents.
 
-- Treat this file as a high-level index, not complete architecture documentation.
-- Read `docs/system_architecture.md` before substantial architecture changes.
-- Read the relevant benchmark runner before changing benchmark behavior.
-- Avoid broad rewrites, artifact churn, and unrelated formatting.
-- Protect benchmark reproducibility, persistent cache behavior, and source provenance semantics.
+## Validation
+
+- Start with the narrowest relevant tests, then broaden only when risk warrants it.
+- Add or change tests for behavior introduced by the task, not for incidental implementation details.
+- Prefer `uv` for Python commands when practical.
+- Do not regenerate benchmark outputs as a side effect of validation.
+- For benchmark changes, keep runs attributable and comparable. Preserve existing artifact data and record behavior-affecting settings, but do not treat the current experiment design as immutable when the task explicitly changes it.
+
+## Working Style
+
+- Inspect the relevant execution path before editing.
+- State assumptions when ambiguity would materially change the implementation.
+- Offer a simpler interpretation when one exists instead of silently building a larger solution.
+- Stop and ask when different plausible interpretations would produce meaningfully different results.
+- Report stale or contradictory guidance you encounter; do not silently encode it into new code.

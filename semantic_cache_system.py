@@ -93,6 +93,7 @@ def _normalize_mcq_prompt_style(value: str | None, *, warn: bool = True) -> str:
 # Model Config
 # ---------------------------------------------------------------------------
 EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+EMBEDDING_CONTRACT_VERSION = "qwen3_left_last_l2_v1"
 RERANKER_MODEL = "Qwen/Qwen3-Reranker-0.6B"
 EMBEDDING_DIM = 1024
 EMBEDDING_BATCH_SIZE = _env_int("SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE", 16)
@@ -129,7 +130,7 @@ MCQ_SYNTHESIS_MAX_TOKENS = _env_int("SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS", 3
 MCQ_PROMPT_STYLE = _normalize_mcq_prompt_style(os.getenv("SEMANTIC_CACHE_MCQ_PROMPT_STYLE", "default"))
 SYNTHESIS_INPUT_TOKEN_BUDGET = _env_int("SEMANTIC_CACHE_SYNTHESIS_INPUT_TOKEN_BUDGET", 0)
 SEARCH_MODE = os.getenv("SEMANTIC_CACHE_SEARCH_MODE", "packed").strip().lower() or "packed"
-if SEARCH_MODE not in {"packed", "iterative"}:
+if SEARCH_MODE not in {"packed", "iterative", "hybrid"}:
     print(f"[CONFIG] Ignoring invalid SEMANTIC_CACHE_SEARCH_MODE={SEARCH_MODE!r}; using 'packed'")
     SEARCH_MODE = "packed"
 SCAN_MIN_CHUNK_RATIO = _env_float("SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO", 0.30)
@@ -1808,8 +1809,9 @@ class EmbeddingEngine:
             f"device={self.device}, dtype={self.torch_dtype_name})..."
         )
         self.tokenizer = AutoTokenizer.from_pretrained(
-            EMBEDDING_MODEL, trust_remote_code=True
+            EMBEDDING_MODEL, trust_remote_code=True, padding_side="left"
         )
+        self.tokenizer.padding_side = "left"
         self.model = AutoModel.from_pretrained(
             EMBEDDING_MODEL, trust_remote_code=True, torch_dtype=self.torch_dtype
         )
@@ -1820,30 +1822,43 @@ class EmbeddingEngine:
         print(f"  [EMBED] ✓ Loaded on {self.device} ({param_count // 1_000_000}M params)")
 
     def encode(self, texts: list, instruction: str = "") -> np.ndarray:
-        """Encode texts with optional instruction prefix using masked mean pooling."""
+        """Encode texts with the official Qwen3 last-token pooling contract."""
         if instruction:
             texts = [f"Instruct: {instruction}\nQuery: {t}" for t in texts]
         batch_size = max(1, int(EMBEDDING_BATCH_SIZE))
         max_length = max(1, int(EMBEDDING_MAX_LENGTH))
         all_embs = []
+        max_sequence_tokens = 0
         for i in range(0, len(texts), batch_size):
             batch = texts[i:i + batch_size]
             inputs = self.tokenizer(batch, padding=True, truncation=True,
                                      max_length=max_length, return_tensors="pt").to(self.device)
             with self.torch.no_grad():
                 outputs = self.model(**inputs)
-                # Use attention-masked mean pooling. First-token pooling can collapse
-                # embeddings for decoder-only models when a shared instruction prefix
-                # is used, causing unrelated queries to look identical.
                 hidden = outputs.last_hidden_state
-                mask = inputs["attention_mask"].unsqueeze(-1).to(hidden.dtype)
-                summed = (hidden * mask).sum(dim=1)
-                counts = mask.sum(dim=1).clamp_min(1e-9)
-                embs = summed / counts
-                embs = embs / embs.norm(dim=1, keepdim=True)
+                attention_mask = inputs["attention_mask"]
+                sequence_lengths = attention_mask.sum(dim=1) - 1
+                if bool(self.torch.all(attention_mask[:, -1] == 1)):
+                    embs = hidden[:, -1]
+                else:
+                    batch_indices = self.torch.arange(hidden.shape[0], device=hidden.device)
+                    embs = hidden[batch_indices, sequence_lengths]
+                embs = embs / embs.norm(dim=1, keepdim=True).clamp_min(1e-9)
+                max_sequence_tokens = max(
+                    max_sequence_tokens,
+                    int(attention_mask.sum(dim=1).max().item()),
+                )
             all_embs.append(embs.float().cpu().numpy())
             if len(texts) > batch_size and (i + batch_size) % 100 == 0:
                 print(f"    Embedded {min(i + batch_size, len(texts))}/{len(texts)} chunks...")
+        self._last_encode_info = {
+            "input_count": len(texts),
+            "max_sequence_tokens": max_sequence_tokens,
+            "max_length": max_length,
+            "pooling": "last_token",
+            "padding_side": "left",
+            "normalization": "l2",
+        }
         return np.vstack(all_embs).astype("float32")
 
     def encode_query(self, query: str, instruction: str | None = None) -> np.ndarray:
@@ -2233,6 +2248,13 @@ class SemanticCacheController:
             return True
         return entry.get("data_scope_hash") == self.data_scope_hash
 
+    def activate_data_scope(self, data_scope_hash: str) -> None:
+        """Set the source identity used to gate cache reuse before ingestion."""
+        normalized = str(data_scope_hash or "").strip()
+        if not normalized:
+            raise ValueError("data_scope_hash must be non-empty")
+        self.data_scope_hash = normalized
+
     def _find_cache_entry_by_flat_idx(self, target_idx: int) -> Optional[Dict]:
         """Resolve a persisted flat cache index back to its cache entry."""
         flat_idx = 0
@@ -2242,6 +2264,76 @@ class SemanticCacheController:
                     return entry
                 flat_idx += 1
         return None
+
+    def lookup_cached_result(self, query: str) -> dict | None:
+        """Return an exact or source-scoped semantic cache hit without knowledge lookup."""
+        self._last_cache_query_embedding = None
+        self._last_cache_lookup_info = {"semantic_verifier_calls": 0}
+        if not self.cache:
+            return None
+
+        for entries in self.cache.values():
+            for entry in entries:
+                if (
+                    entry["query"].lower().strip() == query.lower().strip()
+                    and self._entry_matches_active_scope(entry)
+                ):
+                    self.metrics.exact_hits += 1
+                    print("  [CACHE] ✓ Exact Match — free retrieval")
+                    return {
+                        "query": query,
+                        "answer": entry["result"],
+                        "from_cache": True,
+                        "cache_type": "exact",
+                        "grounding": entry.get("grounding_info", {}),
+                        "cache_provenance": entry.get("provenance", {}),
+                    }
+
+        if not self._cache_index or self._cache_index.total <= 0:
+            return None
+
+        query_emb = self.embedder.encode_query(query)
+        self._last_cache_query_embedding = query_emb
+        cache_results = self._cache_index.search(
+            query_emb,
+            top_k=self._cache_index.total,
+        )
+        candidate_entries = []
+        candidate_scores = []
+        for score, meta in cache_results:
+            if score <= 0.85:
+                continue
+            entry = self._find_cache_entry_by_flat_idx(meta["cache_idx"])
+            if entry and self._entry_matches_active_scope(entry):
+                candidate_entries.append(entry)
+                candidate_scores.append(score)
+
+        if not candidate_entries:
+            return None
+
+        self._last_cache_lookup_info["semantic_verifier_calls"] = 1
+        sniper = self._llm_sniper_evaluate(
+            query,
+            [
+                (entry, i, score)
+                for i, (entry, score) in enumerate(zip(candidate_entries, candidate_scores))
+            ],
+        )
+        if not sniper or not sniper.get("hit"):
+            return None
+
+        idx = sniper["id"]
+        cached = candidate_entries[idx]
+        self.metrics.semantic_hits += 1
+        print(f"  [SNIPER] ✓ Semantic Hit! '{query}' ≡ '{cached['query']}'")
+        return {
+            "query": query,
+            "answer": cached["result"],
+            "from_cache": True,
+            "cache_type": "semantic",
+            "grounding": cached.get("grounding_info", {}),
+            "cache_provenance": cached.get("provenance", {}),
+        }
 
     # Stage 1: cheap embedding retrieval inside the active source bucket.
     def _vector_dragnet(self, new_query: str, bucket_entries: list) -> list:
@@ -2750,6 +2842,62 @@ class SemanticCacheController:
         if self._persist_path:
             self.save(self._persist_path)
 
+    def store_compact_mcq(
+        self,
+        query: str,
+        result: str,
+        *,
+        model_used: str,
+        source_id: str,
+        route: str,
+        provenance: dict | None = None,
+    ) -> dict:
+        """Store a strict MCQ result without source text or knowledge extraction."""
+        answer = str(result or "").strip().upper()
+        if answer not in {"A", "B", "C", "D"}:
+            raise ValueError("Compact MCQ cache entries require exactly one A-D answer")
+        if not self.data_scope_hash:
+            raise ValueError("An active data scope is required before compact MCQ storage")
+        if self._cache_index is None:
+            self._cache_index = FAISSIndex()
+
+        cached_embedding = getattr(self, "_last_cache_query_embedding", None)
+        if isinstance(cached_embedding, np.ndarray) and cached_embedding.ndim == 2:
+            embedding = cached_embedding[0]
+        elif isinstance(cached_embedding, np.ndarray) and cached_embedding.ndim == 1:
+            embedding = cached_embedding
+        else:
+            embedding = self.embedder.encode_single(query)
+
+        chunk_hash = self.data_scope_hash
+        cache_idx = self.get_total_entries()
+        entry = {
+            "query": query,
+            "result": answer,
+            "embedding": embedding,
+            "model_used": model_used,
+            "grounding_info": {},
+            "data_scope_hash": self.data_scope_hash,
+            "source_id": source_id,
+            "route": route,
+            "provenance": provenance or {},
+            "facts": [],
+        }
+        self.cache.setdefault(chunk_hash, []).append(entry)
+        self._cache_index.add(
+            embedding.reshape(1, -1),
+            [
+                {
+                    "cache_idx": cache_idx,
+                    "chunk_hash": chunk_hash,
+                    "data_scope_hash": self.data_scope_hash,
+                }
+            ],
+        )
+        if self._persist_path:
+            self.save(self._persist_path)
+        return entry
+
     def get_total_entries(self) -> int:
         """Return the total number of cached entries across all buckets."""
         return sum(len(entries) for entries in self.cache.values())
@@ -2859,8 +3007,18 @@ class SemanticCacheController:
     # ------------------------------------------------------------------
     # RETRIEVAL — FAISS document search + Reranker with relevance gate
     # ------------------------------------------------------------------
-    def ingest(self, docs_dir: Path, chunk_size: int | None = None, overlap: int | None = None, *, reset_index: bool = True):
+    def ingest(
+        self,
+        docs_dir: Path,
+        chunk_size: int | None = None,
+        overlap: int | None = None,
+        *,
+        reset_index: bool = True,
+        data_scope_hash: str | None = None,
+        source_id: str = "",
+    ):
         """Ingest text documents: chunk → embed → build FAISS doc index."""
+        ingest_started = time.time()
         docs_dir = Path(docs_dir)
         chunk_size = DOCUMENT_CHUNK_SIZE if chunk_size is None else int(chunk_size)
         overlap = DOCUMENT_CHUNK_OVERLAP if overlap is None else int(overlap)
@@ -2884,17 +3042,20 @@ class SemanticCacheController:
             print(f"  No .txt files found in {docs_dir}")
             self.data_scope_hash = None
             return 0
-        self.data_scope_hash = self._get_data_scope_hash(
-            docs_dir,
-            txt_files,
-            chunk_unit=chunk_unit,
-            chunk_size=chunk_size,
-            overlap=overlap,
-            token_chunk_size=token_chunk_size,
-            token_overlap=token_overlap,
-            tokenizer_model=tokenizer_model,
-            embedding_max_length=max(1, int(EMBEDDING_MAX_LENGTH)),
-        )
+        if data_scope_hash:
+            self.activate_data_scope(data_scope_hash)
+        else:
+            self.data_scope_hash = self._get_data_scope_hash(
+                docs_dir,
+                txt_files,
+                chunk_unit=chunk_unit,
+                chunk_size=chunk_size,
+                overlap=overlap,
+                token_chunk_size=token_chunk_size,
+                token_overlap=token_overlap,
+                tokenizer_model=tokenizer_model,
+                embedding_max_length=max(1, int(EMBEDDING_MAX_LENGTH)),
+            )
 
         print(f"  [INGEST] Found {len(txt_files)} documents")
         all_chunks = []
@@ -2917,7 +3078,10 @@ class SemanticCacheController:
                 meta = {
                     "filename": f.name,
                     "chunk_index": chunk_offset + len(all_chunks),
+                    "child_index": chunk_offset + len(all_chunks),
                     "data_scope_hash": self.data_scope_hash,
+                    "source_scope_hash": self.data_scope_hash,
+                    "source_id": source_id,
                     **chunk_meta,
                 }
                 all_chunks.append(chunk)
@@ -2928,8 +3092,11 @@ class SemanticCacheController:
             self.data_scope_hash = None
             return 0
 
+        chunking_ms = (time.time() - ingest_started) * 1000.0
         print(f"  [INGEST] Chunked into {len(all_chunks)} {chunk_unit} pieces, embedding...")
+        embedding_started = time.time()
         embeddings = self.embedder.encode_documents(all_chunks)
+        embedding_ms = (time.time() - embedding_started) * 1000.0
         self.doc_index.add(embeddings, all_meta)
         print(f"  [INGEST] ✓ Indexed {len(all_chunks)} chunks")
 
@@ -2942,9 +3109,31 @@ class SemanticCacheController:
             if not hasattr(self, "_doc_chunk_metadata"):
                 self._doc_chunk_metadata = []
             self._doc_chunk_metadata.extend(all_meta)
+        encode_info = getattr(self.embedder, "_last_encode_info", {}) or {}
+        self._last_ingest_info = {
+            "source_id": source_id,
+            "source_scope_hash": self.data_scope_hash,
+            "child_count": len(all_chunks),
+            "child_token_count_max": max(
+                (int(meta.get("estimated_token_count") or 0) for meta in all_meta),
+                default=0,
+            ),
+            "child_encoded_length_max": int(encode_info.get("max_sequence_tokens") or 0),
+            "chunking_ms": round(chunking_ms, 3),
+            "embedding_ms": round(embedding_ms, 3),
+            "total_ms": round((time.time() - ingest_started) * 1000.0, 3),
+        }
         return len(all_chunks)
 
-    def retrieve(self, query: str, top_k: int = 20, rerank_top: int = 5, *, use_reranker: bool = True) -> List[dict]:
+    def retrieve(
+        self,
+        query: str,
+        top_k: int = 20,
+        rerank_top: int = 5,
+        *,
+        use_reranker: bool = True,
+        query_embedding: np.ndarray | None = None,
+    ) -> List[dict]:
         """
         Retrieve relevant document chunks: FAISS dragnet with optional reranker relevance gate.
         Returns list of {text, score, metadata}.
@@ -2961,7 +3150,9 @@ class SemanticCacheController:
             return []
 
         t0 = time.time()
-        query_emb = self.embedder.encode_query(query)
+        query_emb = query_embedding
+        if query_emb is None:
+            query_emb = self.embedder.encode_query(query)
         faiss_results = self.doc_index.search(query_emb, top_k=top_k)
         dt_faiss = (time.time() - t0) * 1000
         print(f"  [DRAGNET] Retrieved {len(faiss_results)} candidates in {dt_faiss:.0f}ms")
@@ -3760,53 +3951,10 @@ class SemanticCacheController:
         # ── Stage 0: Cache check (Dragnet + Sniper) ──
         # For retrieval-based search, we use a global cache (not hash-bucketed)
         if cache_read and self.cache:
-            # Exact match scan
-            for chunk_hash, entries in self.cache.items():
-                for entry in entries:
-                    if (
-                        entry["query"].lower().strip() == query.lower().strip()
-                        and self._entry_matches_active_scope(entry)
-                    ):
-                        self.metrics.exact_hits += 1
-                        print(f"  [CACHE] ✓ Exact Match — free retrieval")
-                        return {
-                            "query": query, "answer": entry["result"],
-                            "from_cache": True, "cache_type": "exact",
-                            "grounding": entry.get("grounding_info", {}),
-                        }
-
-            query_emb = None
-            strong = []
-            if self._cache_index and self._cache_index.total > 0:
-                query_emb = self.embedder.encode_query(query)
-                # Semantic cache lookup via FAISS + Sniper
-                cache_top_k = min(max(3, self.TOP_K_CANDIDATES * 10), self._cache_index.total)
-                cache_results = self._cache_index.search(query_emb, top_k=cache_top_k)
-                strong = [(score, meta) for score, meta in cache_results if score > 0.85]
-            if strong:
-                candidate_entries = []
-                candidate_scores = []
-                for score, meta in strong:
-                    ci = meta["cache_idx"]
-                    entry = self._find_cache_entry_by_flat_idx(ci)
-                    if entry and self._entry_matches_active_scope(entry):
-                        candidate_entries.append(entry)
-                        candidate_scores.append(score)
-
-                if candidate_entries:
-                    sniper = self._llm_sniper_evaluate(query, [
-                        (entry, i, score) for i, (entry, score) in enumerate(zip(candidate_entries, candidate_scores))
-                    ])
-                    if sniper and sniper.get("hit"):
-                        idx = sniper["id"]
-                        cached = candidate_entries[idx]
-                        self.metrics.semantic_hits += 1
-                        print(f"  [SNIPER] ✓ Semantic Hit! '{query}' ≡ '{cached['query']}'")
-                        return {
-                            "query": query, "answer": cached["result"],
-                            "from_cache": True, "cache_type": "semantic",
-                            "grounding": cached.get("grounding_info", {}),
-                        }
+            cached_result = self.lookup_cached_result(query)
+            if cached_result is not None:
+                return cached_result
+            query_emb = self._last_cache_query_embedding
 
             # Knowledge fact lookup
             if self.knowledge and self.knowledge_index and self.knowledge_index.total > 0:
@@ -3918,6 +4066,10 @@ class SemanticCacheController:
 
         # ── Stage 1: Retrieve relevant documents ──
         self.metrics.cache_misses += 1
+        if SEARCH_MODE == "hybrid":
+            raise RuntimeError(
+                "Hybrid routing is benchmark-specific; use long_bench_v2/run_benchmark.py"
+            )
         if SEARCH_MODE == "iterative":
             return self._search_iterative(query, top_k=top_k, rerank_top=rerank_top, synthesize=synthesize)
 
@@ -4027,6 +4179,7 @@ class SemanticCacheController:
             "cache_entries": self.get_total_entries(),
             "knowledge_facts": len(self.knowledge),
             "embedding_model": EMBEDDING_MODEL,
+            "embedding_contract_version": EMBEDDING_CONTRACT_VERSION,
             "embedding_dim": EMBEDDING_DIM,
             "embedding_batch_size": max(1, int(EMBEDDING_BATCH_SIZE)),
             "embedding_max_length": max(1, int(EMBEDDING_MAX_LENGTH)),
@@ -4080,6 +4233,13 @@ class SemanticCacheController:
         if config_path.exists():
             with open(config_path) as f:
                 self.corpus_config = json.load(f)
+            stored_embedding_contract = self.corpus_config.get("embedding_contract_version")
+            if stored_embedding_contract != EMBEDDING_CONTRACT_VERSION:
+                print(
+                    "  [CORPUS] ⚠ MISMATCH: incompatible embedding contract "
+                    f"{stored_embedding_contract!r}; expected {EMBEDDING_CONTRACT_VERSION!r}"
+                )
+                return False
             stored_id = self.corpus_config.get("corpus_id")
             # Validate: if controller has a corpus_id, it must match
             if self.corpus_id and stored_id and self.corpus_id != stored_id:
@@ -4093,6 +4253,9 @@ class SemanticCacheController:
             self.data_scope_hash = self.corpus_config.get("data_scope_hash")
             print(f"  [CORPUS] '{self.corpus_id}' — domain: {self.corpus_domain}, "
                   f"created: {self.corpus_config.get('created_at', 'unknown')}")
+        elif (path / "cache_entries.json").exists() or (path / "cache_idx").exists():
+            print("  [CORPUS] ⚠ MISMATCH: persisted embeddings have no contract metadata")
+            return False
 
         # Load document FAISS index
         doc_idx_path = path / "doc_idx" if (path / "doc_idx").exists() else path

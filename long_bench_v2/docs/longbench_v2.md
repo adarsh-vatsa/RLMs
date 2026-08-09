@@ -377,15 +377,19 @@ Useful options:
 - `--cache-reset`: remove the resolved cache namespace before a cache run. Use this for cold-start runs.
 - `--cache-state-root PATH`: persistent cache state root. Default: `benchmark_artifacts/longbench_v2/cache_state`.
 - `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
+- `--source-ids IDS`: optional comma-separated source IDs for reproducible smoke and paired samples.
 - `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
 - `--llm-provider NAME`: external LLM provider, either `anthropic`, `openrouter`, or `openai_compatible`. Default: `anthropic`.
 - `--api-key-env NAME`: environment variable used for the provider API key. Default: `ANTHROPIC_API_KEY` for Anthropic and `OPENROUTER_API_KEY` for OpenRouter. You do not need to add this if your API key is defined in `.env`.
 - `--executor-model MODEL`: model assigned to `semantic_cache_system.EXECUTOR_MODEL`. Default: `claude-sonnet-4-5`.
 - `--evaluator-model MODEL`: model assigned to cache verification/fact extraction calls. Default: `claude-haiku-4-5`.
 - `--openrouter-base-url URL`: OpenRouter-compatible base URL. Default: `https://openrouter.ai/api/v1`.
-- `--top-k N`: packed-mode FAISS retrieval candidates. Jarvis iterative mode ignores this flag and computes FAISS top-N from the scan budget. Default: `10`.
-- `--rerank-top N`: packed-mode reranker result cap. In Jarvis iterative mode, the reranker is not instantiated or used; artifacts keep the raw value and set `rerank_top_effective` to `null`. Default: `3`.
-- `--synthesis-max-chunks N`: packed-mode synthesis limit. In iterative mode, scan breadth is controlled by the scan min/max ratio band and absolute scan floors/caps. Default: `3` for this runner; this CLI default intentionally overrides the `semantic_cache_system.py` module env default of `SEMANTIC_CACHE_SYNTHESIS_MAX_CHUNKS=5`.
+- `--top-k N`: packed-mode FAISS retrieval candidates. Iterative and hybrid modes ignore this flag. Hybrid ranks every child and records `top_k_effective=null`. Default: `10`.
+- `--rerank-top N`: packed-mode reranker result cap. Iterative and hybrid modes do not instantiate the reranker and record `rerank_top_effective=null`. Default: `3`.
+- `--synthesis-max-chunks N`: packed-mode synthesis limit. Iterative and hybrid modes ignore it; hybrid packing is controlled solely by the exact input-token cap. Default: `3`.
+- `--context-window-tokens N`, `--max-input-tokens N`, and `--max-output-tokens N`: hybrid context profile. Defaults: `262144`, `240000`, and `8`.
+- `--child-tokens N` and `--child-overlap-tokens N`: hybrid child profile measured with the embedding tokenizer. Defaults: `7500` and `750`.
+- `--route-audit-only`: count exact rendered requests and write a no-API route audit under `benchmark_artifacts/longbench_v2_route_audit/`.
 - `--row-order input|source_grouped`: execution order. Default: `source_grouped`, so rows with the same `source_id` run adjacent to reduce repeated ingest work.
 - `--cache-save-interval N`: save cache state every N rows in cache mode, plus a final save. Default: `10`; use `1` for per-row saves.
 - `--disable-reranker`: skip the reranker in packed mode. Jarvis iterative mode already bypasses the reranker.
@@ -394,9 +398,9 @@ Useful options:
 
 The LongBench-v2 runner intentionally reduces retrieval breadth for speed while keeping the full source document indexed. Character chunking remains the default with `SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000`, but token chunking can be enabled with `SEMANTIC_CACHE_DOC_CHUNK_TOKENS`. For Jarvis LongBench-v2 runs, use `SEMANTIC_CACHE_DOC_CHUNK_TOKENS=10000` and `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS=1000` as the current speed/quality balance. This keeps the full document indexed as token-bounded chunks while reducing chunk count versus the higher-recall `6000/600` profile. `SEMANTIC_CACHE_DOC_CHUNK_TOKENIZER_MODEL` can pin the tokenizer; otherwise the executor model is used when token chunking is enabled.
 
-For Jarvis OpenAI-compatible local serving, use `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects token-budgeted chunk batches and maintains a cumulative memory ledger before either early-stopping or running a final adjudication call. The ledger stores additive chunk-referenced memory updates, query/target facts, option-code mappings, current `best_choice`, rationale, bounded open questions, visited chunks, and parse failures. Many-shot relation examples are kept in `code_mappings` only when they use one of the current option codes. Final adjudication sees the completed ledger only, treats `best_choice` as a prior rather than authority, and returns JSON with `answer`, `reason`, and `needs_more_context`. Ordering rows also require a chosen numeric sequence, evidence for every numbered narrative, and adjacent pairwise order evidence keyed by edges such as `2<4`. Symbolic-code rows with multiple mapped candidate option codes require selected-code evidence plus rejection evidence for each other mapped code. Reduced-budget scans continue over remaining available chunks when ordering evidence is still needed or symbolic-code mappings/open questions indicate ambiguity. If the ledger is empty, final adjudication is invalid, final adjudication asks for more context, or these structured ordering/code checks are incomplete, the reader uses a bounded structured packed fallback that can see the inspected chunks again and must return an `answer` field rather than prose. The manifest records the token chunk config, MCQ prompt style and output cap, search mode, scan min/max ratio band, memory cap, batching settings, fallback settings, reader version, scan order, packed-mode reranker config, per-query full-context baseline tokens, unique-source context tokens, and input-token savings against both baselines. Cache namespaces include the behavior-affecting values so incompatible runs do not share persisted answers. Bridge rows add row-level visited chunk count, batch sizes, inspector LLM call count, extra-scan reason/count, memory char/update/fact/mapping/open-question counts, parse-failure count, early-stop reason, final adjudication answer/reason/raw response, packed fallback reason, supporting chunk indices, effective top-k/rerank-top fields, and the cumulative ledger.
+The historical Jarvis iterative control uses `SEMANTIC_CACHE_SEARCH_MODE=iterative`. FAISS ranks the likely chunks first, then the executor inspects token-budgeted chunk batches and maintains a cumulative memory ledger before either early-stopping or running a final adjudication call. The ledger stores additive chunk-referenced memory updates, query/target facts, option-code mappings, current `best_choice`, rationale, bounded open questions, visited chunks, and parse failures. Many-shot relation examples are kept in `code_mappings` only when they use one of the current option codes. Final adjudication sees the completed ledger only, treats `best_choice` as a prior rather than authority, and returns JSON with `answer`, `reason`, and `needs_more_context`. Ordering rows also require a chosen numeric sequence, evidence for every numbered narrative, and adjacent pairwise order evidence keyed by edges such as `2<4`. Symbolic-code rows with multiple mapped candidate option codes require selected-code evidence plus rejection evidence for each other mapped code. Reduced-budget scans continue over remaining chunks when ordering evidence is still needed or symbolic-code mappings/open questions indicate ambiguity. If the ledger is empty, final adjudication is invalid, final adjudication asks for more context, or these structured ordering/code checks are incomplete, the reader uses a bounded structured packed fallback. Keep this mode for matched historical comparisons; the experimental fast path below is the intended replacement under evaluation.
 
-Recommended balanced Jarvis LongBench-v2 profile:
+Historical balanced iterative control:
 
 ```bash
 export SEMANTIC_CACHE_SEARCH_MODE=iterative
@@ -447,6 +451,62 @@ are recorded in artifacts and included in packed-mode cache namespaces because
 they can affect selected evidence. `SEMANTIC_CACHE_RERANKER_BATCH_SIZE` is
 recorded as operational metadata. These settings do not affect Jarvis iterative
 LongBench runs.
+
+### Experimental fast hybrid v1
+
+Follow `docs/longbench_v2_hierarchical_retrieval_plan_20260808.md` for the
+architecture, gates, and deferred work. The base implementation checks the
+source-scoped exact/semantic cache first, sends complete requests directly when
+they fit 240K, and uses corrected dense child-only retrieval for overlength
+misses. It does not use knowledge hits, consensus, fact extraction, reranking,
+BM25, or parent expansion.
+
+First audit all 503 originals without calling either server:
+
+```bash
+export SEMANTIC_CACHE_SEARCH_MODE=hybrid
+
+uv run python long_bench_v2/run_benchmark.py \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --child-tokens 7500 \
+  --child-overlap-tokens 750 \
+  --route-audit-only \
+  --output-dir benchmark_artifacts
+```
+
+Use the three suggested IDs from `route_audit.json` for the request smoke:
+
+```bash
+export SMOKE_SOURCE_IDS="ordinary_id,largest_fit_id,smallest_overlength_id"
+
+uv run python long_bench_v2/run_benchmark.py \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --cache-reset \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original \
+  --source-ids "$SMOKE_SOURCE_IDS" \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --child-tokens 7500 \
+  --child-overlap-tokens 750 \
+  --output-dir benchmark_artifacts \
+  --manifest-note "LongBench-v2 fast hybrid v1 smoke"
+```
+
+Accept the smoke only when it contains both `direct_fit` and
+`dense_child_packed`, every final rendered input is at most 240,000 tokens, and
+`api_error_count=context_length_error_count=0`. Run the matched diagnostic and
+30-50-source gate before starting the full suite.
 
 ## STEP 7 - Run RLM Baseline
 

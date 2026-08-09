@@ -73,7 +73,7 @@ Local 596M-parameter embedding model.
 |----------|-------|
 | Model | `Qwen/Qwen3-Embedding-0.6B` |
 | Output dim | 1024 |
-| Pooling | Attention-masked mean pooling |
+| Pooling | Final non-padding token with left-padded batches |
 | Normalization | L2-normalized (cosine similarity via inner product) |
 | Max length | 8,192 tokens (32K context supported) |
 | Device | CPU (MPS has known segfault issues with some architectures) |
@@ -119,7 +119,7 @@ Cross-encoder that sits between the Vector Dragnet and LLM Synthesis.
 
 > **Why a reranker?** FAISS does similarity on 1024-dim embeddings — good for recall but imprecise for ranking. The cross-encoder processes the full query-document pair jointly, achieving much higher ranking precision. This is the industry-standard two-stage retrieval pattern (bi-encoder → cross-encoder).
 
-> **LongBench/Jarvis exception**: The Jarvis LongBench path can run with `SEMANTIC_CACHE_SEARCH_MODE=iterative`, which bypasses the reranker and lets the executor inspect FAISS-prioritized chunks one at a time. Other benchmark runners and packed-mode workflows can still use the reranker.
+> **LongBench/Jarvis exception**: The preferred experimental path is `SEMANTIC_CACHE_SEARCH_MODE=hybrid`, which bypasses document retrieval for direct-fit requests and ranks all children without the reranker for overlength requests. Historical controls can still use `iterative`; other packed-mode workflows retain the reranker.
 
 ---
 
@@ -160,7 +160,7 @@ Free O(N) string scan within the bucket.
 #### 2b.1 Data Scope Gate (`data_scope_hash`)
 Retrieval-based `search()` uses a global cache namespace so benchmark runs and domain clients can reuse work across repeated executions. That global namespace must still distinguish which document set produced an answer.
 
-- `ingest()` computes `data_scope_hash` from sorted `.txt` filenames, normalized file contents, chunk size, and overlap.
+- General `ingest()` calls compute `data_scope_hash` from sorted `.txt` filenames, normalized file contents, chunk size, and overlap. LongBench hybrid runs activate a source-content identity before lookup and pass that same identity into lazy ingestion; chunk policy is isolated by the cache namespace instead.
 - `store()` writes `data_scope_hash` onto cache entries and extracted facts.
 - `search()` only allows exact, semantic, and knowledge cache hits when the entry's scope matches the active ingested document set.
 - Legacy persisted entries without a scope are skipped for scoped `search()` hits because they cannot prove data identity.
@@ -169,7 +169,7 @@ Retrieval-based `search()` uses a global cache namespace so benchmark runs and d
 
 #### 2c. Vector Dragnet (`_vector_dragnet`)
 Qwen3-Embedding-0.6B + FAISS for local similarity search.
-- 1024-dim embeddings via `encode_single()` (attention-masked mean pooling, instruction-aware)
+- 1024-dim embeddings via `encode_single()` (left-padded last-token pooling, instruction-aware)
 - Cosine similarity via FAISS `IndexFlatIP` on L2-normalized vectors
 - Returns Top-K (default: 5) candidates above 0.3 threshold
 - **Cost**: $0 (runs locally)
@@ -350,6 +350,30 @@ The iterative reader is an opt-in LongBench/Jarvis path for long-context MCQ row
 
 This path stores the final answer with the cumulative memory ledger and supporting chunk metadata rather than a giant concatenated source context.
 
+#### 2m.2. LongBench Fast Hybrid (`SEMANTIC_CACHE_SEARCH_MODE=hybrid`)
+
+The local Qwen LongBench-v2 path follows
+`docs/longbench_v2_hierarchical_retrieval_plan_20260808.md`:
+
+1. Activate a source-content scope, then check exact and semantic cache entries.
+2. On a miss, count the complete rendered non-thinking Qwen request. Requests at
+   or below 240,000 input tokens go directly to the executor unchanged.
+3. Overlength misses lazily split only the context into 7,500-token children
+   with 750-token overlap using the embedding tokenizer.
+4. Corrected Qwen embeddings rank every child with exact `IndexFlatIP`; the
+   reranker is disabled in v1.
+5. Children are packed in descending FAISS order until the next exact rendered
+   request would exceed 240,000 tokens, then one strict eight-token executor
+   call produces the answer.
+6. Valid one-letter answers use a compact cache write. Full context, consensus,
+   fact extraction, and the knowledge index are excluded from this benchmark
+   path.
+
+The direct route therefore retains query-cache embeddings for semantic reuse
+but avoids document chunking, document embeddings, document FAISS, and
+reranking. BM25, parent expansion, multi-round retrieval, and concurrency are
+deferred until paired accuracy/runtime measurements justify them.
+
 #### 2n. Full Search Pipeline (`search`)
 The main entry point for domain-specific clients.
 
@@ -364,6 +388,7 @@ search("What charges did Maxwell face?")
   ├─► Cache MISS:
   │     ├─ packed mode: retrieve() → FAISS + Reranker/backfill → Sonnet synthesis from selected sources
   │     ├─ iterative LongBench/Jarvis mode: FAISS-ranked chunk scan → cumulative memory ledger → final answer
+  │     ├─ hybrid LongBench mode: full-context direct fit or exact-budget child packing → one strict answer call
   │     ├─ Grounding check (free)
   │     ├─ Consensus verify ($0.0001)
   │     ├─ store() → cache + embed + fact extract
@@ -477,6 +502,7 @@ The same library can serve: legal filings, financial documents, medical records,
 | Constant | Value | Purpose |
 |----------|-------|---------|
 | `EMBEDDING_MODEL` | `Qwen/Qwen3-Embedding-0.6B` | Local embedding model |
+| `EMBEDDING_CONTRACT_VERSION` | `qwen3_left_last_l2_v1` | Prevents incompatible mean-pooled and last-token cache/index reuse |
 | `EMBEDDING_QUERY_INSTRUCTION` | benchmark evidence retrieval | Instruction prepended before query embeddings |
 | `RERANKER_MODEL` | `Qwen/Qwen3-Reranker-0.6B` | Local cross-encoder reranker |
 | `RERANKER_BATCH_SIZE` | 4 | Max reranker candidates per local model forward pass |

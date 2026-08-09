@@ -9,7 +9,6 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Mapping
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -50,6 +49,12 @@ from long_bench_v2.rlm_helpers import (  # noqa: E402
     _json_safe,
     _write_csv_rows,
 )
+from long_bench_v2.qwen_prompt import (  # noqa: E402
+    STRICT_MCQ_SYSTEM_PROMPT,
+    build_strict_mcq_messages,
+    chat_token_count as _chat_token_count,
+    token_ids as _token_ids,
+)
 
 
 ARTIFACT_SUBDIR = "longbench_v2_api"
@@ -61,23 +66,11 @@ DEFAULT_OPENAI_COMPAT_MODEL = "Qwen/Qwen3.6-35B-A3B"
 DEFAULT_OPENAI_COMPAT_BASE_URL = "http://127.0.0.1:8000/v1"
 DEFAULT_CONTEXT_WINDOW_TOKENS = 65536
 DEFAULT_MAX_INPUT_TOKENS = 60000
+OPENAI_COMPAT_SYSTEM_PROMPT = STRICT_MCQ_SYSTEM_PROMPT
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_SYSTEM_PROMPT = (
     "Answer the multiple-choice question using only the provided context. "
     "Return only the final answer choice letter: A, B, C, or D."
-)
-OPENAI_COMPAT_SYSTEM_PROMPT = (
-    "You are solving a long-context multiple-choice question using ONLY the "
-    "provided documents. The query includes choices A, B, C, and D. Silently "
-    "check each option against the documents before answering. The correct "
-    "choice must satisfy every constraint in the question and every substantive "
-    "claim in the answer choice. It must be directly supported by the documents, "
-    "not just compatible with them. Reject choices that are only partially "
-    "supported, too narrow, too broad, overstate the evidence, add unsupported "
-    "causal claims, skip required implications, or are merely mentioned in the "
-    "documents. If more than one option seems plausible, choose the option best "
-    "supported by the overall evidence and the exact wording of the question. "
-    "Return exactly one capital letter: A, B, C, or D. Do not explain."
 )
 
 
@@ -92,37 +85,7 @@ def build_api_prompt(row: dict) -> str:
 
 
 def build_openai_compatible_messages(row: dict) -> list[dict]:
-    return [
-        {"role": "system", "content": OPENAI_COMPAT_SYSTEM_PROMPT},
-        {"role": "user", "content": f"Context:\n{row['context']}\n\n{build_query(row)}"},
-    ]
-
-
-def _token_ids(value: Any) -> list[int]:
-    if isinstance(value, Mapping):
-        if "input_ids" not in value:
-            raise ValueError("Tokenizer result does not contain input_ids")
-        value = value["input_ids"]
-    elif hasattr(value, "input_ids"):
-        value = value.input_ids
-    if hasattr(value, "tolist"):
-        value = value.tolist()
-    if value and isinstance(value[0], list):
-        value = value[0]
-    return list(value)
-
-
-def _chat_token_count(tokenizer: Any, messages: list[dict]) -> int:
-    return len(
-        _token_ids(
-            tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                enable_thinking=False,
-            )
-        )
-    )
+    return build_strict_mcq_messages(row["context"], build_query(row))
 
 
 def _middle_tokens(token_ids: list[int], limit: int) -> list[int]:

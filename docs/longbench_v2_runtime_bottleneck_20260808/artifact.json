@@ -1,0 +1,187 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "id": "longbench-v2-runtime-bottleneck-20260808",
+    "title": "LongBench-v2 Runtime Bottleneck Diagnosis",
+    "description": "Technical diagnosis of the 2026-07-16 cold semantic-cache benchmark run.",
+    "generatedAt": "2026-08-08T00:00:00Z",
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# LongBench-v2 Runtime Bottleneck Diagnosis"
+      },
+      {
+        "id": "technical-summary",
+        "type": "markdown",
+        "sourceId": "runtime-analysis",
+        "body": "## Technical summary\n\n**Iterative model inference is the bottleneck.** The run took 9.56 hours; controller search consumed 8.69 hours (90.9%) and ingestion consumed 0.86 hours (9.0%). The 503 originals accounted for 9.41 hours of row time, while exact and semantic repeats together accounted for only 0.15 hours.\n\nThe expensive path was 509 cache misses making 6,941 API calls. Those misses scanned 12,209 of 17,112 available chunks (71.3%) and generated 3.59M intermediate output tokens. Only 23 misses stopped early. Increasing the served context window alone will not shorten this run, but it can enable larger inspection batches that reduce repeated prompts and model invocations."
+      },
+      {
+        "id": "timing-heading",
+        "type": "markdown",
+        "body": "## Search accounts for almost the entire wall time\n\nThe stage decomposition leaves little ambiguity: persistence and context-file work are negligible, and ingestion is a secondary target. Search includes cache lookup, iterative chunk inspection, final adjudication, and any packed fallback."
+      },
+      {
+        "id": "timing-chart-block",
+        "type": "chart",
+        "chartId": "timing-chart"
+      },
+      {
+        "id": "timing-table-block",
+        "type": "table",
+        "tableId": "timing-table"
+      },
+      {
+        "id": "call-amplification",
+        "type": "markdown",
+        "sourceId": "runtime-analysis",
+        "body": "## Iterative scanning amplifies one benchmark question into many generations\n\nThe 509 misses averaged 13.64 API calls, 344.7k input tokens, and 7.1k output tokens each. Across misses, search latency correlated strongly with visited chunks (r=0.956), API calls (r=0.977), input tokens (r=0.978), and output tokens (r=0.985). These are descriptive correlations among tightly related workload measures, not independent causal estimates.\n\nThe reader visited 24.0 chunks per miss on average. It made 5,341 inspector LLM calls; a perfect three-chunk packing floor for the same visited chunks would have been 4,248 calls. The recorded 243 batch fallbacks caused some chunks to be retried individually. More importantly, 313 misses ended only after exhausting the configured scan budget, while just 23 stopped early."
+      },
+      {
+        "id": "long-context-concentration",
+        "type": "markdown",
+        "sourceId": "runtime-analysis",
+        "body": "## Sixty-six very long rows consume half of search time\n\nThe 66 misses above 240k source tokens consumed 4.35 search hours (50.2%), 3,161 API calls, and 107.5M input tokens. By contrast, the 227 misses at or below 60k consumed 1.21 search hours. The current ratio-based policy scales inspected chunks with document length, so the longest documents dominate wall time."
+      },
+      {
+        "id": "scope-method",
+        "type": "markdown",
+        "sourceId": "runtime-analysis",
+        "body": "## Scope and method\n\nPopulation: all 1,509 rows in cold cache run 20260716T204202Z (503 original, 503 exact, 503 semantic). A miss is a bridge row whose actual cache_type is miss. Stage shares use the manifest's 34,425.537-second elapsed time. Per-row workload and correlations use all 509 miss rows in bridge_rows.jsonl. Token-length buckets use context_token_estimate.\n\nThe analysis reproduces manifest totals, aggregates bridge-row timing and token deltas, and inspects the iterative reader implementation to interpret batching and stopping behavior."
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "body": "## What the current telemetry cannot separate\n\nThe artifacts record one search duration and token delta per row, not latency for each API call. They therefore cannot cleanly separate executor prefill, autoregressive decoding, evaluator traffic, HTTP overhead, or vLLM queueing. The strong conclusion is that repeated iterative model calls dominate; the precise split within inference requires per-request vLLM metrics or call-level timings.\n\nAccuracy comparisons for alternative scan ratios, batch sizes, or output limits require paired experiments. Existing low accuracy among fallback-heavy rows is affected by difficulty selection and does not prove those fallback steps are useless."
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "body": "## Recommended optimization sequence\n\n1. **Use the 256K window to batch more inspection chunks.** Test `ITERATIVE_BATCH_MAX_CHUNKS=6` with a 100k–120k batch input budget. The same visited chunks have a theoretical six-chunk packing floor of 2,258 inspector calls versus 5,341 observed, although token compute and output size prevent equivalent wall-time savings.\n2. **Reduce intermediate generation.** Test `SCAN_MAX_TOKENS=1024`, then 768, while measuring JSON completion and answer accuracy. The run generated 3.59M miss-path output tokens despite needing only final choice letters.\n3. **Reduce scan breadth on a paired sample.** Test a 0.30/0.50 min/max ratio before more aggressive cuts. The current 0.50/0.65 policy visited 71.3% of available chunks and rarely stopped early.\n4. **Fix or avoid batch fallbacks.** Inspect malformed batched JSON and schema compliance; 243 failed batched inspections caused duplicate work.\n5. **Only then parallelize source groups.** Two to four independent workers can reduce wall time further, but sharding must preserve each original→exact→semantic dependency and must be validated against current cache-hit semantics."
+      },
+      {
+        "id": "further-questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n- How much time is prefill versus decode for inspector calls at each context-length bucket?\n- Does six-chunk batching preserve JSON validity and accuracy on symbolic-code and ordering tasks?\n- What runtime target and maximum acceptable accuracy loss should govern scan-ratio tuning?"
+      }
+    ],
+    "cards": [],
+    "charts": [
+      {
+        "id": "timing-chart",
+        "title": "Elapsed hours by benchmark stage",
+        "subtitle": "Search consumed 8.69 of the run's 9.56 hours",
+        "showDescription": true,
+        "type": "bar",
+        "dataset": "timing_breakdown",
+        "sourceId": "manifest-source",
+        "encodings": {
+          "x": {"field": "stage"},
+          "y": {"field": "hours"},
+          "tooltip": [
+            {"field": "hours"},
+            {"field": "elapsed_share_pct"}
+          ]
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "timing-table",
+        "title": "Elapsed-time decomposition",
+        "subtitle": "Cold 1,509-row run; shares use 34,425.537 seconds elapsed",
+        "showDescription": true,
+        "dataset": "timing_breakdown",
+        "sourceId": "manifest-source",
+        "columns": [
+          {"field": "stage", "label": "Stage", "type": "string"},
+          {"field": "hours", "label": "Hours", "type": "number", "format": "number"},
+          {"field": "elapsed_share_pct", "label": "Elapsed share (%)", "type": "number", "format": "number"}
+        ],
+        "defaultSort": {"field": "hours", "direction": "desc"}
+      }
+    ],
+    "sources": [
+      {
+        "id": "manifest-source",
+        "label": "LongBench-v2 run manifest",
+        "path": "benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json",
+        "query": {
+          "description": "Recorded run configuration, totals, timing summary, API usage, and cache results.",
+          "sql": "WITH timing(stage, hours, elapsed_share_pct) AS (VALUES ('Search', 8.6942, 90.9182), ('Ingestion', 0.8579, 8.9714), ('Interval saves', 0.0069, 0.0721), ('Context writes', 0.0003, 0.0034), ('Final save', 0.0001, 0.0009), ('Unattributed residual', 0.0033, 0.0340)) SELECT stage, hours, elapsed_share_pct FROM timing ORDER BY hours DESC;",
+          "engine": "sqlite",
+          "language": "sql",
+          "executed_at": "2026-08-08T00:00:00Z",
+          "tables_used": ["benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json"],
+          "filters": ["run_id = 20260716T204202Z"]
+        }
+      },
+      {
+        "id": "runtime-analysis",
+        "label": "Manifest and bridge-row runtime decomposition",
+        "query": {
+          "description": "Python aggregation of manifest timing and all 1,509 bridge rows, with miss-path workload, token-length buckets, stopping behavior, and Pearson correlations.",
+          "language": "python",
+          "executed_at": "2026-08-08T00:00:00Z",
+          "tables_used": [
+            "benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json",
+            "benchmark_artifacts/longbench_v2/20260716T204202Z/bridge_rows.jsonl"
+          ],
+          "filters": ["all 1,509 rows", "miss analysis: cache_type = miss"]
+        }
+      }
+    ],
+    "notes": [
+      "A compact exact-value table was used instead of a chart because the timing split is dominated by two stages and exact audit values are more useful than a plotted series.",
+      "Recommendations are experiment proposals, not measured runtime forecasts."
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "status": "ready",
+    "generatedAt": "2026-08-08T00:00:00Z",
+    "datasets": {
+      "timing_breakdown": [
+        {"stage": "Search", "hours": 8.6942, "elapsed_share_pct": 90.9182},
+        {"stage": "Ingestion", "hours": 0.8579, "elapsed_share_pct": 8.9714},
+        {"stage": "Interval saves", "hours": 0.0069, "elapsed_share_pct": 0.0721},
+        {"stage": "Context writes", "hours": 0.0003, "elapsed_share_pct": 0.0034},
+        {"stage": "Final save", "hours": 0.0001, "elapsed_share_pct": 0.0009},
+        {"stage": "Unattributed residual", "hours": 0.0033, "elapsed_share_pct": 0.0340}
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "manifest-source",
+      "label": "LongBench-v2 run manifest",
+      "path": "benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json",
+      "query": {
+        "description": "Recorded run configuration, totals, timing summary, API usage, and cache results.",
+        "sql": "WITH timing(stage, hours, elapsed_share_pct) AS (VALUES ('Search', 8.6942, 90.9182), ('Ingestion', 0.8579, 8.9714), ('Interval saves', 0.0069, 0.0721), ('Context writes', 0.0003, 0.0034), ('Final save', 0.0001, 0.0009), ('Unattributed residual', 0.0033, 0.0340)) SELECT stage, hours, elapsed_share_pct FROM timing ORDER BY hours DESC;",
+        "engine": "sqlite",
+        "language": "sql",
+        "executed_at": "2026-08-08T00:00:00Z",
+        "tables_used": ["benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json"],
+        "filters": ["run_id = 20260716T204202Z"]
+      }
+    },
+    {
+      "id": "runtime-analysis",
+      "label": "Manifest and bridge-row runtime decomposition",
+      "query": {
+        "description": "Python aggregation of manifest timing and all 1,509 bridge rows, with miss-path workload, token-length buckets, stopping behavior, and Pearson correlations.",
+        "language": "python",
+        "executed_at": "2026-08-08T00:00:00Z",
+        "tables_used": [
+          "benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json",
+          "benchmark_artifacts/longbench_v2/20260716T204202Z/bridge_rows.jsonl"
+        ],
+        "filters": ["all 1,509 rows", "miss analysis: cache_type = miss"]
+      }
+    }
+  ]
+}

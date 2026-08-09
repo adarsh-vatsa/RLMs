@@ -191,6 +191,31 @@ class DataScopedSearchCacheTests(unittest.TestCase):
         self.assertFalse(result["from_cache"])
         self.assertEqual(result["answer"], "No relevant documents found.")
 
+    def test_semantic_lookup_filters_candidates_to_active_scope(self):
+        controller = make_controller()
+        controller.cache = {
+            "chunk-a": [make_entry("question a", "answer a", "scope-a")],
+            "chunk-b": [make_entry("question b", "answer b", "scope-b")],
+        }
+        controller._cache_index = FakeSearchIndex(
+            [
+                (0.99, {"cache_idx": 0}),
+                (0.98, {"cache_idx": 1}),
+            ]
+        )
+        controller.activate_data_scope("scope-b")
+
+        def fake_sniper(query, candidates):
+            self.assertEqual([entry["result"] for entry, _, _ in candidates], ["answer b"])
+            return {"hit": True, "id": 0}
+
+        with patch.object(controller, "_llm_sniper_evaluate", side_effect=fake_sniper):
+            result = controller.lookup_cached_result("paraphrased question")
+
+        self.assertTrue(result["from_cache"])
+        self.assertEqual(result["cache_type"], "semantic")
+        self.assertEqual(result["answer"], "answer b")
+
     def test_knowledge_hits_are_limited_to_active_data_scope(self):
         controller = make_controller()
         controller.cache = {
@@ -239,10 +264,82 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
             with patch.object(scs, "FAISSIndex", FakeSearchIndex):
                 legacy = make_controller()
-                self.assertTrue(legacy.load(legacy_path))
-                result = legacy.search(query)
-                self.assertFalse(result["from_cache"])
-                self.assertEqual(result["answer"], "No relevant documents found.")
+                self.assertFalse(legacy.load(legacy_path))
+
+    def test_compact_mcq_store_omits_context_and_knowledge(self):
+        controller = make_controller()
+        controller.activate_data_scope("scope-a")
+
+        with patch.object(scs, "FAISSIndex", FakeSearchIndex):
+            entry = controller.store_compact_mcq(
+                "Which option?",
+                "A",
+                model_used="executor",
+                source_id="source-a",
+                route="direct_fit",
+                provenance={"final_rendered_input_tokens": 123},
+            )
+
+        self.assertNotIn("source_context", entry)
+        self.assertEqual(entry["facts"], [])
+        self.assertEqual(controller.knowledge, [])
+        self.assertEqual(entry["data_scope_hash"], "scope-a")
+        self.assertEqual(entry["route"], "direct_fit")
+
+    def test_compact_mcq_store_rejects_invalid_answer(self):
+        controller = make_controller()
+        controller.activate_data_scope("scope-a")
+
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            controller.store_compact_mcq(
+                "Which option?",
+                "Answer: A",
+                model_used="executor",
+                source_id="source-a",
+                route="direct_fit",
+            )
+
+        self.assertEqual(controller.get_total_entries(), 0)
+
+    def test_embedding_uses_left_padded_last_token_pooling(self):
+        import torch
+
+        class FakeInputs(dict):
+            def to(self, device):
+                return self
+
+        class FakeTokenizer:
+            def __call__(self, texts, **kwargs):
+                return FakeInputs(
+                    input_ids=torch.tensor([[0, 1], [2, 3]]),
+                    attention_mask=torch.tensor([[0, 1], [1, 1]]),
+                )
+
+        class FakeModel:
+            def __call__(self, **kwargs):
+                return types.SimpleNamespace(
+                    last_hidden_state=torch.tensor(
+                        [
+                            [[9.0, 9.0], [3.0, 4.0]],
+                            [[8.0, 8.0], [0.0, 5.0]],
+                        ]
+                    )
+                )
+
+        engine = scs.EmbeddingEngine.__new__(scs.EmbeddingEngine)
+        engine.device = "cpu"
+        engine.torch = torch
+        engine.tokenizer = FakeTokenizer()
+        engine.model = FakeModel()
+
+        with patch.object(scs, "EMBEDDING_BATCH_SIZE", 2), patch.object(
+            scs, "EMBEDDING_MAX_LENGTH", 8192
+        ):
+            embeddings = engine.encode(["first", "second"])
+
+        np.testing.assert_allclose(embeddings, np.array([[0.6, 0.8], [0.0, 1.0]]))
+        self.assertEqual(engine._last_encode_info["pooling"], "last_token")
+        self.assertEqual(engine._last_encode_info["padding_side"], "left")
 
     def test_data_scope_hash_includes_token_chunk_config(self):
         with tempfile.TemporaryDirectory() as tmp:
