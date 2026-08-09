@@ -16,10 +16,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from long_bench_v2.run_api_benchmark import (
     ARTIFACT_SUBDIR,
     DEFAULT_CONTEXT_WINDOW_TOKENS,
+    DEFAULT_MAX_INPUT_TOKENS,
     DEFAULT_OPENAI_COMPAT_MODEL,
     DEFAULT_OPENROUTER_MODEL,
     OPENAI_COMPAT_SYSTEM_PROMPT,
     _build_default_api_client_factory,
+    _chat_token_count,
+    _token_ids,
     build_arg_parser,
     normalize_api_args,
     parse_api_usage,
@@ -179,7 +182,21 @@ class FakeTokenizer:
         )
         if add_generation_prompt:
             rendered += "<assistant>"
-        return self.encode(rendered)
+        input_ids = self.encode(rendered)
+        return {"input_ids": input_ids, "attention_mask": [1] * len(input_ids)}
+
+
+class FakeTensor:
+    def __init__(self, value):
+        self.value = value
+
+    def tolist(self):
+        return self.value
+
+
+class FakeBatchEncoding:
+    def __init__(self, input_ids):
+        self.input_ids = input_ids
 
 
 class FakeOpenAICompatibleOpener(FakeOpenRouterOpener):
@@ -227,7 +244,25 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(args.api_key_env, "")
         self.assertEqual(args.api_base_url, "http://127.0.0.1:8000/v1")
         self.assertEqual(args.context_window_tokens, DEFAULT_CONTEXT_WINDOW_TOKENS)
+        self.assertEqual(args.max_input_tokens, DEFAULT_MAX_INPUT_TOKENS)
         self.assertEqual(args.max_retries, 5)
+
+    def test_token_ids_normalizes_supported_tokenizer_shapes(self):
+        self.assertEqual(_token_ids([1, 2, 3]), [1, 2, 3])
+        self.assertEqual(_token_ids([[1, 2, 3]]), [1, 2, 3])
+        self.assertEqual(_token_ids(FakeTensor([1, 2, 3])), [1, 2, 3])
+        self.assertEqual(
+            _token_ids({"input_ids": FakeTensor([[1, 2, 3]])}),
+            [1, 2, 3],
+        )
+        self.assertEqual(
+            _token_ids(FakeBatchEncoding(FakeTensor([[1, 2, 3]]))),
+            [1, 2, 3],
+        )
+
+    def test_token_ids_rejects_mapping_without_input_ids(self):
+        with self.assertRaisesRegex(ValueError, "input_ids"):
+            _token_ids({"attention_mask": [1, 1]})
 
     def test_middle_truncation_keeps_prompt_beginning_and_end(self):
         row = _suite_row("row_1", "original")
@@ -237,23 +272,38 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
             {"role": "system", "content": OPENAI_COMPAT_SYSTEM_PROMPT},
             {"role": "user", "content": ""},
         ]
-        chat_overhead = len(tokenizer.apply_chat_template(empty_messages))
-        context_window = chat_overhead + 700 + 8
+        chat_overhead = _chat_token_count(tokenizer, empty_messages)
+        max_input_tokens = chat_overhead + 700
+        context_window = max_input_tokens + 108
 
         messages, metadata = prepare_openai_compatible_messages(
             row,
             tokenizer,
             context_window_tokens=context_window,
+            max_input_tokens=max_input_tokens,
             max_output_tokens=8,
         )
 
         self.assertTrue(metadata["prompt_truncated"])
-        self.assertLessEqual(metadata["prompt_tokens_after_truncation"], context_window - 8)
+        self.assertGreater(metadata["prompt_tokens_before_truncation"], max_input_tokens)
+        self.assertEqual(metadata["prompt_tokens_after_truncation"], max_input_tokens)
         self.assertGreater(metadata["prompt_tokens_removed"], 0)
+        self.assertEqual(metadata["input_token_budget"], max_input_tokens)
+        self.assertEqual(metadata["context_window_safety_margin_tokens"], 100)
         self.assertFalse(tokenizer.enable_thinking)
         self.assertTrue(messages[1]["content"].startswith("Context:\nBEGIN-"))
         self.assertIn("-END", messages[1]["content"])
         self.assertTrue(messages[1]["content"].endswith("A, B, C, or D."))
+
+    def test_middle_truncation_rejects_input_cap_outside_context_window(self):
+        with self.assertRaisesRegex(ValueError, "must not exceed"):
+            prepare_openai_compatible_messages(
+                _suite_row("row_1", "original"),
+                FakeTokenizer(),
+                context_window_tokens=1000,
+                max_input_tokens=995,
+                max_output_tokens=8,
+            )
 
     def test_openrouter_client_factory_reads_environment_key(self):
         parser = build_arg_parser()
@@ -442,6 +492,7 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
                 api_key_env="",
                 max_output_tokens=8,
                 context_window_tokens=4096,
+                max_input_tokens=4000,
                 max_retries=2,
                 fail_fast=False,
                 output_dir=root / "artifacts",
@@ -469,11 +520,20 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertIn("Choices:", payload["messages"][1]["content"])
         self.assertEqual(manifest["api_provider"], "openai_compatible")
         self.assertEqual(manifest["context_window_tokens"], 4096)
-        self.assertEqual(manifest["input_token_budget"], 4088)
+        self.assertEqual(manifest["max_input_tokens"], 4000)
+        self.assertEqual(manifest["input_token_budget"], 4000)
+        self.assertEqual(manifest["context_window_safety_margin_tokens"], 88)
+        self.assertEqual(
+            manifest["truncation_policy"],
+            "longbench_v2_middle_keep_first_last",
+        )
         self.assertEqual(manifest["system_prompt_style"], "strict")
         self.assertFalse(manifest["thinking_enabled"])
         self.assertEqual(manifest["total_request_attempts"], 1)
         self.assertFalse(bridge_row["prompt_truncated"])
+        self.assertGreater(bridge_row["prompt_tokens_before_truncation"], 2)
+        self.assertEqual(bridge_row["input_token_budget"], 4000)
+        self.assertEqual(bridge_row["context_window_safety_margin_tokens"], 88)
         self.assertEqual(bridge_row["api_attempt_count"], 1)
 
     def test_openai_compatible_retry_exhaustion_is_counted_as_incorrect(self):
@@ -507,6 +567,7 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
                 api_key_env="",
                 max_output_tokens=8,
                 context_window_tokens=4096,
+                max_input_tokens=4000,
                 max_retries=3,
                 fail_fast=False,
                 output_dir=root / "artifacts",

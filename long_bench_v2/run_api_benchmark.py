@@ -9,6 +9,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Mapping
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,6 +60,7 @@ DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5"
 DEFAULT_OPENAI_COMPAT_MODEL = "Qwen/Qwen3.6-35B-A3B"
 DEFAULT_OPENAI_COMPAT_BASE_URL = "http://127.0.0.1:8000/v1"
 DEFAULT_CONTEXT_WINDOW_TOKENS = 65536
+DEFAULT_MAX_INPUT_TOKENS = 60000
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 API_SYSTEM_PROMPT = (
     "Answer the multiple-choice question using only the provided context. "
@@ -97,6 +99,12 @@ def build_openai_compatible_messages(row: dict) -> list[dict]:
 
 
 def _token_ids(value: Any) -> list[int]:
+    if isinstance(value, Mapping):
+        if "input_ids" not in value:
+            raise ValueError("Tokenizer result does not contain input_ids")
+        value = value["input_ids"]
+    elif hasattr(value, "input_ids"):
+        value = value.input_ids
     if hasattr(value, "tolist"):
         value = value.tolist()
     if value and isinstance(value[0], list):
@@ -131,13 +139,22 @@ def prepare_openai_compatible_messages(
     row: dict,
     tokenizer: Any,
     context_window_tokens: int,
+    max_input_tokens: int,
     max_output_tokens: int,
 ) -> tuple[list[dict], dict]:
     if context_window_tokens <= max_output_tokens:
         raise ValueError("--context-window-tokens must exceed --max-output-tokens")
+    if max_input_tokens <= 0:
+        raise ValueError("--max-input-tokens must be positive")
+    if max_input_tokens + max_output_tokens > context_window_tokens:
+        raise ValueError(
+            "--max-input-tokens plus --max-output-tokens must not exceed "
+            "--context-window-tokens"
+        )
 
     messages = build_openai_compatible_messages(row)
-    input_budget = context_window_tokens - max_output_tokens
+    input_budget = max_input_tokens
+    safety_margin_tokens = context_window_tokens - max_input_tokens - max_output_tokens
     original_prompt_tokens = _chat_token_count(tokenizer, messages)
     if original_prompt_tokens <= input_budget:
         return messages, {
@@ -147,6 +164,7 @@ def prepare_openai_compatible_messages(
             "prompt_tokens_removed": 0,
             "context_window_tokens": context_window_tokens,
             "input_token_budget": input_budget,
+            "context_window_safety_margin_tokens": safety_margin_tokens,
         }
 
     user_content = messages[1]["content"]
@@ -177,6 +195,7 @@ def prepare_openai_compatible_messages(
         "prompt_tokens_removed": original_prompt_tokens - final_prompt_tokens,
         "context_window_tokens": context_window_tokens,
         "input_token_budget": input_budget,
+        "context_window_safety_margin_tokens": safety_margin_tokens,
     }
 
 
@@ -352,6 +371,8 @@ def normalize_api_args(args: argparse.Namespace) -> argparse.Namespace:
         )
     if not hasattr(args, "context_window_tokens"):
         args.context_window_tokens = DEFAULT_CONTEXT_WINDOW_TOKENS
+    if not hasattr(args, "max_input_tokens"):
+        args.max_input_tokens = DEFAULT_MAX_INPUT_TOKENS
     if getattr(args, "max_retries", None) is None:
         args.max_retries = 5 if args.api_provider == "openai_compatible" else 1
     return args
@@ -520,12 +541,14 @@ def run_longbench_api_benchmark(
             "prompt_tokens_removed": 0,
             "context_window_tokens": 0,
             "input_token_budget": 0,
+            "context_window_safety_margin_tokens": 0,
         }
         if tokenizer is not None:
             messages, truncation = prepare_openai_compatible_messages(
                 row,
                 tokenizer,
                 args.context_window_tokens,
+                args.max_input_tokens,
                 args.max_output_tokens,
             )
         generation = ""
@@ -667,8 +690,14 @@ def run_longbench_api_benchmark(
             {
                 "api_base_url": args.api_base_url,
                 "context_window_tokens": args.context_window_tokens,
-                "input_token_budget": args.context_window_tokens - args.max_output_tokens,
-                "truncation_policy": "middle_keep_first_last",
+                "max_input_tokens": args.max_input_tokens,
+                "input_token_budget": args.max_input_tokens,
+                "context_window_safety_margin_tokens": (
+                    args.context_window_tokens
+                    - args.max_input_tokens
+                    - args.max_output_tokens
+                ),
+                "truncation_policy": "longbench_v2_middle_keep_first_last",
                 "system_prompt_style": "strict",
                 "temperature": 0,
                 "thinking_enabled": False,
@@ -724,6 +753,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=int,
         default=DEFAULT_CONTEXT_WINDOW_TOKENS,
         help="Served model context limit used for OpenAI-compatible middle truncation.",
+    )
+    parser.add_argument(
+        "--max-input-tokens",
+        type=int,
+        default=DEFAULT_MAX_INPUT_TOKENS,
+        help="Maximum rendered input tokens before LongBench-v2 middle truncation.",
     )
     parser.add_argument(
         "--max-retries",

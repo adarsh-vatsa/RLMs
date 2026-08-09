@@ -245,7 +245,9 @@ Override these only when the benchmark needs it and the service has enough KV
 cache headroom:
 
 ```bash
-EXECUTOR_MAX_MODEL_LEN=65536 bash adarsh-rlms/jarvis/run.sh submit executor
+EXECUTOR_MAX_MODEL_LEN=262144 \
+VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1 --enable-chunked-prefill --max-num-batched-tokens 8192" \
+  bash adarsh-rlms/jarvis/run.sh submit executor
 EVALUATOR_MAX_MODEL_LEN=32768 bash adarsh-rlms/jarvis/run.sh submit evaluator
 ```
 
@@ -357,7 +359,10 @@ The direct ablation reuses the Qwen3.6 executor service and runs through
 client GPU. Set both endpoint variables to the executor URL so the client waits
 for only that service, then use `long_bench_v2/run_api_benchmark.py` with
 `--api-provider openai_compatible`, `--row-types original`,
-`--context-window-tokens 65536`, and `--max-output-tokens 8`.
+`--context-window-tokens 262144`, and `--max-output-tokens 8`.
+Set `--max-input-tokens 240000` so the direct request follows LongBench-v2
+first-half/last-half truncation with a 22,136-token safety margin inside the
+served window.
 
 The runner sends the same strict non-thinking MCQ prompt in one direct chat
 request. Overlength requests follow LongBench-v2 middle truncation, and every run

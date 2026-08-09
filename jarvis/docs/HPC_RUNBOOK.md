@@ -10,9 +10,17 @@ directory is the parent directory that contains the `adarsh-rlms` repo.
 On your local machine, commit and push the changes:
 
 ```bash
-git status
-git add semantic_cache_system.py long_bench_v2/run_benchmark.py test jarvis
-git commit -m "Add Jarvis vLLM local provider run scripts"
+git status --short
+git diff --check
+git add \
+  long_bench_v2/run_api_benchmark.py \
+  test/test_long_bench_v2_api_benchmark.py \
+  long_bench_v2/docs/longbench_v2.md \
+  jarvis/docs/HPC_RUNBOOK.md \
+  jarvis/docs/LONGBENCH_PARAMETER_REFERENCE.md \
+  jarvis/docs/README.md
+git diff --cached --check
+git commit -m "Add LongBench-v2 middle-truncation baseline"
 git push
 ```
 
@@ -505,8 +513,9 @@ Start the executor service:
 MODULES="cuda12.8/toolkit/12.8.1" \
 EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
 EXECUTOR_TP_SIZE=4 \
-EXECUTOR_MAX_MODEL_LEN=65536 \
-VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only" \
+EXECUTOR_MAX_MODEL_LEN=262144 \
+VLLM_GPU_MEMORY_UTILIZATION=0.90 \
+VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1 --enable-chunked-prefill --max-num-batched-tokens 8192" \
 SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
   bash adarsh-rlms/jarvis/run.sh submit executor
 ```
@@ -531,9 +540,10 @@ non-thinking services for the LongBench-v2 MCQ path. If the evaluator has
 serving or output-format issues, use `Qwen/Qwen3-30B-A3B-Instruct-2507` as the
 fallback evaluator with the same `EVALUATOR_MAX_MODEL_LEN`.
 
-The executor uses `EXECUTOR_MAX_MODEL_LEN=65536` for the larger-context
-retrieval profile below. Keep the evaluator at `16384`; evaluator calls are
-short semantic-equivalence and routing checks, not full synthesis prompts.
+The executor uses Qwen3.6's native `EXECUTOR_MAX_MODEL_LEN=262144` window. Keep
+the evaluator at `16384`; evaluator calls are short semantic-equivalence and
+routing checks, not full synthesis prompts. This command affects only a newly
+submitted executor job; it does not alter an already-running service.
 
 Watch both jobs:
 
@@ -542,6 +552,20 @@ squeue -u "$USER"
 tail -f "$PROJECT_LOG_DIR"/rlms-executor-<executor_job_id>.out
 tail -f "$PROJECT_LOG_DIR"/rlms-evaluator-<evaluator_job_id>.out
 ```
+
+Before using the executor, verify its startup log reports all of the following:
+
+```text
+Available KV cache memory: ...
+GPU KV cache size: ... tokens
+Maximum concurrency for 262,144 tokens per request: X.XXx
+Application startup complete.
+```
+
+Require `X.XX` to be at least `1.00` and reject a startup with a CUDA OOM or
+engine-initialization failure. For Qwen's hybrid attention layout, use the
+explicit maximum-concurrency line as the capacity check rather than dividing
+the displayed GPU KV cache token count by the context length.
 
 Read the endpoint files:
 
@@ -751,7 +775,7 @@ not a direct "send every full LongBench context to the model" run. The full
 document is ingested into token-bounded chunks, FAISS ranks likely chunks, and
 the iterative reader inspects an adaptive ratio of chunks with a cumulative
 memory ledger. The executor service above starts vLLM with
-`EXECUTOR_MAX_MODEL_LEN=65536`, so each chunk-inspection call stays below that
+`EXECUTOR_MAX_MODEL_LEN=262144`, so each chunk-inspection call stays below that
 context window while the index still covers the full source document.
 
 ```bash
@@ -810,27 +834,63 @@ bypassing retrieval, embeddings, reranking, cache state, and multi-call
 execution. It uses only the 503 `original` rows; `exact` and `semantic` are
 cache-behavior fixtures rather than additional official benchmark questions.
 
-First run a small client check against the existing executor. Point the evaluator
-URL at the executor too so `run_client.sh` waits for only that one service:
+First create a three-row smoke suite from original examples whose recorded
+context estimates exceed 240,000 tokens, then run it against the 262,144-token
+executor. This deliberately exercises middle truncation instead of relying on
+the first rows of a generic sample. Point the evaluator URL at the executor too
+so `run_client.sh` waits for only that one service:
 
 ```bash
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EXECUTOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_MEM=32G \
-CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
-  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_small.csv \
+CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_direct_truncation_smoke.csv \
+  --sample-size 3 \
+  --min-token-count 240000 \
+  --selection-strategy longest \
+  --row-types original \
+  --seed 0 && \
+uv run python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_direct_truncation_smoke.csv \
   --source-json-path benchmark_data/long_bench_v2/data.json \
   --row-types original \
-  --max-rows 3 \
   --api-provider openai_compatible \
   --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
   --api-model Qwen/Qwen3.6-35B-A3B \
-  --context-window-tokens 65536 \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
   --max-output-tokens 8 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-qwen36-direct-smoke' \
   bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+After the client job syncs its artifacts back, validate the newest smoke run:
+
+```bash
+SMOKE_RUN_DIR=$(ls -dt adarsh-rlms/benchmark_artifacts/longbench_v2_api/* | head -1)
+uv run --project adarsh-rlms python - "$SMOKE_RUN_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_dir = Path(sys.argv[1])
+manifest = json.loads((run_dir / "manifest.json").read_text())
+rows = [json.loads(line) for line in (run_dir / "bridge_rows.jsonl").read_text().splitlines()]
+assert manifest["rows_selected"] == len(rows) == 3
+assert manifest["context_window_tokens"] == 262144
+assert manifest["max_input_tokens"] == 240000
+assert manifest["context_window_safety_margin_tokens"] == 22136
+assert manifest["api_error_count"] == 0
+assert manifest["truncated_row_count"] == sum(row["prompt_truncated"] for row in rows) > 0
+assert all(row["api_status"] == "ok" for row in rows)
+assert all(row["prompt_tokens_before_truncation"] not in {0, 2} for row in rows)
+assert all(row["prompt_tokens_after_truncation"] <= 240000 for row in rows)
+print(f"validated direct truncation smoke: {run_dir}")
+PY
 ```
 
 After verifying the smoke artifact, run all 503 original rows:
@@ -847,7 +907,8 @@ CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
   --api-provider openai_compatible \
   --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
   --api-model Qwen/Qwen3.6-35B-A3B \
-  --context-window-tokens 65536 \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
   --max-output-tokens 8 \
   --output-dir benchmark_artifacts \
   --manifest-note jarvis-qwen36-direct-full-original' \
@@ -856,11 +917,45 @@ CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
 
 The runner writes a new timestamped directory under
 `benchmark_artifacts/longbench_v2_api/` and refuses to reuse an existing run
-directory. Inputs above the available budget are tokenized with Qwen's chat
-template and truncated from the middle, retaining the beginning and end. Check
-`truncated_row_count`, `api_error_count`, `total_request_attempts`, and
-`answer_accuracy` in `manifest.json` before comparing the direct result with the
-saved system run's 503-row `original` accuracy.
+directory. Inputs above 240,000 rendered tokens are tokenized with Qwen's chat
+template and truncated from the middle, retaining the beginning and end of the
+user prompt while preserving the strict system message. Before starting the full
+run, require the smoke artifact to have at least one truncated row, no API or
+context-length errors, non-placeholder before/after prompt counts, and no final
+prompt count above 240,000. The 240,000-token input cap plus the eight-token
+output cap leaves 22,136 tokens of safety inside the 262,144-token server
+window. For the full artifact, additionally require 503 rows and 503 successful
+API responses. Check `truncated_row_count`,
+`api_error_count`, `total_request_attempts`, and `answer_accuracy` in
+`manifest.json` before comparing the result with the saved system run's 503-row
+`original` accuracy.
+
+After the full client job syncs back, run the corresponding full-artifact
+checks before using its accuracy in a comparison note:
+
+```bash
+FULL_RUN_DIR=$(ls -dt adarsh-rlms/benchmark_artifacts/longbench_v2_api/* | head -1)
+uv run --project adarsh-rlms python - "$FULL_RUN_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_dir = Path(sys.argv[1])
+manifest = json.loads((run_dir / "manifest.json").read_text())
+rows = [json.loads(line) for line in (run_dir / "bridge_rows.jsonl").read_text().splitlines()]
+assert manifest["rows_selected"] == len(rows) == 503
+assert manifest["total_api_calls"] == 503
+assert manifest["context_window_tokens"] == 262144
+assert manifest["max_input_tokens"] == 240000
+assert manifest["context_window_safety_margin_tokens"] == 22136
+assert manifest["api_error_count"] == 0
+assert manifest["truncated_row_count"] == sum(row["prompt_truncated"] for row in rows) > 0
+assert all(row["api_status"] == "ok" for row in rows)
+assert all(row["prompt_tokens_before_truncation"] not in {0, 2} for row in rows)
+assert all(row["prompt_tokens_after_truncation"] <= 240000 for row in rows)
+print(f"validated full direct baseline: {run_dir}")
+PY
+```
 
 ## 14. Stop Services After The Experiment
 
@@ -928,7 +1023,7 @@ The cleanup script is guarded to target only this project's paths:
 
 Stop active vLLM jobs before deleting node-local model cache on their node.
 
-## 15. Common Failure Checks
+## 16. Common Failure Checks
 
 If a service never becomes reachable:
 

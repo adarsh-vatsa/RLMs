@@ -36,10 +36,14 @@ reranking models and does not need a client GPU.
   include `exact` or `semantic` in the direct ablation; those rows measure cache
   reuse behavior.
 
-- `--context-window-tokens 65536`: Must match the executor's
-  `EXECUTOR_MAX_MODEL_LEN`. The runner reserves the output allowance, measures
-  the final Qwen chat request, and keeps the first and last halves when it must
-  truncate an overlength prompt.
+- `--context-window-tokens 262144`: Must match the executor's
+  `EXECUTOR_MAX_MODEL_LEN`.
+
+- `--max-input-tokens 240000`: Caps the rendered Qwen chat input below the
+  served-model window. The runner reads the tokenizer result's actual
+  `input_ids` and keeps the first and last halves of the user prompt when the
+  request exceeds this cap. With the eight-token output allowance, this leaves
+  22,136 tokens for chat-template and tokenizer safety.
 
 - `--max-output-tokens 8`: Matches the saved strict-MCQ system run. The local
   payload also fixes temperature at `0` and sends
@@ -49,10 +53,11 @@ reranking models and does not need a client GPU.
   remain in the denominator with `api_status=error`.
 
 Each new run uses `benchmark_artifacts/longbench_v2_api/<run_id>/`. The manifest
-records `truncated_row_count`, `context_window_tokens`, `input_token_budget`,
+records `truncated_row_count`, `context_window_tokens`, `max_input_tokens`,
+`input_token_budget`, `context_window_safety_margin_tokens`,
 `total_request_attempts`, `api_error_count`, strict prompt style, temperature,
-and thinking mode. Bridge rows include the before/after prompt-token counts and
-whether that row was middle-truncated.
+and thinking mode. Bridge rows include the actual `input_ids` counts before and
+after truncation, the safety margin, and whether that row was middle-truncated.
 
 ## Semantic Cache Environment Variables
 

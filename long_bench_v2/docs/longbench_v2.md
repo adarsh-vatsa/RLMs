@@ -530,7 +530,7 @@ python long_bench_v2/run_api_benchmark.py \
 
 For OpenRouter, set `OPENROUTER_API_KEY`. If `--api-provider openrouter` is used without `--api-model`, the runner defaults to `anthropic/claude-sonnet-4.5`. OpenRouter uses provider-specific model ids, so direct Anthropic ids like `claude-sonnet-4-5` should not be used for OpenRouter runs. OpenRouter API errors are logged from the response body in `api_error`. For clean comparisons, use the same chosen model family across the cache runner, RLM runner, and plain API runner unless the experiment is explicitly about model choice.
 
-For the direct local Qwen3.6 ablation, use the original 503 LongBench-v2 rows and the same strict MCQ prompt, output cap, non-thinking mode, and 65,536-token executor limit as the saved Jarvis system run:
+For the planned 256K direct local Qwen3.6 ablation, use the original 503 LongBench-v2 rows with the same strict MCQ prompt, output cap, and non-thinking mode as the saved Jarvis system run. Serve Qwen3.6 at its native 262,144-token window and leave proportional headroom for the request:
 
 ```bash
 python long_bench_v2/run_api_benchmark.py \
@@ -540,13 +540,14 @@ python long_bench_v2/run_api_benchmark.py \
   --api-provider openai_compatible \
   --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
   --api-model Qwen/Qwen3.6-35B-A3B \
-  --context-window-tokens 65536 \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
   --max-output-tokens 8 \
   --output-dir benchmark_artifacts \
   --manifest-note "Jarvis Qwen3.6 direct full-context ablation"
 ```
 
-The local path uses the Qwen tokenizer and native chat template to measure the final request. Requests that exceed the configured input budget keep equal token portions from the beginning and end, matching LongBench-v2's middle-truncation policy. The manifest and bridge rows record original/final prompt tokens and truncation counts. Local requests retry up to five times by default; an exhausted row remains in the denominator as an incorrect `api_status=error` result.
+The local path uses the Qwen tokenizer and native chat template to measure the final request. Requests above `--max-input-tokens` keep equal token portions from the beginning and end of the user prompt, matching LongBench-v2's middle-truncation policy while preserving the strict system message. The recommended 240,000-token input cap plus the eight-token output allowance leaves 22,136 tokens of safety margin inside the 262,144-token served-model window. The manifest and bridge rows record actual `input_ids` counts before and after truncation, the configured input budget, the safety margin, and the truncation count. Local requests retry up to five times by default; an exhausted row remains in the denominator as an incorrect `api_status=error` result. Record the larger context window as a comparison caveat because the saved system run used a smaller executor window.
 
 Useful options:
 
@@ -560,6 +561,7 @@ Useful options:
 - `--api-key-env NAME`: environment variable used for the API key. Default: `ANTHROPIC_API_KEY` for Anthropic and `OPENROUTER_API_KEY` for OpenRouter. You do not need to add this if your API key is defined in `.env`.
 - `--max-output-tokens N`: maximum output tokens per API call. Default: `256`.
 - `--context-window-tokens N`: local served-model context limit used for middle truncation. Default: `65536`.
+- `--max-input-tokens N`: maximum rendered input length before LongBench-v2 middle truncation. Default: `60000`; it plus `--max-output-tokens` must not exceed the context window.
 - `--max-retries N`: attempts per row. Default: `5` locally and `1` for hosted providers.
 - `--fail-fast`: stop immediately on the first API error instead of recording the failed row and continuing.
 - `--output-dir PATH`: benchmark artifact root. Default: `benchmark_artifacts`.
