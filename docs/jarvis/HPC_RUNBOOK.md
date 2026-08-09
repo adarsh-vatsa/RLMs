@@ -580,8 +580,8 @@ echo "$EVALUATOR_URL"
 Example:
 
 ```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1106626.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1106627.url)
+EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1116438.url)
+EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1116439.url)
 
 echo "$EXECUTOR_URL"
 echo "$EVALUATOR_URL"
@@ -886,7 +886,7 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original \
-  --source-ids ordinary_id,largest_fit_id,smallest_overlength_id \
+  --source-ids 66f4cd2c821e116aacb316ef,66efc5e3821e116aacb23df1,66f50109821e116aacb31f16,66f40b9c821e116aacb30a99,6725d977bb02136c067d8373,6703f73cbb02136c067cd74a,670765abbb02136c067d06b4,66ec4370821e116aacb1c905,6725db01bb02136c067d847f,66ec1eb9821e116aacb1af36,66fb77e7bb02136c067c7db1,66f2d553821e116aacb2bc8f \
   --context-window-tokens 262144 \
   --max-input-tokens 240000 \
   --max-output-tokens 8 \
@@ -937,9 +937,9 @@ CLIENT_MEM=32G \
 CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
   --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
   --output-path benchmark_artifacts/longbench_v2_samples/jarvis_direct_truncation_smoke.csv \
-  --sample-size 3 \
+  --sample-size 12 \
   --min-token-count 240000 \
-  --selection-strategy longest \
+  --selection-strategy random \
   --row-types original \
   --seed 0 && \
 uv run python long_bench_v2/run_api_benchmark.py \
