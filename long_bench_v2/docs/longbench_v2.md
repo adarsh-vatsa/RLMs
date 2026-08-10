@@ -524,6 +524,8 @@ Require five valid letters, zero API/context errors, and decoder metadata on
 both paths; accuracy is not the smoke criterion. The exact Jarvis submission
 and artifact-validation commands are in Sections 3 and 4 of
 `docs/jarvis/HPC_RUNBOOK_EXPERIMENT.md`.
+The 36-row domain-stratified, source-linked pre-full cache gate and the full
+1,509-row hybrid run are in Sections 5 and 6.
 
 ## STEP 7 - Run RLM Baseline
 

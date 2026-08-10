@@ -335,7 +335,7 @@ CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=hybrid
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
 export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
 export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
-export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=2
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=4
 export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
@@ -385,7 +385,7 @@ at least 24/50 correct versus the historical iterative result's 25/50, zero
 API/context errors, 50 compact cache writes, and at least 2x isolated miss-path
 speedup. If it remains below 24/50, inspect the remaining A-D disagreements
 before changing retrieval. After it passes, continue with the full direct run
-in Section 4, then the full hybrid `original,exact,semantic` suite.
+in Section 4, then the sampled and full hybrid suites in Sections 5 and 6.
 
 ## 4. Run The Direct Qwen3.6 Ablation
 
@@ -522,8 +522,98 @@ print(f"validated full direct baseline: {run_dir}")
 PY
 ```
 
-Only after the constrained direct artifact passes, run the full hybrid suite in
-the decoder-versioned namespace:
+## 5. Validate A Source-Linked Hybrid Sample
+
+Before the full hybrid suite, use the existing source-linked sampler to select
+two reproducible source groups from each eligible LongBench domain. The six
+domains produce 12 source groups and 36 rows: 12 `original`, 12 `exact`, and 12
+`semantic`. The explicit `source_grouped` order keeps each original ahead of
+its dependent cache rows.
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=96G \
+CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=hybrid
+export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
+export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=2
+export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
+uv run python long_bench_v2/sample_csv.py \
+  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_hybrid_decoder_v1_pre_full.csv \
+  --samples-per-domain 2 \
+  --row-types original,exact,semantic \
+  --selection-strategy random \
+  --seed 20260809 && \
+uv run python long_bench_v2/run_benchmark.py \
+  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_hybrid_decoder_v1_pre_full.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --cache-reset \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original,exact,semantic \
+  --row-order source_grouped \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --child-tokens 7500 \
+  --child-overlap-tokens 750 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-l40s-fast-hybrid-decoder-v1-pre-full-sample' \
+  bash adarsh-rlms/jarvis/run.sh submit client-gpu
+```
+
+After the artifact syncs back, validate the stratified 36-row route pattern:
+
+```bash
+SAMPLE_RUN_DIR=$(ls -dt adarsh-rlms/benchmark_artifacts/longbench_v2/* | head -1)
+uv run --project adarsh-rlms python - "$SAMPLE_RUN_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_dir = Path(sys.argv[1])
+manifest = json.loads((run_dir / "manifest.json").read_text())
+rows = [json.loads(line) for line in (run_dir / "bridge_rows.jsonl").read_text().splitlines()]
+routes = manifest["hybrid_route_counts"]
+original_route_count = routes.get("direct_fit", 0) + routes.get("dense_child_packed", 0)
+
+assert manifest["rows_selected"] == len(rows) == 36
+assert manifest["row_type_counts"] == {"exact": 12, "original": 12, "semantic": 12}
+assert original_route_count == 12
+assert routes.get("exact_cache", 0) == 12
+assert routes.get("semantic_cache", 0) == 12
+assert manifest["executor_answer_calls"] == 12
+assert manifest["semantic_verifier_calls"] == 12
+assert sum(bool(row["compact_cache_write"]) for row in rows) == 12
+assert manifest["valid_choice_count"] == 36
+assert manifest["invalid_choice_count"] == 0
+assert manifest["api_error_count"] == 0
+assert manifest["context_length_error_count"] == 0
+assert manifest["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1"
+assert all(row["api_status"] == "ok" for row in rows)
+print(f"validated source-linked hybrid sample: {run_dir}")
+PY
+```
+
+Treat a missing exact or semantic hit as a cache-routing failure to inspect
+before the full run. Keep the same embedding batch size in this sample and the
+full command so their operational profiles remain comparable.
+
+## 6. Run The Full Hybrid Suite
+
+Only after the constrained direct artifact and the source-linked hybrid sample
+pass, run the full 1,509-row hybrid suite in the decoder-versioned namespace:
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -569,5 +659,3 @@ manifest, `hybrid_policy`, and bridge rows before producing a comparison note.
 Use Sections 11-13 of
 [`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md) to stop services, clean
 node-local scratch, and diagnose common failures.
-
-
