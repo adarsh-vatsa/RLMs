@@ -1,0 +1,277 @@
+{
+  "run_id": "20260810T054951Z",
+  "created_at": "2026-08-10T07:51:23.533625+00:00",
+  "started_at": "2026-08-10T05:49:51.059822+00:00",
+  "finished_at": "2026-08-10T07:51:23.533625+00:00",
+  "elapsed_seconds": 7292.474,
+  "benchmark_target": "longbench_v2",
+  "suite_csv": "benchmark_data/long_bench_v2/data_cache_suite.csv",
+  "suite_csv_sha256": "32fda08f5bcbeaaf36077ca0203ace3cb94d2330168c4866e36252b16fbf51d7",
+  "source_json_path": "benchmark_data/long_bench_v2/data.json",
+  "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+  "mode": "cache",
+  "llm_provider": "openai_compatible",
+  "api_key_env": null,
+  "openrouter_base_url": "https://openrouter.ai/api/v1",
+  "openai_compat_base_url": "http://127.0.0.1:8000/v1",
+  "openai_compat_executor_base_url": "http://g201.cm.cluster:8000/v1",
+  "openai_compat_evaluator_base_url": "http://g202.cm.cluster:8011/v1",
+  "openai_compat_api_key_env": "",
+  "openai_compat_extra_body": {
+    "common": {},
+    "executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_executor": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "effective_evaluator": {
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    }
+  },
+  "executor_model": "Qwen/Qwen3.6-35B-A3B",
+  "evaluator_model": "Qwen/Qwen3.5-35B-A3B",
+  "top_k": 10,
+  "top_k_effective": null,
+  "iterative_top_k_ignored": false,
+  "hybrid_top_k_ignored": true,
+  "rerank_top": 3,
+  "rerank_top_effective": null,
+  "iterative_rerank_top_ignored": false,
+  "hybrid_rerank_top_ignored": true,
+  "synthesis_max_chunks": null,
+  "synthesis_max_chunks_configured": 3,
+  "mcq_prompt_style": "default",
+  "mcq_synthesis_max_tokens": 32,
+  "search_mode": "hybrid",
+  "iterative_reader_version": 13,
+  "scan_min_chunk_ratio": 0.3,
+  "scan_max_chunk_ratio": 0.5,
+  "scan_min_chunks": 3,
+  "scan_max_chunks": 0,
+  "scan_max_tokens": 768,
+  "scan_empty_ledger_fallback_ratio": 1.0,
+  "iterative_packed_fallback_input_token_budget": 60000,
+  "iterative_memory_max_chars": 16000,
+  "iterative_batch_max_chunks": 3,
+  "iterative_batch_input_token_budget": 50000,
+  "scan_order": "faiss_ranked_ordering_document_order",
+  "doc_chunk_size": 10000,
+  "doc_chunk_overlap": 1000,
+  "doc_chunk_tokens": 7500,
+  "doc_chunk_overlap_tokens": 750,
+  "doc_chunk_tokenizer_model": "Qwen/Qwen3-Embedding-0.6B",
+  "embedding_query_instruction": "Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it.",
+  "embedding_batch_size": 2,
+  "embedding_max_length": 8192,
+  "embedding_contract_version": "qwen3_left_last_l2_v1",
+  "embedding_device": "cuda",
+  "embedding_dtype": "auto",
+  "reranker_relevance_threshold": 0.2,
+  "reranker_batch_size": 4,
+  "reranker_max_length": 8192,
+  "min_reranked_results": 5,
+  "synthesis_input_token_budget": 0,
+  "reranker_disabled": true,
+  "hybrid_route_version": "longbench_v2_fast_hybrid_v1",
+  "hybrid_prompt_version": "strict_qwen_mcq_v1",
+  "mcq_decoder_constraint_enabled": true,
+  "mcq_decoder_constraint_version": "vllm_structured_choice_abcd_v1",
+  "mcq_decoder_constraint_type": "structured_outputs.choice",
+  "mcq_allowed_choices": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "executor_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
+  "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
+  "executor_tokenizer_class": "Qwen2Tokenizer",
+  "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+  "embedding_device_effective": "cuda",
+  "embedding_dtype_effective": "bfloat16",
+  "cache_save_interval": 10,
+  "row_order": "source_grouped",
+  "row_types_requested": [
+    "original",
+    "exact",
+    "semantic"
+  ],
+  "source_ids_requested": [],
+  "max_rows": 0,
+  "rows_selected": 1509,
+  "row_type_counts": {
+    "exact": 503,
+    "original": 503,
+    "semantic": 503
+  },
+  "answer_correct_count": 737,
+  "answer_accuracy": 0.488403,
+  "actual_route_counts": {
+    "exact": 503,
+    "knowledge": 0,
+    "miss": 513,
+    "semantic": 493,
+    "unknown": 0
+  },
+  "by_row_type": {
+    "exact": {
+      "rows": 503,
+      "answer_accuracy": 0.489066,
+      "cache_hit_rate": 1.0
+    },
+    "original": {
+      "rows": 503,
+      "answer_accuracy": 0.489066,
+      "cache_hit_rate": 0.0
+    },
+    "semantic": {
+      "rows": 503,
+      "answer_accuracy": 0.487078,
+      "cache_hit_rate": 0.980119
+    }
+  },
+  "timing_summary": {
+    "cache_load_ms": 0.045,
+    "cache_final_save_ms": 313.697,
+    "cache_save_count": 151,
+    "context_write_ms": 1096.532,
+    "ingest_ms": 2317441.526,
+    "search_ms": 7238494.859,
+    "interval_save_ms": 24291.711,
+    "row_wall_ms": 7265540.361
+  },
+  "artifacts": {
+    "predictions": "benchmark_artifacts/longbench_v2/20260810T054951Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/longbench_v2/20260810T054951Z/official_longbench_v2_eval_report.json"
+  },
+  "total_api_calls": 1006,
+  "total_input_tokens": 60810038,
+  "total_output_tokens": 6942,
+  "total_tokens": 60816980,
+  "full_context_query_baseline_input_tokens": 213816093,
+  "input_token_savings_vs_full_context_query_baseline": 153006055,
+  "input_token_savings_percent_vs_full_context_query_baseline": 71.559653,
+  "unique_source_context_token_estimate": 71272031,
+  "input_token_savings_vs_unique_source_context": 10461993,
+  "input_token_savings_percent_vs_unique_source_context": 14.67896,
+  "total_dataset_context_token_estimate": 213816093,
+  "input_token_savings_vs_context": 153006055,
+  "input_token_savings_percent": 71.559653,
+  "total_estimated_cost_usd": 0.0,
+  "hybrid_policy": {
+    "route_version": "longbench_v2_fast_hybrid_v1",
+    "prompt_version": "strict_qwen_mcq_v1",
+    "system_prompt_sha256": "44558cfa6e0621bd23dfeb0fffb31b06df91a990427997dc45ad856b387a3744",
+    "temperature": 0,
+    "thinking_enabled": false,
+    "mcq_decoder_constraint_enabled": true,
+    "mcq_decoder_constraint_version": "vllm_structured_choice_abcd_v1",
+    "mcq_decoder_constraint_type": "structured_outputs.choice",
+    "mcq_allowed_choices": [
+      "A",
+      "B",
+      "C",
+      "D"
+    ],
+    "context_window_tokens": 262144,
+    "max_input_tokens": 240000,
+    "max_output_tokens": 8,
+    "safety_margin_tokens": 22136,
+    "executor_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
+    "child_tokens": 7500,
+    "child_overlap_tokens": 750,
+    "child_tokenizer_model": "Qwen/Qwen3-Embedding-0.6B",
+    "candidate_strategy": "all_children_exact_faiss",
+    "evidence_order": "faiss_score_descending",
+    "reranker_enabled": false,
+    "bm25_enabled": false,
+    "parent_expansion_enabled": false,
+    "knowledge_lookup_enabled": false,
+    "consensus_enabled": false,
+    "fact_extraction_enabled": false,
+    "embedding_contract_version": "qwen3_left_last_l2_v1",
+    "embedding_pooling": "last_token",
+    "embedding_padding_side": "left",
+    "embedding_normalization": "l2",
+    "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
+    "executor_tokenizer_class": "Qwen2Tokenizer",
+    "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259"
+  },
+  "context_window_tokens": 262144,
+  "max_input_tokens": 240000,
+  "max_output_tokens": 8,
+  "context_window_safety_margin_tokens": 22136,
+  "child_tokens": 7500,
+  "child_overlap_tokens": 750,
+  "hybrid_route_counts": {
+    "dense_child_packed": 107,
+    "direct_fit": 406,
+    "exact_cache": 503,
+    "semantic_cache": 493
+  },
+  "by_hybrid_route": {
+    "dense_child_packed": {
+      "rows": 107,
+      "answer_accuracy": 0.551402,
+      "cache_hit_rate": 0.0
+    },
+    "direct_fit": {
+      "rows": 406,
+      "answer_accuracy": 0.472906,
+      "cache_hit_rate": 0.0
+    },
+    "exact_cache": {
+      "rows": 503,
+      "answer_accuracy": 0.489066,
+      "cache_hit_rate": 1.0
+    },
+    "semantic_cache": {
+      "rows": 493,
+      "answer_accuracy": 0.486815,
+      "cache_hit_rate": 1.0
+    }
+  },
+  "valid_choice_count": 1509,
+  "invalid_choice_count": 0,
+  "api_error_count": 0,
+  "context_length_error_count": 0,
+  "executor_answer_calls": 513,
+  "semantic_verifier_calls": 493,
+  "document_embedding_count": 14470,
+  "document_embedding_ms": 2121005.561,
+  "full_rendered_input_tokens_on_misses": 136184708,
+  "final_rendered_input_tokens_on_misses": 60523497,
+  "cache_state_bytes": 16855868,
+  "cache_reuse": {
+    "enabled": true,
+    "cache_namespace": "longbench_v2__exact-original-semantic__c38a00f10d44f6b0",
+    "dataset_signature": "9e045a3af18b1fcf",
+    "cache_state_root": "/home/edogu/adarsh-rlms-cache-state",
+    "cache_state_path": "/home/edogu/adarsh-rlms-cache-state/longbench_v2__exact-original-semantic__c38a00f10d44f6b0",
+    "cache_state_existed_before_reset": false,
+    "cache_state_existed_before_run": false,
+    "cache_reset_requested": true,
+    "run_start_type": "cold_start",
+    "cache_load_attempts": 1,
+    "cache_load_successes": 0,
+    "cache_entries_before_run": 0,
+    "cache_entries_after_run": 513,
+    "cache_hits": 996,
+    "cache_hit_rate": 0.66004
+  },
+  "note": "jarvis-l40s-fast-hybrid-decoder-v1-full"
+}
