@@ -335,7 +335,7 @@ CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=hybrid
 export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
 export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
 export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
-export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=4
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=2
 export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
 export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
 export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
