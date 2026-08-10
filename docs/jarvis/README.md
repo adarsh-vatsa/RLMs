@@ -19,8 +19,9 @@ is the parent directory that contains the repo. If you `cd` directly into the
 repo, use `jarvis/run.sh` instead. The other scripts are role scripts that
 `run.sh` submits or delegates to inside Slurm allocations.
 
-For the exact first-run sequence on the cluster, use
-[`jarvis/docs/HPC_RUNBOOK.md`](HPC_RUNBOOK.md).
+For the exact first-run sequence on the cluster, start with
+[`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md), then use
+[`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) for benchmark runs.
 
 ## Storage Policy
 
@@ -368,7 +369,8 @@ The runner sends the same strict non-thinking MCQ prompt in one direct chat
 request. Overlength requests follow LongBench-v2 middle truncation, and every run
 writes a new protected directory under `benchmark_artifacts/longbench_v2_api/`.
 See the direct-ablation section in
-[`HPC_RUNBOOK.md`](HPC_RUNBOOK.md) for smoke and full commands, and
+[`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) for smoke and full
+commands, and
 [`LONGBENCH_PARAMETER_REFERENCE.md`](LONGBENCH_PARAMETER_REFERENCE.md) for the
 recorded truncation and retry fields.
 

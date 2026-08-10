@@ -522,8 +522,8 @@ both the hybrid command above and the direct-Qwen command below:
 
 Require five valid letters, zero API/context errors, and decoder metadata on
 both paths; accuracy is not the smoke criterion. The exact Jarvis submission
-and artifact-validation commands are in Steps 12A and 13 of
-`docs/jarvis/HPC_RUNBOOK.md`.
+and artifact-validation commands are in Sections 3 and 4 of
+`docs/jarvis/HPC_RUNBOOK_EXPERIMENT.md`.
 
 ## STEP 7 - Run RLM Baseline
 

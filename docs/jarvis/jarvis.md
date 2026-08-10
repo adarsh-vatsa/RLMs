@@ -59,7 +59,8 @@ Built on reliable hardware and HPC management software from DELL, the latest sto
 - Use `jarvis/run.sh` as the project dispatcher for L40S vLLM services, model prefetch jobs, and client jobs.
 - Role scripts are split by responsibility: `jarvis/serve_vllm.sh`, `jarvis/run_client.sh`, `jarvis/download_models.sh`, and shared setup in `jarvis/lib/env.sh`.
 - See `jarvis/docs/README.md` for model sizes, endpoint wiring, smoke-test mode, serious two-service benchmark mode, and cleanup behavior.
-- See `jarvis/docs/HPC_RUNBOOK.md` for the step-by-step Jarvis execution sequence.
+- See `jarvis/docs/HPC_RUNBOOK_SETUP.md` for environment and service setup, then
+  `jarvis/docs/HPC_RUNBOOK_EXPERIMENT.md` for the current benchmark sequence.
 - If `/mmfs1/project/llm_caching` is unavailable, use `JARVIS_STORAGE_MODE=scratch`.
 - In scratch mode, model assets live under node-local `/local/$USER/llm_caching`, while active vLLM jobs serve from `/local/$USER/$SLURM_JOB_ID/adarsh-rlms`.
 - Keep only small logs and endpoint URL files under `/home/edogu/adarsh-rlms-logs`.
