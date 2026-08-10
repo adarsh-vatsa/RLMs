@@ -29,6 +29,11 @@ from long_bench_v2.run_api_benchmark import (
     prepare_openai_compatible_messages,
     run_longbench_api_benchmark,
 )
+from long_bench_v2.qwen_prompt import (
+    MCQ_DECODER_CONSTRAINT_TYPE,
+    MCQ_DECODER_CONSTRAINT_VERSION,
+    build_openai_compatible_mcq_extra_body,
+)
 
 
 def _source_row(row_id: str, context: str = "The correct answer is Gamma.") -> dict:
@@ -200,7 +205,25 @@ class FakeBatchEncoding:
 
 
 class FakeOpenAICompatibleOpener(FakeOpenRouterOpener):
-    pass
+    def __call__(self, request, timeout=120):
+        self.calls.append(
+            {
+                "url": request.full_url,
+                "timeout": timeout,
+                "headers": dict(request.header_items()),
+                "body": json.loads(request.data.decode("utf-8")),
+            }
+        )
+        return FakeOpenRouterHTTPResponse(
+            {
+                "choices": [{"message": {"content": "C"}}],
+                "usage": {
+                    "prompt_tokens": 500,
+                    "completion_tokens": 1,
+                    "total_tokens": 501,
+                },
+            }
+        )
 
 
 class FakeOpenAICompatibleErrorOpener:
@@ -219,6 +242,15 @@ class FakeOpenAICompatibleErrorOpener:
 
 
 class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
+    def test_shared_mcq_request_body_has_non_thinking_choice_contract(self):
+        self.assertEqual(
+            build_openai_compatible_mcq_extra_body(),
+            {
+                "chat_template_kwargs": {"enable_thinking": False},
+                "structured_outputs": {"choice": ["A", "B", "C", "D"]},
+            },
+        )
+
     def test_cli_defaults_to_anthropic_sonnet(self):
         parser = build_arg_parser()
         args = normalize_api_args(parser.parse_args([]))
@@ -246,6 +278,7 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(args.context_window_tokens, DEFAULT_CONTEXT_WINDOW_TOKENS)
         self.assertEqual(args.max_input_tokens, DEFAULT_MAX_INPUT_TOKENS)
         self.assertEqual(args.max_retries, 5)
+        self.assertEqual(args.source_ids, "")
 
     def test_token_ids_normalizes_supported_tokenizer_shapes(self):
         self.assertEqual(_token_ids([1, 2, 3]), [1, 2, 3])
@@ -391,11 +424,15 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(manifest["row_type_counts"], {"original": 1})
         self.assertEqual(manifest["answer_accuracy"], 1.0)
         self.assertEqual(manifest["api_error_count"], 0)
+        self.assertEqual(manifest["valid_choice_count"], 0)
+        self.assertEqual(manifest["invalid_choice_count"], 1)
+        self.assertEqual(manifest["valid_choice_accuracy"], 0.0)
         self.assertEqual(manifest["total_api_calls"], 1)
         self.assertEqual(manifest["total_input_tokens"], 500)
         self.assertEqual(manifest["total_output_tokens"], 25)
         self.assertEqual(report["benchmark_target"], "longbench_v2_api")
         self.assertTrue(bridge_row["answer_correct"])
+        self.assertFalse(bridge_row["valid_choice"])
         self.assertEqual(bridge_row["token_count"], "123")
         self.assertEqual(bridge_row["api_provider"], "anthropic")
         self.assertEqual(bridge_row["api_model"], "claude-sonnet-4-5")
@@ -451,6 +488,7 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(calls[0]["url"], "https://openrouter.ai/api/v1/chat/completions")
         self.assertEqual(calls[0]["body"]["model"], "anthropic/claude-sonnet-4.5")
         self.assertEqual(calls[0]["body"]["max_tokens"], 256)
+        self.assertNotIn("structured_outputs", calls[0]["body"])
         self.assertEqual(calls[0]["body"]["messages"][0]["role"], "user")
         self.assertIn("Choices:", calls[0]["body"]["messages"][0]["content"])
         self.assertEqual(manifest["api_provider"], "openrouter")
@@ -497,6 +535,7 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
                 fail_fast=False,
                 output_dir=root / "artifacts",
                 manifest_note="local direct test",
+                source_ids="row_1",
             )
 
             run_longbench_api_benchmark(
@@ -514,6 +553,10 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(payload["max_tokens"], 8)
         self.assertEqual(payload["temperature"], 0)
         self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": False})
+        self.assertEqual(
+            payload["structured_outputs"],
+            {"choice": ["A", "B", "C", "D"]},
+        )
         self.assertEqual(payload["messages"][0], {"role": "system", "content": OPENAI_COMPAT_SYSTEM_PROMPT})
         self.assertEqual(payload["messages"][1]["role"], "user")
         self.assertIn("Context:", payload["messages"][1]["content"])
@@ -529,12 +572,32 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         )
         self.assertEqual(manifest["system_prompt_style"], "strict")
         self.assertFalse(manifest["thinking_enabled"])
+        self.assertTrue(manifest["mcq_decoder_constraint_enabled"])
+        self.assertEqual(
+            manifest["mcq_decoder_constraint_version"],
+            MCQ_DECODER_CONSTRAINT_VERSION,
+        )
+        self.assertEqual(
+            manifest["mcq_decoder_constraint_type"],
+            MCQ_DECODER_CONSTRAINT_TYPE,
+        )
+        self.assertEqual(manifest["mcq_allowed_choices"], ["A", "B", "C", "D"])
+        self.assertEqual(manifest["valid_choice_count"], 1)
+        self.assertEqual(manifest["invalid_choice_count"], 0)
+        self.assertEqual(manifest["valid_choice_accuracy"], 1.0)
+        self.assertEqual(manifest["source_ids_requested"], ["row_1"])
         self.assertEqual(manifest["total_request_attempts"], 1)
         self.assertFalse(bridge_row["prompt_truncated"])
         self.assertGreater(bridge_row["prompt_tokens_before_truncation"], 2)
         self.assertEqual(bridge_row["input_token_budget"], 4000)
         self.assertEqual(bridge_row["context_window_safety_margin_tokens"], 88)
         self.assertEqual(bridge_row["api_attempt_count"], 1)
+        self.assertTrue(bridge_row["valid_choice"])
+        self.assertTrue(bridge_row["mcq_decoder_constraint_enabled"])
+        self.assertEqual(
+            bridge_row["mcq_decoder_constraint_version"],
+            MCQ_DECODER_CONSTRAINT_VERSION,
+        )
 
     def test_openai_compatible_retry_exhaustion_is_counted_as_incorrect(self):
         calls = []
@@ -586,6 +649,12 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
             bridge_row = json.loads((run_dir / "bridge_rows.jsonl").read_text().splitlines()[0])
 
         self.assertEqual(len(calls), 3)
+        self.assertTrue(
+            all(
+                call["structured_outputs"] == {"choice": ["A", "B", "C", "D"]}
+                for call in calls
+            )
+        )
         self.assertEqual(manifest["api_error_count"], 1)
         self.assertEqual(manifest["total_request_attempts"], 3)
         self.assertEqual(bridge_row["api_attempt_count"], 3)

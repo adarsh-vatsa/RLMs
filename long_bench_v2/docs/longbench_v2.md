@@ -459,7 +459,10 @@ architecture, gates, and deferred work. The base implementation checks the
 source-scoped exact/semantic cache first, sends complete requests directly when
 they fit 240K, and uses corrected dense child-only retrieval for overlength
 misses. It does not use knowledge hits, consensus, fact extraction, reranking,
-BM25, or parent expansion.
+BM25, or parent expansion. Both executor routes use the mandatory vLLM
+`structured_outputs.choice` constraint with the ordered choices A-D. The
+decoder contract is versioned in `hybrid_policy`, so these runs use a fresh
+cache namespace rather than the earlier prompt-only namespace.
 
 First audit all 503 originals without calling either server:
 
@@ -505,8 +508,22 @@ uv run python long_bench_v2/run_benchmark.py \
 
 Accept the smoke only when it contains both `direct_fit` and
 `dense_child_packed`, every final rendered input is at most 240,000 tokens, and
-`api_error_count=context_length_error_count=0`. Run the matched diagnostic and
-30-50-source gate before starting the full suite.
+`api_error_count=context_length_error_count=invalid_choice_count=0`. Confirm
+that the manifest and every bridge row report
+`mcq_decoder_constraint_version=vllm_structured_choice_abcd_v1`. Run the
+matched diagnostic and isolated 50-source gate before starting the full suite.
+
+For the decoder-policy rerun, use these five previously invalid originals in
+both the hybrid command above and the direct-Qwen command below:
+
+```text
+66fcffd9bb02136c067c94c5,6724631ebb02136c067d7300,66eb873c5a08c7b9b35dd849,6708a096bb02136c067d1789,66ebd0825a08c7b9b35dfe9d
+```
+
+Require five valid letters, zero API/context errors, and decoder metadata on
+both paths; accuracy is not the smoke criterion. The exact Jarvis submission
+and artifact-validation commands are in Steps 12A and 13 of
+`docs/jarvis/HPC_RUNBOOK.md`.
 
 ## STEP 7 - Run RLM Baseline
 
@@ -607,13 +624,20 @@ python long_bench_v2/run_api_benchmark.py \
   --manifest-note "Jarvis Qwen3.6 direct full-context ablation"
 ```
 
-The local path uses the Qwen tokenizer and native chat template to measure the final request. Requests above `--max-input-tokens` keep equal token portions from the beginning and end of the user prompt, matching LongBench-v2's middle-truncation policy while preserving the strict system message. The recommended 240,000-token input cap plus the eight-token output allowance leaves 22,136 tokens of safety margin inside the 262,144-token served-model window. The manifest and bridge rows record actual `input_ids` counts before and after truncation, the configured input budget, the safety margin, and the truncation count. Local requests retry up to five times by default; an exhausted row remains in the denominator as an incorrect `api_status=error` result. Record the larger context window as a comparison caveat because the saved system run used a smaller executor window.
+The local path uses the Qwen tokenizer and native chat template to measure the final request. Requests above `--max-input-tokens` keep equal token portions from the beginning and end of the user prompt, matching LongBench-v2's middle-truncation policy while preserving the strict system message. The recommended 240,000-token input cap plus the eight-token output allowance leaves 22,136 tokens of safety margin inside the 262,144-token served-model window. Every local-Qwen request also carries the mandatory vLLM `structured_outputs.choice=["A","B","C","D"]` decoder constraint. A rejected constraint remains an API error; retries keep the same constrained body and never fall back to prompt-only generation. The manifest and bridge rows record the decoder version, actual `input_ids` counts before and after truncation, the configured input budget, the safety margin, and the truncation count. The direct manifest also reports `valid_choice_count`, `invalid_choice_count`, and `valid_choice_accuracy`. Record the larger context window as a comparison caveat because the saved system run used a smaller executor window.
+
+Use `--source-ids` with the five-source list above for the direct smoke. After
+the isolated 50-source hybrid gate passes, the constrained 503-original direct
+artifact must have 503 successful calls, 503 valid choices, zero API errors,
+and exactly 107 truncated rows before its accuracy is used.
 
 Useful options:
 
 - `--suite-csv PATH`: prepared LongBench-v2 CSV suite. Default: `benchmark_data/long_bench_v2/data_cache_suite.csv`.
 - `--source-json-path PATH`: original LongBench-v2 JSON used to recover full context text by `source_id`. Default: `benchmark_data/long_bench_v2/data.json`.
 - `--row-types TYPES`: comma-separated row types to run. Default: `original,exact,semantic`.
+- `--source-ids IDS`: optional comma-separated source IDs selected before
+  `--max-rows`; use this for reproducible decoder smokes.
 - `--max-rows N`: cap selected rows after filtering. Default: `0`, meaning all selected rows.
 - `--api-provider NAME`: API provider: `anthropic`, `openrouter`, or `openai_compatible`. Default: `anthropic`.
 - `--api-model MODEL`: API model. The local default is `Qwen/Qwen3.6-35B-A3B`.

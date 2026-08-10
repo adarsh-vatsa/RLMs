@@ -18,7 +18,12 @@ from long_bench_v2.run_benchmark import (
     run_hybrid_route_audit,
     run_longbench_benchmark,
 )
-from long_bench_v2.qwen_prompt import STRICT_MCQ_SYSTEM_PROMPT
+from long_bench_v2.qwen_prompt import (
+    MCQ_DECODER_CONSTRAINT_TYPE,
+    MCQ_DECODER_CONSTRAINT_VERSION,
+    STRICT_MCQ_SYSTEM_PROMPT,
+    build_openai_compatible_mcq_extra_body,
+)
 
 
 class FakeTokenizer:
@@ -312,22 +317,40 @@ class LongBenchV2HybridTests(unittest.TestCase):
 
         namespace_a, _ = resolve_cache_namespace(
             top_k=10,
-            hybrid_policy={"max_input_tokens": 240000},
+            hybrid_policy={
+                "max_input_tokens": 240000,
+                "mcq_decoder_constraint_version": MCQ_DECODER_CONSTRAINT_VERSION,
+            },
             **common,
         )
         namespace_same, _ = resolve_cache_namespace(
             top_k=99,
-            hybrid_policy={"max_input_tokens": 240000},
+            hybrid_policy={
+                "max_input_tokens": 240000,
+                "mcq_decoder_constraint_version": MCQ_DECODER_CONSTRAINT_VERSION,
+            },
             **common,
         )
         namespace_changed, _ = resolve_cache_namespace(
             top_k=10,
-            hybrid_policy={"max_input_tokens": 220000},
+            hybrid_policy={
+                "max_input_tokens": 220000,
+                "mcq_decoder_constraint_version": MCQ_DECODER_CONSTRAINT_VERSION,
+            },
+            **common,
+        )
+        namespace_decoder_changed, _ = resolve_cache_namespace(
+            top_k=10,
+            hybrid_policy={
+                "max_input_tokens": 240000,
+                "mcq_decoder_constraint_version": "different_contract",
+            },
             **common,
         )
 
         self.assertEqual(namespace_a, namespace_same)
         self.assertNotEqual(namespace_a, namespace_changed)
+        self.assertNotEqual(namespace_a, namespace_decoder_changed)
 
     def test_route_audit_reports_fit_overlength_and_suggestions(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -358,6 +381,16 @@ class LongBenchV2HybridTests(unittest.TestCase):
 
         self.assertEqual(audit["direct_fit_count"], 1)
         self.assertEqual(audit["overlength_count"], 1)
+        self.assertTrue(audit["mcq_decoder_constraint_enabled"])
+        self.assertEqual(
+            audit["mcq_decoder_constraint_version"],
+            MCQ_DECODER_CONSTRAINT_VERSION,
+        )
+        self.assertEqual(
+            audit["mcq_decoder_constraint_type"],
+            MCQ_DECODER_CONSTRAINT_TYPE,
+        )
+        self.assertEqual(audit["mcq_allowed_choices"], ["A", "B", "C", "D"])
         self.assertEqual(audit["suggested_smoke_source_ids"]["largest_direct_fit_source_id"], "short")
         self.assertEqual(audit["suggested_smoke_source_ids"]["smallest_overlength_source_id"], "long")
 
@@ -439,6 +472,12 @@ class LongBenchV2HybridTests(unittest.TestCase):
         self.assertEqual(len(FakeHybridScs.executor_calls), 3)
         self.assertTrue(all(call["max_tokens"] == 8 for call in FakeHybridScs.executor_calls))
         self.assertTrue(all(call["system"] == STRICT_MCQ_SYSTEM_PROMPT for call in FakeHybridScs.executor_calls))
+        self.assertTrue(
+            all(
+                call["extra_body"] == build_openai_compatible_mcq_extra_body()
+                for call in FakeHybridScs.executor_calls
+            )
+        )
         self.assertEqual(len(FakeHybridController.compact_store_calls), 2)
         self.assertEqual(bridge_rows[0]["ingested_chunks"], 0)
         self.assertEqual(bridge_rows[1]["ingested_chunks"], 0)
@@ -454,6 +493,21 @@ class LongBenchV2HybridTests(unittest.TestCase):
         self.assertEqual(manifest["valid_choice_count"], 3)
         self.assertEqual(manifest["api_error_count"], 0)
         self.assertEqual(manifest["invalid_choice_count"], 1)
+        self.assertTrue(manifest["mcq_decoder_constraint_enabled"])
+        self.assertEqual(
+            manifest["mcq_decoder_constraint_version"],
+            MCQ_DECODER_CONSTRAINT_VERSION,
+        )
+        self.assertEqual(
+            manifest["hybrid_policy"]["mcq_decoder_constraint_version"],
+            MCQ_DECODER_CONSTRAINT_VERSION,
+        )
+        self.assertEqual(manifest["mcq_allowed_choices"], ["A", "B", "C", "D"])
+        self.assertTrue(bridge_rows[0]["mcq_decoder_constraint_enabled"])
+        self.assertEqual(
+            bridge_rows[0]["mcq_decoder_constraint_type"],
+            MCQ_DECODER_CONSTRAINT_TYPE,
+        )
         self.assertIsNone(manifest["top_k_effective"])
         self.assertIsNone(manifest["synthesis_max_chunks"])
 

@@ -20,6 +20,27 @@ STRICT_MCQ_SYSTEM_PROMPT = (
     "Return exactly one capital letter: A, B, C, or D. Do not explain."
 )
 
+MCQ_ALLOWED_CHOICES = ("A", "B", "C", "D")
+MCQ_DECODER_CONSTRAINT_VERSION = "vllm_structured_choice_abcd_v1"
+MCQ_DECODER_CONSTRAINT_TYPE = "structured_outputs.choice"
+
+
+def build_openai_compatible_mcq_extra_body() -> dict:
+    """Build the mandatory non-thinking vLLM MCQ decoder contract."""
+    return {
+        "chat_template_kwargs": {"enable_thinking": False},
+        "structured_outputs": {"choice": list(MCQ_ALLOWED_CHOICES)},
+    }
+
+
+def mcq_decoder_constraint_metadata() -> dict:
+    return {
+        "mcq_decoder_constraint_enabled": True,
+        "mcq_decoder_constraint_version": MCQ_DECODER_CONSTRAINT_VERSION,
+        "mcq_decoder_constraint_type": MCQ_DECODER_CONSTRAINT_TYPE,
+        "mcq_allowed_choices": list(MCQ_ALLOWED_CHOICES),
+    }
+
 
 def token_ids(value: Any) -> list[int]:
     """Extract a single sequence of token IDs from common HF result shapes."""
@@ -55,4 +76,3 @@ def build_strict_mcq_messages(context: str, query: str) -> list[dict]:
         {"role": "system", "content": STRICT_MCQ_SYSTEM_PROMPT},
         {"role": "user", "content": f"Context:\n{context}\n\n{query}"},
     ]
-

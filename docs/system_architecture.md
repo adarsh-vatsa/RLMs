@@ -364,8 +364,10 @@ The local Qwen LongBench-v2 path follows
    reranker is disabled in v1.
 5. Children are packed in descending FAISS order until the next exact rendered
    request would exceed 240,000 tokens, then one strict eight-token executor
-   call produces the answer.
-6. Valid one-letter answers use a compact cache write. Full context, consensus,
+   call produces the answer. Both this call and the direct-fit call send the
+   mandatory vLLM `structured_outputs.choice=["A","B","C","D"]` decoder
+   constraint with thinking disabled.
+6. Exact one-letter answers use a compact cache write. Full context, consensus,
    fact extraction, and the knowledge index are excluded from this benchmark
    path.
 
@@ -373,6 +375,14 @@ The direct route therefore retains query-cache embeddings for semantic reuse
 but avoids document chunking, document embeddings, document FAISS, and
 reranking. BM25, parent expansion, multi-round retrieval, and concurrency are
 deferred until paired accuracy/runtime measurements justify them.
+
+The decoder contract is versioned as `vllm_structured_choice_abcd_v1` and is
+part of the hybrid cache namespace, so constrained runs cannot reuse answers
+from the earlier prompt-only policy. A rejected structured-output request is an
+API error; the runner never retries without the constraint. The direct local
+Qwen ablation uses the same request-body contract for comparability. Iterative
+JSON adjudication, packed controls, Anthropic, and OpenRouter retain their
+existing output behavior.
 
 #### 2n. Full Search Pipeline (`search`)
 The main entry point for domain-specific clients.

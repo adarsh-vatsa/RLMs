@@ -21,8 +21,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from long_bench_v2.qwen_prompt import (  # noqa: E402
+    build_openai_compatible_mcq_extra_body,
     build_strict_mcq_messages,
     chat_token_count,
+    mcq_decoder_constraint_metadata,
 )
 
 
@@ -260,7 +262,7 @@ def build_source_scope_hash(source_id: str, context: str) -> str:
 
 
 def _strict_choice(text: str) -> str:
-    normalized = str(text or "").strip().upper()
+    normalized = str(text or "").strip()
     return normalized if normalized in CHOICE_LETTERS else ""
 
 
@@ -687,6 +689,8 @@ def build_effective_config(scs, args: argparse.Namespace) -> dict:
         "hybrid_route_version": HYBRID_ROUTE_VERSION if hybrid_enabled else "",
         "hybrid_prompt_version": HYBRID_PROMPT_VERSION if hybrid_enabled else "",
     }
+    if hybrid_enabled:
+        artifact_fields.update(mcq_decoder_constraint_metadata())
     hybrid_policy = None
     if hybrid_enabled:
         hybrid_policy = {
@@ -697,6 +701,7 @@ def build_effective_config(scs, args: argparse.Namespace) -> dict:
             ).hexdigest(),
             "temperature": 0,
             "thinking_enabled": False,
+            **mcq_decoder_constraint_metadata(),
             "context_window_tokens": args.context_window_tokens,
             "max_input_tokens": args.max_input_tokens,
             "max_output_tokens": args.max_output_tokens,
@@ -816,7 +821,7 @@ def _call_hybrid_executor(scs, controller, args: argparse.Namespace, messages: l
         temperature=0,
         system=messages[0]["content"],
         messages=messages[1:],
-        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
+        extra_body=build_openai_compatible_mcq_extra_body(),
     )
     controller.metrics.record_call(
         args.executor_model,
@@ -907,6 +912,7 @@ def run_hybrid_route_audit(
         ).hexdigest(),
         "temperature": 0,
         "thinking_enabled": False,
+        **mcq_decoder_constraint_metadata(),
         **tokenizer_info,
         "suite_csv": str(args.suite_csv),
         "suite_csv_sha256": _sha256_file(Path(args.suite_csv)),

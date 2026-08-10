@@ -13,14 +13,18 @@ On your local machine, commit and push the changes:
 git status --short
 git diff --check
 git add \
+  long_bench_v2/qwen_prompt.py \
+  long_bench_v2/run_benchmark.py \
   long_bench_v2/run_api_benchmark.py \
+  test/test_long_bench_v2_hybrid.py \
   test/test_long_bench_v2_api_benchmark.py \
+  test/test_semantic_cache_llm_provider.py \
+  docs/system_architecture.md \
+  docs/longbench_v2_hierarchical_retrieval_plan_20260808.md \
   long_bench_v2/docs/longbench_v2.md \
-  jarvis/docs/HPC_RUNBOOK.md \
-  jarvis/docs/LONGBENCH_PARAMETER_REFERENCE.md \
-  jarvis/docs/README.md
+  docs/jarvis/HPC_RUNBOOK.md
 git diff --cached --check
-git commit -m "Add LongBench-v2 middle-truncation baseline"
+git commit -m "Enforce LongBench-v2 decoder choices"
 git push
 ```
 
@@ -829,8 +833,54 @@ downloads again on that node.
 
 Follow `docs/longbench_v2_hierarchical_retrieval_plan_20260808.md` as the
 governing architecture and experiment plan. Keep the iterative command above as
-the historical control; do not start a full hybrid run until the route audit,
-three-source request smoke, diagnostic sample, and 30-50-source gate pass.
+the historical control. The constrained rerun starts with a vLLM capability
+probe and the five previously invalid sources, followed by the isolated
+50-source hybrid gate. Do not start either full run before that gate passes.
+
+No executor startup flag changes. Confirm the active service environment and
+then verify the vLLM 0.19.1 choice request itself. The request must return HTTP
+200 and exactly one letter:
+
+```bash
+/home/edogu/.venvs/adarsh-vllm/bin/python -c \
+  'import vllm; print(vllm.__version__); assert vllm.__version__ == "0.19.1"'
+
+python - "$EXECUTOR_URL" <<'PY'
+import json
+import re
+import sys
+import urllib.request
+
+url = sys.argv[1].rstrip("/") + "/chat/completions"
+payload = {
+    "model": "Qwen/Qwen3.6-35B-A3B",
+    "messages": [{
+        "role": "user",
+        "content": "Choose one. A. Alpha B. Beta C. Gamma D. Delta. Return one letter.",
+    }],
+    "max_tokens": 8,
+    "temperature": 0,
+    "chat_template_kwargs": {"enable_thinking": False},
+    "structured_outputs": {"choice": ["A", "B", "C", "D"]},
+}
+request = urllib.request.Request(
+    url,
+    data=json.dumps(payload).encode("utf-8"),
+    headers={"Content-Type": "application/json"},
+    method="POST",
+)
+with urllib.request.urlopen(request, timeout=120) as response:
+    assert response.status == 200, response.status
+    body = json.load(response)
+content = body["choices"][0]["message"]["content"].strip()
+assert re.fullmatch(r"[A-D]", content), repr(content)
+print(f"structured choice capability ok: {content}")
+PY
+```
+
+Do not use the removed `guided_choice` field. A rejected
+`structured_outputs.choice` request is a failed capability check; the benchmark
+runners do not fall back to unconstrained generation.
 
 The route audit loads only the Qwen3.6 tokenizer. It does not load the embedding
 or reranker models, connect to FAISS, read cache state, or call either vLLM
@@ -858,10 +908,10 @@ uv run python long_bench_v2/run_benchmark.py \
   bash adarsh-rlms/jarvis/run.sh submit client-gpu
 ```
 
-Read `suggested_smoke_source_ids` from the resulting
-`benchmark_artifacts/longbench_v2_route_audit/<run_id>/route_audit.json`. Replace
-the three placeholder IDs below, then submit the request smoke against the
-running 262,144-token executor and separate evaluator:
+The route audit must record
+`mcq_decoder_constraint_version=vllm_structured_choice_abcd_v1`. Then submit a
+hybrid smoke for the five sources that produced invalid prompt-only outputs.
+The final ID below is the corrected dataset ID (`...35dfe9d`):
 
 ```bash
 LLM_PROVIDER=openai_compatible \
@@ -886,33 +936,44 @@ uv run python long_bench_v2/run_benchmark.py \
   --executor-model Qwen/Qwen3.6-35B-A3B \
   --evaluator-model Qwen/Qwen3.5-35B-A3B \
   --row-types original \
-  --source-ids 66f4cd2c821e116aacb316ef,66efc5e3821e116aacb23df1,66f50109821e116aacb31f16,66f40b9c821e116aacb30a99,6725d977bb02136c067d8373,6703f73cbb02136c067cd74a,670765abbb02136c067d06b4,66ec4370821e116aacb1c905,6725db01bb02136c067d847f,66ec1eb9821e116aacb1af36,66fb77e7bb02136c067c7db1,66f2d553821e116aacb2bc8f,6708a096bb02136c067d1789,66ecf139821e116aacb1e0e1,66fa50acbb02136c067c6827,66ebd3ba5a08c7b9b35e0446,66ece545821e116aacb1dd77,66f9625fbb02136c067c5456,66ed2c87821e116aacb1f149,672494e5bb02136c067d7697,67039cfabb02136c067cd04e,6724c83fbb02136c067d7962,6728586bbb02136c067d8f4f,6719bc01bb02136c067d43fa,671b3d1bbb02136c067d5283,671b170cbb02136c067d4f4a,67192057bb02136c067d41b4,6719dc46bb02136c067d470b,66f37eb9821e116aacb2d295,66fb6d71bb02136c067c7c34,66f2ad2b821e116aacb2ac0f,66eb873c5a08c7b9b35dd849,66f97dc3bb02136c067c56c8,66f91f2cbb02136c067c4b1e,66ebd0825a08c7b9b35dfe9d,66fa788abb02136c067c6d75,66faa0f5bb02136c067c722c,66f3df1e821e116aacb2f7be,67041f08bb02136c067cdb52,66fcffd9bb02136c067c94c5,66f40e44821e116aacb30b45,672861afbb02136c067d90d8,66f2a414821e116aacb2a3af,66f2a59d821e116aacb2a553,6724cae7bb02136c067d79be,66f55828821e116aacb3363e,66ec17e4821e116aacb1a6a7,6724631ebb02136c067d7300,66f954a5bb02136c067c511a,66ebd34d5a08c7b9b35e035d \
+  --source-ids 66fcffd9bb02136c067c94c5,6724631ebb02136c067d7300,66eb873c5a08c7b9b35dd849,6708a096bb02136c067d1789,66ebd0825a08c7b9b35dfe9d \
   --context-window-tokens 262144 \
   --max-input-tokens 240000 \
   --max-output-tokens 8 \
   --child-tokens 7500 \
   --child-overlap-tokens 750 \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-fast-hybrid-v1-smoke' \
+  --manifest-note jarvis-l40s-fast-hybrid-decoder-v1-smoke' \
   bash adarsh-rlms/jarvis/run.sh submit client-gpu
 ```
 
 Accept this smoke only when:
 
-- `hybrid_route_counts` contains at least one `direct_fit` and one
-  `dense_child_packed` row.
+- All five rows have `valid_choice=true`; accuracy is not a smoke criterion.
 - Every non-cache row has `final_rendered_input_tokens <= 240000`.
-- `api_error_count`, `context_length_error_count`, and invalid-choice count are
-  zero.
-- The packed row has positive document embeddings, ranks all document children,
-  and reports `reranker_enabled=false`.
+- `api_error_count`, `context_length_error_count`, and `invalid_choice_count`
+  are zero.
+- The manifest, `hybrid_policy`, and every bridge row record
+  `vllm_structured_choice_abcd_v1` with ordered choices A-D.
 - Manifest call totals reconcile with bridge-row executor and semantic-verifier
   totals.
 
-Run the same command with fixed 12-18-source and then 30-50-source ID lists for
-the paired gates. Preserve each source list in the manifest via `--source-ids`.
-Only after those gates pass should the full `original,exact,semantic` hybrid run
-be submitted with a fresh namespace and `--cache-reset`.
+Before the gate, run the five-source direct smoke at the start of Step 13. Once
+both five-source smokes pass, rerun the same 50-source hybrid gate in isolation,
+without another client sharing the executor. Use the existing 50-source list
+and a fresh cache namespace created by the decoder-versioned `hybrid_policy`:
+
+```bash
+  --source-ids 66f4cd2c821e116aacb316ef,66efc5e3821e116aacb23df1,66f50109821e116aacb31f16,66f40b9c821e116aacb30a99,6725d977bb02136c067d8373,6703f73cbb02136c067cd74a,670765abbb02136c067d06b4,66ec4370821e116aacb1c905,6725db01bb02136c067d847f,66ec1eb9821e116aacb1af36,66fb77e7bb02136c067c7db1,66f2d553821e116aacb2bc8f,6708a096bb02136c067d1789,66ecf139821e116aacb1e0e1,66fa50acbb02136c067c6827,66ebd3ba5a08c7b9b35e0446,66ece545821e116aacb1dd77,66f9625fbb02136c067c5456,66ed2c87821e116aacb1f149,672494e5bb02136c067d7697,67039cfabb02136c067cd04e,6724c83fbb02136c067d7962,6728586bbb02136c067d8f4f,6719bc01bb02136c067d43fa,671b3d1bbb02136c067d5283,671b170cbb02136c067d4f4a,67192057bb02136c067d41b4,6719dc46bb02136c067d470b,66f37eb9821e116aacb2d295,66fb6d71bb02136c067c7c34,66f2ad2b821e116aacb2ac0f,66eb873c5a08c7b9b35dd849,66f97dc3bb02136c067c56c8,66f91f2cbb02136c067c4b1e,66ebd0825a08c7b9b35dfe9d,66fa788abb02136c067c6d75,66faa0f5bb02136c067c722c,66f3df1e821e116aacb2f7be,67041f08bb02136c067cdb52,66fcffd9bb02136c067c94c5,66f40e44821e116aacb30b45,672861afbb02136c067d90d8,66f2a414821e116aacb2a3af,66f2a59d821e116aacb2a553,6724cae7bb02136c067d79be,66f55828821e116aacb3363e,66ec17e4821e116aacb1a6a7,6724631ebb02136c067d7300,66f954a5bb02136c067c511a,66ebd34d5a08c7b9b35e035d \
+```
+
+Repeat the hybrid command above with that list and manifest note
+`jarvis-l40s-fast-hybrid-decoder-v1-gate-50`. Accept only 50/50 valid choices,
+at least 24/50 correct versus the historical iterative result's 25/50, zero
+API/context errors, 50 compact cache writes, and at least 2x isolated miss-path
+speedup. If it remains below 24/50, inspect the remaining A-D disagreements
+before changing retrieval. After it passes, continue with the full direct run
+in Step 13, then the full hybrid `original,exact,semantic` suite.
 
 ## 13. Run The Direct Qwen3.6 Ablation
 
@@ -923,29 +984,20 @@ bypassing retrieval, embeddings, reranking, cache state, and multi-call
 execution. It uses only the 503 `original` rows; `exact` and `semantic` are
 cache-behavior fixtures rather than additional official benchmark questions.
 
-First create a three-row smoke suite from original examples whose recorded
-context estimates exceed 240,000 tokens, then run it against the 262,144-token
-executor. This deliberately exercises middle truncation instead of relying on
-the first rows of a generic sample. Point the evaluator URL at the executor too
-so `run_client.sh` waits for only that one service:
+Run the same five-source decoder smoke through the direct path. Point the
+evaluator URL at the executor too so `run_client.sh` waits for only that one
+service:
 
 ```bash
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
 OPENAI_COMPAT_EVALUATOR_BASE_URL="$EXECUTOR_URL" \
 WAIT_FOR_ENDPOINTS=1 \
 CLIENT_MEM=32G \
-CLIENT_CMD='uv run python long_bench_v2/sample_csv.py \
-  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
-  --output-path benchmark_artifacts/longbench_v2_samples/jarvis_direct_truncation_smoke.csv \
-  --sample-size 12 \
-  --min-token-count 240000 \
-  --selection-strategy random \
-  --row-types original \
-  --seed 0 && \
-uv run python long_bench_v2/run_api_benchmark.py \
-  --suite-csv benchmark_artifacts/longbench_v2_samples/jarvis_direct_truncation_smoke.csv \
+CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite.csv \
   --source-json-path benchmark_data/long_bench_v2/data.json \
   --row-types original \
+  --source-ids 66fcffd9bb02136c067c94c5,6724631ebb02136c067d7300,66eb873c5a08c7b9b35dd849,6708a096bb02136c067d1789,66ebd0825a08c7b9b35dfe9d \
   --api-provider openai_compatible \
   --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
   --api-model Qwen/Qwen3.6-35B-A3B \
@@ -953,7 +1005,7 @@ uv run python long_bench_v2/run_api_benchmark.py \
   --max-input-tokens 240000 \
   --max-output-tokens 8 \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-qwen36-direct-smoke' \
+  --manifest-note jarvis-qwen36-direct-decoder-v1-smoke' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -969,20 +1021,26 @@ from pathlib import Path
 run_dir = Path(sys.argv[1])
 manifest = json.loads((run_dir / "manifest.json").read_text())
 rows = [json.loads(line) for line in (run_dir / "bridge_rows.jsonl").read_text().splitlines()]
-assert manifest["rows_selected"] == len(rows) == 3
+assert manifest["rows_selected"] == len(rows) == 5
 assert manifest["context_window_tokens"] == 262144
 assert manifest["max_input_tokens"] == 240000
 assert manifest["context_window_safety_margin_tokens"] == 22136
 assert manifest["api_error_count"] == 0
-assert manifest["truncated_row_count"] == sum(row["prompt_truncated"] for row in rows) > 0
+assert manifest["valid_choice_count"] == 5
+assert manifest["invalid_choice_count"] == 0
+assert manifest["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1"
+assert manifest["mcq_allowed_choices"] == ["A", "B", "C", "D"]
 assert all(row["api_status"] == "ok" for row in rows)
+assert all(row["valid_choice"] for row in rows)
+assert all(row["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1" for row in rows)
 assert all(row["prompt_tokens_before_truncation"] not in {0, 2} for row in rows)
 assert all(row["prompt_tokens_after_truncation"] <= 240000 for row in rows)
-print(f"validated direct truncation smoke: {run_dir}")
+print(f"validated direct decoder smoke: {run_dir}")
 PY
 ```
 
-After verifying the smoke artifact, run all 503 original rows:
+Accuracy is not a five-row smoke criterion. After the 50-source hybrid gate and
+this direct smoke pass, run all 503 original rows:
 
 ```bash
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
@@ -1000,7 +1058,7 @@ CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
   --max-input-tokens 240000 \
   --max-output-tokens 8 \
   --output-dir benchmark_artifacts \
-  --manifest-note jarvis-qwen36-direct-full-original' \
+  --manifest-note jarvis-qwen36-direct-decoder-v1-full-original' \
   bash adarsh-rlms/jarvis/run.sh submit client
 ```
 
@@ -1008,14 +1066,14 @@ The runner writes a new timestamped directory under
 `benchmark_artifacts/longbench_v2_api/` and refuses to reuse an existing run
 directory. Inputs above 240,000 rendered tokens are tokenized with Qwen's chat
 template and truncated from the middle, retaining the beginning and end of the
-user prompt while preserving the strict system message. Before starting the full
-run, require the smoke artifact to have at least one truncated row, no API or
-context-length errors, non-placeholder before/after prompt counts, and no final
-prompt count above 240,000. The 240,000-token input cap plus the eight-token
-output cap leaves 22,136 tokens of safety inside the 262,144-token server
-window. For the full artifact, additionally require 503 rows and 503 successful
-API responses. Check `truncated_row_count`,
-`api_error_count`, `total_request_attempts`, and `answer_accuracy` in
+user prompt while preserving the strict system message. Every request carries
+the mandatory choice decoder contract. The 240,000-token input cap plus the
+eight-token output cap leaves 22,136 tokens of safety inside the 262,144-token
+server window. For the full artifact, require 503 rows, 503 successful API
+responses, 503 valid choices, zero context errors, and the expected 107
+truncated rows. Check `truncated_row_count`, `valid_choice_count`,
+`invalid_choice_count`, `api_error_count`, `total_request_attempts`, and
+`answer_accuracy` in
 `manifest.json` before comparing the result with the saved system run's 503-row
 `original` accuracy.
 
@@ -1038,13 +1096,61 @@ assert manifest["context_window_tokens"] == 262144
 assert manifest["max_input_tokens"] == 240000
 assert manifest["context_window_safety_margin_tokens"] == 22136
 assert manifest["api_error_count"] == 0
-assert manifest["truncated_row_count"] == sum(row["prompt_truncated"] for row in rows) > 0
+assert manifest["truncated_row_count"] == sum(row["prompt_truncated"] for row in rows) == 107
+assert manifest["valid_choice_count"] == 503
+assert manifest["invalid_choice_count"] == 0
+assert manifest["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1"
+assert manifest["mcq_allowed_choices"] == ["A", "B", "C", "D"]
 assert all(row["api_status"] == "ok" for row in rows)
+assert all(row["valid_choice"] for row in rows)
+assert all(row["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1" for row in rows)
 assert all(row["prompt_tokens_before_truncation"] not in {0, 2} for row in rows)
 assert all(row["prompt_tokens_after_truncation"] <= 240000 for row in rows)
 print(f"validated full direct baseline: {run_dir}")
 PY
 ```
+
+Only after the constrained direct artifact passes, run the full hybrid suite in
+the decoder-versioned namespace:
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=96G \
+CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=hybrid
+export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
+export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=2
+export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
+uv run python long_bench_v2/run_benchmark.py \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --cache-reset \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original,exact,semantic \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --child-tokens 7500 \
+  --child-overlap-tokens 750 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-l40s-fast-hybrid-decoder-v1-full' \
+  bash adarsh-rlms/jarvis/run.sh submit client-gpu
+```
+
+The shared LongBench request helper injects the choice constraint; do not add
+`guided_choice` or disable the contract through an extra-body environment
+variable. Validate 1,509 rows, the exact/semantic/direct/packed route totals,
+zero API/context errors, all valid choices, and the decoder contract in the
+manifest, `hybrid_policy`, and bridge rows before producing a comparison note.
 
 ## 14. Stop Services After The Experiment
 

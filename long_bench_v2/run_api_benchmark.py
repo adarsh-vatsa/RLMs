@@ -50,9 +50,12 @@ from long_bench_v2.rlm_helpers import (  # noqa: E402
     _write_csv_rows,
 )
 from long_bench_v2.qwen_prompt import (  # noqa: E402
+    MCQ_ALLOWED_CHOICES,
     STRICT_MCQ_SYSTEM_PROMPT,
+    build_openai_compatible_mcq_extra_body,
     build_strict_mcq_messages,
     chat_token_count as _chat_token_count,
+    mcq_decoder_constraint_metadata,
     token_ids as _token_ids,
 )
 
@@ -254,6 +257,9 @@ def build_eval_report(run_dir: Path, bridge_rows: list[dict], manifest: dict) ->
         "by_row_type": manifest["by_row_type"],
         "api_error_count": manifest["api_error_count"],
         "truncated_row_count": manifest["truncated_row_count"],
+        "valid_choice_count": manifest["valid_choice_count"],
+        "invalid_choice_count": manifest["invalid_choice_count"],
+        "valid_choice_accuracy": manifest["valid_choice_accuracy"],
         "failing_rows": failing_rows,
     }
 
@@ -395,8 +401,8 @@ def _call_openai_compatible(client: Any, args: argparse.Namespace, messages: lis
         "messages": messages,
         "max_tokens": args.max_output_tokens,
         "temperature": 0,
-        "chat_template_kwargs": {"enable_thinking": False},
     }
+    payload.update(build_openai_compatible_mcq_extra_body())
     headers = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -461,7 +467,13 @@ def run_longbench_api_benchmark(
 
     contexts = load_context_by_source_id(source_json_path)
     all_rows = load_suite_rows(suite_csv, contexts)
-    selected_rows = filter_suite_rows(all_rows, row_types=row_types, max_rows=args.max_rows)
+    source_ids = _parse_csv_values(getattr(args, "source_ids", ""))
+    selected_rows = filter_suite_rows(
+        all_rows,
+        row_types=row_types,
+        max_rows=args.max_rows,
+        source_ids=source_ids,
+    )
     if not selected_rows:
         raise ValueError("No LongBench-v2 rows matched the requested filters")
 
@@ -552,6 +564,7 @@ def run_longbench_api_benchmark(
 
         prediction = parse_choice(generation)
         correct = answer_correct(generation, row.get("answer", ""))
+        valid_choice = generation.strip() in MCQ_ALLOWED_CHOICES
         prediction_row = {
             "id": row["case_id"],
             "sample_id": row["case_id"],
@@ -577,6 +590,7 @@ def run_longbench_api_benchmark(
                 "expected_cache_type": row.get("expected_cache_type", ""),
                 "expected_from_cache": row.get("expected_from_cache", ""),
                 "answer_correct": correct,
+                "valid_choice": valid_choice,
                 "latency_ms": round(latency_ms, 3),
                 "delta_calls": usage["calls"],
                 "delta_input_tokens": usage["input_tokens"],
@@ -590,6 +604,11 @@ def run_longbench_api_benchmark(
                 "api_usage_summary": usage["raw"],
                 "usage_parse_status": usage["usage_parse_status"],
                 **truncation,
+                **(
+                    mcq_decoder_constraint_metadata()
+                    if args.api_provider == "openai_compatible"
+                    else {}
+                ),
             }
         )
 
@@ -605,6 +624,11 @@ def run_longbench_api_benchmark(
     error_count = sum(1 for row in bridge_rows if row["api_status"] == "error")
     truncated_count = sum(1 for row in bridge_rows if row["prompt_truncated"])
     total_request_attempts = sum(row["api_attempt_count"] for row in bridge_rows)
+    valid_choice_count = sum(bool(row["valid_choice"]) for row in bridge_rows)
+    invalid_choice_count = len(bridge_rows) - valid_choice_count
+    valid_choice_correct_count = sum(
+        bool(row["valid_choice"] and row["answer_correct"]) for row in bridge_rows
+    )
 
     manifest = {
         "run_id": run_id,
@@ -619,6 +643,7 @@ def run_longbench_api_benchmark(
         "source_json_path": str(source_json_path),
         "source_json_sha256": _sha256_file(source_json_path),
         "row_types_requested": row_types,
+        "source_ids_requested": source_ids,
         "max_rows": args.max_rows,
         "rows_selected": len(bridge_rows),
         "row_type_counts": row_type_counts,
@@ -632,6 +657,13 @@ def run_longbench_api_benchmark(
         "api_error_count": error_count,
         "total_request_attempts": total_request_attempts,
         "truncated_row_count": truncated_count,
+        "valid_choice_count": valid_choice_count,
+        "invalid_choice_count": invalid_choice_count,
+        "valid_choice_accuracy": (
+            round(valid_choice_correct_count / valid_choice_count, 6)
+            if valid_choice_count
+            else 0.0
+        ),
         "artifacts": {
             "predictions": str(predictions_path),
             "bridge_rows": str(bridge_rows_path),
@@ -664,6 +696,7 @@ def run_longbench_api_benchmark(
                 "system_prompt_style": "strict",
                 "temperature": 0,
                 "thinking_enabled": False,
+                **mcq_decoder_constraint_metadata(),
             }
         )
     if args.manifest_note:
@@ -691,6 +724,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--suite-csv", type=Path, default=DEFAULT_SUITE_CSV)
     parser.add_argument("--source-json-path", type=Path, default=DEFAULT_SOURCE_JSON)
     parser.add_argument("--row-types", type=str, default=DEFAULT_ROW_TYPES)
+    parser.add_argument(
+        "--source-ids",
+        type=str,
+        default="",
+        help="Comma-separated source IDs to select before applying --max-rows.",
+    )
     parser.add_argument("--max-rows", type=int, default=0, help="Cap selected rows after filtering (0 means all)")
     parser.add_argument(
         "--api-provider",

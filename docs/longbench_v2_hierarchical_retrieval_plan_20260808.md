@@ -1,6 +1,7 @@
 # LongBench-v2 Fast Hybrid Cache Plan
 
-**Status:** Base hybrid v1 implemented locally; Jarvis validation pending  
+**Status:** Base hybrid v1 and decoder constraint implemented locally;
+constrained Jarvis validation pending
 **Created:** August 8, 2026  
 **Revised:** August 9, 2026  
 **Scope:** The local Qwen LongBench-v2 semantic-cache path. The direct API
@@ -145,6 +146,30 @@ API baseline policy.
 The completed run's chunk counts suggest that many originals will fit, but the
 route count must be reported from exact measurements rather than inferred from
 historical chunks.
+
+## Decoder-Enforced MCQ Contract
+
+Hybrid `direct_fit` and `dense_child_packed` executor requests, and the direct
+local Qwen ablation, use the same mandatory
+[vLLM 0.19.1 structured-output](https://docs.vllm.ai/en/v0.19.1/features/structured_outputs/)
+request body:
+
+```json
+{
+  "chat_template_kwargs": {"enable_thinking": false},
+  "structured_outputs": {"choice": ["A", "B", "C", "D"]}
+}
+```
+
+The contract version is `vllm_structured_choice_abcd_v1`. It is recorded in
+route audits, manifests, and bridge rows and is included in `hybrid_policy`, so
+it changes the cache namespace. A server rejection is an API error: never retry
+without the choice constraint. Keep exact-letter validation after generation;
+malformed hybrid answers remain non-cacheable and are not retried.
+
+This does not change iterative JSON adjudication, packed controls, Anthropic,
+OpenRouter, semantic verifiers, or the `OPENAI_COMPAT_STRUCTURED_OUTPUTS`
+setting used by existing JSON workflows.
 
 ## Post-Answer Work For Strict MCQ Rows
 
@@ -323,12 +348,14 @@ Working acceptance criteria:
 - No cross-source cache reuse.
 - Exact dependent rows reuse their original answer.
 - Semantic hit behavior is preserved or improved on matched source groups.
-- All executor answers are valid choice letters.
-- No more than one additional incorrect original on a 50-source paired gate.
+- All 50 executor answers in the paired gate are valid choice letters.
+- At least 24 of the 50 paired originals are correct versus the historical
+  iterative result's 25 of 50.
 - On the full 503 originals, overall accuracy is within one percentage point of
   the historical iterative result, with no obvious domain-specific collapse.
 - Original miss-path wall time is at least twice as fast on the paired sample.
 - No context-length errors.
+- All 50 misses produce compact cache writes.
 
 Report direct-fit and overlength accuracy separately so a strong direct-fit
 majority cannot hide weak retrieval behavior.
@@ -358,6 +385,7 @@ Record at least:
 - Input/output tokens, ingestion time, search time, and row wall time.
 - Cache-state size and save time.
 - Valid-choice and answer correctness.
+- Decoder-constraint enabled state, version, type, and ordered allowed choices.
 - Context-length and API errors.
 
 The cache namespace must include every answer-affecting setting: models, strict
@@ -394,7 +422,8 @@ the July 16 run remain unchanged.
 2. Replace 10K retrieval chunks with embedding-safe children.
 3. Establish the corrected dense FAISS control.
 4. Replace heuristic/fixed-count packing with exact token-budget packing.
-5. Produce one strict answer call and store compact provenance.
+5. Produce one decoder-constrained strict answer call and store compact
+   provenance.
 6. Evaluate child-only packed retrieval against the paired gate.
 
 Only if child-only packed retrieval misses necessary surrounding context, expand
@@ -413,10 +442,11 @@ detectors directly when a demonstrated failure requires a narrow rule.
 
 ### Phase 4: Full Validation And Documentation
 
-1. Run the paired 30-50-source gate.
+1. Run the isolated 50-source constrained hybrid gate.
 2. Freeze the accepted policy and cache namespace.
-3. Update the LongBench and Jarvis commands for that policy.
-4. Run all 503 originals plus their exact and semantic dependents.
+3. Rerun all 503 direct-Qwen originals under the same decoder contract.
+4. Run all 503 originals plus their exact and semantic dependents in the fresh
+   hybrid namespace.
 5. Validate artifact totals and produce a new date-stamped comparison note.
 
 ## Deferred Work

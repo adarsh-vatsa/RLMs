@@ -12,6 +12,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import semantic_cache_system as scs
+from long_bench_v2.qwen_prompt import build_openai_compatible_mcq_extra_body
 
 
 class FakeHTTPResponse:
@@ -311,6 +312,48 @@ class SemanticCacheLLMProviderTests(unittest.TestCase):
         )
         self.assertEqual(calls[2]["seed"], 11)
         self.assertNotIn("top_k", calls[2])
+
+    def test_explicit_mcq_contract_overrides_role_extra_body_choice(self):
+        calls = []
+
+        def fake_urlopen(request, timeout=120):
+            calls.append(json.loads(request.data.decode("utf-8")))
+            return FakeHTTPResponse({"choices": [{"message": {"content": "A"}}]})
+
+        env = {
+            "OPENAI_COMPAT_EXTRA_BODY_JSON": json.dumps(
+                {
+                    "chat_template_kwargs": {"enable_thinking": True},
+                    "structured_outputs": {"choice": ["X"]},
+                }
+            ),
+            "OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON": json.dumps(
+                {"structured_outputs": {"choice": ["Y"]}}
+            ),
+        }
+        with patch.dict(os.environ, env), patch(
+            "semantic_cache_system.urllib.request.urlopen",
+            fake_urlopen,
+        ):
+            scs.configure_llm_provider(
+                provider="openai_compatible",
+                executor_model="executor/model",
+                evaluator_model="evaluator/model",
+                openai_compat_base_url="http://llm-node:8000/v1",
+                openai_compat_structured_outputs=False,
+            )
+            scs.create_llm_message(
+                model=scs.EXECUTOR_MODEL,
+                max_tokens=8,
+                messages=[{"role": "user", "content": "Question"}],
+                extra_body=build_openai_compatible_mcq_extra_body(),
+            )
+
+        self.assertEqual(calls[0]["chat_template_kwargs"], {"enable_thinking": False})
+        self.assertEqual(
+            calls[0]["structured_outputs"],
+            {"choice": ["A", "B", "C", "D"]},
+        )
 
     def test_openai_compatible_extra_body_env_invalid_json_fails_closed(self):
         def fake_urlopen(request, timeout=120):
