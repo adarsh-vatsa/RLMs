@@ -1,0 +1,602 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "LongBench-v2: Hybrid, Iterative, and Direct Ablation",
+    "description": "Manifest-only comparison of the full iterative and hybrid runs, plus the original-only uncached direct ablation.",
+    "generatedAt": "2026-08-10T16:39:38Z",
+    "cards": [
+      {
+        "id": "accuracy_card",
+        "description": "Correct answers divided by all 1,509 selected rows.",
+        "dataset": "headline",
+        "sourceId": "manifest_comparison",
+        "metrics": [
+          {"label": "Hybrid accuracy", "field": "hybrid_accuracy", "format": "percent"},
+          {"label": "Iterative", "field": "iterative_accuracy", "format": "percent"},
+          {"label": "Delta", "field": "accuracy_delta_pp", "format": "number", "unit": "pp", "signed": true}
+        ]
+      },
+      {
+        "id": "runtime_card",
+        "description": "End-to-end wall time for the same 1,509-row suite.",
+        "dataset": "headline",
+        "sourceId": "manifest_comparison",
+        "metrics": [
+          {"label": "Hybrid runtime", "field": "hybrid_runtime_hours", "format": "number", "unit": "h"},
+          {"label": "Iterative", "field": "iterative_runtime_hours", "format": "number", "unit": "h"},
+          {"label": "Speedup", "field": "speedup_x", "format": "number", "unit": "x"}
+        ]
+      },
+      {
+        "id": "tokens_card",
+        "description": "Input plus output tokens recorded by each full run.",
+        "dataset": "headline",
+        "sourceId": "manifest_comparison",
+        "metrics": [
+          {"label": "Hybrid total tokens", "field": "hybrid_total_tokens", "format": "compact"},
+          {"label": "Iterative", "field": "iterative_total_tokens", "format": "compact"},
+          {"label": "Reduction", "field": "total_token_reduction", "format": "percent"}
+        ]
+      },
+      {
+        "id": "input_savings_card",
+        "description": "Input tokens avoided versus the shared 213.8M-token full-context baseline.",
+        "dataset": "headline",
+        "sourceId": "manifest_comparison",
+        "metrics": [
+          {"label": "Hybrid input savings", "field": "hybrid_input_savings", "format": "percent"},
+          {"label": "Iterative", "field": "iterative_input_savings", "format": "percent"},
+          {"label": "Delta", "field": "input_savings_delta_pp", "format": "number", "unit": "pp", "signed": true}
+        ]
+      },
+      {
+        "id": "calls_card",
+        "description": "All API calls recorded by the benchmark runner.",
+        "dataset": "headline",
+        "sourceId": "manifest_comparison",
+        "metrics": [
+          {"label": "Hybrid API calls", "field": "hybrid_api_calls", "format": "number"},
+          {"label": "Iterative", "field": "iterative_api_calls", "format": "number"},
+          {"label": "Reduction", "field": "api_call_reduction", "format": "percent"}
+        ]
+      },
+      {
+        "id": "direct_ablation_card",
+        "description": "Accuracy on the shared 503 original-question cohort.",
+        "dataset": "headline",
+        "sourceId": "manifest_comparison",
+        "metrics": [
+          {"label": "Direct ablation accuracy", "field": "direct_accuracy", "format": "percent"},
+          {"label": "Hybrid original", "field": "hybrid_original_accuracy", "format": "percent"},
+          {"label": "Hybrid delta", "field": "hybrid_vs_direct_delta_pp", "format": "number", "unit": "pp", "signed": true}
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "efficiency_reduction_chart",
+        "title": "Hybrid reduction versus iterative",
+        "subtitle": "Same 1,509-row suite; higher percentages indicate less runtime or workload",
+        "intent": "comparison",
+        "question": "How much did hybrid reduce runtime, API calls, and token usage?",
+        "rationale": "Five same-direction percentage reductions are directly comparable on one zero-based scale.",
+        "type": "bar",
+        "dataset": "efficiency_reduction",
+        "sourceId": "manifest_comparison",
+        "encodings": {
+          "x": {"field": "metric", "type": "nominal", "label": "Metric"},
+          "y": {"field": "reduction", "type": "quantitative", "format": "percent", "label": "Reduction"},
+          "tooltip": [
+            {"field": "iterative_value", "type": "nominal", "label": "Iterative"},
+            {"field": "hybrid_value", "type": "nominal", "label": "Hybrid"},
+            {"field": "absolute_change", "type": "nominal", "label": "Absolute change"}
+          ]
+        },
+        "valueFormat": "percent",
+        "layout": "full",
+        "maxRows": 5
+      },
+      {
+        "id": "quality_accuracy_chart",
+        "title": "Accuracy overall and by row type",
+        "subtitle": "Overall uses 1,509 rows; each row type uses 503 rows",
+        "intent": "comparison",
+        "question": "Did hybrid accuracy improve overall and for each row type?",
+        "rationale": "Grouped bars compare the two architectures on a common percentage scale across four defined cohorts.",
+        "type": "bar",
+        "dataset": "quality_accuracy",
+        "sourceId": "manifest_comparison",
+        "encodings": {
+          "x": {"field": "cohort", "type": "nominal", "label": "Cohort"},
+          "y": {"field": "accuracy", "type": "quantitative", "format": "percent", "label": "Accuracy"},
+          "color": {"field": "run", "type": "nominal", "label": "Run"},
+          "tooltip": [
+            {"field": "rows", "type": "quantitative", "label": "Rows"},
+            {"field": "delta_pp", "type": "quantitative", "label": "Hybrid delta (pp)"}
+          ]
+        },
+        "combinationRationale": "Color distinguishes the two runs within each cohort.",
+        "valueFormat": "percent",
+        "layout": "full",
+        "maxRows": 8
+      },
+      {
+        "id": "ablation_accuracy_chart",
+        "title": "Original-question accuracy",
+        "subtitle": "Same 503 original questions across hybrid, iterative, and uncached direct",
+        "intent": "comparison",
+        "question": "How do the three architectures compare on the shared original-question cohort?",
+        "rationale": "A three-bar comparison shows the accuracy ranking on the only like-for-like cohort shared by all manifests.",
+        "type": "bar",
+        "dataset": "ablation_accuracy",
+        "sourceId": "manifest_comparison",
+        "encodings": {
+          "x": {"field": "architecture", "type": "nominal", "label": "Architecture"},
+          "y": {"field": "accuracy", "type": "quantitative", "format": "percent", "label": "Accuracy"},
+          "tooltip": [
+            {"field": "correct", "type": "quantitative", "label": "Correct"},
+            {"field": "rows", "type": "quantitative", "label": "Rows"},
+            {"field": "delta_vs_direct_pp", "type": "quantitative", "label": "Delta vs direct (pp)"}
+          ]
+        },
+        "valueFormat": "percent",
+        "layout": "full",
+        "maxRows": 3
+      }
+    ],
+    "tables": [
+      {
+        "id": "topline_table",
+        "title": "End-to-end run totals",
+        "subtitle": "Full cold-start runs on the same 1,509-row suite",
+        "dataset": "topline_runs",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "elapsed_hours", "direction": "asc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "run", "label": "Run", "type": "text"},
+          {"field": "run_id", "label": "Run ID", "type": "text"},
+          {"field": "search_mode", "label": "Mode", "type": "text"},
+          {"field": "rows", "label": "Rows", "format": "number"},
+          {"field": "correct", "label": "Correct", "format": "number"},
+          {"field": "accuracy", "label": "Accuracy", "format": "percent"},
+          {"field": "elapsed_hours", "label": "Runtime (h)", "format": "number"},
+          {"field": "api_calls", "label": "API calls", "format": "number"},
+          {"field": "total_tokens", "label": "Total tokens", "format": "number"},
+          {"field": "cache_hits", "label": "Cache hits", "format": "number"}
+        ]
+      },
+      {
+        "id": "token_volume_table",
+        "title": "Token volume",
+        "subtitle": "Exact manifest totals and per-selected-row intensity",
+        "dataset": "token_volume",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "total_tokens", "direction": "asc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "run", "label": "Run", "type": "text"},
+          {"field": "input_tokens", "label": "Input tokens", "format": "number"},
+          {"field": "output_tokens", "label": "Output tokens", "format": "number"},
+          {"field": "total_tokens", "label": "Total tokens", "format": "number"},
+          {"field": "tokens_per_row", "label": "Tokens / row", "format": "number"},
+          {"field": "reduction_vs_iterative", "label": "Reduction vs iterative", "format": "percent", "movement": true}
+        ]
+      },
+      {
+        "id": "token_baseline_table",
+        "title": "Input-token savings versus context baselines",
+        "subtitle": "The two manifests use the same 213.8M full-context and 71.3M unique-source estimates",
+        "dataset": "token_baselines",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "full_context_savings_rate", "direction": "desc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "run", "label": "Run", "type": "text"},
+          {"field": "full_context_baseline", "label": "Full-context baseline", "format": "number"},
+          {"field": "saved_vs_full_context", "label": "Saved vs full context", "format": "number", "movement": true},
+          {"field": "full_context_savings_rate", "label": "Savings vs full context", "format": "percent"},
+          {"field": "unique_source_estimate", "label": "Unique-source estimate", "format": "number"},
+          {"field": "saved_vs_unique_source", "label": "Saved vs unique source", "format": "number", "movement": true},
+          {"field": "unique_source_savings_rate", "label": "Savings vs unique source", "format": "percent"}
+        ]
+      },
+      {
+        "id": "ablation_quality_table",
+        "title": "Original-question ablation",
+        "subtitle": "Same 503 original questions; direct is the uncached middle-truncation baseline",
+        "dataset": "ablation_quality",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "accuracy", "direction": "desc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "architecture", "label": "Architecture", "type": "text"},
+          {"field": "run_id", "label": "Run ID", "type": "text"},
+          {"field": "correct", "label": "Correct", "format": "number"},
+          {"field": "accuracy", "label": "Accuracy", "format": "percent"},
+          {"field": "correct_delta_vs_direct", "label": "Correct vs direct", "format": "number", "movement": true},
+          {"field": "accuracy_delta_vs_direct_pp", "label": "Delta vs direct (pp)", "format": "number", "movement": true}
+        ]
+      },
+      {
+        "id": "ablation_workload_table",
+        "title": "Ablation workload context",
+        "subtitle": "Direct covers 503 originals; cache runs cover 1,509 original, exact, and semantic rows",
+        "dataset": "ablation_workload",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "elapsed_hours", "direction": "asc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "architecture", "label": "Architecture", "type": "text"},
+          {"field": "scope", "label": "Scope", "type": "text"},
+          {"field": "rows", "label": "Rows", "format": "number"},
+          {"field": "elapsed_hours", "label": "Runtime (h)", "format": "number"},
+          {"field": "api_calls", "label": "API calls", "format": "number"},
+          {"field": "input_tokens", "label": "Input tokens", "format": "number"},
+          {"field": "output_tokens", "label": "Output tokens", "format": "number"},
+          {"field": "total_tokens", "label": "Total tokens", "format": "number"},
+          {"field": "tokens_per_row", "label": "Tokens / row", "format": "number"},
+          {"field": "tokens_per_row_reduction_vs_direct", "label": "Tokens / row saved vs direct", "format": "percent", "movement": true}
+        ]
+      },
+      {
+        "id": "timing_detail_table",
+        "title": "Timing components",
+        "subtitle": "Manifest timing summaries; components may overlap and should not be added together",
+        "dataset": "timing_detail",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "elapsed_hours", "direction": "asc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "run", "label": "Run", "type": "text"},
+          {"field": "elapsed_hours", "label": "Elapsed (h)", "format": "number"},
+          {"field": "row_wall_hours", "label": "Row wall (h)", "format": "number"},
+          {"field": "search_hours", "label": "Search (h)", "format": "number"},
+          {"field": "ingest_hours", "label": "Ingest (h)", "format": "number"},
+          {"field": "interval_save_seconds", "label": "Interval save (s)", "format": "number"},
+          {"field": "context_write_seconds", "label": "Context write (s)", "format": "number"},
+          {"field": "final_save_seconds", "label": "Final save (s)", "format": "number"}
+        ]
+      },
+      {
+        "id": "configuration_table",
+        "title": "Behavior-affecting configuration differences",
+        "subtitle": "Manifest settings that prevent treating this as a one-variable ablation",
+        "dataset": "configuration_detail",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "setting", "direction": "asc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "setting", "label": "Setting", "type": "text"},
+          {"field": "iterative", "label": "Iterative", "type": "text"},
+          {"field": "hybrid", "label": "Hybrid", "type": "text"},
+          {"field": "implication", "label": "Comparison implication", "type": "text"}
+        ]
+      },
+      {
+        "id": "hybrid_operations_table",
+        "title": "Hybrid-only operational statistics",
+        "subtitle": "Additional fields present in the August 10 hybrid manifest",
+        "dataset": "hybrid_operations",
+        "sourceId": "manifest_comparison",
+        "defaultSort": {"field": "metric", "direction": "asc"},
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {"field": "metric", "label": "Metric", "type": "text"},
+          {"field": "value", "label": "Value", "type": "text"}
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "manifest_comparison",
+        "label": "LongBench-v2 iterative, hybrid, and direct-ablation manifests",
+        "path": "comparison_data.json",
+        "query": {
+          "engine": "DuckDB",
+          "language": "sql",
+          "sql": "SELECT * FROM read_json_auto(['benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json', 'benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json', 'benchmark_artifacts/longbench_v2_api/20260810T032937Z/manifest.json'], union_by_name = true);",
+          "description": "Read the two full-run manifests and the original-only direct-ablation manifest.",
+          "executed_at": "2026-08-10T16:39:38Z",
+          "tables_used": [
+            "benchmark_artifacts/longbench_v2/20260716T204202Z/manifest.json",
+            "benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json",
+            "benchmark_artifacts/longbench_v2_api/20260810T032937Z/manifest.json"
+          ],
+          "filters": [
+            "Full cold-start cache runs",
+            "All 1,509 selected rows",
+            "Direct ablation: 503 original rows",
+            "No row exclusions",
+            "Manifest statistics only"
+          ],
+          "metric_definitions": [
+            "Accuracy = answer_correct_count / rows_selected",
+            "Speedup = iterative elapsed_seconds / hybrid elapsed_seconds",
+            "Reduction = 1 - hybrid value / iterative value",
+            "Overall cache hit rate = cache_reuse.cache_hits / rows_selected",
+            "Input savings versus a baseline = baseline input tokens - observed input tokens",
+            "Percentage-point deltas subtract displayed rates; relative reductions divide by the iterative value",
+            "Direct quality comparisons use the shared 503 originals; workload totals retain each manifest's actual scope"
+          ]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "layout": "full",
+        "body": "# LongBench-v2: Hybrid, Iterative, and Direct Ablation"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## Executive Summary\n\n- **Hybrid improved full-run quality:** 737 correct answers (48.84%) versus 708 (46.92%), a gain of 29 answers and 1.92 percentage points.\n- **Hybrid finished 4.72× faster:** 2.03 hours versus 9.56 hours, saving 7.54 hours (78.82%).\n- **Hybrid used 118,507,121 fewer tokens:** 60,816,980 versus 179,324,101, a 66.09% reduction; API calls fell 86.47%.\n- **On the shared 503 originals, hybrid led the direct ablation by 16 answers:** 246/503 (48.91%) versus 230/503 (45.73%), a gain of 3.18 percentage points."
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "layout": "full",
+        "cardIds": ["accuracy_card", "runtime_card", "tokens_card", "input_savings_card", "calls_card", "direct_ablation_card"]
+      },
+      {
+        "id": "topline_takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## Hybrid wins the end-to-end comparison\n\nBoth manifests cover the same 1,509 rows, model pair, suite hash, source hash, and cold-start condition. Hybrid is better on overall accuracy, runtime, API calls, and token volume; the exact totals are below."
+      },
+      {
+        "id": "topline_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "topline_table"
+      },
+      {
+        "id": "resource_takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## Resource use fell across every tracked measure\n\nHybrid reduced elapsed time by 78.82%, API calls by 86.47%, input tokens by 65.40%, output tokens by 99.81%, and total tokens by 66.09%. The chart shows the relative reductions; the tables retain exact counts and both manifest baselines."
+      },
+      {
+        "id": "efficiency_chart",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "efficiency_reduction_chart"
+      },
+      {
+        "id": "token_volume_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "token_volume_table"
+      },
+      {
+        "id": "token_baseline_note",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "### Hybrid moved below both context baselines\n\nAgainst the shared 213,816,093-token full-context baseline, hybrid saved 153,006,055 input tokens (71.56%) versus 38,087,835 (17.81%) for iterative. Against the 71,272,031-token unique-source estimate, iterative used 104,456,227 extra tokens (shown as -146.56% savings), while hybrid saved 10,461,993 (14.68%)."
+      },
+      {
+        "id": "token_baseline_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "token_baseline_table"
+      },
+      {
+        "id": "quality_takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## Accuracy improved overall and for every row type\n\nHybrid gained 1.92 points overall, 1.99 points on original and exact rows, and 1.79 points on semantic rows. Original-row accuracy is the cleaner independent quality measure because exact and semantic rows reuse the source-group answer."
+      },
+      {
+        "id": "quality_chart",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "quality_accuracy_chart"
+      },
+      {
+        "id": "ablation_takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## Hybrid and iterative beat the direct baseline on shared originals\n\nThe uncached direct run answered 230/503 correctly (45.73%). Iterative reached 236/503 (46.92%), gaining 6 answers and 1.19 points; hybrid reached 246/503 (48.91%), gaining 16 answers and 3.18 points."
+      },
+      {
+        "id": "ablation_chart",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "ablation_accuracy_chart"
+      },
+      {
+        "id": "ablation_quality_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "ablation_quality_table"
+      },
+      {
+        "id": "ablation_workload_note",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "### Full hybrid used nearly the same total tokens as the original-only direct run\n\nDirect used 60,010,270 tokens for 503 originals; full hybrid used 60,816,980 for 1,509 original, exact, and semantic rows—806,710 more tokens (+1.34%). Normalized per selected row, hybrid used 40,303 tokens versus direct's 119,305, a 66.22% reduction. Direct took 1.23 hours and 503 calls versus hybrid's 2.03 hours and 1,006 calls. Total workload and runtime are not like-for-like because the scopes differ."
+      },
+      {
+        "id": "ablation_workload_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "ablation_workload_table"
+      },
+      {
+        "id": "timing_takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## Search time drove most of the runtime improvement\n\nManifest row-wall time improved 4.74× and search time 4.32×; ingest improved 1.33×. Save and context-write overheads were essentially unchanged. Timing components may overlap, so they should not be summed into elapsed time."
+      },
+      {
+        "id": "timing_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "timing_detail_table"
+      },
+      {
+        "id": "hybrid_operations_takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## The hybrid manifest adds route and reliability detail\n\nHybrid recorded 513 answer calls and 493 semantic-verifier calls, exactly matching its 1,006 total API calls. It routed 406 rows as direct fit, 107 through dense-child packing, 503 to exact cache, and 493 to semantic cache; all 1,509 choices were valid with zero API or context-length errors."
+      },
+      {
+        "id": "hybrid_operations_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "hybrid_operations_table"
+      },
+      {
+        "id": "configuration_takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "manifest_comparison",
+        "body": "## This is an architecture comparison, not a one-variable ablation\n\nThe data and model pair match, but search mode, chunk size and overlap, scan budget, prompt/decoder behavior, embedding contract, serving nodes, and run dates differ. The results support preferring the hybrid configuration as a package; they do not isolate one causal change."
+      },
+      {
+        "id": "configuration_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "configuration_table"
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## Recommended next steps\n\n1. Use the hybrid run as the current full-suite candidate: it improves accuracy while sharply reducing runtime, calls, and tokens.\n2. Inspect the direct run's 107 truncated originals to separate retrieval benefits from truncation effects.\n3. Add route- and domain-level ablations next to explain where the 16-answer original-cohort gain comes from.\n4. Repeat the full-run comparison on comparable nodes if cluster-level latency variance matters for the decision."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-10T16:39:38Z",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        {
+          "hybrid_accuracy": 0.488403,
+          "iterative_accuracy": 0.469185,
+          "accuracy_delta_pp": 1.9218,
+          "hybrid_runtime_hours": 2.025687,
+          "iterative_runtime_hours": 9.562649,
+          "speedup_x": 4.720694,
+          "hybrid_total_tokens": 60816980,
+          "iterative_total_tokens": 179324101,
+          "total_token_reduction": 0.660854,
+          "hybrid_input_savings": 0.71559653,
+          "iterative_input_savings": 0.17813362,
+          "input_savings_delta_pp": 53.746291,
+          "hybrid_api_calls": 1006,
+          "iterative_api_calls": 7438,
+          "api_call_reduction": 0.864749,
+          "direct_accuracy": 0.457256,
+          "hybrid_original_accuracy": 0.489066,
+          "hybrid_vs_direct_delta_pp": 3.181
+        }
+      ],
+      "topline_runs": [
+        {"run": "Hybrid", "run_id": "20260810T054951Z", "search_mode": "hybrid", "rows": 1509, "correct": 737, "accuracy": 0.488403, "elapsed_hours": 2.025687, "api_calls": 1006, "total_tokens": 60816980, "cache_hits": 996},
+        {"run": "Iterative", "run_id": "20260716T204202Z", "search_mode": "iterative", "rows": 1509, "correct": 708, "accuracy": 0.469185, "elapsed_hours": 9.562649, "api_calls": 7438, "total_tokens": 179324101, "cache_hits": 1000}
+      ],
+      "efficiency_reduction": [
+        {"metric": "Runtime", "reduction": 0.788167, "iterative_value": "9.56 h", "hybrid_value": "2.03 h", "absolute_change": "-7.54 h"},
+        {"metric": "API calls", "reduction": 0.864749, "iterative_value": "7,438", "hybrid_value": "1,006", "absolute_change": "-6,432"},
+        {"metric": "Input tokens", "reduction": 0.653954, "iterative_value": "175,728,258", "hybrid_value": "60,810,038", "absolute_change": "-114,918,220"},
+        {"metric": "Output tokens", "reduction": 0.998069, "iterative_value": "3,595,843", "hybrid_value": "6,942", "absolute_change": "-3,588,901"},
+        {"metric": "Total tokens", "reduction": 0.660854, "iterative_value": "179,324,101", "hybrid_value": "60,816,980", "absolute_change": "-118,507,121"}
+      ],
+      "token_volume": [
+        {"run": "Hybrid", "input_tokens": 60810038, "output_tokens": 6942, "total_tokens": 60816980, "tokens_per_row": 40302.836315, "reduction_vs_iterative": 0.660854},
+        {"run": "Iterative", "input_tokens": 175728258, "output_tokens": 3595843, "total_tokens": 179324101, "tokens_per_row": 118836.382372, "reduction_vs_iterative": 0.0}
+      ],
+      "token_baselines": [
+        {"run": "Hybrid", "full_context_baseline": 213816093, "saved_vs_full_context": 153006055, "full_context_savings_rate": 0.71559653, "unique_source_estimate": 71272031, "saved_vs_unique_source": 10461993, "unique_source_savings_rate": 0.1467896},
+        {"run": "Iterative", "full_context_baseline": 213816093, "saved_vs_full_context": 38087835, "full_context_savings_rate": 0.17813362, "unique_source_estimate": 71272031, "saved_vs_unique_source": -104456227, "unique_source_savings_rate": -1.46559914}
+      ],
+      "quality_accuracy": [
+        {"cohort": "Overall", "run": "Hybrid", "accuracy": 0.488403, "rows": 1509, "delta_pp": 1.9218},
+        {"cohort": "Overall", "run": "Iterative", "accuracy": 0.469185, "rows": 1509, "delta_pp": 1.9218},
+        {"cohort": "Original", "run": "Hybrid", "accuracy": 0.489066, "rows": 503, "delta_pp": 1.9881},
+        {"cohort": "Original", "run": "Iterative", "accuracy": 0.469185, "rows": 503, "delta_pp": 1.9881},
+        {"cohort": "Exact", "run": "Hybrid", "accuracy": 0.489066, "rows": 503, "delta_pp": 1.9881},
+        {"cohort": "Exact", "run": "Iterative", "accuracy": 0.469185, "rows": 503, "delta_pp": 1.9881},
+        {"cohort": "Semantic", "run": "Hybrid", "accuracy": 0.487078, "rows": 503, "delta_pp": 1.7893},
+        {"cohort": "Semantic", "run": "Iterative", "accuracy": 0.469185, "rows": 503, "delta_pp": 1.7893}
+      ],
+      "ablation_accuracy": [
+        {"architecture": "Hybrid", "accuracy": 0.489066, "correct": 246, "rows": 503, "delta_vs_direct_pp": 3.181},
+        {"architecture": "Iterative", "accuracy": 0.469185, "correct": 236, "rows": 503, "delta_vs_direct_pp": 1.1929},
+        {"architecture": "Direct ablation", "accuracy": 0.457256, "correct": 230, "rows": 503, "delta_vs_direct_pp": 0.0}
+      ],
+      "ablation_quality": [
+        {"architecture": "Hybrid", "run_id": "20260810T054951Z", "correct": 246, "accuracy": 0.489066, "correct_delta_vs_direct": 16, "accuracy_delta_vs_direct_pp": 3.181},
+        {"architecture": "Iterative", "run_id": "20260716T204202Z", "correct": 236, "accuracy": 0.469185, "correct_delta_vs_direct": 6, "accuracy_delta_vs_direct_pp": 1.1929},
+        {"architecture": "Direct ablation", "run_id": "20260810T032937Z", "correct": 230, "accuracy": 0.457256, "correct_delta_vs_direct": 0, "accuracy_delta_vs_direct_pp": 0.0}
+      ],
+      "ablation_workload": [
+        {"architecture": "Direct ablation", "scope": "503 originals", "rows": 503, "elapsed_hours": 1.228432, "api_calls": 503, "input_tokens": 60009264, "output_tokens": 1006, "total_tokens": 60010270, "tokens_per_row": 119304.71173, "tokens_per_row_reduction_vs_direct": 0.0},
+        {"architecture": "Hybrid", "scope": "1,509 original + exact + semantic", "rows": 1509, "elapsed_hours": 2.025687, "api_calls": 1006, "input_tokens": 60810038, "output_tokens": 6942, "total_tokens": 60816980, "tokens_per_row": 40302.836315, "tokens_per_row_reduction_vs_direct": 0.66218571},
+        {"architecture": "Iterative", "scope": "1,509 original + exact + semantic", "rows": 1509, "elapsed_hours": 9.562649, "api_calls": 7438, "input_tokens": 175728258, "output_tokens": 3595843, "total_tokens": 179324101, "tokens_per_row": 118836.382372, "tokens_per_row_reduction_vs_direct": 0.00392549}
+      ],
+      "timing_detail": [
+        {"run": "Hybrid", "elapsed_hours": 2.025687, "row_wall_hours": 2.018206, "search_hours": 2.010693, "ingest_hours": 0.643734, "interval_save_seconds": 24.291711, "context_write_seconds": 1.096532, "final_save_seconds": 0.313697},
+        {"run": "Iterative", "elapsed_hours": 9.562649, "row_wall_hours": 9.559327, "search_hours": 8.694191, "ingest_hours": 0.857901, "interval_save_seconds": 24.818785, "context_write_seconds": 1.155, "final_save_seconds": 0.326296}
+      ],
+      "configuration_detail": [
+        {"setting": "Search mode", "iterative": "iterative", "hybrid": "hybrid", "implication": "Different retrieval architecture"},
+        {"setting": "Document chunk tokens", "iterative": "10,000", "hybrid": "7,500", "implication": "Hybrid uses 25% smaller chunks"},
+        {"setting": "Chunk overlap tokens", "iterative": "2,000", "hybrid": "750", "implication": "Hybrid uses less overlap"},
+        {"setting": "Scan chunk ratio", "iterative": "0.50–0.65", "hybrid": "0.30–0.50", "implication": "Different scan coverage policy"},
+        {"setting": "Minimum scan chunks", "iterative": "4", "hybrid": "3", "implication": "Hybrid has a lower minimum"},
+        {"setting": "Scan max tokens", "iterative": "1,536", "hybrid": "768", "implication": "Hybrid halves the scan-token cap"},
+        {"setting": "MCQ prompt style", "iterative": "strict", "hybrid": "default + strict_qwen_mcq_v1", "implication": "Prompt construction differs"},
+        {"setting": "MCQ synthesis max tokens", "iterative": "8", "hybrid": "32 configured; policy max output 8", "implication": "Configured limits differ"},
+        {"setting": "Structured A–D decoder", "iterative": "Not recorded", "hybrid": "vllm_structured_choice_abcd_v1", "implication": "Hybrid constrains outputs"},
+        {"setting": "Embedding contract", "iterative": "Not recorded", "hybrid": "qwen3_left_last_l2_v1", "implication": "Embedding behavior differs"},
+        {"setting": "Executor node", "iterative": "g102", "hybrid": "g201", "implication": "Runtime environment differs"},
+        {"setting": "Evaluator node", "iterative": "g201", "hybrid": "g202", "implication": "Runtime environment differs"}
+      ],
+      "hybrid_operations": [
+        {"metric": "Executor answer calls", "value": "513"},
+        {"metric": "Semantic verifier calls", "value": "493"},
+        {"metric": "Document embeddings", "value": "14,470"},
+        {"metric": "Document embedding time", "value": "2,121,005.561 ms (35.35 min)"},
+        {"metric": "Direct-fit routes", "value": "406"},
+        {"metric": "Dense-child-packed routes", "value": "107"},
+        {"metric": "Exact-cache routes", "value": "503"},
+        {"metric": "Semantic-cache routes", "value": "493"},
+        {"metric": "Valid / invalid choices", "value": "1,509 / 0"},
+        {"metric": "API / context-length errors", "value": "0 / 0"}
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "manifest_comparison",
+      "label": "LongBench-v2 iterative, hybrid, and direct-ablation manifests",
+      "path": "comparison_data.json"
+    }
+  ]
+}
