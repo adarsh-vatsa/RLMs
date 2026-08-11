@@ -384,8 +384,10 @@ Repeat the hybrid command above with that list and manifest note
 at least 24/50 correct versus the historical iterative result's 25/50, zero
 API/context errors, 50 compact cache writes, and at least 2x isolated miss-path
 speedup. If it remains below 24/50, inspect the remaining A-D disagreements
-before changing retrieval. After it passes, continue with the full direct run
-in Section 4, then the sampled and full hybrid suites in Sections 5 and 6.
+before changing retrieval. After it passes, continue with the 503-row direct
+run in Section 4, the 1,509-row direct run in Section 5, then the sampled and
+full hybrid suites in Sections 6 and 7. Run the no-exact hybrid and direct pair
+in Sections 8 and 9 after the 1,509-row artifacts are available.
 
 ## 4. Run The Direct Qwen3.6 Ablation
 
@@ -522,7 +524,73 @@ print(f"validated full direct baseline: {run_dir}")
 PY
 ```
 
-## 5. Validate A Source-Linked Hybrid Sample
+## 5. Run The Full-Suite Direct Qwen3.6 Ablation
+
+For a row-for-row comparison with the full hybrid run, repeat the direct
+ablation across all 1,509 suite rows. This run sends the 503 `original`, 503
+`exact`, and 503 `semantic` rows independently to Qwen3.6 without cache state,
+retrieval, embeddings, reranking, or answer reuse. The `exact` and `semantic`
+rows are therefore direct requests, not cache-hit checks.
+
+```bash
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EXECUTOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=32G \
+CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --row-types original,exact,semantic \
+  --api-provider openai_compatible \
+  --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
+  --api-model Qwen/Qwen3.6-35B-A3B \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-qwen36-direct-decoder-v1-full-suite' \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+After the client job syncs its artifacts back, validate the full-suite direct
+artifact before comparing it with the 1,509-row hybrid artifact:
+
+```bash
+FULL_SUITE_RUN_DIR=$(ls -dt adarsh-rlms/benchmark_artifacts/longbench_v2_api/* | head -1)
+uv run --project adarsh-rlms python - "$FULL_SUITE_RUN_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_dir = Path(sys.argv[1])
+manifest = json.loads((run_dir / "manifest.json").read_text())
+rows = [json.loads(line) for line in (run_dir / "bridge_rows.jsonl").read_text().splitlines()]
+assert manifest["rows_selected"] == len(rows) == 1509
+assert manifest["row_type_counts"] == {"exact": 503, "original": 503, "semantic": 503}
+assert manifest["total_api_calls"] == 1509
+assert manifest["total_request_attempts"] == 1509
+assert manifest["context_window_tokens"] == 262144
+assert manifest["max_input_tokens"] == 240000
+assert manifest["max_output_tokens"] == 8
+assert manifest["context_window_safety_margin_tokens"] == 22136
+assert manifest["thinking_enabled"] is False
+assert manifest["api_error_count"] == 0
+assert manifest["truncated_row_count"] == sum(row["prompt_truncated"] for row in rows)
+assert manifest["valid_choice_count"] == 1509
+assert manifest["invalid_choice_count"] == 0
+assert manifest["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1"
+assert manifest["mcq_allowed_choices"] == ["A", "B", "C", "D"]
+assert all(row["api_status"] == "ok" for row in rows)
+assert all(row["valid_choice"] for row in rows)
+assert all(row["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1" for row in rows)
+assert all(row["mcq_allowed_choices"] == ["A", "B", "C", "D"] for row in rows)
+assert all(row["prompt_tokens_before_truncation"] not in {0, 2} for row in rows)
+assert all(row["prompt_tokens_after_truncation"] <= 240000 for row in rows)
+print(f"validated full-suite direct baseline: {run_dir}")
+PY
+```
+
+## 6. Validate A Source-Linked Hybrid Sample
 
 Before the full hybrid suite, use the existing source-linked sampler to select
 two reproducible source groups from each eligible LongBench domain. The six
@@ -610,7 +678,7 @@ Treat a missing exact or semantic hit as a cache-routing failure to inspect
 before the full run. Keep the same embedding batch size in this sample and the
 full command so their operational profiles remain comparable.
 
-## 6. Run The Full Hybrid Suite
+## 7. Run The Full Hybrid Suite
 
 Only after the constrained direct artifact and the source-linked hybrid sample
 pass, run the full 1,509-row hybrid suite in the decoder-versioned namespace:
@@ -653,6 +721,174 @@ The shared LongBench request helper injects the choice constraint; do not add
 variable. Validate 1,509 rows, the exact/semantic/direct/packed route totals,
 zero API/context errors, all valid choices, and the decoder contract in the
 manifest, `hybrid_policy`, and bridge rows before producing a comparison note.
+
+## 8. Run The Hybrid Suite Without Exact Rows
+
+Repeat the full hybrid experiment with only the 503 `original` and 503
+`semantic` rows. The existing `--row-types` inclusion filter excludes `exact`
+without changing the cache implementation. The explicit `source_grouped` order
+keeps each original ahead of its semantic row so the semantic request can reuse
+the original answer when it passes the existing cache checks.
+
+```bash
+LLM_PROVIDER=openai_compatible \
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EVALUATOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=96G \
+CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=hybrid
+export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
+export SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda
+export SEMANTIC_CACHE_EMBEDDING_DTYPE=auto
+export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=2
+export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
+export OPENAI_COMPAT_EXECUTOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+export OPENAI_COMPAT_EVALUATOR_EXTRA_BODY_JSON="{\"chat_template_kwargs\":{\"enable_thinking\":false}}"
+
+uv run python long_bench_v2/run_benchmark.py \
+  --llm-provider openai_compatible \
+  --mode cache \
+  --cache-reset \
+  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
+  --executor-model Qwen/Qwen3.6-35B-A3B \
+  --evaluator-model Qwen/Qwen3.5-35B-A3B \
+  --row-types original,semantic \
+  --row-order source_grouped \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --child-tokens 7500 \
+  --child-overlap-tokens 750 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-l40s-fast-hybrid-decoder-v1-full-no-exact' \
+  bash adarsh-rlms/jarvis/run.sh submit client-gpu
+```
+
+This row-type selection creates a distinct cache namespace. After the artifact
+syncs back, validate that excluding the free exact-hit rows did not change the
+route pattern of the retained original and semantic rows:
+
+```bash
+NO_EXACT_HYBRID_RUN_DIR=$(ls -dt adarsh-rlms/benchmark_artifacts/longbench_v2/* | head -1)
+uv run --project adarsh-rlms python - "$NO_EXACT_HYBRID_RUN_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_dir = Path(sys.argv[1])
+manifest = json.loads((run_dir / "manifest.json").read_text())
+rows = [json.loads(line) for line in (run_dir / "bridge_rows.jsonl").read_text().splitlines()]
+original_rows = [row for row in rows if row["row_type"] == "original"]
+semantic_rows = [row for row in rows if row["row_type"] == "semantic"]
+
+assert manifest["rows_selected"] == len(rows) == 1006
+assert manifest["row_type_counts"] == {"original": 503, "semantic": 503}
+assert len(original_rows) == len(semantic_rows) == 503
+assert all(row["row_type"] != "exact" for row in rows)
+assert manifest["hybrid_route_counts"] == {
+    "dense_child_packed": 107,
+    "direct_fit": 406,
+    "semantic_cache": 493,
+}
+assert manifest["executor_answer_calls"] == 513
+assert manifest["semantic_verifier_calls"] == 493
+assert manifest["total_api_calls"] == 1006
+assert sum(bool(row["compact_cache_write"]) for row in original_rows) == 503
+assert sum(bool(row["compact_cache_write"]) for row in semantic_rows) == 10
+assert sum(bool(row["compact_cache_write"]) for row in rows) == 513
+assert manifest["context_window_tokens"] == 262144
+assert manifest["max_input_tokens"] == 240000
+assert manifest["max_output_tokens"] == 8
+assert manifest["api_error_count"] == 0
+assert manifest["context_length_error_count"] == 0
+assert manifest["valid_choice_count"] == 1006
+assert manifest["invalid_choice_count"] == 0
+assert manifest["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1"
+assert manifest["mcq_allowed_choices"] == ["A", "B", "C", "D"]
+assert manifest["hybrid_policy"]["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1"
+assert manifest["hybrid_policy"]["mcq_allowed_choices"] == ["A", "B", "C", "D"]
+assert all(row["api_status"] == "ok" for row in rows)
+assert all(row["valid_choice"] for row in rows)
+assert all(row["hybrid_route"] != "exact_cache" for row in rows)
+assert all(row["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1" for row in rows)
+assert all(row["mcq_allowed_choices"] == ["A", "B", "C", "D"] for row in rows)
+print(f"validated no-exact hybrid suite: {run_dir}")
+PY
+```
+
+## 9. Run The Direct Ablation Without Exact Rows
+
+Run the matching 1,006-row direct ablation with the same inclusion filter. Each
+original and semantic row is sent independently to Qwen3.6 without cache state,
+retrieval, embeddings, reranking, or answer reuse.
+
+```bash
+OPENAI_COMPAT_EXECUTOR_BASE_URL="$EXECUTOR_URL" \
+OPENAI_COMPAT_EVALUATOR_BASE_URL="$EXECUTOR_URL" \
+WAIT_FOR_ENDPOINTS=1 \
+CLIENT_MEM=32G \
+CLIENT_CMD='uv run python long_bench_v2/run_api_benchmark.py \
+  --suite-csv benchmark_data/long_bench_v2/data_cache_suite.csv \
+  --source-json-path benchmark_data/long_bench_v2/data.json \
+  --row-types original,semantic \
+  --api-provider openai_compatible \
+  --api-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL" \
+  --api-model Qwen/Qwen3.6-35B-A3B \
+  --context-window-tokens 262144 \
+  --max-input-tokens 240000 \
+  --max-output-tokens 8 \
+  --output-dir benchmark_artifacts \
+  --manifest-note jarvis-qwen36-direct-decoder-v1-full-no-exact' \
+  bash adarsh-rlms/jarvis/run.sh submit client
+```
+
+After the client job syncs its artifacts back, validate the matching direct
+artifact before producing the four-run comparison:
+
+```bash
+NO_EXACT_DIRECT_RUN_DIR=$(ls -dt adarsh-rlms/benchmark_artifacts/longbench_v2_api/* | head -1)
+uv run --project adarsh-rlms python - "$NO_EXACT_DIRECT_RUN_DIR" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+run_dir = Path(sys.argv[1])
+manifest = json.loads((run_dir / "manifest.json").read_text())
+rows = [json.loads(line) for line in (run_dir / "bridge_rows.jsonl").read_text().splitlines()]
+assert manifest["rows_selected"] == len(rows) == 1006
+assert manifest["row_type_counts"] == {"original": 503, "semantic": 503}
+assert all(row["row_type"] != "exact" for row in rows)
+assert manifest["total_api_calls"] == 1006
+assert manifest["total_request_attempts"] == 1006
+assert manifest["context_window_tokens"] == 262144
+assert manifest["max_input_tokens"] == 240000
+assert manifest["max_output_tokens"] == 8
+assert manifest["context_window_safety_margin_tokens"] == 22136
+assert manifest["thinking_enabled"] is False
+assert manifest["api_error_count"] == 0
+assert manifest["truncated_row_count"] == sum(row["prompt_truncated"] for row in rows)
+assert manifest["valid_choice_count"] == 1006
+assert manifest["invalid_choice_count"] == 0
+assert manifest["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1"
+assert manifest["mcq_allowed_choices"] == ["A", "B", "C", "D"]
+assert all(row["api_status"] == "ok" for row in rows)
+assert all(row["valid_choice"] for row in rows)
+assert all(row["mcq_decoder_constraint_version"] == "vllm_structured_choice_abcd_v1" for row in rows)
+assert all(row["mcq_allowed_choices"] == ["A", "B", "C", "D"] for row in rows)
+assert all(row["prompt_tokens_before_truncation"] not in {0, 2} for row in rows)
+assert all(row["prompt_tokens_after_truncation"] <= 240000 for row in rows)
+print(f"validated no-exact direct baseline: {run_dir}")
+PY
+```
+
+The final comparison contains these four experiment artifacts:
+
+| Experiment | Rows | Included row types | Step | Manifest note |
+| --- | ---: | --- | ---: | --- |
+| Full hybrid | 1,509 | `original,exact,semantic` | 7 | `jarvis-l40s-fast-hybrid-decoder-v1-full` |
+| Full direct ablation | 1,509 | `original,exact,semantic` | 5 | `jarvis-qwen36-direct-decoder-v1-full-suite` |
+| No-exact hybrid | 1,006 | `original,semantic` | 8 | `jarvis-l40s-fast-hybrid-decoder-v1-full-no-exact` |
+| No-exact direct ablation | 1,006 | `original,semantic` | 9 | `jarvis-qwen36-direct-decoder-v1-full-no-exact` |
 
 ## After The Experiments
 
