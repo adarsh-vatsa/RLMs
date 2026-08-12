@@ -1,0 +1,82 @@
+{
+  "run_id": "20260812T152758Z",
+  "created_at": "2026-08-12T17:56:59.933709+00:00",
+  "started_at": "2026-08-12T15:27:58.529313+00:00",
+  "finished_at": "2026-08-12T17:56:59.933709+00:00",
+  "elapsed_seconds": 8941.404,
+  "benchmark_target": "longbench_v2_api",
+  "baseline_type": "plain_api_uncached_full_context",
+  "suite_csv": "benchmark_data/long_bench_v2/data_cache_suite.csv",
+  "suite_csv_sha256": "32fda08f5bcbeaaf36077ca0203ace3cb94d2330168c4866e36252b16fbf51d7",
+  "source_json_path": "benchmark_data/long_bench_v2/data.json",
+  "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+  "row_types_requested": [
+    "original",
+    "semantic"
+  ],
+  "source_ids_requested": [],
+  "max_rows": 0,
+  "rows_selected": 1006,
+  "row_type_counts": {
+    "original": 503,
+    "semantic": 503
+  },
+  "answer_correct_count": 449,
+  "answer_accuracy": 0.446322,
+  "by_row_type": {
+    "original": {
+      "rows": 503,
+      "answer_accuracy": 0.447316,
+      "cache_hit_rate": 0.0
+    },
+    "semantic": {
+      "rows": 503,
+      "answer_accuracy": 0.445328,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "api_provider": "openai_compatible",
+  "api_model": "Qwen/Qwen3.6-35B-A3B",
+  "max_output_tokens": 8,
+  "max_retries": 5,
+  "api_error_count": 0,
+  "total_request_attempts": 1006,
+  "truncated_row_count": 214,
+  "valid_choice_count": 1006,
+  "invalid_choice_count": 0,
+  "valid_choice_accuracy": 0.446322,
+  "artifacts": {
+    "predictions": "benchmark_artifacts/longbench_v2_api/20260812T152758Z/predictions.jsonl",
+    "bridge_rows": "benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.jsonl",
+    "bridge_rows_csv": "benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.csv",
+    "eval_report": "benchmark_artifacts/longbench_v2_api/20260812T152758Z/official_longbench_v2_api_eval_report.json"
+  },
+  "total_api_calls": 1006,
+  "total_input_tokens": 120015913,
+  "total_output_tokens": 2012,
+  "total_tokens": 120017925,
+  "total_estimated_cost_usd": 0.0,
+  "cache_reuse": {
+    "enabled": false,
+    "reason": "Plain API baseline is intentionally uncached"
+  },
+  "api_base_url": "http://g101.eth.cluster:8000/v1",
+  "context_window_tokens": 262144,
+  "max_input_tokens": 240000,
+  "input_token_budget": 240000,
+  "context_window_safety_margin_tokens": 22136,
+  "truncation_policy": "longbench_v2_middle_keep_first_last",
+  "system_prompt_style": "strict",
+  "temperature": 0,
+  "thinking_enabled": false,
+  "mcq_decoder_constraint_enabled": true,
+  "mcq_decoder_constraint_version": "vllm_structured_choice_abcd_v1",
+  "mcq_decoder_constraint_type": "structured_outputs.choice",
+  "mcq_allowed_choices": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "note": "jarvis-qwen36-direct-decoder-v1-full-no-exact"
+}
