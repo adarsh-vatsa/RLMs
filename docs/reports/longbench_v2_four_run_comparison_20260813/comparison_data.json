@@ -1,0 +1,552 @@
+{
+  "generated_at": "2026-08-14T19:07:26.281790+00:00",
+  "question": "How does cache-enabled retrieval compare with the uncached model on the 1,006 original-question and paraphrase rows that exclude exact repetitions, and secondarily across all 1,509 traffic rows?",
+  "validation": {
+    "suite_csv_sha256": "32fda08f5bcbeaaf36077ca0203ace3cb94d2330168c4866e36252b16fbf51d7",
+    "source_json_sha256": "5e4cee2fadff9f5d56888095c3f0e664da50ce668cd52e1edbbec62be7369e78",
+    "checks": [
+      {
+        "run": "Cache-enabled retrieval \u2014 all traffic types",
+        "rows": 1509,
+        "unique_case_ids": 1509,
+        "api_errors": 0,
+        "invalid_choices": 0,
+        "suite_hash_match": true,
+        "source_hash_match": true,
+        "status": "passed"
+      },
+      {
+        "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+        "rows": 1006,
+        "unique_case_ids": 1006,
+        "api_errors": 0,
+        "invalid_choices": 0,
+        "suite_hash_match": true,
+        "source_hash_match": true,
+        "status": "passed"
+      },
+      {
+        "run": "Uncached model \u2014 all traffic types",
+        "rows": 1509,
+        "unique_case_ids": 1509,
+        "api_errors": 0,
+        "invalid_choices": 0,
+        "suite_hash_match": true,
+        "source_hash_match": true,
+        "status": "passed"
+      },
+      {
+        "run": "Uncached model \u2014 original + paraphrase",
+        "rows": 1006,
+        "unique_case_ids": 1006,
+        "api_errors": 0,
+        "invalid_choices": 0,
+        "suite_hash_match": true,
+        "source_hash_match": true,
+        "status": "passed"
+      }
+    ]
+  },
+  "headline": {
+    "full_accuracy_delta_pp": 4.174950298210735,
+    "full_hybrid_accuracy": 0.48840291583830353,
+    "full_direct_accuracy": 0.44665341285619614,
+    "no_exact_accuracy_delta_pp": 3.3797216699801194,
+    "no_exact_hybrid_accuracy": 0.4801192842942346,
+    "no_exact_direct_accuracy": 0.4463220675944334,
+    "full_token_reduction": 0.6621808045123154,
+    "full_speedup_x": 1.8478992177414688,
+    "no_exact_token_reduction": 0.4932675264965629,
+    "no_exact_speedup_x": 1.2322827223052804
+  },
+  "run_summary": [
+    {
+      "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+      "run_id": "20260812T014012Z",
+      "architecture": "Cache-enabled retrieval",
+      "population": "Original + paraphrase only (1,006 rows)",
+      "included_row_types": "original, semantic",
+      "rows": 1006,
+      "correct": 483,
+      "accuracy": 0.480119,
+      "elapsed_hours": 2.015546666666667,
+      "api_calls": 1006,
+      "input_tokens": 60810038,
+      "output_tokens": 6942,
+      "total_tokens": 60816980,
+      "tokens_per_row": 60454.25447316103,
+      "calls_per_row": 1.0,
+      "truncated_rows": null,
+      "api_errors": 0,
+      "invalid_choices": 0
+    },
+    {
+      "run": "Uncached model \u2014 original + paraphrase",
+      "run_id": "20260812T152758Z",
+      "architecture": "Uncached model",
+      "population": "Original + paraphrase only (1,006 rows)",
+      "included_row_types": "original, semantic",
+      "rows": 1006,
+      "correct": 449,
+      "accuracy": 0.446322,
+      "elapsed_hours": 2.4837233333333333,
+      "api_calls": 1006,
+      "input_tokens": 120015913,
+      "output_tokens": 2012,
+      "total_tokens": 120017925,
+      "tokens_per_row": 119302.11232604373,
+      "calls_per_row": 1.0,
+      "truncated_rows": 214,
+      "api_errors": 0,
+      "invalid_choices": 0
+    },
+    {
+      "run": "Cache-enabled retrieval \u2014 all traffic types",
+      "run_id": "20260810T054951Z",
+      "architecture": "Cache-enabled retrieval",
+      "population": "All traffic types (1,509 rows)",
+      "included_row_types": "original, exact, semantic",
+      "rows": 1509,
+      "correct": 737,
+      "accuracy": 0.488403,
+      "elapsed_hours": 2.0256872222222224,
+      "api_calls": 1006,
+      "input_tokens": 60810038,
+      "output_tokens": 6942,
+      "total_tokens": 60816980,
+      "tokens_per_row": 40302.83631544069,
+      "calls_per_row": 0.6666666666666666,
+      "truncated_rows": null,
+      "api_errors": 0,
+      "invalid_choices": 0
+    },
+    {
+      "run": "Uncached model \u2014 all traffic types",
+      "run_id": "20260812T035929Z",
+      "architecture": "Uncached model",
+      "population": "All traffic types (1,509 rows)",
+      "included_row_types": "original, exact, semantic",
+      "rows": 1509,
+      "correct": 674,
+      "accuracy": 0.446653,
+      "elapsed_hours": 3.743265833333333,
+      "api_calls": 1509,
+      "input_tokens": 180025177,
+      "output_tokens": 3018,
+      "total_tokens": 180028195,
+      "tokens_per_row": 119302.97879390325,
+      "calls_per_row": 1.0,
+      "truncated_rows": 321,
+      "api_errors": 0,
+      "invalid_choices": 0
+    }
+  ],
+  "paired_comparisons": [
+    {
+      "population": "Original + paraphrase only (1,006 rows)",
+      "rows": 1006,
+      "source_groups": 503,
+      "hybrid_correct": 483,
+      "direct_correct": 449,
+      "hybrid_accuracy": 0.4801192842942346,
+      "direct_accuracy": 0.4463220675944334,
+      "delta_pp": 3.3797216699801194,
+      "ci_low_pp": 1.1928429423459244,
+      "ci_high_pp": 5.566600397614314,
+      "hybrid_correct_direct_wrong": 56,
+      "direct_correct_hybrid_wrong": 22,
+      "prediction_agreement": 0.8916500994035785,
+      "bootstrap_replicates": 20000,
+      "bootstrap_seed": 20260814
+    },
+    {
+      "population": "All traffic types (1,509 rows)",
+      "rows": 1509,
+      "source_groups": 503,
+      "hybrid_correct": 737,
+      "direct_correct": 674,
+      "hybrid_accuracy": 0.48840291583830353,
+      "direct_accuracy": 0.44665341285619614,
+      "delta_pp": 4.174950298210735,
+      "ci_low_pp": 1.9880715705765408,
+      "ci_high_pp": 6.494367130550033,
+      "hybrid_correct_direct_wrong": 96,
+      "direct_correct_hybrid_wrong": 33,
+      "prediction_agreement": 0.8820410868124586,
+      "bootstrap_replicates": 20000,
+      "bootstrap_seed": 20260813
+    }
+  ],
+  "pair_accuracy": [
+    {
+      "population": "Original + paraphrase only (1,006 rows)",
+      "architecture": "Cache-enabled retrieval",
+      "accuracy": 0.4801192842942346,
+      "correct": 483,
+      "rows": 1006,
+      "delta_pp": 3.3797216699801194
+    },
+    {
+      "population": "Original + paraphrase only (1,006 rows)",
+      "architecture": "Uncached model",
+      "accuracy": 0.4463220675944334,
+      "correct": 449,
+      "rows": 1006,
+      "delta_pp": 0.0
+    },
+    {
+      "population": "All traffic types (1,509 rows)",
+      "architecture": "Cache-enabled retrieval",
+      "accuracy": 0.48840291583830353,
+      "correct": 737,
+      "rows": 1509,
+      "delta_pp": 4.174950298210735
+    },
+    {
+      "population": "All traffic types (1,509 rows)",
+      "architecture": "Uncached model",
+      "accuracy": 0.44665341285619614,
+      "correct": 674,
+      "rows": 1509,
+      "delta_pp": 0.0
+    }
+  ],
+  "efficiency_reduction": [
+    {
+      "comparison": "Original + paraphrase only (1,006 rows) \u00b7 Total tokens",
+      "population": "Original + paraphrase only (1,006 rows)",
+      "metric": "Total tokens",
+      "reduction": 0.4932675264965629,
+      "hybrid_value": 60816980,
+      "direct_value": 120017925,
+      "direct_to_hybrid_ratio": 1.9734278979324524
+    },
+    {
+      "comparison": "Original + paraphrase only (1,006 rows) \u00b7 Runtime",
+      "population": "Original + paraphrase only (1,006 rows)",
+      "metric": "Runtime",
+      "reduction": 0.188497913750458,
+      "hybrid_value": 7255.968,
+      "direct_value": 8941.404,
+      "direct_to_hybrid_ratio": 1.2322827223052804
+    },
+    {
+      "comparison": "Original + paraphrase only (1,006 rows) \u00b7 API calls",
+      "population": "Original + paraphrase only (1,006 rows)",
+      "metric": "API calls",
+      "reduction": 0.0,
+      "hybrid_value": 1006,
+      "direct_value": 1006,
+      "direct_to_hybrid_ratio": 1.0
+    },
+    {
+      "comparison": "All traffic types (1,509 rows) \u00b7 Total tokens",
+      "population": "All traffic types (1,509 rows)",
+      "metric": "Total tokens",
+      "reduction": 0.6621808045123154,
+      "hybrid_value": 60816980,
+      "direct_value": 180028195,
+      "direct_to_hybrid_ratio": 2.960163345828747
+    },
+    {
+      "comparison": "All traffic types (1,509 rows) \u00b7 Runtime",
+      "population": "All traffic types (1,509 rows)",
+      "metric": "Runtime",
+      "reduction": 0.45884494652137164,
+      "hybrid_value": 7292.474,
+      "direct_value": 13475.757,
+      "direct_to_hybrid_ratio": 1.8478992177414688
+    },
+    {
+      "comparison": "All traffic types (1,509 rows) \u00b7 API calls",
+      "population": "All traffic types (1,509 rows)",
+      "metric": "API calls",
+      "reduction": 0.33333333333333337,
+      "hybrid_value": 1006,
+      "direct_value": 1509,
+      "direct_to_hybrid_ratio": 1.5
+    }
+  ],
+  "truncation_accuracy": [
+    {
+      "direct_input_group": "Not truncated",
+      "architecture": "Cache-enabled retrieval",
+      "accuracy": 0.4713804713804714,
+      "correct": 560,
+      "rows": 1188
+    },
+    {
+      "direct_input_group": "Not truncated",
+      "architecture": "Uncached model",
+      "accuracy": 0.45454545454545453,
+      "correct": 540,
+      "rows": 1188
+    },
+    {
+      "direct_input_group": "Truncated",
+      "architecture": "Cache-enabled retrieval",
+      "accuracy": 0.5514018691588785,
+      "correct": 177,
+      "rows": 321
+    },
+    {
+      "direct_input_group": "Truncated",
+      "architecture": "Uncached model",
+      "accuracy": 0.4174454828660436,
+      "correct": 134,
+      "rows": 321
+    }
+  ],
+  "truncation_delta": [
+    {
+      "direct_input_group": "Not truncated",
+      "rows": 1188,
+      "hybrid_accuracy": 0.4713804713804714,
+      "direct_accuracy": 0.45454545454545453,
+      "delta_pp": 1.683501683501687
+    },
+    {
+      "direct_input_group": "Truncated",
+      "rows": 321,
+      "hybrid_accuracy": 0.5514018691588785,
+      "direct_accuracy": 0.4174454828660436,
+      "delta_pp": 13.395638629283486
+    }
+  ],
+  "domain_accuracy": [
+    {
+      "domain": "Code Repository Understanding",
+      "rows": 50,
+      "hybrid_accuracy": 0.54,
+      "direct_accuracy": 0.4,
+      "delta_pp": 14.000000000000002
+    },
+    {
+      "domain": "Long In-context Learning",
+      "rows": 81,
+      "hybrid_accuracy": 0.654320987654321,
+      "direct_accuracy": 0.5555555555555556,
+      "delta_pp": 9.876543209876543
+    },
+    {
+      "domain": "Long Structured Data Understanding",
+      "rows": 33,
+      "hybrid_accuracy": 0.48484848484848486,
+      "direct_accuracy": 0.45454545454545453,
+      "delta_pp": 3.030303030303033
+    },
+    {
+      "domain": "Long-dialogue History Understanding",
+      "rows": 39,
+      "hybrid_accuracy": 0.48717948717948717,
+      "direct_accuracy": 0.4358974358974359,
+      "delta_pp": 5.128205128205127
+    },
+    {
+      "domain": "Multi-Document QA",
+      "rows": 125,
+      "hybrid_accuracy": 0.44,
+      "direct_accuracy": 0.408,
+      "delta_pp": 3.200000000000003
+    },
+    {
+      "domain": "Single-Document QA",
+      "rows": 175,
+      "hybrid_accuracy": 0.4342857142857143,
+      "direct_accuracy": 0.44,
+      "delta_pp": -0.5714285714285727
+    }
+  ],
+  "stability": [
+    {
+      "architecture": "Cache-enabled retrieval",
+      "shared_rows": 1006,
+      "prediction_agreement_rows": 954,
+      "prediction_agreement": 0.94831013916501,
+      "full_subset_accuracy": 0.48807157057654077,
+      "no_exact_accuracy": 0.4801192842942346,
+      "accuracy_shift_pp": -0.7952286282306162
+    },
+    {
+      "architecture": "Uncached model",
+      "shared_rows": 1006,
+      "prediction_agreement_rows": 1006,
+      "prediction_agreement": 1.0,
+      "full_subset_accuracy": 0.4463220675944334,
+      "no_exact_accuracy": 0.4463220675944334,
+      "accuracy_shift_pp": 0.0
+    }
+  ],
+  "exact_removal_effect": [
+    {
+      "architecture": "Cache-enabled retrieval",
+      "removed_rows": 503,
+      "api_call_change": 0,
+      "token_change": 0,
+      "runtime_change_percent": -0.005005982880432636
+    },
+    {
+      "architecture": "Uncached model",
+      "removed_rows": 503,
+      "api_call_change": -503,
+      "token_change": -60010270,
+      "runtime_change_percent": -0.3364822473423942
+    }
+  ],
+  "row_type_detail": [
+    {
+      "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+      "row_type": "Original question",
+      "rows": 503,
+      "correct": 241,
+      "accuracy": 0.47912524850894633,
+      "api_calls": 503,
+      "input_tokens": 59579613,
+      "output_tokens": 1006
+    },
+    {
+      "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+      "row_type": "Meaning-preserving paraphrase",
+      "rows": 503,
+      "correct": 242,
+      "accuracy": 0.48111332007952284,
+      "api_calls": 503,
+      "input_tokens": 1230425,
+      "output_tokens": 5936
+    },
+    {
+      "run": "Uncached model \u2014 original + paraphrase",
+      "row_type": "Original question",
+      "rows": 503,
+      "correct": 225,
+      "accuracy": 0.44731610337972166,
+      "api_calls": 503,
+      "input_tokens": 60009264,
+      "output_tokens": 1006
+    },
+    {
+      "run": "Uncached model \u2014 original + paraphrase",
+      "row_type": "Meaning-preserving paraphrase",
+      "rows": 503,
+      "correct": 224,
+      "accuracy": 0.44532803180914515,
+      "api_calls": 503,
+      "input_tokens": 60006649,
+      "output_tokens": 1006
+    },
+    {
+      "run": "Cache-enabled retrieval \u2014 all traffic types",
+      "row_type": "Exact repetition",
+      "rows": 503,
+      "correct": 246,
+      "accuracy": 0.48906560636182905,
+      "api_calls": 0,
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    {
+      "run": "Cache-enabled retrieval \u2014 all traffic types",
+      "row_type": "Original question",
+      "rows": 503,
+      "correct": 246,
+      "accuracy": 0.48906560636182905,
+      "api_calls": 503,
+      "input_tokens": 59579613,
+      "output_tokens": 1006
+    },
+    {
+      "run": "Cache-enabled retrieval \u2014 all traffic types",
+      "row_type": "Meaning-preserving paraphrase",
+      "rows": 503,
+      "correct": 245,
+      "accuracy": 0.4870775347912525,
+      "api_calls": 503,
+      "input_tokens": 1230425,
+      "output_tokens": 5936
+    },
+    {
+      "run": "Uncached model \u2014 all traffic types",
+      "row_type": "Exact repetition",
+      "rows": 503,
+      "correct": 225,
+      "accuracy": 0.44731610337972166,
+      "api_calls": 503,
+      "input_tokens": 60009264,
+      "output_tokens": 1006
+    },
+    {
+      "run": "Uncached model \u2014 all traffic types",
+      "row_type": "Original question",
+      "rows": 503,
+      "correct": 225,
+      "accuracy": 0.44731610337972166,
+      "api_calls": 503,
+      "input_tokens": 60009264,
+      "output_tokens": 1006
+    },
+    {
+      "run": "Uncached model \u2014 all traffic types",
+      "row_type": "Meaning-preserving paraphrase",
+      "rows": 503,
+      "correct": 224,
+      "accuracy": 0.44532803180914515,
+      "api_calls": 503,
+      "input_tokens": 60006649,
+      "output_tokens": 1006
+    }
+  ],
+  "methods": {
+    "accuracy": "answer_correct_count divided by rows_selected",
+    "resource_reduction": "1 - cache-enabled retrieval manifest value / matched uncached-model manifest value",
+    "confidence_interval": "Percentile bootstrap of paired correctness differences with source_id as the resampling cluster; 20,000 replicates and fixed seeds.",
+    "population_note": "The primary 1,006-row comparison contains original questions and meaning-preserving paraphrases, with exact repetitions excluded. The secondary 1,509-row traffic comparison adds one exact repetition per source group. Repetitions and paraphrases are linked to the original and are not independent benchmark questions."
+  },
+  "chart_map": [
+    {
+      "section": "Resource use",
+      "question": "How much runtime, call, and token volume does cache-enabled retrieval avoid?",
+      "family": "Comparison & Ranking",
+      "type": "bar",
+      "fields": [
+        "comparison",
+        "reduction"
+      ],
+      "palette": "single blue root with neutral zero reference"
+    },
+    {
+      "section": "Matched quality",
+      "question": "Does cache-enabled retrieval preserve or improve accuracy in both populations?",
+      "family": "Comparison & Ranking",
+      "type": "grouped bar",
+      "fields": [
+        "population",
+        "architecture",
+        "accuracy"
+      ],
+      "palette": "hard two-root cap: blue for cache-enabled retrieval, orange for the uncached model"
+    },
+    {
+      "section": "Long-context mechanism",
+      "question": "Is the quality gain concentrated where the uncached model truncates its input?",
+      "family": "Comparison & Ranking",
+      "type": "grouped bar",
+      "fields": [
+        "direct_input_group",
+        "architecture",
+        "accuracy"
+      ],
+      "palette": "hard two-root cap: blue for cache-enabled retrieval, orange for the uncached model"
+    },
+    {
+      "section": "Domain robustness",
+      "question": "Where does original-row accuracy improve or decline?",
+      "family": "Uncertainty & Benchmark",
+      "type": "diverging bar",
+      "fields": [
+        "domain",
+        "delta_pp"
+      ],
+      "palette": "single blue root with neutral zero reference and signed labels"
+    }
+  ]
+}

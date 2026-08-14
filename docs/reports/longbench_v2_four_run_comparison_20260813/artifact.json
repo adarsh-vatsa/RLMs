@@ -1,0 +1,1239 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "Token-Efficient Long-Context Inference: Cache-Enabled Retrieval vs Uncached Model",
+    "description": "Technical comparison led by the exact-repetition-free 1,006-row evaluation, with the 1,509-row repeated-traffic experiment presented secondarily.",
+    "generatedAt": "2026-08-14T19:07:26.281790+00:00",
+    "cards": [
+      {
+        "id": "token_card",
+        "description": "Total input plus output tokens versus matched uncached-model runs.",
+        "dataset": "headline",
+        "sourceId": "four_run_comparison",
+        "metrics": [
+          {
+            "label": "Original + paraphrase reduction",
+            "field": "no_exact_token_reduction",
+            "format": "percent"
+          },
+          {
+            "label": "All-traffic reduction",
+            "field": "full_token_reduction",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "no_exact_accuracy_card",
+        "description": "Paired accuracy across 1,006 original-question and paraphrase rows; exact repetitions excluded.",
+        "dataset": "headline",
+        "sourceId": "four_run_comparison",
+        "metrics": [
+          {
+            "label": "Cache-enabled",
+            "field": "no_exact_hybrid_accuracy",
+            "format": "percent"
+          },
+          {
+            "label": "Uncached",
+            "field": "no_exact_direct_accuracy",
+            "format": "percent"
+          },
+          {
+            "label": "Cache-enabled gain",
+            "field": "no_exact_accuracy_delta_pp",
+            "format": "number",
+            "unit": "pp",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "runtime_card",
+        "description": "Uncached-model elapsed time divided by cache-enabled retrieval elapsed time.",
+        "dataset": "headline",
+        "sourceId": "four_run_comparison",
+        "metrics": [
+          {
+            "label": "Original + paraphrase speedup",
+            "field": "no_exact_speedup_x",
+            "format": "number",
+            "unit": "x"
+          },
+          {
+            "label": "All-traffic speedup",
+            "field": "full_speedup_x",
+            "format": "number",
+            "unit": "x"
+          }
+        ]
+      },
+      {
+        "id": "full_accuracy_card",
+        "description": "Paired accuracy difference across all 1,509 traffic rows.",
+        "dataset": "headline",
+        "sourceId": "four_run_comparison",
+        "metrics": [
+          {
+            "label": "Cache-enabled",
+            "field": "full_hybrid_accuracy",
+            "format": "percent"
+          },
+          {
+            "label": "Uncached",
+            "field": "full_direct_accuracy",
+            "format": "percent"
+          },
+          {
+            "label": "Cache-enabled gain",
+            "field": "full_accuracy_delta_pp",
+            "format": "number",
+            "unit": "pp",
+            "signed": true
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "pair_accuracy_chart",
+        "title": "Accuracy by experiment pair",
+        "subtitle": "Original + paraphrase n=1,006 first; all traffic types n=1,509 second; correct rows divided by selected rows",
+        "intent": "comparison",
+        "question": "Does cache-enabled retrieval preserve or improve accuracy in both experiment populations?",
+        "rationale": "Grouped bars preserve the two matched populations and architecture pairing.",
+        "type": "bar",
+        "dataset": "pair_accuracy",
+        "sourceId": "four_run_comparison",
+        "encodings": {
+          "x": {
+            "field": "population",
+            "type": "nominal",
+            "label": "Population"
+          },
+          "y": {
+            "field": "accuracy",
+            "type": "quantitative",
+            "format": "percent",
+            "label": "Accuracy"
+          },
+          "color": {
+            "field": "architecture",
+            "type": "nominal",
+            "label": "Architecture"
+          },
+          "tooltip": [
+            {
+              "field": "correct",
+              "type": "quantitative",
+              "label": "Correct"
+            },
+            {
+              "field": "rows",
+              "type": "quantitative",
+              "label": "Rows"
+            },
+            {
+              "field": "delta_pp",
+              "type": "quantitative",
+              "label": "Cache-enabled delta (pp)"
+            }
+          ]
+        },
+        "combinationRationale": "Color distinguishes cache-enabled retrieval from the uncached model within each population.",
+        "valueFormat": "percent",
+        "layout": "full",
+        "maxRows": 4
+      },
+      {
+        "id": "efficiency_reduction_chart",
+        "title": "Resource reduction from cache-enabled retrieval",
+        "subtitle": "The exact-repetition-free 1,006-row comparison is shown first; positive values indicate less time, calls, or tokens",
+        "intent": "comparison",
+        "question": "How much workload does cache-enabled retrieval avoid versus the uncached model?",
+        "rationale": "Six same-direction relative reductions share one zero-based percentage scale.",
+        "type": "bar",
+        "dataset": "efficiency_reduction",
+        "sourceId": "four_run_comparison",
+        "encodings": {
+          "x": {
+            "field": "comparison",
+            "type": "nominal",
+            "label": "Experiment and metric"
+          },
+          "y": {
+            "field": "reduction",
+            "type": "quantitative",
+            "format": "percent",
+            "label": "Reduction"
+          },
+          "tooltip": [
+            {
+              "field": "hybrid_value",
+              "type": "quantitative",
+              "label": "Cache-enabled retrieval"
+            },
+            {
+              "field": "direct_value",
+              "type": "quantitative",
+              "label": "Uncached model"
+            },
+            {
+              "field": "direct_to_hybrid_ratio",
+              "type": "quantitative",
+              "label": "Uncached / cache-enabled"
+            }
+          ]
+        },
+        "valueFormat": "percent",
+        "layout": "full",
+        "maxRows": 6
+      },
+      {
+        "id": "truncation_accuracy_chart",
+        "title": "Accuracy by uncached-model input handling",
+        "subtitle": "All-traffic 1,509-row pair; the uncached model middle-truncated 321 rows and left 1,188 rows intact",
+        "intent": "comparison",
+        "question": "Is the cache-enabled quality gain concentrated where the uncached model truncates its input?",
+        "rationale": "Grouped bars compare architectures on the same predefined truncation cohorts.",
+        "type": "bar",
+        "dataset": "truncation_accuracy",
+        "sourceId": "four_run_comparison",
+        "encodings": {
+          "x": {
+            "field": "direct_input_group",
+            "type": "nominal",
+            "label": "Uncached-model input handling"
+          },
+          "y": {
+            "field": "accuracy",
+            "type": "quantitative",
+            "format": "percent",
+            "label": "Accuracy"
+          },
+          "color": {
+            "field": "architecture",
+            "type": "nominal",
+            "label": "Architecture"
+          },
+          "tooltip": [
+            {
+              "field": "correct",
+              "type": "quantitative",
+              "label": "Correct"
+            },
+            {
+              "field": "rows",
+              "type": "quantitative",
+              "label": "Rows"
+            }
+          ]
+        },
+        "combinationRationale": "Color distinguishes the two architectures within each input cohort.",
+        "valueFormat": "percent",
+        "layout": "full",
+        "maxRows": 4
+      },
+      {
+        "id": "domain_delta_chart",
+        "title": "Original-row accuracy delta by domain",
+        "subtitle": "Cache-enabled retrieval minus the uncached model on 503 original questions; percentage points",
+        "intent": "comparison",
+        "question": "Across which domains is the cache-enabled quality difference positive or negative?",
+        "rationale": "Signed bars expose heterogeneity around a meaningful zero reference.",
+        "type": "bar",
+        "dataset": "domain_accuracy",
+        "sourceId": "four_run_comparison",
+        "encodings": {
+          "x": {
+            "field": "domain",
+            "type": "nominal",
+            "label": "Domain"
+          },
+          "y": {
+            "field": "delta_pp",
+            "type": "quantitative",
+            "label": "Cache-enabled delta (pp)"
+          },
+          "tooltip": [
+            {
+              "field": "rows",
+              "type": "quantitative",
+              "label": "Original questions"
+            },
+            {
+              "field": "hybrid_accuracy",
+              "type": "quantitative",
+              "format": "percent",
+              "label": "Cache-enabled accuracy"
+            },
+            {
+              "field": "direct_accuracy",
+              "type": "quantitative",
+              "format": "percent",
+              "label": "Uncached accuracy"
+            }
+          ]
+        },
+        "valueFormat": "number",
+        "layout": "full",
+        "maxRows": 6
+      }
+    ],
+    "tables": [
+      {
+        "id": "run_summary_table",
+        "title": "Experiment totals",
+        "subtitle": "Manifest totals for the four requested runs",
+        "dataset": "run_summary",
+        "sourceId": "four_run_comparison",
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "run",
+            "label": "Run",
+            "type": "text"
+          },
+          {
+            "field": "rows",
+            "label": "Rows",
+            "format": "number"
+          },
+          {
+            "field": "correct",
+            "label": "Correct",
+            "format": "number"
+          },
+          {
+            "field": "accuracy",
+            "label": "Accuracy",
+            "format": "percent"
+          },
+          {
+            "field": "elapsed_hours",
+            "label": "Runtime (h)",
+            "format": "number"
+          },
+          {
+            "field": "api_calls",
+            "label": "API calls",
+            "format": "number"
+          },
+          {
+            "field": "total_tokens",
+            "label": "Total tokens",
+            "format": "number"
+          },
+          {
+            "field": "tokens_per_row",
+            "label": "Tokens / row",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "paired_table",
+        "title": "Paired accuracy comparisons",
+        "subtitle": "95% percentile intervals resample the 503 source groups; 20,000 replicates",
+        "dataset": "paired_comparisons",
+        "sourceId": "four_run_comparison",
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "population",
+            "label": "Population",
+            "type": "text"
+          },
+          {
+            "field": "rows",
+            "label": "Rows",
+            "format": "number"
+          },
+          {
+            "field": "hybrid_correct",
+            "label": "Cache-enabled correct",
+            "format": "number"
+          },
+          {
+            "field": "direct_correct",
+            "label": "Uncached correct",
+            "format": "number"
+          },
+          {
+            "field": "delta_pp",
+            "label": "Cache-enabled delta (pp)",
+            "format": "number",
+            "movement": true
+          },
+          {
+            "field": "ci_low_pp",
+            "label": "95% CI low",
+            "format": "number"
+          },
+          {
+            "field": "ci_high_pp",
+            "label": "95% CI high",
+            "format": "number"
+          },
+          {
+            "field": "prediction_agreement",
+            "label": "Prediction agreement",
+            "format": "percent"
+          }
+        ]
+      },
+      {
+        "id": "row_type_table",
+        "title": "Accuracy by row type",
+        "subtitle": "Original questions are independent; exact repetitions and paraphrases are linked traffic fixtures",
+        "dataset": "row_type_detail",
+        "sourceId": "four_run_comparison",
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "run",
+            "label": "Run",
+            "type": "text"
+          },
+          {
+            "field": "row_type",
+            "label": "Row type",
+            "type": "text"
+          },
+          {
+            "field": "rows",
+            "label": "Rows",
+            "format": "number"
+          },
+          {
+            "field": "correct",
+            "label": "Correct",
+            "format": "number"
+          },
+          {
+            "field": "accuracy",
+            "label": "Accuracy",
+            "format": "percent"
+          },
+          {
+            "field": "api_calls",
+            "label": "API calls",
+            "format": "number"
+          },
+          {
+            "field": "input_tokens",
+            "label": "Input tokens",
+            "format": "number"
+          }
+        ]
+      },
+      {
+        "id": "stability_table",
+        "title": "Retained-row rerun stability",
+        "subtitle": "The same 1,006 original-question and paraphrase case IDs in both dataset variants",
+        "dataset": "stability",
+        "sourceId": "four_run_comparison",
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "architecture",
+            "label": "Architecture",
+            "type": "text"
+          },
+          {
+            "field": "shared_rows",
+            "label": "Shared rows",
+            "format": "number"
+          },
+          {
+            "field": "prediction_agreement_rows",
+            "label": "Matching predictions",
+            "format": "number"
+          },
+          {
+            "field": "prediction_agreement",
+            "label": "Agreement",
+            "format": "percent"
+          },
+          {
+            "field": "full_subset_accuracy",
+            "label": "All-traffic subset accuracy",
+            "format": "percent"
+          },
+          {
+            "field": "no_exact_accuracy",
+            "label": "Original + paraphrase accuracy",
+            "format": "percent"
+          },
+          {
+            "field": "accuracy_shift_pp",
+            "label": "Rerun shift (pp)",
+            "format": "number",
+            "movement": true
+          }
+        ]
+      },
+      {
+        "id": "validation_table",
+        "title": "Artifact integrity checks",
+        "subtitle": "Row counts, uniqueness, request validity, and dataset identity",
+        "dataset": "validation_checks",
+        "sourceId": "four_run_comparison",
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "run",
+            "label": "Run",
+            "type": "text"
+          },
+          {
+            "field": "rows",
+            "label": "Rows",
+            "format": "number"
+          },
+          {
+            "field": "unique_case_ids",
+            "label": "Unique case IDs",
+            "format": "number"
+          },
+          {
+            "field": "api_errors",
+            "label": "API errors",
+            "format": "number"
+          },
+          {
+            "field": "invalid_choices",
+            "label": "Invalid choices",
+            "format": "number"
+          },
+          {
+            "field": "status",
+            "label": "Check status",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "four_run_comparison",
+        "label": "Four LongBench-v2 benchmark artifacts and row-level comparison",
+        "path": "comparison_data.json",
+        "description": "Generated by build_report.py from the four listed manifest.json and bridge_rows.jsonl artifacts plus the prepared benchmark suite. Inputs: benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json, benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.jsonl, benchmark_artifacts/longbench_v2/20260812T014012Z/manifest.json, benchmark_artifacts/longbench_v2/20260812T014012Z/bridge_rows.jsonl, benchmark_artifacts/longbench_v2_api/20260812T035929Z/manifest.json, benchmark_artifacts/longbench_v2_api/20260812T035929Z/bridge_rows.jsonl, benchmark_artifacts/longbench_v2_api/20260812T152758Z/manifest.json, benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.jsonl, benchmark_data/long_bench_v2/data_cache_suite.csv. Generated at 2026-08-14T19:07:26.281790+00:00.",
+        "query": {
+          "engine": "DuckDB",
+          "language": "sql",
+          "sql": "SELECT * FROM read_json_auto(['benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json', 'benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.jsonl', 'benchmark_artifacts/longbench_v2/20260812T014012Z/manifest.json', 'benchmark_artifacts/longbench_v2/20260812T014012Z/bridge_rows.jsonl', 'benchmark_artifacts/longbench_v2_api/20260812T035929Z/manifest.json', 'benchmark_artifacts/longbench_v2_api/20260812T035929Z/bridge_rows.jsonl', 'benchmark_artifacts/longbench_v2_api/20260812T152758Z/manifest.json', 'benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.jsonl'], union_by_name = true);",
+          "description": "Canonical source extraction for the four manifests and bridge-row files. build_report.py performs the reviewed paired calculations and writes comparison_data.json.",
+          "executed_at": "2026-08-14T19:07:26.281790+00:00",
+          "tables_used": [
+            "benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json",
+            "benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.jsonl",
+            "benchmark_artifacts/longbench_v2/20260812T014012Z/manifest.json",
+            "benchmark_artifacts/longbench_v2/20260812T014012Z/bridge_rows.jsonl",
+            "benchmark_artifacts/longbench_v2_api/20260812T035929Z/manifest.json",
+            "benchmark_artifacts/longbench_v2_api/20260812T035929Z/bridge_rows.jsonl",
+            "benchmark_artifacts/longbench_v2_api/20260812T152758Z/manifest.json",
+            "benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.jsonl",
+            "benchmark_data/long_bench_v2/data_cache_suite.csv"
+          ],
+          "filters": [
+            "Original + paraphrase only (1,006 rows): exact repetitions excluded",
+            "All traffic types (1,509 rows): original questions, exact repetitions, and meaning-preserving paraphrases",
+            "All rows; no sampling",
+            "Paired comparisons use identical case_id populations"
+          ],
+          "metric_definitions": [
+            "Accuracy = correct rows / selected rows",
+            "Runtime = manifest elapsed_seconds",
+            "Token and API-call totals = manifest-reported usage",
+            "Cache-enabled reduction = 1 - cache-enabled retrieval value / matched uncached-model value",
+            "Accuracy uncertainty = source_id-clustered percentile bootstrap"
+          ]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "layout": "full",
+        "body": "# Token-Efficient Long-Context Inference: Cache-Enabled Retrieval vs Uncached Model"
+      },
+      {
+        "id": "technical_summary",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Technical summary\n\n- **Primary result: cache-enabled retrieval used 49.3% fewer tokens without sacrificing accuracy.** In the more conservative 1,006-row comparison, which excludes exact repetitions, it processed 60.8M tokens versus 120.0M for the uncached model. Both made 1,006 API calls. Accuracy was 48.01% versus 44.63%, a **+3.38 percentage-point** difference (95% source-cluster bootstrap CI 1.19 to 5.57).\n- **The same comparison completed 1.23\u00d7 faster.** Runtime is less controlled than token volume because the experiments ran as separate HPC jobs, but the direction agrees with the token reduction.\n- **The all-traffic experiment shows the additional operational value of exact-cache reuse.** Across 1,509 rows, including 503 exact repetitions, cache-enabled retrieval used 66.2% fewer tokens, 33.3% fewer API calls, and ran 1.85\u00d7 faster. Accuracy was also +4.17 points higher.\n- **The quality advantage is largest on overlength inputs.** Cache-enabled retrieval led by 13.40 points on the 321 rows whose uncached prompt was middle-truncated, versus 1.68 points on the 1,188 untruncated rows.\n- **Treat the accuracy difference between dataset variants as rerun variation, not an effect of removing exact repetitions.** The uncached-model outputs were identical on all 1,006 retained rows, but cache-enabled retrieval matched on 954/1,006 predictions and shifted -0.80 points despite identical routes, calls, and token totals."
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "layout": "full",
+        "cardIds": [
+          "token_card",
+          "no_exact_accuracy_card",
+          "runtime_card",
+          "full_accuracy_card"
+        ]
+      },
+      {
+        "id": "experiment_definitions",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## How to read the four experiments\n\n- **Cache-enabled retrieval:** the production-style path, which can answer through retrieval, exact-cache reuse, or semantic-cache reuse.\n- **Uncached model:** the comparison path, where every selected row is sent independently to the same Qwen model without retrieval or cache reuse.\n- **All traffic types (1,509 rows):** 503 original benchmark questions, 503 exact repetitions of those questions, and 503 meaning-preserving paraphrases.\n- **Original + paraphrase only (1,006 rows):** the same original questions and paraphrases, with the 503 exact repetitions excluded."
+      },
+      {
+        "id": "resource_finding",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Excluding exact repetitions, cache-enabled retrieval halves token use while preserving accuracy\n\nThis 1,006-row comparison is the primary evaluation because neither system receives credit for verbatim repetition. Cache-enabled retrieval processed 60.8M total tokens, compared with 120.0M for the uncached model\u2014a 49.3% reduction. Both systems made 1,006 API calls, so the reduction comes from processing less context per request rather than making fewer requests. Cache-enabled retrieval was 1.23\u00d7 faster and scored 48.01% accuracy versus 44.63%; the evidence therefore supports a strong efficiency claim with no observed quality tradeoff."
+      },
+      {
+        "id": "efficiency_chart",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "efficiency_reduction_chart"
+      },
+      {
+        "id": "matched_quality",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Accuracy is preserved\u2014and modestly improved\u2014in the exact-repetition-free comparison\n\nBoth paired differences are positive after resampling at the 503-source level, which avoids treating linked rows as independent questions. Excluding exact repetitions, cache-enabled retrieval answered 34 more of 1,006 rows correctly, a +3.38-point difference with a 95% interval of 1.19 to 5.57. The all-traffic experiment, reported second, shows a 63-row or +4.17-point gain. The difference between these estimates is consistent with the observed cache-enabled rerun variability and should not be interpreted as proof that exact repetitions change reasoning quality."
+      },
+      {
+        "id": "pair_accuracy",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "pair_accuracy_chart"
+      },
+      {
+        "id": "paired_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "paired_table"
+      },
+      {
+        "id": "original_quality",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Original-question quality shows the same pattern with visible rerun variation\n\nIn the experiment excluding exact repetitions, cache-enabled retrieval answered 241 of 503 independent original questions correctly (47.91%), versus 225 (44.73%) for the uncached model, a +3.18-point difference. In the all-traffic experiment, the same original-question slice scored 246 (48.91%) versus 225 (44.73%), a +4.17-point difference. Exact-repetition rows repeat the original questions verbatim, while semantic-paraphrase rows preserve their meaning, so original-question accuracy should lead advisor-facing claims about question-solving quality."
+      },
+      {
+        "id": "row_type_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "row_type_table"
+      },
+      {
+        "id": "exact_traffic_extension",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Exact repetitions increase the operational savings in repeated traffic\n\nThe 1,509-row experiment is a secondary traffic scenario rather than the primary quality comparison: it adds one verbatim repetition for every original question. Those rows represent a favorable cache opportunity, so their benefit should not be generalized to workloads without repeated questions. Within that stated scope, the result is operationally meaningful. Across all traffic types, cache-enabled retrieval used 1,006 calls and 60.8M tokens versus 1,509 calls and 180.0M tokens for the uncached model. Excluding 503 exact repetitions removed 503 uncached-model calls and about 60.0M uncached-model tokens. Cache-enabled calls and tokens did not change because all 503 exact repetitions were answered as zero-call exact-cache hits; the cache-enabled run without those rows still used 1,006 calls and 60.8M tokens. This explains why the all-traffic result reaches a 66.2% token reduction and 33.3% fewer API calls, beyond the already substantial token reduction observed when exact repetitions are excluded."
+      },
+      {
+        "id": "run_summary",
+        "type": "table",
+        "layout": "full",
+        "tableId": "run_summary_table"
+      },
+      {
+        "id": "truncation_finding",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Retrieval packing matters most where the uncached prompt is truncated\n\nOn the 321 rows whose uncached prompt was truncated, cache-enabled retrieval achieved 55.14% accuracy versus 41.74% for the uncached model, a 13.40-point gap. On the 1,188 rows that fit the uncached-model input budget, the gap was only 1.68 points. This descriptive split supports a long-context mechanism: dense child retrieval and exact token-budget packing preserve useful evidence that middle truncation can discard. It does not by itself isolate retrieval from every other execution difference."
+      },
+      {
+        "id": "truncation_chart",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "truncation_accuracy_chart"
+      },
+      {
+        "id": "domain_finding",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Original-row gains are heterogeneous across domains\n\nThe all-traffic cache-enabled run led most strongly in Code Repository Understanding (+14.0 points) and Long In-context Learning (+9.88 points). It was essentially tied in Single-Document QA (-0.57 points). These domain cuts are descriptive and vary in size from 33 to 175 originals, so they identify where to inspect examples rather than establish domain-specific significance."
+      },
+      {
+        "id": "domain_chart",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "domain_delta_chart"
+      },
+      {
+        "id": "scope_definitions",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Scope, data, and metric definitions\n\nThe primary 1,006-row dataset contains 503 original questions and 503 meaning-preserving paraphrases; exact repetitions are excluded. The secondary all-traffic dataset adds one exact repetition per source group, for 1,509 rows. Accuracy is correct rows divided by selected rows; runtime is manifest wall time; API calls and tokens are server-reported manifest totals. Repetition and paraphrase rows are linked traffic fixtures, not 1,006 additional independent benchmark questions. Original-only accuracy is therefore the cleanest measure of question-solving quality, while all-row accuracy is an end-to-end traffic measure."
+      },
+      {
+        "id": "methodology",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Methodology and validation\n\nAll four artifacts use identical suite and source JSON hashes, Qwen3.6-35B-A3B execution, the same 262,144-token context profile, and the same structured A\u2013D decoder contract. Case IDs match exactly within each paired population. Every row completed successfully with a valid choice and zero API errors. Headline accuracy intervals use a paired percentile bootstrap with `source_id` as the cluster, 20,000 replicates, and fixed seeds. Resource comparisons use the matched manifest totals without normalizing away the intentionally different row counts."
+      },
+      {
+        "id": "validation_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "validation_table"
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "four_run_comparison",
+        "body": "## Limitations, uncertainty, and robustness\n\n**Cache-enabled rerun variability is material but smaller than the paired advantage.** The cache-enabled run excluding exact repetitions changed 52 of 1,006 retained predictions and scored 0.80 points lower than the same-row subset of the all-traffic cache-enabled run. The uncached-model rerun reproduced all retained predictions. A single run per condition cannot estimate cache-enabled execution variance.\n\n**Runtime is operational, not a controlled latency estimate.** Runs occurred in separate HPC jobs, so node load, service queueing, and filesystem behavior may contribute to elapsed time. Calls and token totals are more portable workload measures.\n\n**The truncation and domain cuts are descriptive.** They were computed after the runs and are not adjusted for multiple comparisons. The report makes no causal claim that retrieval alone produces the observed accuracy difference."
+      },
+      {
+        "id": "stability_evidence",
+        "type": "table",
+        "layout": "full",
+        "tableId": "stability_table"
+      },
+      {
+        "id": "next_steps",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## Recommended next steps\n\n1. **Lead with the 1,006-row result:** 49.3% fewer tokens with no observed accuracy tradeoff after exact repetitions are excluded.\n2. **Present the 1,509-row result as a repeated-traffic scenario** that quantifies the additional operational value of exact-cache hits.\n3. **Repeat the cache-enabled retrieval condition at least three times** with the same service build and record seed, node, and vLLM settings to quantify execution variance.\n4. **Audit the 107 overlength original sources** because they account for the clearest accuracy separation and directly test the retrieval-packing hypothesis."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## Further questions\n\n- What causes the 5.2% cache-enabled prediction disagreement across nominally matched reruns despite temperature zero?\n- Do repeated cache-enabled runs preserve the large advantage on rows whose uncached prompts are truncated?\n- Which evidence ranges are selected when cache-enabled retrieval is correct but the uncached model is wrong on overlength examples, and are those ranges removed by middle truncation?"
+      }
+    ],
+    "notes": [
+      "Audience: technical advisor.",
+      "Required technical-report sections are present in the prescribed order.",
+      "All charts use comparison bars because the evidence consists of discrete experiment, cohort, and domain contrasts rather than time series.",
+      "The source file comparison_data.json preserves validation checks, chart map, and calculation details."
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-08-14T19:07:26.281790+00:00",
+    "status": "ready",
+    "datasets": {
+      "headline": [
+        {
+          "full_accuracy_delta_pp": 4.174950298210735,
+          "full_hybrid_accuracy": 0.48840291583830353,
+          "full_direct_accuracy": 0.44665341285619614,
+          "no_exact_accuracy_delta_pp": 3.3797216699801194,
+          "no_exact_hybrid_accuracy": 0.4801192842942346,
+          "no_exact_direct_accuracy": 0.4463220675944334,
+          "full_token_reduction": 0.6621808045123154,
+          "full_speedup_x": 1.8478992177414688,
+          "no_exact_token_reduction": 0.4932675264965629,
+          "no_exact_speedup_x": 1.2322827223052804
+        }
+      ],
+      "run_summary": [
+        {
+          "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+          "run_id": "20260812T014012Z",
+          "architecture": "Cache-enabled retrieval",
+          "population": "Original + paraphrase only (1,006 rows)",
+          "included_row_types": "original, semantic",
+          "rows": 1006,
+          "correct": 483,
+          "accuracy": 0.480119,
+          "elapsed_hours": 2.015546666666667,
+          "api_calls": 1006,
+          "input_tokens": 60810038,
+          "output_tokens": 6942,
+          "total_tokens": 60816980,
+          "tokens_per_row": 60454.25447316103,
+          "calls_per_row": 1.0,
+          "truncated_rows": null,
+          "api_errors": 0,
+          "invalid_choices": 0
+        },
+        {
+          "run": "Uncached model \u2014 original + paraphrase",
+          "run_id": "20260812T152758Z",
+          "architecture": "Uncached model",
+          "population": "Original + paraphrase only (1,006 rows)",
+          "included_row_types": "original, semantic",
+          "rows": 1006,
+          "correct": 449,
+          "accuracy": 0.446322,
+          "elapsed_hours": 2.4837233333333333,
+          "api_calls": 1006,
+          "input_tokens": 120015913,
+          "output_tokens": 2012,
+          "total_tokens": 120017925,
+          "tokens_per_row": 119302.11232604373,
+          "calls_per_row": 1.0,
+          "truncated_rows": 214,
+          "api_errors": 0,
+          "invalid_choices": 0
+        },
+        {
+          "run": "Cache-enabled retrieval \u2014 all traffic types",
+          "run_id": "20260810T054951Z",
+          "architecture": "Cache-enabled retrieval",
+          "population": "All traffic types (1,509 rows)",
+          "included_row_types": "original, exact, semantic",
+          "rows": 1509,
+          "correct": 737,
+          "accuracy": 0.488403,
+          "elapsed_hours": 2.0256872222222224,
+          "api_calls": 1006,
+          "input_tokens": 60810038,
+          "output_tokens": 6942,
+          "total_tokens": 60816980,
+          "tokens_per_row": 40302.83631544069,
+          "calls_per_row": 0.6666666666666666,
+          "truncated_rows": null,
+          "api_errors": 0,
+          "invalid_choices": 0
+        },
+        {
+          "run": "Uncached model \u2014 all traffic types",
+          "run_id": "20260812T035929Z",
+          "architecture": "Uncached model",
+          "population": "All traffic types (1,509 rows)",
+          "included_row_types": "original, exact, semantic",
+          "rows": 1509,
+          "correct": 674,
+          "accuracy": 0.446653,
+          "elapsed_hours": 3.743265833333333,
+          "api_calls": 1509,
+          "input_tokens": 180025177,
+          "output_tokens": 3018,
+          "total_tokens": 180028195,
+          "tokens_per_row": 119302.97879390325,
+          "calls_per_row": 1.0,
+          "truncated_rows": 321,
+          "api_errors": 0,
+          "invalid_choices": 0
+        }
+      ],
+      "paired_comparisons": [
+        {
+          "population": "Original + paraphrase only (1,006 rows)",
+          "rows": 1006,
+          "source_groups": 503,
+          "hybrid_correct": 483,
+          "direct_correct": 449,
+          "hybrid_accuracy": 0.4801192842942346,
+          "direct_accuracy": 0.4463220675944334,
+          "delta_pp": 3.3797216699801194,
+          "ci_low_pp": 1.1928429423459244,
+          "ci_high_pp": 5.566600397614314,
+          "hybrid_correct_direct_wrong": 56,
+          "direct_correct_hybrid_wrong": 22,
+          "prediction_agreement": 0.8916500994035785,
+          "bootstrap_replicates": 20000,
+          "bootstrap_seed": 20260814
+        },
+        {
+          "population": "All traffic types (1,509 rows)",
+          "rows": 1509,
+          "source_groups": 503,
+          "hybrid_correct": 737,
+          "direct_correct": 674,
+          "hybrid_accuracy": 0.48840291583830353,
+          "direct_accuracy": 0.44665341285619614,
+          "delta_pp": 4.174950298210735,
+          "ci_low_pp": 1.9880715705765408,
+          "ci_high_pp": 6.494367130550033,
+          "hybrid_correct_direct_wrong": 96,
+          "direct_correct_hybrid_wrong": 33,
+          "prediction_agreement": 0.8820410868124586,
+          "bootstrap_replicates": 20000,
+          "bootstrap_seed": 20260813
+        }
+      ],
+      "pair_accuracy": [
+        {
+          "population": "Original + paraphrase only (1,006 rows)",
+          "architecture": "Cache-enabled retrieval",
+          "accuracy": 0.4801192842942346,
+          "correct": 483,
+          "rows": 1006,
+          "delta_pp": 3.3797216699801194
+        },
+        {
+          "population": "Original + paraphrase only (1,006 rows)",
+          "architecture": "Uncached model",
+          "accuracy": 0.4463220675944334,
+          "correct": 449,
+          "rows": 1006,
+          "delta_pp": 0.0
+        },
+        {
+          "population": "All traffic types (1,509 rows)",
+          "architecture": "Cache-enabled retrieval",
+          "accuracy": 0.48840291583830353,
+          "correct": 737,
+          "rows": 1509,
+          "delta_pp": 4.174950298210735
+        },
+        {
+          "population": "All traffic types (1,509 rows)",
+          "architecture": "Uncached model",
+          "accuracy": 0.44665341285619614,
+          "correct": 674,
+          "rows": 1509,
+          "delta_pp": 0.0
+        }
+      ],
+      "efficiency_reduction": [
+        {
+          "comparison": "Original + paraphrase only (1,006 rows) \u00b7 Total tokens",
+          "population": "Original + paraphrase only (1,006 rows)",
+          "metric": "Total tokens",
+          "reduction": 0.4932675264965629,
+          "hybrid_value": 60816980,
+          "direct_value": 120017925,
+          "direct_to_hybrid_ratio": 1.9734278979324524
+        },
+        {
+          "comparison": "Original + paraphrase only (1,006 rows) \u00b7 Runtime",
+          "population": "Original + paraphrase only (1,006 rows)",
+          "metric": "Runtime",
+          "reduction": 0.188497913750458,
+          "hybrid_value": 7255.968,
+          "direct_value": 8941.404,
+          "direct_to_hybrid_ratio": 1.2322827223052804
+        },
+        {
+          "comparison": "Original + paraphrase only (1,006 rows) \u00b7 API calls",
+          "population": "Original + paraphrase only (1,006 rows)",
+          "metric": "API calls",
+          "reduction": 0.0,
+          "hybrid_value": 1006,
+          "direct_value": 1006,
+          "direct_to_hybrid_ratio": 1.0
+        },
+        {
+          "comparison": "All traffic types (1,509 rows) \u00b7 Total tokens",
+          "population": "All traffic types (1,509 rows)",
+          "metric": "Total tokens",
+          "reduction": 0.6621808045123154,
+          "hybrid_value": 60816980,
+          "direct_value": 180028195,
+          "direct_to_hybrid_ratio": 2.960163345828747
+        },
+        {
+          "comparison": "All traffic types (1,509 rows) \u00b7 Runtime",
+          "population": "All traffic types (1,509 rows)",
+          "metric": "Runtime",
+          "reduction": 0.45884494652137164,
+          "hybrid_value": 7292.474,
+          "direct_value": 13475.757,
+          "direct_to_hybrid_ratio": 1.8478992177414688
+        },
+        {
+          "comparison": "All traffic types (1,509 rows) \u00b7 API calls",
+          "population": "All traffic types (1,509 rows)",
+          "metric": "API calls",
+          "reduction": 0.33333333333333337,
+          "hybrid_value": 1006,
+          "direct_value": 1509,
+          "direct_to_hybrid_ratio": 1.5
+        }
+      ],
+      "truncation_accuracy": [
+        {
+          "direct_input_group": "Not truncated",
+          "architecture": "Cache-enabled retrieval",
+          "accuracy": 0.4713804713804714,
+          "correct": 560,
+          "rows": 1188
+        },
+        {
+          "direct_input_group": "Not truncated",
+          "architecture": "Uncached model",
+          "accuracy": 0.45454545454545453,
+          "correct": 540,
+          "rows": 1188
+        },
+        {
+          "direct_input_group": "Truncated",
+          "architecture": "Cache-enabled retrieval",
+          "accuracy": 0.5514018691588785,
+          "correct": 177,
+          "rows": 321
+        },
+        {
+          "direct_input_group": "Truncated",
+          "architecture": "Uncached model",
+          "accuracy": 0.4174454828660436,
+          "correct": 134,
+          "rows": 321
+        }
+      ],
+      "domain_accuracy": [
+        {
+          "domain": "Code Repository Understanding",
+          "rows": 50,
+          "hybrid_accuracy": 0.54,
+          "direct_accuracy": 0.4,
+          "delta_pp": 14.000000000000002
+        },
+        {
+          "domain": "Long In-context Learning",
+          "rows": 81,
+          "hybrid_accuracy": 0.654320987654321,
+          "direct_accuracy": 0.5555555555555556,
+          "delta_pp": 9.876543209876543
+        },
+        {
+          "domain": "Long Structured Data Understanding",
+          "rows": 33,
+          "hybrid_accuracy": 0.48484848484848486,
+          "direct_accuracy": 0.45454545454545453,
+          "delta_pp": 3.030303030303033
+        },
+        {
+          "domain": "Long-dialogue History Understanding",
+          "rows": 39,
+          "hybrid_accuracy": 0.48717948717948717,
+          "direct_accuracy": 0.4358974358974359,
+          "delta_pp": 5.128205128205127
+        },
+        {
+          "domain": "Multi-Document QA",
+          "rows": 125,
+          "hybrid_accuracy": 0.44,
+          "direct_accuracy": 0.408,
+          "delta_pp": 3.200000000000003
+        },
+        {
+          "domain": "Single-Document QA",
+          "rows": 175,
+          "hybrid_accuracy": 0.4342857142857143,
+          "direct_accuracy": 0.44,
+          "delta_pp": -0.5714285714285727
+        }
+      ],
+      "stability": [
+        {
+          "architecture": "Cache-enabled retrieval",
+          "shared_rows": 1006,
+          "prediction_agreement_rows": 954,
+          "prediction_agreement": 0.94831013916501,
+          "full_subset_accuracy": 0.48807157057654077,
+          "no_exact_accuracy": 0.4801192842942346,
+          "accuracy_shift_pp": -0.7952286282306162
+        },
+        {
+          "architecture": "Uncached model",
+          "shared_rows": 1006,
+          "prediction_agreement_rows": 1006,
+          "prediction_agreement": 1.0,
+          "full_subset_accuracy": 0.4463220675944334,
+          "no_exact_accuracy": 0.4463220675944334,
+          "accuracy_shift_pp": 0.0
+        }
+      ],
+      "row_type_detail": [
+        {
+          "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+          "row_type": "Original question",
+          "rows": 503,
+          "correct": 241,
+          "accuracy": 0.47912524850894633,
+          "api_calls": 503,
+          "input_tokens": 59579613,
+          "output_tokens": 1006
+        },
+        {
+          "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+          "row_type": "Meaning-preserving paraphrase",
+          "rows": 503,
+          "correct": 242,
+          "accuracy": 0.48111332007952284,
+          "api_calls": 503,
+          "input_tokens": 1230425,
+          "output_tokens": 5936
+        },
+        {
+          "run": "Uncached model \u2014 original + paraphrase",
+          "row_type": "Original question",
+          "rows": 503,
+          "correct": 225,
+          "accuracy": 0.44731610337972166,
+          "api_calls": 503,
+          "input_tokens": 60009264,
+          "output_tokens": 1006
+        },
+        {
+          "run": "Uncached model \u2014 original + paraphrase",
+          "row_type": "Meaning-preserving paraphrase",
+          "rows": 503,
+          "correct": 224,
+          "accuracy": 0.44532803180914515,
+          "api_calls": 503,
+          "input_tokens": 60006649,
+          "output_tokens": 1006
+        },
+        {
+          "run": "Cache-enabled retrieval \u2014 all traffic types",
+          "row_type": "Exact repetition",
+          "rows": 503,
+          "correct": 246,
+          "accuracy": 0.48906560636182905,
+          "api_calls": 0,
+          "input_tokens": 0,
+          "output_tokens": 0
+        },
+        {
+          "run": "Cache-enabled retrieval \u2014 all traffic types",
+          "row_type": "Original question",
+          "rows": 503,
+          "correct": 246,
+          "accuracy": 0.48906560636182905,
+          "api_calls": 503,
+          "input_tokens": 59579613,
+          "output_tokens": 1006
+        },
+        {
+          "run": "Cache-enabled retrieval \u2014 all traffic types",
+          "row_type": "Meaning-preserving paraphrase",
+          "rows": 503,
+          "correct": 245,
+          "accuracy": 0.4870775347912525,
+          "api_calls": 503,
+          "input_tokens": 1230425,
+          "output_tokens": 5936
+        },
+        {
+          "run": "Uncached model \u2014 all traffic types",
+          "row_type": "Exact repetition",
+          "rows": 503,
+          "correct": 225,
+          "accuracy": 0.44731610337972166,
+          "api_calls": 503,
+          "input_tokens": 60009264,
+          "output_tokens": 1006
+        },
+        {
+          "run": "Uncached model \u2014 all traffic types",
+          "row_type": "Original question",
+          "rows": 503,
+          "correct": 225,
+          "accuracy": 0.44731610337972166,
+          "api_calls": 503,
+          "input_tokens": 60009264,
+          "output_tokens": 1006
+        },
+        {
+          "run": "Uncached model \u2014 all traffic types",
+          "row_type": "Meaning-preserving paraphrase",
+          "rows": 503,
+          "correct": 224,
+          "accuracy": 0.44532803180914515,
+          "api_calls": 503,
+          "input_tokens": 60006649,
+          "output_tokens": 1006
+        }
+      ],
+      "validation_checks": [
+        {
+          "run": "Cache-enabled retrieval \u2014 all traffic types",
+          "rows": 1509,
+          "unique_case_ids": 1509,
+          "api_errors": 0,
+          "invalid_choices": 0,
+          "suite_hash_match": true,
+          "source_hash_match": true,
+          "status": "passed"
+        },
+        {
+          "run": "Cache-enabled retrieval \u2014 original + paraphrase",
+          "rows": 1006,
+          "unique_case_ids": 1006,
+          "api_errors": 0,
+          "invalid_choices": 0,
+          "suite_hash_match": true,
+          "source_hash_match": true,
+          "status": "passed"
+        },
+        {
+          "run": "Uncached model \u2014 all traffic types",
+          "rows": 1509,
+          "unique_case_ids": 1509,
+          "api_errors": 0,
+          "invalid_choices": 0,
+          "suite_hash_match": true,
+          "source_hash_match": true,
+          "status": "passed"
+        },
+        {
+          "run": "Uncached model \u2014 original + paraphrase",
+          "rows": 1006,
+          "unique_case_ids": 1006,
+          "api_errors": 0,
+          "invalid_choices": 0,
+          "suite_hash_match": true,
+          "source_hash_match": true,
+          "status": "passed"
+        }
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "four_run_comparison",
+      "label": "Four LongBench-v2 benchmark artifacts and row-level comparison",
+      "path": "comparison_data.json",
+      "description": "Generated by build_report.py from the four listed manifest.json and bridge_rows.jsonl artifacts plus the prepared benchmark suite. Inputs: benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json, benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.jsonl, benchmark_artifacts/longbench_v2/20260812T014012Z/manifest.json, benchmark_artifacts/longbench_v2/20260812T014012Z/bridge_rows.jsonl, benchmark_artifacts/longbench_v2_api/20260812T035929Z/manifest.json, benchmark_artifacts/longbench_v2_api/20260812T035929Z/bridge_rows.jsonl, benchmark_artifacts/longbench_v2_api/20260812T152758Z/manifest.json, benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.jsonl, benchmark_data/long_bench_v2/data_cache_suite.csv. Generated at 2026-08-14T19:07:26.281790+00:00.",
+      "query": {
+        "engine": "DuckDB",
+        "language": "sql",
+        "sql": "SELECT * FROM read_json_auto(['benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json', 'benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.jsonl', 'benchmark_artifacts/longbench_v2/20260812T014012Z/manifest.json', 'benchmark_artifacts/longbench_v2/20260812T014012Z/bridge_rows.jsonl', 'benchmark_artifacts/longbench_v2_api/20260812T035929Z/manifest.json', 'benchmark_artifacts/longbench_v2_api/20260812T035929Z/bridge_rows.jsonl', 'benchmark_artifacts/longbench_v2_api/20260812T152758Z/manifest.json', 'benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.jsonl'], union_by_name = true);",
+        "description": "Canonical source extraction for the four manifests and bridge-row files. build_report.py performs the reviewed paired calculations and writes comparison_data.json.",
+        "executed_at": "2026-08-14T19:07:26.281790+00:00",
+        "tables_used": [
+          "benchmark_artifacts/longbench_v2/20260810T054951Z/manifest.json",
+          "benchmark_artifacts/longbench_v2/20260810T054951Z/bridge_rows.jsonl",
+          "benchmark_artifacts/longbench_v2/20260812T014012Z/manifest.json",
+          "benchmark_artifacts/longbench_v2/20260812T014012Z/bridge_rows.jsonl",
+          "benchmark_artifacts/longbench_v2_api/20260812T035929Z/manifest.json",
+          "benchmark_artifacts/longbench_v2_api/20260812T035929Z/bridge_rows.jsonl",
+          "benchmark_artifacts/longbench_v2_api/20260812T152758Z/manifest.json",
+          "benchmark_artifacts/longbench_v2_api/20260812T152758Z/bridge_rows.jsonl",
+          "benchmark_data/long_bench_v2/data_cache_suite.csv"
+        ],
+        "filters": [
+          "Original + paraphrase only (1,006 rows): exact repetitions excluded",
+          "All traffic types (1,509 rows): original questions, exact repetitions, and meaning-preserving paraphrases",
+          "All rows; no sampling",
+          "Paired comparisons use identical case_id populations"
+        ],
+        "metric_definitions": [
+          "Accuracy = correct rows / selected rows",
+          "Runtime = manifest elapsed_seconds",
+          "Token and API-call totals = manifest-reported usage",
+          "Cache-enabled reduction = 1 - cache-enabled retrieval value / matched uncached-model value",
+          "Accuracy uncertainty = source_id-clustered percentile bootstrap"
+        ]
+      }
+    }
+  ]
+}
