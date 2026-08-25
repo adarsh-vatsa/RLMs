@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
+import unicodedata
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -60,7 +61,7 @@ def _decoded_member_name(name: str) -> PurePosixPath:
         name = name.encode("cp437").decode("utf-8")
     except (UnicodeEncodeError, UnicodeDecodeError):
         pass
-    return PurePosixPath(name)
+    return PurePosixPath(unicodedata.normalize("NFC", name))
 
 
 def _extract_archive(archive_path: Path, extract_root: Path) -> None:

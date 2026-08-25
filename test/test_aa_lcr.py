@@ -254,6 +254,10 @@ class AALCRDatasetAndPromptTests(unittest.TestCase):
             str(_decoded_member_name("EUΓÇÖs AI ActΓÇöoverview.txt")),
             "EU’s AI Act—overview.txt",
         )
+        self.assertEqual(
+            str(_decoded_member_name("Sinem Eyice Bas\u0327ev.txt")),
+            "Sinem Eyice Başev.txt",
+        )
 
     def test_dataset_preserves_official_document_order_and_scope(self):
         with tempfile.TemporaryDirectory() as temporary:

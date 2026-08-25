@@ -7,6 +7,7 @@ This package runs the 100-question Artificial Analysis Long Context Reasoning re
 Download the pinned CSV and extracted-text archive, verify their SHA-256 hashes, extract the documents, and validate all official references:
 
 ```bash
+cd /home/edogu/adarsh-rlms
 uv run python -m aa_lcr.prepare_dataset
 ```
 
@@ -17,6 +18,7 @@ Local source material is written under `benchmark_data/aa_lcr/` and is intention
 Run all four token-only preflights before using model services:
 
 ```bash
+cd /home/edogu/adarsh-rlms
 uv run python -m aa_lcr.run_benchmark --experiment direct_262k --preflight-only
 uv run python -m aa_lcr.run_benchmark --experiment hybrid_262k --preflight-only
 uv run python -m aa_lcr.run_benchmark --experiment direct_64k --preflight-only
@@ -32,6 +34,8 @@ With the pinned dataset and Qwen3.6 tokenizer, the verified full-prompt range is
 Start the executor with its native 262,144-token capacity and the evaluator on a separate endpoint:
 
 ```bash
+cd /home/edogu/adarsh-rlms
+
 EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
 EXECUTOR_MAX_MODEL_LEN=262144 \
 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
@@ -49,6 +53,8 @@ Read the endpoint URLs from the corresponding Jarvis log `.url` files and export
 Validate each launch without submitting:
 
 ```bash
+cd /home/edogu/adarsh-rlms
+
 OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 \
 OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1 \
 AA_LCR_LAUNCH_DRY_RUN=1 \
@@ -58,6 +64,8 @@ bash jarvis/run_aa_lcr.sh direct_262k
 Set `AA_LCR_MAX_ROWS=2` for a real two-question smoke test. Run the complete cells independently so they do not compete for the same services:
 
 ```bash
+cd /home/edogu/adarsh-rlms
+
 OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 \
 OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1 \
 bash jarvis/run_aa_lcr.sh direct_262k
@@ -90,6 +98,8 @@ Each run contains predictions, JSONL/CSV bridge rows, a manifest, the equality e
 The comparison rejects mismatched data, row order, prompts, models, budgets, API errors, or invalid grades:
 
 ```bash
+cd /home/edogu/adarsh-rlms
+
 uv run python -m aa_lcr.compare_runs \
   --direct-262k benchmark_artifacts/aa_lcr/direct_262k/<run_id> \
   --hybrid-262k benchmark_artifacts/aa_lcr/hybrid_262k/<run_id> \
