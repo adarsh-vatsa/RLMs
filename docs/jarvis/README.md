@@ -22,6 +22,8 @@ repo, use `jarvis/run.sh` instead. The other scripts are role scripts that
 For the exact first-run sequence on the cluster, start with
 [`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md), then use
 [`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) for benchmark runs.
+For the four AA-LCR experiments, use
+[`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md).
 
 ## Storage Policy
 

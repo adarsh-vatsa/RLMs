@@ -2842,7 +2842,7 @@ class SemanticCacheController:
         if self._persist_path:
             self.save(self._persist_path)
 
-    def store_compact_mcq(
+    def store_compact_answer(
         self,
         query: str,
         result: str,
@@ -2852,12 +2852,12 @@ class SemanticCacheController:
         route: str,
         provenance: dict | None = None,
     ) -> dict:
-        """Store a strict MCQ result without source text or knowledge extraction."""
-        answer = str(result or "").strip().upper()
-        if answer not in {"A", "B", "C", "D"}:
-            raise ValueError("Compact MCQ cache entries require exactly one A-D answer")
+        """Store a compact answer without source text or knowledge extraction."""
+        answer = str(result or "").strip()
+        if not answer:
+            raise ValueError("Compact cache entries require a non-empty answer")
         if not self.data_scope_hash:
-            raise ValueError("An active data scope is required before compact MCQ storage")
+            raise ValueError("An active data scope is required before compact answer storage")
         if self._cache_index is None:
             self._cache_index = FAISSIndex()
 
@@ -2897,6 +2897,31 @@ class SemanticCacheController:
         if self._persist_path:
             self.save(self._persist_path)
         return entry
+
+    def store_compact_mcq(
+        self,
+        query: str,
+        result: str,
+        *,
+        model_used: str,
+        source_id: str,
+        route: str,
+        provenance: dict | None = None,
+    ) -> dict:
+        """Store a strict MCQ result without source text or knowledge extraction."""
+        answer = str(result or "").strip().upper()
+        if answer not in {"A", "B", "C", "D"}:
+            raise ValueError("Compact MCQ cache entries require exactly one A-D answer")
+        if not self.data_scope_hash:
+            raise ValueError("An active data scope is required before compact MCQ storage")
+        return self.store_compact_answer(
+            query,
+            answer,
+            model_used=model_used,
+            source_id=source_id,
+            route=route,
+            provenance=provenance,
+        )
 
     def get_total_entries(self) -> int:
         """Return the total number of cached entries across all buckets."""
@@ -3016,6 +3041,7 @@ class SemanticCacheController:
         reset_index: bool = True,
         data_scope_hash: str | None = None,
         source_id: str = "",
+        ordered_filenames: List[str] | None = None,
     ):
         """Ingest text documents: chunk → embed → build FAISS doc index."""
         ingest_started = time.time()
@@ -3037,7 +3063,16 @@ class SemanticCacheController:
             self._doc_chunks = []
             self._doc_chunk_metadata = []
 
-        txt_files = sorted(docs_dir.glob("*.txt"))
+        if ordered_filenames is None:
+            txt_files = sorted(docs_dir.glob("*.txt"))
+        else:
+            txt_files = [docs_dir / filename for filename in ordered_filenames]
+            missing_files = [path for path in txt_files if not path.is_file()]
+            if missing_files:
+                raise FileNotFoundError(
+                    "Ordered ingest files are missing: "
+                    + ", ".join(str(path) for path in missing_files)
+                )
         if not txt_files:
             print(f"  No .txt files found in {docs_dir}")
             self.data_scope_hash = None

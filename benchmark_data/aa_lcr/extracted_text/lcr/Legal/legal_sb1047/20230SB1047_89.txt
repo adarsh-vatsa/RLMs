@@ -1,0 +1,1487 @@
+AMENDED IN ASSEMBLY AUGUST 22, 2024
+
+AMENDED IN ASSEMBLY AUGUST 19, 2024
+
+AMENDED IN ASSEMBLY JULY 3, 2024
+
+
+AMENDED IN ASSEMBLY JUNE 20, 2024
+
+AMENDED IN ASSEMBLY JUNE 5, 2024
+
+AMENDED IN SENATE MAY 16, 2024
+
+
+AMENDED IN SENATE APRIL 30, 2024
+
+AMENDED IN SENATE APRIL 16, 2024
+
+AMENDED IN SENATE APRIL 8, 2024
+
+
+AMENDED IN SENATE MARCH 20, 2024
+
+# SENATE BILL No. 1047
+
+
+**Introduced by Senator Wiener**
+
+**(Coauthors: Senators Roth, Rubio, and Stern)**
+
+
+February 7, 2024
+
+An act to add Chapter 22.6 (commencing with Section 22602) to
+Division 8 of the Business and Professions Code, and to add Sections
+11547.6 and 11547.6.1 to the Government Code, relating to artificial
+intelligence.
+
+
+legislative counsel’s digest
+
+
+SB 1047, as amended, Wiener. Safe and Secure Innovation for
+Frontier Artificial Intelligence Models Act.
+
+Existing law requires the Secretary of Government Operations to
+develop a coordinated plan to, among other things, investigate the
+
+89
+
+
+-----
+
+**SB 1047** **2**
+
+feasibility of, and obstacles to, developing standards and technologies
+for state departments to determine digital content provenance. For the
+purpose of informing that coordinated plan, existing law requires the
+secretary to evaluate, among other things, the impact of the proliferation
+of deepfakes, defined to mean audio or visual content that has been
+generated or manipulated by artificial intelligence that would falsely
+appear to be authentic or truthful and that features depictions of people
+appearing to say or do things they did not say or do without their
+consent, on state government, California-based businesses, and residents
+of the state.
+
+This bill would enact the Safe and Secure Innovation for Frontier
+Artificial Intelligence Models Act to, among other things, require that
+a developer, before beginning to initially train a covered model, as
+defined, comply with various requirements, including implementing
+the capability to promptly enact a full shutdown, as defined, and
+implement a written and separate safety and security protocol, as
+specified. The bill would require a developer to retain an unredacted
+copy of the safety and security protocol for as long as the covered model
+is made available for commercial, public, or foreseeably public use plus
+5 years, including records and dates of any updates or revisions and
+would require a developer to grant to the Attorney General access to
+the unredacted safety and security protocol. The bill would prohibit a
+developer from using a covered model or covered model derivative for
+a purpose not exclusively related to the training or reasonable evaluation
+of the covered model or compliance with state or federal law or making
+a covered model or a covered model derivative available for commercial
+or public, or foreseeably public, use, if there is an unreasonable risk
+that the covered model or covered model derivative will cause or
+materially enable a critical harm, as defined. The bill would require a
+developer, beginning January 1, 2026, to annually retain a third-party
+auditor to perform an independent audit of compliance with those
+provisions, as prescribed. The bill would require the auditor to produce
+an audit report, as prescribed, and would require a developer to retain
+an unredacted copy of the audit report for as long as the covered model
+is made available for commercial, public, or foreseeably public use plus
+5 years. The bill would require a developer to grant to the Attorney
+General access to the unredacted auditor’s report upon request. The bill
+would exempt from disclosure under the California Public Records Act
+the safety and security protocol and the auditor’s report described above.
+
+
+89
+
+
+-----
+
+**SB 1047**
+
+
+This bill would require a developer of a covered model to submit to
+the Attorney General a statement of compliance with these provisions,
+as specified. The bill would also require a developer of a covered model
+to report each artificial intelligence safety incident affecting the covered
+model, or any covered model derivative controlled by the developer to
+the Attorney General, as prescribed.
+
+This bill would require a person that operates a computing cluster,
+as defined, to implement written policies and procedures to do certain
+things when a customer utilizes compute resources that would be
+sufficient to train a covered model, including assess whether a
+prospective customer intends to utilize the computing cluster to train a
+covered model.
+
+This bill would authorize the Attorney General to bring a civil action,
+as provided. The bill would also provide for whistleblower protections,
+including by prohibiting a developer of a covered model or a contractor
+or subcontractor of the developer from preventing an employee from
+disclosing information, or retaliating against an employee for disclosing
+information, to the Attorney General or Labor Commissioner if the
+employee has reasonable cause to believe the information indicates the
+developer is out of compliance with certain requirements or that the
+covered model poses an unreasonable risk of critical harm.
+
+This bill would create the Board of Frontier Models within the
+Government Operations Agency, independent of the Department of
+Technology, and provide for the board’s membership. The bill would
+require the Government Operations Agency to, on or before January 1,
+2027, and annually thereafter, issue regulations to, among other things,
+update the definition of a “covered model,” as provided, and would
+require the regulations to be approved by the board before taking effect.
+
+This bill would establish in the Government Operations Agency a
+consortium required to develop a framework for the creation of a public
+cloud computing cluster to be known as “CalCompute” that advances
+the development and deployment of artificial intelligence that is safe,
+ethical, equitable, and sustainable by, among other things, fostering
+research and innovation that benefits the public, as prescribed. The bill
+would on or before January 1, 2026, require the Government Operations
+Agency to submit a report from the consortium to the Legislature with
+that framework. The bill would make those provisions operable only
+upon an appropriation in a budget act for its purposes.
+
+Existing constitutional provisions require that a statute that limits the
+right of access to the meetings of public bodies or the writings of public
+
+89
+
+
+-----
+
+**SB 1047** **4**
+
+officials and agencies be adopted with findings demonstrating the
+interest protected by the limitation and the need for protecting that
+interest.
+
+This bill would make legislative findings to that effect.
+
+
+Vote:  majority.  Appropriation:  no. Fiscal committee:  yes.​
+State-mandated local program:  no.​
+
+_The people of the State of California do enact as follows:_
+
+
+line 1 SECTION 1. This act shall be known, and may be cited, as the
+
+line 2 Safe and Secure Innovation for Frontier Artificial Intelligence
+line 3 Models Act.
+line 4 SEC. 2. The Legislature finds and declares all of the following:
+
+line 5 (a) California is leading the world in artificial intelligence
+
+line 6 innovation and research, through companies large and small, as
+line 7 well as through our remarkable public and private universities.
+line 8 (b) Artificial intelligence, including new advances in generative
+
+line 9 artificial intelligence, has the potential to catalyze innovation and
+
+line 10 the rapid development of a wide range of benefits for Californians
+line 11 and the California economy, including advances in medicine,
+line 12 wildfire forecasting and prevention, and climate science, and to
+line 13 push the bounds of human creativity and capacity.
+line 14 (c) If not properly subject to human controls, future development
+
+line 15 in artificial intelligence may also have the potential to be used to
+line 16 create novel threats to public safety and security, including by
+line 17 enabling the creation and the proliferation of weapons of mass
+line 18 destruction, such as biological, chemical, and nuclear weapons,
+line 19 as well as weapons with cyber-offensive capabilities.
+line 20 (d) The state government has an essential role to play in ensuring
+
+line 21 that California recognizes the benefits of this technology while
+line 22 avoiding the most severe risks, as well as to ensure that artificial
+line 23 intelligence innovation and access to compute is accessible to
+line 24 academic researchers and startups, in addition to large companies.
+line 25 SEC. 3. Chapter 22.6 (commencing with Section 22602) is
+
+line 26 added to Division 8 of the Business and Professions Code, to read:
+line 27
+line 28 Chapter 22.6. Safe and Secure Innovation for Frontier
+
+line 29 Artificial Intelligence Models
+
+line 30
+line 31 22602. As used in this chapter:
+
+89
+
+
+-----
+
+**SB 1047**
+
+
+line 1 (a) “Advanced persistent threat” means an adversary with
+
+line 2 sophisticated levels of expertise and significant resources that
+line 3 allow it, through the use of multiple different attack vectors,
+line 4 including, but not limited to, cyber, physical, and deception, to
+line 5 generate opportunities to achieve its objectives that are typically
+line 6 to establish and extend its presence within the information
+line 7 technology infrastructure of organizations for purposes of
+line 8 exfiltrating information or to undermine or impede critical aspects
+line 9 of a mission, program, or organization or place itself in a position
+
+line 10 to do so in the future.
+line 11 (b) “Artificial intelligence” means an engineered or
+
+line 12 machine-based system that varies in its level of autonomy and that
+line 13 can, for explicit or implicit objectives, infer from the input it
+line 14 receives how to generate outputs that can influence physical or
+line 15 virtual environments.
+line 16 (c) “Artificial intelligence safety incident” means an incident
+
+line 17 that demonstrably increases the risk of a critical harm occurring
+line 18 by means of any of the following:
+line 19 (1) A covered model or covered model derivative autonomously
+
+line 20 engaging in behavior other than at the request of a user.
+line 21 (2) Theft, misappropriation, malicious use, inadvertent release,
+
+line 22 unauthorized access, or escape of the model weights of a covered
+line 23 model or covered model derivative.
+line 24 (3) The critical failure of technical or administrative controls,
+
+line 25 including controls limiting the ability to modify a covered model
+line 26 or covered model derivative.
+line 27 (4) Unauthorized use of a covered model or covered model
+
+line 28 derivative to cause or materially enable critical harm.
+line 29 (d) “Computing cluster” means a set of machines transitively
+
+line 30 connected by data center networking of over 100 gigabits per
+line 31 second that has a theoretical maximum computing capacity of at
+line 32 least 10^20 integer or floating-point operations per second and
+line 33 can be used for training artificial intelligence.
+line 34 (e) (1) “Covered model” means either of the following:
+
+line 35 (A) Before January 1, 2027, “covered model” means either of
+
+line 36 the following:
+line 37 (i) An artificial intelligence model trained using a quantity of
+
+line 38 computing power greater than 10^26 integer or floating-point
+line 39 operations, the cost of which exceeds one hundred million dollars
+line 40 ($100,000,000) when calculated using the average market prices
+
+89
+
+
+-----
+
+**SB 1047**
+
+
+line 1 of cloud compute at the start of training as reasonably assessed by
+line 2 the developer.
+line 3 (ii) An artificial intelligence model created by fine-tuning a
+
+line 4 covered model using a quantity of computing power equal to or
+line 5 greater than three times 10^25 integer or floating-point operations,
+line 6 the cost of which, as reasonably assessed by the developer, exceeds
+line 7 ten million dollars ($10,000,000) if calculated using the average
+line 8 market price of cloud compute at the start of fine-tuning.
+line 9 (B) (i) Except as provided in clause (ii), on and after January
+
+line 10 1, 2027, “covered model” means any of the following:
+line 11 (I) An artificial intelligence model trained using a quantity of
+
+line 12 computing power determined by the Government Operations
+line 13 Agency pursuant to Section 11547.6 of the Government Code, the
+line 14 cost of which exceeds one hundred million dollars ($100,000,000)
+line 15 when calculated using the average market price of cloud compute
+line 16 at the start of training as reasonably assessed by the developer.
+line 17 (II) An artificial intelligence model created by fine-tuning a
+
+line 18 covered model using a quantity of computing power that exceeds
+line 19 a threshold determined by the Government Operations Agency,
+line 20 the cost of which, as reasonably assessed by the developer, exceeds
+line 21 ten million dollars ($10,000,000) if calculated using the average
+line 22 market price of cloud compute at the start of fine-tuning.
+line 23 (ii) If the Government Operations Agency does not adopt a
+
+line 24 regulation governing subclauses (I) and (II) of clause (i) before
+line 25 January 1, 2027, the definition of “covered model” in subparagraph
+line 26 (A) shall be operative until the regulation is adopted.
+line 27 (2) On and after January 1, 2026, the dollar amount in this
+
+line 28 subdivision shall be adjusted annually for inflation to the nearest
+line 29 one hundred dollars ($100) based on the change in the annual
+line 30 California Consumer Price Index for All Urban Consumers
+line 31 published by the Department of Industrial Relations for the most
+line 32 recent annual period ending on December 31 preceding the
+line 33 adjustment.
+line 34 (f) “Covered model derivative” means any of the following:
+
+line 35 (1) An unmodified copy of a covered model.
+
+line 36 (2) A copy of a covered model that has been subjected to
+
+line 37 post-training modifications unrelated to fine-tuning.
+line 38 (3) (A) (i) Before January 1, 2027, a copy of a covered model
+
+line 39 that has been fine-tuned using a quantity of computing power not
+line 40 exceeding three times 10^25 integer or floating point operations,
+
+89
+
+
+-----
+
+**SB 1047**
+
+
+line 1 the cost of which, as reasonably assessed by the developer, exceeds
+line 2 ten million dollars ($10,000,000) if calculated using the average
+line 3 market price of cloud compute at the start of fine-tuning.
+line 4 (ii) On and after January 1, 2027, a copy of a covered model
+
+line 5 that has been fine-tuned using a quantity of computing power not
+line 6 exceeding a threshold determined by the Government Operations
+line 7 Agency, the cost of which, as reasonably assessed by the developer,
+line 8 exceeds ten million dollars ($10,000,000) if calculated using the
+line 9 average market price of cloud compute at the start of fine-tuning.
+
+line 10 (B) If the Government Operations Agency does not adopt a
+
+line 11 regulation governing clause (ii) of subparagraph (A) by January
+line 12 1, 2027, the quantity of computing power specified in clause (i)
+line 13 of subparagraph (A) shall continue to apply until the regulation is
+line 14 adopted.
+line 15 (4) A copy of a covered model that has been combined with
+
+line 16 other software.
+line 17 (g) (1) “Critical harm” means any of the following harms caused
+
+line 18 or materially enabled by a covered model or covered model
+line 19 derivative:
+line 20 (A) The creation or use of a chemical, biological, radiological,
+
+line 21 or nuclear weapon in a manner that results in mass casualties.
+line 22 (B) Mass casualties or at least five hundred million dollars
+
+line 23 ($500,000,000) of damage resulting from cyberattacks on critical
+line 24 infrastructure by a model conducting, or providing precise
+line 25 instructions for conducting, a cyberattack or series of cyberattacks
+line 26 on critical infrastructure.
+line 27 (C) Mass casualties or at least five hundred million dollars
+
+line 28 ($500,000,000) of damage resulting from an artificial intelligence
+line 29 model engaging in conduct that does both of the following:
+line 30 (i) Acts with limited human oversight, intervention, or
+
+line 31 supervision.
+line 32 (ii) Results in death, great bodily injury, property damage, or
+
+line 33 property loss, and would, if committed by a human, constitute a
+line 34 crime specified in the Penal Code that requires intent, recklessness,
+line 35 or gross negligence, or the solicitation or aiding and abetting of
+line 36 such a crime.
+line 37 (D) Other grave harms to public safety and security that are of
+
+line 38 comparable severity to the harms described in subparagraphs (A)
+line 39 to (C), inclusive.
+line 40 (2) “Critical harm” does not include any of the following:
+
+89
+
+
+-----
+
+**SB 1047**
+
+
+line 1 (A) Harms caused or materially enabled by information that a
+
+line 2 covered model or covered model derivative outputs if the
+line 3 information is otherwise reasonably publicly accessible by an
+line 4 ordinary person from sources other than a covered model or
+line 5 covered model derivative.
+line 6 (B) Harms caused or materially enabled by a covered model
+
+line 7 combined with other software, including other models, if the
+line 8 covered model did not materially contribute to the other software’s
+line 9 ability to cause or materially enable the harm.
+
+line 10 (C) Harms that are not caused or materially enabled by the
+
+line 11 developer’s creation, storage, use, or release of a covered model
+line 12 or covered model derivative.
+line 13 (3) On and after January 1, 2026, the dollar amounts in this
+
+line 14 subdivision shall be adjusted annually for inflation to the nearest
+line 15 one hundred dollars ($100) based on the change in the annual
+line 16 California Consumer Price Index for All Urban Consumers
+line 17 published by the Department of Industrial Relations for the most
+line 18 recent annual period ending on December 31 preceding the
+line 19 adjustment.
+line 20 (h) “Critical infrastructure” means assets, systems, and networks,
+
+line 21 whether physical or virtual, the incapacitation or destruction of
+line 22 which would have a debilitating effect on physical security,
+line 23 economic security, public health, or safety in the state.
+line 24 (i) “Developer” means a person that performs the initial training
+
+line 25 of a covered model either by training a model using a sufficient
+line 26 quantity of computing power and cost, or by fine-tuning an existing
+line 27 covered model or covered model derivative using a quantity of
+line 28 computing power and cost greater than the amount specified in
+line 29 subdivision (e).
+line 30 (j) “Fine-tuning” means adjusting the model weights of a trained
+
+line 31 covered model or covered model derivative by exposing it to
+line 32 additional data.
+line 33 (k) “Full shutdown” means the cessation of operation of all of
+
+line 34 the following:
+line 35 (1) The training of a covered model.
+
+line 36 (2) A covered model controlled by a developer.
+
+line 37 (3) All covered model derivatives controlled by a developer.
+
+line 38 (l) “Model weight” means a numerical parameter in an artificial
+
+line 39 intelligence model that is adjusted through training and that helps
+line 40 determine how inputs are transformed into outputs.
+
+89
+
+
+-----
+
+**SB 1047**
+
+
+line 1 (m) “Person” means an individual, proprietorship, firm,
+
+line 2 partnership, joint venture, syndicate, business trust, company,
+line 3 corporation, limited liability company, association, committee, or
+line 4 any other nongovernmental organization or group of persons acting
+line 5 in concert.
+line 6 (n) “Post-training modification” means modifying the
+
+line 7 capabilities of a covered model or covered model derivative by
+line 8 any means, including, but not limited to, fine-tuning, providing
+line 9 the model with access to tools or data, removing safeguards against
+
+line 10 hazardous misuse or misbehavior of the model, or combining the
+line 11 model with, or integrating it into, other software.
+line 12 (o) “Safety and security protocol” means documented technical
+
+line 13 and organizational protocols that meet both of the following
+line 14 criteria:
+line 15 (1) The protocols are used to manage the risks of developing
+
+line 16 and operating covered models and covered model derivatives
+line 17 across their life cycle, including risks posed by causing or enabling
+line 18 or potentially causing or enabling the creation of covered model
+line 19 derivatives.
+line 20 (2) The protocols specify that compliance with the protocols is
+
+line 21 required in order to train, operate, possess, and provide external
+line 22 access to the developer’s covered model and covered model
+line 23 derivatives.
+line 24 22603. (a) Before beginning to initially train a covered model,
+
+line 25 the developer shall do all of the following:
+line 26 (1) Implement reasonable administrative, technical, and physical
+
+line 27 cybersecurity protections to prevent unauthorized access to, misuse
+line 28 of, or unsafe post-training modifications of, the covered model
+line 29 and all covered model derivatives controlled by the developer that
+line 30 are appropriate in light of the risks associated with the covered
+line 31 model, including from advanced persistent threats or other
+line 32 sophisticated actors.
+line 33 (2) (A) Implement the capability to promptly enact a full
+
+line 34 shutdown.
+line 35 (B) When enacting a full shutdown, the developer shall take
+
+line 36 into account, as appropriate, the risk that a shutdown of the covered
+line 37 model, or particular covered model derivatives, could cause
+line 38 disruptions to critical infrastructure.
+line 39 (3) Implement a written and separate safety and security protocol
+
+line 40 that does all of the following:
+
+89
+
+
+-----
+
+**SB 1047** **10**
+
+
+line 1 (A) Specifies protections and procedures that, if successfully
+
+line 2 implemented, would successfully comply with the developer’s
+line 3 duty to take reasonable care to avoid producing a covered model
+line 4 or covered model derivative that poses an unreasonable risk of
+line 5 causing or materially enabling a critical harm.
+line 6 (B) States compliance requirements in an objective manner and
+
+line 7 with sufficient detail and specificity to allow the developer or a
+line 8 third party to readily ascertain whether the requirements of the
+line 9 safety and security protocol have been followed.
+
+line 10 (C) Identifies a testing procedure, which takes safeguards into
+
+line 11 account as appropriate, that takes reasonable care to evaluate if
+line 12 both of the following are true:
+line 13 (i) A covered model poses an unreasonable risk of causing or
+
+line 14 enabling a critical harm.
+line 15 (ii) Covered model derivatives pose an unreasonable risk of
+
+line 16 causing or enabling a critical harm.
+line 17 (D) Describes in detail how the testing procedure assesses the
+
+line 18 risks associated with post-training modifications.
+line 19 (E) Describes in detail how the testing procedure addresses the
+
+line 20 possibility that a covered model or covered model derivative can
+line 21 be used to make post-training modifications or create another
+line 22 covered model in a manner that may cause or materially enable a
+line 23 critical harm.
+line 24 (F) Describes in detail how the developer will fulfill their
+
+line 25 obligations under this chapter.
+line 26 (G) Describes in detail how the developer intends to implement
+
+line 27 the safeguards and requirements referenced in this section.
+line 28 (H) Describes in detail the conditions under which a developer
+
+line 29 would enact a full shutdown.
+line 30 (I) Describes in detail the procedure by which the safety and
+
+line 31 security protocol may be modified.
+line 32 (4) Ensure that the safety and security protocol is implemented
+
+line 33 as written, including by designating senior personnel to be
+line 34 responsible for ensuring compliance by employees and contractors
+line 35 working on a covered model, or any covered model derivatives
+line 36 controlled by the developer, monitoring and reporting on
+line 37 implementation.
+line 38 (5) Retain an unredacted copy of the safety and security protocol
+
+line 39 for as long as the covered model is made available for commercial,
+
+89
+
+
+-----
+
+**11** **SB 1047**
+
+
+line 1 public, or foreseeably public use plus five years, including records
+line 2 and dates of any updates or revisions.
+line 3 (6) Conduct an annual review of the safety and security protocol
+
+line 4 to account for any changes to the capabilities of the covered model
+line 5 and industry best practices and, if necessary, make modifications
+line 6 to the policy.
+line 7 (7) (A) (i) Conspicuously publish a copy of the redacted safety
+
+line 8 and security protocol and transmit a copy of the redacted safety
+line 9 and security protocol to the Attorney General.
+
+line 10 (ii) A redaction in the safety and security protocol may be made
+
+line 11 only if the redaction is reasonably necessary to protect any of the
+line 12 following:
+line 13 (I) Public safety.
+
+line 14 (II) Trade secrets, as defined in Section 3426.1 of the Civil
+
+line 15 Code.
+line 16 (III) Confidential information pursuant to state and federal law.
+
+line 17 (B) The developer shall grant to the Attorney General access
+
+line 18 to the unredacted safety and security protocol upon request.
+line 19 (C) A safety and security protocol disclosed to the Attorney
+
+line 20 General pursuant to this paragraph is exempt from the California
+line 21 Public Records Act (Division 10 (commencing with Section
+line 22 7920.000) of Title 1 of the Government Code).
+line 23 (D) If the safety and security protocol is materially modified,
+
+line 24 conspicuously publish and transmit to the Attorney General an
+line 25 updated redacted copy within 30 days of the modification.
+line 26 (8) Take reasonable care to implement other appropriate
+
+line 27 measures to prevent covered models and covered model derivatives
+line 28 from posing unreasonable risks of causing or materially enabling
+line 29 critical harms.
+line 30 (b) Before using a covered model or covered model derivative
+
+line 31 for a purpose not exclusively related to the training or reasonable
+line 32 evaluation of the covered model or compliance with state or federal
+line 33 law or before making a covered model or covered model derivative
+line 34 available for commercial or public, or foreseeably public, use, the
+line 35 developer of a covered model shall do all of the following:
+line 36 (1) Assess whether the covered model is reasonably capable of
+
+line 37 causing or materially enabling a critical harm.
+line 38 (2) Record, as and when reasonably possible, and retain for as
+
+line 39 long as the covered model is made available for commercial,
+line 40 public, or foreseeably public use plus five years information on
+
+89
+
+
+-----
+
+**SB 1047** **12**
+
+
+line 1 the specific tests and test results used in the assessment pursuant
+line 2 to paragraph (1) that provides sufficient detail for third parties to
+line 3 replicate the testing procedure.
+line 4 (3) Take reasonable care to implement appropriate safeguards
+
+line 5 to prevent the covered model and covered model derivatives from
+line 6 causing or materially enabling a critical harm.
+line 7 (4) Take reasonable care to ensure, to the extent reasonably
+
+line 8 possible, that the covered model’s actions and the actions of
+line 9 covered model derivatives, as well as critical harms resulting from
+
+line 10 their actions, can be accurately and reliably attributed to them.
+line 11 (c) A developer shall not use a covered model or covered model
+
+line 12 derivative for a purpose not exclusively related to the training or
+line 13 reasonable evaluation of the covered model or compliance with
+line 14 state or federal law or make a covered model or a covered model
+line 15 derivative available for commercial or public, or foreseeably public,
+line 16 use, if there is an unreasonable risk that the covered model or
+line 17 covered model derivative will cause or materially enable a critical
+line 18 harm.
+line 19 (d) A developer of a covered model shall annually reevaluate
+
+line 20 the procedures, policies, protections, capabilities, and safeguards
+line 21 implemented pursuant to this section.
+line 22 (e) (1) Beginning January 1, 2026, a developer of a covered
+
+line 23 model shall annually retain a third-party auditor that conducts
+line 24 audits consistent with best practices for auditors to perform an
+line 25 independent audit of compliance with the requirements of this
+line 26 section.
+line 27 (2) An auditor shall conduct audits consistent with regulations
+
+line 28 issued by the Government Operations Agency pursuant to
+line 29 subdivision (d) of Section 11547.6 of the Government Code.
+line 30 (3) The auditor shall be granted access to unredacted materials
+
+line 31 as necessary to comply with the auditor’s obligations under this
+line 32 subdivision.
+line 33 (4) The auditor shall produce an audit report including all of
+
+line 34 the following:
+line 35 (A) A detailed assessment of the developer’s steps to comply
+
+line 36 with the requirements of this section.
+line 37 (B) If applicable, any identified instances of noncompliance
+
+line 38 with the requirements of this section, and any recommendations
+line 39 for how the developer can improve its policies and processes for
+line 40 ensuring compliance with the requirements of this section.
+
+89
+
+
+-----
+
+**13** **SB 1047**
+
+
+line 1 (C) A detailed assessment of the developer’s internal controls,
+
+line 2 including its designation and empowerment of senior personnel
+line 3 responsible for ensuring compliance by the developer, its
+line 4 employees, and its contractors.
+line 5 (D) The signature of the lead auditor certifying the results of
+
+line 6 the auditor.
+line 7 (5) The developer shall retain an unredacted copy of the audit
+
+line 8 report for as long as the covered model is made available for
+line 9 commercial, public, or foreseeably public use plus five years.
+
+line 10 (6) (A) (i) The developer shall conspicuously publish a redacted
+
+line 11 copy of the auditor’s report and transmit to the Attorney General
+line 12 a copy of the redacted auditor’s report.
+line 13 (ii) A redaction in the auditor’s report may be made only if the
+
+line 14 redaction is reasonably necessary to protect any of the following:
+line 15 (I) Public safety.
+
+line 16 (II) Trade secrets, as defined in Section 3426.1 of the Civil
+
+line 17 Code.
+line 18 (III) Confidential information pursuant to state and federal law.
+
+line 19 (B) The developer shall grant to the Attorney General access
+
+line 20 to the unredacted auditor’s report upon request.
+line 21 (C) An auditor’s report disclosed to the Attorney General
+
+line 22 pursuant to this paragraph is exempt from the California Public
+line 23 Records Act (Division 10 (commencing with Section 7920.000)
+line 24 of Title 1 of the Government Code).
+line 25 (7) An auditor shall not knowingly make a material
+
+line 26 misrepresentation in the auditor’s report.
+line 27 (f) (1) (A) A developer of a covered model shall annually
+
+line 28 submit to the Attorney General a statement of compliance with
+line 29 the requirements of this section signed by the chief technology
+line 30 officer, or a more senior corporate officer, that meets the
+line 31 requirements of paragraph (2).
+line 32 (B) This paragraph applies if the covered model or any covered
+
+line 33 model derivatives controlled by the developer remain in
+line 34 commercial or public use or remain available for commercial or
+line 35 public use.
+line 36 (2) In a statement submitted pursuant to paragraph (1), a
+
+line 37 developer shall specify or provide, at a minimum, all of the
+line 38 following:
+line 39 (A) An assessment of the nature and magnitude of critical harms
+
+line 40 that the covered model or covered model derivatives may
+
+89
+
+
+-----
+
+**SB 1047** **14**
+
+
+line 1 reasonably cause or materially enable and the outcome of the
+line 2 assessment required by paragraph (1) of subdivision (b).
+line 3 (B) An assessment of the risk that compliance with the safety
+
+line 4 and security protocol may be insufficient to prevent the covered
+line 5 model or covered model derivatives from causing or materially
+line 6 enabling critical harms.
+line 7 (C) A description of the process used by the signing officer to
+
+line 8 verify compliance with the requirements of this section, including
+line 9 a description of the materials reviewed by the signing officer, a
+
+line 10 description of testing or other evaluation performed to support the
+line 11 statement and the contact information of any third parties relied
+line 12 upon to validate compliance.
+line 13 (g) A developer of a covered model shall report each artificial
+
+line 14 intelligence safety incident affecting the covered model, or any
+line 15 covered model derivatives controlled by the developer, to the
+line 16 Attorney General within 72 hours of the developer learning of the
+line 17 artificial intelligence safety incident or within 72 hours of the
+line 18 developer learning facts sufficient to establish a reasonable belief
+line 19 that an artificial intelligence safety incident has occurred.
+line 20 (h) (1) A developer shall submit to the Attorney General a
+
+line 21 statement described by subdivision (f) no more than 30 days after
+line 22 using a covered model or covered model derivative for a purpose
+line 23 not exclusively related to the training or reasonable evaluation of
+line 24 the covered model or compliance with state or federal law or
+line 25 making a covered model or covered model derivative available
+line 26 for commercial or public, or foreseeably public, use for the first
+line 27 time.
+line 28 (2) This subdivision does not apply with respect to a covered
+
+line 29 model derivative if the developer submitted a statement described
+line 30 by subdivision (f) for the applicable covered model from which
+line 31 the covered model derivative is derived.
+line 32 (i) In fulfilling its obligations under this chapter, a developer
+
+line 33 shall consider industry best practices and applicable guidance from
+line 34 the U.S. Artificial Intelligence Safety Institute, National Institute
+line 35 of Standards and Technology, the Government Operations Agency,
+line 36 and other reputable standard-setting organizations.
+line 37 (j) (1) This section shall not apply to products or services to
+
+line 38 the extent that the requirements would strictly conflict with the
+line 39 terms of a contract with a federal government entity and a
+line 40 developer of a covered model.
+
+89
+
+
+-----
+
+**15** **SB 1047**
+
+
+line 1 (2) This section applies to the development, use, or commercial
+
+line 2 or public release of a covered model or covered model derivative
+line 3 for any use that is not the subject of a contract with a federal
+line 4 government entity, even if that covered model or covered model
+line 5 derivative has already been developed, trained, or used by a federal
+line 6 government entity.
+line 7 22604. (a) A person that operates a computing cluster shall
+
+line 8 implement written policies and procedures to do all of the following
+line 9 when a customer utilizes compute resources that would be
+
+line 10 sufficient to train a covered model:
+line 11 (1) Obtain the prospective customer’s basic identifying
+
+line 12 information and business purpose for utilizing the computing
+line 13 cluster, including all of the following:
+line 14 (A) The identity of the prospective customer.
+
+line 15 (B) The means and source of payment, including any associated
+
+line 16 financial institution, credit card number, account number, customer
+line 17 identifier, transaction identifiers, or virtual currency wallet or
+line 18 wallet address identifier.
+line 19 (C) The email address and telephonic contact information used
+
+line 20 to verify the prospective customer’s identity.
+line 21 (2) Assess whether the prospective customer intends to utilize
+
+line 22 the computing cluster to train a covered model.
+line 23 (3) If a customer repeatedly utilizes computer resources that
+
+line 24 would be sufficient to train a covered model, validate the
+line 25 information initially collected pursuant to paragraph (1) and
+line 26 conduct the assessment required pursuant to paragraph (2) prior
+line 27 to each utilization.
+line 28 (4) Retain a customer’s Internet Protocol addresses used for
+
+line 29 access or administration and the date and time of each access or
+line 30 administrative action.
+line 31 (5) Maintain for seven years and provide to the Attorney
+
+line 32 General, upon request, appropriate records of actions taken under
+line 33 this section, including policies and procedures put into effect.
+line 34 (6) Implement the capability to promptly enact a full shutdown
+
+line 35 of any resources being used to train or operate models under the
+line 36 customer’s control.
+line 37 (b) A person that operates a computing cluster shall consider
+
+line 38 industry best practices and applicable guidance from the U.S.
+line 39 Artificial Intelligence Safety Institute, National Institute of
+
+89
+
+
+-----
+
+**SB 1047** **16**
+
+
+line 1 Standards and Technology, and other reputable standard-setting
+line 2 organizations.
+line 3 (c) In complying with the requirements of this section, a person
+
+line 4 that operates a computing cluster may impose reasonable
+line 5 requirements on customers to prevent the collection or retention
+line 6 of personal information that the person that operates a computing
+line 7 cluster would not otherwise collect or retain, including a
+line 8 requirement that a corporate customer submit corporate contact
+line 9 information rather than information that would identify a specific
+
+line 10 individual.
+line 11 22606. (a) The Attorney General may bring a civil action for
+
+line 12 a violation of this chapter and to recover all of the following:
+line 13 (1) For a violation that causes death or bodily harm to another
+
+line 14 human, harm to property, theft or misappropriation of property,
+line 15 or that constitutes an imminent risk or threat to public safety that
+line 16 occurs on or after January 1, 2026, a civil penalty in an amount
+line 17 not exceeding 10 percent of the cost of the quantity of computing
+line 18 power used to train the covered model to be calculated using
+line 19 average market prices of cloud compute at the time of training for
+line 20 a first violation and in an amount not exceeding 30 percent of that
+line 21 value for any subsequent violation.
+line 22 (2) For a violation of Section 22607 that would constitute a
+
+line 23 violation of the Labor Code, a civil penalty specified in subdivision
+line 24 (f) of Section 1102.5 of the Labor Code.
+line 25 (3) For a person that operates a computing cluster for a violation
+
+line 26 of Section 22604, for an auditor for a violation of paragraph (6)
+line 27 of subdivision (e) of Section 22603, or for an auditor who
+line 28 intentionally or with reckless disregard violates a provision of
+line 29 subdivision (e) of Section 22603 other than paragraph (6) or
+line 30 regulations issued by the Government Operations Agency pursuant
+line 31 to Section 11547.6 of the Government Code, a civil penalty in an
+line 32 amount not exceeding fifty thousand dollars ($50,000) for a first
+line 33 violation of Section 22604, not exceeding one hundred thousand
+line 34 dollars ($100,000) for any subsequent violation, and not exceeding
+line 35 ten million dollars ($10,000,000) in the aggregate for related
+line 36 violations.
+line 37 (4) Injunctive or declaratory relief.
+
+line 38 (5) (A) Monetary damages.
+
+line 39 (B) Punitive damages pursuant to subdivision (a) of Section
+
+line 40 3294 of the Civil Code.
+
+89
+
+
+-----
+
+**17** **SB 1047**
+
+
+line 1 (6) Attorney’s fees and costs.
+
+line 2 (7) Any other relief that the court deems appropriate.
+
+line 3 (b) In determining whether the developer exercised reasonable
+
+line 4 care as required in Section 22603, all of the following
+line 5 considerations are relevant but not conclusive:
+line 6 (1) The quality of a developer’s safety and security protocol.
+
+line 7 (2) The extent to which the developer faithfully implemented
+
+line 8 and followed its safety and security protocol.
+line 9 (3) Whether, in quality and implementation, the developer’s
+
+line 10 safety and security protocol was inferior, comparable, or superior
+line 11 to those of developers of comparably powerful models.
+line 12 (4) The quality and rigor of the developer’s investigation,
+
+line 13 documentation, evaluation, and management of risks of critical
+line 14 harm posed by its model.
+line 15 (c) (1) A provision within a contract or agreement that seeks
+
+line 16 to waive, preclude, or burden the enforcement of a liability arising
+line 17 from a violation of this chapter, or to shift that liability to any
+line 18 person or entity in exchange for their use or access of, or right to
+line 19 use or access, a developer’s products or services, including by
+line 20 means of a contract of adhesion, is void as a matter of public
+line 21 policy.
+line 22 (2) A court shall disregard corporate formalities and impose
+
+line 23 joint and several liability on affiliated entities for purposes of
+line 24 effectuating the intent of this section to the maximum extent
+line 25 allowed by law if the court concludes that both of the following
+line 26 are true:
+line 27 (A) The affiliated entities, in the development of the corporate
+
+line 28 structure among the affiliated entities, took steps to purposely and
+line 29 unreasonably limit or avoid liability.
+line 30 (B) As the result of the steps described in subparagraph (A),
+
+line 31 the corporate structure of the developer or affiliated entities would
+line 32 frustrate recovery of penalties, damages, or injunctive relief under
+line 33 this section.
+line 34 (d) Penalties collected pursuant to this section by the Attorney
+
+line 35 General shall be deposited into the Public Rights Law Enforcement
+line 36 Special Fund established pursuant to Section 12530 of the
+line 37 Government Code.
+line 38 (e) This section does not limit the application of other laws.
+
+line 39 22607. (a) A developer of a covered model or a contractor or
+
+line 40 subcontractor of the developer shall not do any of the following:
+
+89
+
+
+-----
+
+**SB 1047** **18**
+
+
+line 1 (1) Prevent an employee from disclosing information to the
+
+line 2 Attorney General or the Labor Commissioner, including through
+line 3 terms and conditions of employment or seeking to enforce terms
+line 4 and conditions of employment if the employee has reasonable
+line 5 cause to believe the information indicates either of the following:
+line 6 (A) The developer is out of compliance with the requirements
+
+line 7 of Section 22603.
+line 8 (B) An artificial intelligence model, including a model that is
+
+line 9 not a covered model or a covered model derivative, poses an
+
+line 10 unreasonable risk of causing or materially enabling critical harm,
+line 11 even if the employer is not out of compliance with any law.
+line 12 (2) Retaliate against an employee for disclosing information to
+
+line 13 the Attorney General or the Labor Commissioner pursuant to
+line 14 paragraph (1).
+line 15 (3) Make false or materially misleading statements related to
+
+line 16 its safety and security protocol in a manner that violates Part 2
+line 17 (commencing with Section 16600) of Division 7 or any other
+line 18 provision of state law.
+line 19 (b) An employee harmed by a violation of this subdivision may
+
+line 20 petition a court for appropriate temporary or preliminary injunctive
+line 21 relief as provided in Sections 1102.61 and 1102.62 of the Labor
+line 22 Code.
+line 23 (c) (1) The Attorney General or Labor Commissioner may
+
+line 24 publicly release or provide to the Governor any complaint, or a
+line 25 summary of that complaint, pursuant to this section if the Attorney
+line 26 General or the Labor Commissioner concludes that doing so will
+line 27 serve the public interest.
+line 28 (2) If the Attorney General or the Labor Commissioner publicly
+
+line 29 releases a complaint, or a summary of a complaint, pursuant to
+line 30 paragraph (1), the Attorney General or the Labor Commissioner
+line 31 shall redact from the complaint any information that is confidential
+line 32 or otherwise exempt from public disclosure pursuant to the
+line 33 California Public Records Act (Division 10 (commencing with
+line 34 Section 7920.000) of Title 1 of the Government Code) and any
+line 35 information that the Attorney General or the Labor Commissioner
+line 36 determines would likely pose an unreasonable risk to public safety
+line 37 if it were disclosed to the public.
+line 38 (d) A developer shall provide a clear notice to all employees
+
+line 39 working on covered models and covered model derivatives of their
+line 40 rights and responsibilities under this section, including the right
+
+89
+
+
+-----
+
+**19** **SB 1047**
+
+
+line 1 of employees of contractors and subcontractors to use the
+line 2 developer’s internal process for making protected disclosures
+line 3 pursuant to subdivision (e). A developer is presumed to be in
+line 4 compliance with the requirements of this subdivision if the
+line 5 developer does either of the following:
+line 6 (1) At all times post and display within all workplaces
+
+line 7 maintained by the developer a notice to all employees of their
+line 8 rights and responsibilities under this section, ensure that all new
+line 9 employees receive equivalent notice, and ensure that employees
+
+line 10 who work remotely periodically receive an equivalent notice.
+line 11 (2) No less frequently than once every year, provides written
+
+line 12 notice to all employees of their rights and responsibilities under
+line 13 this chapter and ensures that the notice is received and
+line 14 acknowledged by all of those employees.
+line 15 (e) (1) (A) A developer shall provide a reasonable internal
+
+line 16 process through which an employee may anonymously disclose
+line 17 information to the developer if the employee believes in good faith
+line 18 that the information indicates that the developer has violated any
+line 19 provision of Section 22603 or any other law, or has made false or
+line 20 materially misleading statements related to its safety and security
+line 21 protocol, or failed to disclose known risks to employees, including,
+line 22 at a minimum, a monthly update to the person who made the
+line 23 disclosure regarding the status of the developer’s investigation of
+line 24 the disclosure and the actions taken by the developer in response
+line 25 to the disclosure.
+line 26 (B) The process required by this paragraph shall apply to
+
+line 27 employees of the developer’s contractors and subcontractors
+line 28 working on covered models and covered model derivatives and
+line 29 allow those employees to disclose the same information to the
+line 30 developer that an employee of the developer may disclose and
+line 31 provide the same anonymity and protections against retaliation to
+line 32 the employees of the contractor or subcontractor that apply to
+line 33 disclosures by employees of the developer.
+line 34 (2) The disclosures and responses of the process required by
+
+line 35 this subdivision shall be maintained for a minimum of seven years
+line 36 from the date when the disclosure or response is created. Each
+line 37 disclosure and response shall be shared with officers and directors
+line 38 of the developer whose acts or omissions are not implicated by
+line 39 the disclosure or response no less frequently than once per quarter.
+line 40 In the case of a report or disclosure regarding alleged misconduct
+
+89
+
+
+-----
+
+**SB 1047** **20**
+
+
+line 1 by a contractor or subcontractor, the developer shall notify the
+line 2 officers and directors of the contractor or subcontractor whose acts
+line 3 or omissions are not implicated by the disclosure or response about
+line 4 the status of their investigation no less frequently than once per
+line 5 quarter.
+line 6 (f) This section does not limit protections provided to employees
+
+line 7 by Section 1102.5 of the Labor Code, Section 12964.5 of the
+line 8 Government Code, or other law.
+line 9 (g) As used in this section:
+
+line 10 (1) “Employee” has the same meaning as defined in Section
+
+line 11 1132.4 of the Labor Code and includes both of the following:
+line 12 (A) Contractors or subcontractors and unpaid advisors involved
+
+line 13 with assessing, managing, or addressing the risk of critical harm
+line 14 from covered models and covered model derivatives.
+line 15 (B) Corporate officers.
+
+line 16 (2) “Contractor or subcontractor” has the same meaning as in
+
+line 17 Section 1777.1 of the Labor Code.
+line 18 22608. The duties and obligations imposed by this chapter are
+
+line 19 cumulative with any other duties or obligations imposed under
+line 20 other law and shall not be construed to relieve any party from any
+line 21 duties or obligations imposed under other law and do not limit any
+line 22 rights or remedies under existing law.
+line 23 22609. This chapter does not apply to the extent that it is
+
+line 24 preempted by federal law.
+line 25 SEC. 4. Section 11547.6 is added to the Government Code, to
+
+line 26 read:
+line 27 11547.6. (a) As used in this section, “critical harm” has the
+
+line 28 same meaning as defined in Section 22602 of the Business and
+line 29 Professions Code.
+line 30 (b) There is hereby established the Board of Frontier Models.
+
+line 31 The board shall be housed in the Government Operations Agency
+line 32 and shall be independent of the Department of Technology. The
+line 33 Governor may appoint an executive officer of the board, subject
+line 34 to Senate confirmation, who shall hold the office at the pleasure
+line 35 of the Governor. The executive officer shall be the administrative
+line 36 head of the board and shall exercise all duties and functions
+line 37 necessary to ensure that the responsibilities of the board are
+line 38 successfully discharged.
+line 39 (c) (1) Commencing January 1, 2026, the Board of Frontier
+
+line 40 Models shall be composed of nine members, as follows:
+
+89
+
+
+-----
+
+**21** **SB 1047**
+
+
+line 1 (1)
+
+line 2 _(A) A member of the open-source community appointed by the_
+
+line 3 Governor and subject to Senate confirmation.
+line 4 (2)
+
+line 5 _(B) A member of the artificial intelligence industry appointed_
+
+line 6 by the Governor and subject to Senate confirmation.
+line 7 (3)
+
+line 8 _(C) An expert in chemical, biological, radiological, or nuclear_
+
+line 9 weapons appointed by the Governor and subject to Senate
+
+line 10 confirmation.
+line 11 (4)
+
+line 12 _(D) An expert in artificial intelligence safety appointed by the_
+
+line 13 Governor and subject to Senate confirmation.
+line 14 (5)
+
+line 15 _(E) An expert in cybersecurity of critical infrastructure appointed_
+
+line 16 by the Governor and subject to Senate confirmation.
+line 17 (6)
+
+line 18 _(F) Two members who are academics with expertise in artificial_
+
+line 19 _intelligence appointed by the Speaker of the Assembly._
+line 20 (7)
+
+line 21 _(G) Two members appointed by the Senate Rules Committee._
+
+line 22 _(2) A member of the Board of Frontier Models shall meet all of_
+
+line 23 _the following criteria:_
+line 24 _(A) A member shall be free of direct and indirect external_
+
+line 25 _influence and shall not seek or take instructions from another._
+line 26 _(B) A member shall not take an action or engage in an_
+
+line 27 _occupation, whether gainful or not, that is incompatible with the_
+line 28 _member’s duties._
+line 29 _(C) A member shall not, either at the time of the member’s_
+
+line 30 _appointment or during the member’s term, have a financial interest_
+line 31 _in an entity that is subject to regulation by the board._
+line 32 _(3) A member of the board shall serve at the pleasure of the_
+
+line 33 _member’s appointing authority but shall serve for no longer than_
+line 34 _eight consecutive years._
+line 35 (d) (1) On or before January 1, 2027, and annually thereafter,
+
+line 36 the Government Operations Agency shall issue regulations to
+line 37 update both of the following thresholds in the definition of a
+line 38 “covered model” to ensure that it accurately reflects technological
+line 39 developments, scientific literature, and widely accepted national
+line 40 and international standards and applies to artificial intelligence
+
+89
+
+
+-----
+
+**SB 1047** **22**
+
+
+line 1 models that pose significant risk of causing or materially enabling
+line 2 critical harms.
+line 3 (2) The updated definition shall contain both of the following:
+
+line 4 (A) The initial compute threshold that an artificial intelligence
+
+line 5 model shall exceed to be considered a covered model.
+line 6 (B) The fine-tuning compute threshold that an artificial
+
+line 7 intelligence model shall meet to be considered a covered model.
+line 8 (3) In developing regulations pursuant to this subdivision, the
+
+line 9 Government Operations Agency shall take into account all of the
+
+line 10 following:
+line 11 (A) The quantity of computing power used to train covered
+
+line 12 models that have been identified as being reasonably likely to
+line 13 cause or materially enable a critical harm.
+line 14 (B) Similar thresholds used in federal law, guidance, or
+
+line 15 regulations for the management of artificial intelligence models
+line 16 with reasonable risks of causing or enabling critical harms.
+line 17 (C) Input from stakeholders, including academics, industry, the
+
+line 18 open-source community, and government entities.
+line 19 (e) (1) On or before January 1, 2027, and annually thereafter,
+
+line 20 the Government Operations Agency shall issue regulations to
+line 21 establish binding auditing requirements applicable to audits
+line 22 conducted pursuant to subdivision (e) of Section 22603 of the
+line 23 Business and Professions Code to ensure the integrity,
+line 24 independence, efficiency, and effectiveness of the auditing process.
+line 25 In developing regulations pursuant to this subdivision, the
+line 26 Government Operations Agency shall take into account both of
+line 27 the following:
+line 28 (A) Relevant standards or requirements imposed under federal
+
+line 29 or state law or through self-regulatory or standards-setting bodies.
+line 30 (B) Input from stakeholders, including academics, industry, and
+
+line 31 government entities, including from the open-source community.
+line 32 (2) Any regulations issued pursuant to paragraph (1) shall, at a
+
+line 33 minimum, be consistent with guidance issued by the U.S. Artificial
+line 34 Intelligence Safety Institute and the National Institute of Standards
+line 35 and Technology.
+line 36 (f) (1) On or before January 1, 2027, and annually thereafter,
+
+line 37 the Government Operations Agency shall issue guidance for
+line 38 preventing unreasonable risks of covered models and covered
+line 39 model derivatives causing or materially enabling critical harms,
+line 40 including, but not limited to, more specific components of, or
+
+89
+
+
+-----
+
+**23** **SB 1047**
+
+
+line 1 requirements under, the duties required under Section 22603 of
+line 2 the Business and Professions Code.
+line 3 (2) Any guidance issued pursuant to paragraph (1) shall, at a
+
+line 4 minimum, be consistent with guidance issued by the U.S. Artificial
+line 5 Intelligence Safety Institute and the National Institute of Standards
+line 6 and Technology.
+line 7 (g) Regulations and guidance adopted pursuant to this section
+
+line 8 shall be approved by the Board of Frontier Models before taking
+line 9 effect.
+
+line 10 SEC. 5. Section 11547.6.1 is added to the Government Code,
+
+line 11 to read:
+line 12 11547.6.1. (a) There is hereby established in the Government
+
+line 13 Operations Agency a consortium that shall develop, pursuant to
+line 14 this section, a framework for the creation of a public cloud
+line 15 computing cluster to be known as “CalCompute.”
+line 16 (b) The consortium shall develop a framework for creation of
+
+line 17 CalCompute that advances the development and deployment of
+line 18 artificial intelligence that is safe, ethical, equitable, and sustainable
+line 19 by doing, at a minimum, both of the following:
+line 20 (1) Fostering research and innovation that benefits the public.
+
+line 21 (2) Enabling equitable innovation by expanding access to
+
+line 22 computational resources.
+line 23 (c) The consortium shall make reasonable efforts to ensure that
+
+line 24 CalCompute is established within the University of California to
+line 25 the extent possible.
+line 26 (d) CalCompute shall include, but not be limited to, all of the
+
+line 27 following:
+line 28 (1) A fully owned and hosted cloud platform.
+
+line 29 (2) Necessary human expertise to operate and maintain the
+
+line 30 platform.
+line 31 (3) Necessary human expertise to support, train, and facilitate
+
+line 32 use of CalCompute.
+line 33 (e) The consortium shall operate in accordance with all relevant
+
+line 34 labor and workforce laws and standards.
+line 35 (f) (1) On or before January 1, 2026, the Government
+
+line 36 Operations Agency shall submit, pursuant to Section 9795, a report
+line 37 from the consortium to the Legislature with the framework
+line 38 developed pursuant to subdivision (b) for creation and operation
+line 39 of CalCompute.
+
+89
+
+
+-----
+
+**SB 1047** **24**
+
+
+line 1 (2) The report required by this subdivision shall include all of
+
+line 2 the following elements:
+line 3 (A) A landscape analysis of California’s current public, private,
+
+line 4 and nonprofit cloud computing platform infrastructure.
+line 5 (B) An analysis of the cost to the state to build and maintain
+
+line 6 CalCompute and recommendations on potential funding sources.
+line 7 (C) Recommendations for the governance structure and ongoing
+
+line 8 operation of CalCompute.
+line 9 (D) Recommendations on the parameters for use of CalCompute,
+
+line 10 including, but not limited to, a process for determining which users
+line 11 and projects will be supported by CalCompute.
+line 12 (E) An analysis of the state’s technology workforce and
+
+line 13 recommendations for equitable pathways to strengthen the
+line 14 workforce, including the role of CalCompute.
+line 15 (F) A detailed description of any proposed partnerships,
+
+line 16 contracts, or licensing agreements with nongovernmental entities,
+line 17 including, but not limited to, technology-based companies, that
+line 18 demonstrates compliance with the requirements of subdivisions
+line 19 (c) and (d).
+line 20 (G) Recommendations regarding how the creation and ongoing
+
+line 21 management of CalCompute can prioritize the use of the current
+line 22 public sector workforce.
+line 23 (g) (1) The consortium shall, consistent with state constitutional
+
+line 24 law, consist of 14 members selected from among all of the
+line 25 following:
+line 26 (A) Representatives of the University of California and other
+
+line 27 public and private academic research institutions and national
+line 28 laboratories.
+line 29 (B) Representatives of impacted workforce labor organizations.
+
+line 30 (C) Representatives of stakeholder groups with relevant
+
+line 31 expertise and experience, including, but not limited to, ethicists,
+line 32 consumer rights advocates, and other public interest advocates.
+line 33 (D) Experts in technology and artificial intelligence to provide
+
+line 34 technical assistance.
+line 35 (E) Personnel from other relevant departments and agencies as
+
+line 36 necessary.
+line 37 (2) Eight members of the consortium shall be selected by the
+
+line 38 Secretary of Government Operations, and the President Pro
+line 39 Tempore of the Senate and the Speaker of the Assembly shall each
+line 40 select three members.
+
+89
+
+
+-----
+
+**25** **SB 1047**
+
+
+line 1 (h) If CalCompute is established within the University of
+
+line 2 California pursuant to subdivision (c), the University of California
+line 3 may receive private donations for the purposes of implementing
+line 4 CalCompute.
+line 5 (i) This section shall become operative only upon an
+
+line 6 appropriation in a budget act for the purposes of this section.
+line 7 SEC. 6. The provisions of this act are severable. If any
+
+line 8 provision of this act or its application is held invalid, that invalidity
+line 9 shall not affect other provisions or applications that can be given
+
+line 10 effect without the invalid provision or application.
+line 11 SEC. 7. This act shall be liberally construed to effectuate its
+
+line 12 purposes.
+line 13 SEC. 8. The Legislature finds and declares that Section 3 of
+
+line 14 this act, which adds Chapter 22.6 (commencing with Section
+line 15 22602) to Division 8 of the Business and Professions Code,
+line 16 imposes a limitation on the public’s right of access to the meetings
+line 17 of public bodies or the writings of public officials and agencies
+line 18 within the meaning of Section 3 of Article I of the California
+line 19 Constitution. Pursuant to that constitutional provision, the
+line 20 Legislature makes the following findings to demonstrate the interest
+line 21 protected by this limitation and the need for protecting that interest:
+line 22 Information in unredacted safety and security protocols and
+
+line 23 auditor’s reports may contain corporate proprietary information
+line 24 or information about covered models and covered model
+line 25 derivatives that could threaten public safety if disclosed to the
+line 26 public.
+
+O
+
+89
+
+
+-----
+

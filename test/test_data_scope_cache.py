@@ -301,6 +301,47 @@ class DataScopedSearchCacheTests(unittest.TestCase):
 
         self.assertEqual(controller.get_total_entries(), 0)
 
+    def test_compact_open_answer_store_preserves_arbitrary_answer(self):
+        controller = make_controller()
+        controller.activate_data_scope("scope-a")
+
+        with patch.object(scs, "FAISSIndex", FakeSearchIndex):
+            entry = controller.store_compact_answer(
+                "What was adjusted EBITDA?",
+                "Equinix, $901 M",
+                model_used="executor",
+                source_id="co_dc_2Q23",
+                route="direct_fit",
+                provenance={"final_rendered_input_tokens": 100000},
+            )
+
+        self.assertEqual(entry["result"], "Equinix, $901 M")
+        self.assertEqual(entry["facts"], [])
+        self.assertNotIn("source_context", entry)
+        self.assertEqual(controller.lookup_cached_result("What was adjusted EBITDA?")["answer"], "Equinix, $901 M")
+
+    def test_ingest_can_preserve_explicit_document_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            docs_dir = Path(tmp)
+            (docs_dir / "a.txt").write_text("alpha evidence", encoding="utf-8")
+            (docs_dir / "z.txt").write_text("zeta evidence", encoding="utf-8")
+            controller = make_controller()
+
+            with patch.object(scs, "FAISSIndex", FakeSearchIndex), patch.object(
+                scs, "DOCUMENT_CHUNK_TOKENS", 0
+            ):
+                controller.ingest(
+                    docs_dir,
+                    chunk_size=100,
+                    overlap=0,
+                    ordered_filenames=["z.txt", "a.txt"],
+                )
+
+        self.assertEqual(
+            [metadata["filename"] for metadata in controller._doc_chunk_metadata],
+            ["z.txt", "a.txt"],
+        )
+
     def test_embedding_uses_left_padded_last_token_pooling(self):
         import torch
 
