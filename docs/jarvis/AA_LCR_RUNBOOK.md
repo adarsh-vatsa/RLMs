@@ -31,22 +31,36 @@ With the pinned dataset and Qwen3.6 tokenizer, the verified full-prompt range is
 
 ## Start the Jarvis services
 
-Start the executor with its native 262,144-token capacity and the evaluator on a separate endpoint:
+Start the executor and evaluator with the same validated Qwen production profile
+used in [`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md#10-start-the-two-production-services):
 
 ```bash
 cd /home/edogu/adarsh-rlms
 
+MODULES="cuda12.8/toolkit/12.8.1" \
 EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
+EXECUTOR_TP_SIZE=4 \
 EXECUTOR_MAX_MODEL_LEN=262144 \
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-bash jarvis/run.sh submit executor
+VLLM_GPU_MEMORY_UTILIZATION=0.90 \
+VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1 --enable-chunked-prefill --max-num-batched-tokens 8192" \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash jarvis/run.sh submit executor
 
+MODULES="cuda12.8/toolkit/12.8.1" \
 EVALUATOR_MODEL=Qwen/Qwen3.5-35B-A3B \
-VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-bash jarvis/run.sh submit evaluator
+EVALUATOR_TP_SIZE=2 \
+EVALUATOR_MAX_MODEL_LEN=16384 \
+EVALUATOR_PORT=8001 \
+VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only" \
+SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
+  bash jarvis/run.sh submit evaluator
 ```
 
-Read the endpoint URLs from the corresponding Jarvis log `.url` files and export them on the login node.
+Port `8001` is explicit here so the evaluator URL matches the examples below;
+using another free port is also valid. Read the authoritative endpoint URLs from
+the corresponding Jarvis `.url` files and export them on the login node. Existing
+services can be reused only when they were started with the same models, context
+lengths, and vLLM arguments.
 
 ## Smoke tests and full runs
 
