@@ -69,9 +69,9 @@ Validate each launch without submitting:
 ```bash
 cd /home/edogu/adarsh-rlms
 
-OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 \
-OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1 \
-AA_LCR_LAUNCH_DRY_RUN=1 \
+OPENAI_COMPAT_EXECUTOR_BASE_URL=http://g101.eth.cluster:8000/v1 \
+OPENAI_COMPAT_EVALUATOR_BASE_URL=http://g102.eth.cluster:8001/v1 \
+AA_LCR_LAUNCH_DRY_RUN=2 \
 bash jarvis/run_aa_lcr.sh direct_262k
 ```
 
@@ -80,20 +80,20 @@ Set `AA_LCR_MAX_ROWS=2` for a real two-question smoke test. Run the complete cel
 ```bash
 cd /home/edogu/adarsh-rlms
 
-OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 \
-OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1 \
+OPENAI_COMPAT_EXECUTOR_BASE_URL=http://g101.eth.cluster:8000/v1 \
+OPENAI_COMPAT_EVALUATOR_BASE_URL=http://g102.eth.cluster:8001/v1 \
 bash jarvis/run_aa_lcr.sh direct_262k
 
-OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 \
-OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1 \
+OPENAI_COMPAT_EXECUTOR_BASE_URL=http://g101.eth.cluster:8000/v1 \
+OPENAI_COMPAT_EVALUATOR_BASE_URL=http://g102.eth.cluster:8001/v1 \
 bash jarvis/run_aa_lcr.sh hybrid_262k
 
-OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 \
-OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1 \
+OPENAI_COMPAT_EXECUTOR_BASE_URL=http://g101.eth.cluster:8000/v1 \
+OPENAI_COMPAT_EVALUATOR_BASE_URL=http://g102.eth.cluster:8001/v1 \
 bash jarvis/run_aa_lcr.sh direct_64k
 
-OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 \
-OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1 \
+OPENAI_COMPAT_EXECUTOR_BASE_URL=http://g101.eth.cluster:8000/v1 \
+OPENAI_COMPAT_EVALUATOR_BASE_URL=http://g102.eth.cluster:8001/v1 \
 bash jarvis/run_aa_lcr.sh hybrid_64k
 ```
 
@@ -115,10 +115,10 @@ The comparison rejects mismatched data, row order, prompts, models, budgets, API
 cd /home/edogu/adarsh-rlms
 
 uv run python -m aa_lcr.compare_runs \
-  --direct-262k benchmark_artifacts/aa_lcr/direct_262k/<run_id> \
-  --hybrid-262k benchmark_artifacts/aa_lcr/hybrid_262k/<run_id> \
-  --direct-64k benchmark_artifacts/aa_lcr/direct_64k/<run_id> \
-  --hybrid-64k benchmark_artifacts/aa_lcr/hybrid_64k/<run_id>
+  --direct-262k benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z \
+  --hybrid-262k benchmark_artifacts/aa_lcr/hybrid_262k/20260830T191732Z \
+  --direct-64k benchmark_artifacts/aa_lcr/direct_64k/20260830T193428Z \
+  --hybrid-64k benchmark_artifacts/aa_lcr/hybrid_64k/20260830T194827Z
 ```
 
 The output includes per-cell accuracy, paired deltas, 64K reasoning loss, hybrid retention, category and route breakdowns, operational totals, document-set-clustered 95% bootstrap intervals, and every accepted semantic hit for manual audit.
