@@ -1,0 +1,549 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "id": "aa-lcr-four-run-results-20260830",
+    "surface": "report",
+    "title": "AA-LCR Four-Run Results",
+    "description": "Technical comparison of direct and retrieval-enabled AA-LCR reasoning at 262K and 64K context windows.",
+    "generatedAt": "2026-08-31T00:48:15Z",
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "layout": "full",
+        "body": "# AA-LCR Four-Run Results"
+      },
+      {
+        "id": "technical-summary",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "comparison-source",
+        "body": "## Technical summary\n\n- **Retrieval under context pressure produced a clear quality gain.** At 64K, hybrid reached **41% accuracy versus 21% for direct middle truncation**, a paired improvement of **20 percentage points** (document-set-clustered 95% CI: **+9.3 to +32.2 points**). It recovered 28 questions that truncation missed while regressing on 8.\n- **The 262K cells were identical because retrieval was never needed.** Both scored **44%** and produced the same answer on all 100 questions; every full prompt fit the 240K input budget, so both used the full-context `direct_fit` path.\n- **Hybrid 64K nearly recovered full-context aggregate accuracy.** Its 41% score retained **93.2%** of hybrid 262K accuracy, and the -3 point difference had a clustered interval spanning zero (-14.8 to +7.7 points).\n- **The longer-document hypothesis is plausible but untested.** Current prompts were 87.8K-122.1K tokens, so an over-240K extension is required to exercise retrieval at 262K."
+      },
+      {
+        "id": "headline-metrics",
+        "type": "metric-strip",
+        "layout": "full",
+        "cardIds": [
+          "accuracy-gain-card",
+          "retention-card",
+          "prompt-fit-card"
+        ]
+      },
+      {
+        "id": "accuracy-takeaway",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "comparison-source",
+        "body": "## Retrieval closes most of the 64K truncation gap\n\nDirect 64K lost 23 points relative to direct 262K, while hybrid 64K lost only 3 points relative to hybrid 262K. The chart shows the four accuracy levels; the table preserves exact confidence intervals and workload totals. The 64K hybrid gain appeared in every document category at the aggregate level, although company documents supplied 63% of questions and 11 of the net 20 additional correct answers."
+      },
+      {
+        "id": "accuracy-chart-block",
+        "type": "chart",
+        "layout": "full",
+        "chartId": "accuracy-chart"
+      },
+      {
+        "id": "results-table-block",
+        "type": "table",
+        "layout": "full",
+        "tableId": "results-table"
+      },
+      {
+        "id": "operational-tradeoff",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "comparison-source",
+        "body": "## The quality gain adds retrieval work, not cache savings\n\nHybrid 64K used **6.3% fewer input tokens** than direct 64K (5.67M versus 6.05M), but took **22.7% longer** in this single run because retrieval and document ingestion add work. That timing difference is descriptive rather than a stable performance estimate: the cells ran as separate jobs without repetitions. No exact or semantic cache hits occurred, so the accuracy result measures evidence retrieval and packing—not answer reuse or cache savings."
+      },
+      {
+        "id": "benchmark-description",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "dataset-source",
+        "body": "## What AA-LCR measures\n\nArtificial Analysis Long Context Reasoning (AA-LCR) tests free-form reasoning over ordered sets of long documents rather than simple needle retrieval. The reasoning track used here contains **100 questions across 30 document sets and 229 referenced documents**, covering academic work, company filings, government consultations, industry reports, legal material, marketing, and surveys. Tasks require cross-document identification, comparison, calculation, ranking, and following exclusions or output constraints."
+      },
+      {
+        "id": "examples-introduction",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## Representative benchmark tasks\n\nThese abbreviated examples show why AA-LCR is a reasoning benchmark rather than an exact lookup test."
+      },
+      {
+        "id": "examples-table-block",
+        "type": "table",
+        "layout": "full",
+        "tableId": "examples-table"
+      },
+      {
+        "id": "grading-method",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "comparison-source",
+        "body": "## Experimental design and grading\n\nAll four accepted runs used the same 100 question IDs and order, pinned dataset revision, prompts, Qwen3.6-35B-A3B executor, Qwen3.5-35B-A3B equality grader, 512-token answer allowance, and temperature-zero non-thinking configuration. The grader assesses semantic equivalence, so formatting variants such as `$901 M` and `$901 million` can receive the same grade. Every cell completed without API errors or invalid grades. Confidence intervals use 20,000 bootstrap samples clustered by the 30 document sets."
+      },
+      {
+        "id": "limitations",
+        "type": "markdown",
+        "layout": "full",
+        "sourceId": "comparison-source",
+        "body": "## What the experiment does not establish\n\nThe 262K comparison does not measure retrieval quality because all 100 questions took `direct_fit`; the zero-point difference is an implementation-path confirmation, not evidence that retrieval and full context are equivalent. The 64K aggregate similarity to full context also hides question-level churn: relative to direct 262K, hybrid 64K gained 13 different successes and lost 16. Finally, this is one run per cell with an LLM equality grader. The 36 questions on which the 64K methods disagreed should receive a manual grading audit."
+      },
+      {
+        "id": "recommendations",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## Recommended next step\n\n1. **Create a controlled over-240K extension** of the same document sets and rerun the 262K pair. Direct should apply its defined truncation policy while hybrid retrieves and packs evidence.\n2. **Run a forced-retrieval 262K ablation** on the current dataset to test whether selective evidence packing helps or harms when all documents fit.\n3. **Manually audit the 36 discordant 64K grades** and repeat the four cells if latency or small accuracy differences will be decision-critical."
+      },
+      {
+        "id": "further-questions",
+        "type": "markdown",
+        "layout": "full",
+        "body": "## Further questions\n\n- Does the 64K retrieval advantage persist when 262K inputs genuinely exceed budget?\n- Which evidence-position patterns explain the 8 hybrid regressions against direct 64K?\n- How much of the observed runtime premium remains across repeated runs on comparable cluster load?"
+      }
+    ],
+    "cards": [
+      {
+        "id": "accuracy-gain-card",
+        "description": "Paired accuracy across the same 100 AA-LCR questions at the 64K window.",
+        "dataset": "headline",
+        "sourceId": "comparison-source",
+        "metrics": [
+          {
+            "label": "Hybrid 64K accuracy",
+            "field": "hybrid_64k_accuracy",
+            "format": "percent"
+          },
+          {
+            "label": "Direct 64K accuracy",
+            "field": "direct_64k_accuracy",
+            "format": "percent"
+          },
+          {
+            "label": "Paired gain",
+            "field": "hybrid_64k_gain_pp",
+            "format": "number",
+            "unit": "pp",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "retention-card",
+        "description": "Hybrid 64K aggregate accuracy divided by hybrid 262K accuracy.",
+        "dataset": "headline",
+        "sourceId": "comparison-source",
+        "metrics": [
+          {
+            "label": "Full-context accuracy retained",
+            "field": "hybrid_reasoning_retention",
+            "format": "percent"
+          },
+          {
+            "label": "Hybrid 262K accuracy",
+            "field": "hybrid_262k_accuracy",
+            "format": "percent"
+          },
+          {
+            "label": "Hybrid 64K vs 262K",
+            "field": "hybrid_64k_vs_262k_pp",
+            "format": "number",
+            "unit": "pp",
+            "signed": true
+          }
+        ]
+      },
+      {
+        "id": "prompt-fit-card",
+        "description": "Longest rendered full prompt compared with the 262K experiment's 240K input budget.",
+        "dataset": "headline",
+        "sourceId": "comparison-source",
+        "metrics": [
+          {
+            "label": "Longest full prompt",
+            "field": "max_full_prompt_tokens",
+            "format": "number",
+            "unit": "tokens"
+          },
+          {
+            "label": "262K input budget",
+            "field": "input_budget_262k",
+            "format": "number",
+            "unit": "tokens"
+          },
+          {
+            "label": "Over-budget questions",
+            "field": "over_budget_262k",
+            "format": "number"
+          }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "accuracy-chart",
+        "title": "Accuracy across the four AA-LCR cells",
+        "subtitle": "100 questions per cell; Qwen3.5 semantic-equivalence grades",
+        "showDescription": true,
+        "intent": "comparison",
+        "question": "How does retrieval change reasoning accuracy at 262K and 64K context windows?",
+        "rationale": "A zero-based bar chart makes the four discrete accuracy levels directly comparable.",
+        "type": "bar",
+        "dataset": "experiment-results",
+        "sourceId": "comparison-source",
+        "encodings": {
+          "x": {
+            "field": "experiment",
+            "type": "nominal",
+            "label": "Experiment"
+          },
+          "y": {
+            "field": "accuracy",
+            "type": "quantitative",
+            "format": "percent",
+            "label": "Accuracy"
+          },
+          "tooltip": [
+            {
+              "field": "correct",
+              "type": "quantitative",
+              "label": "Correct answers"
+            },
+            {
+              "field": "ci_low",
+              "type": "quantitative",
+              "format": "percent",
+              "label": "95% CI low"
+            },
+            {
+              "field": "ci_high",
+              "type": "quantitative",
+              "format": "percent",
+              "label": "95% CI high"
+            },
+            {
+              "field": "route",
+              "type": "nominal",
+              "label": "Route"
+            }
+          ]
+        },
+        "valueFormat": "percent",
+        "layout": "full",
+        "maxRows": 4
+      }
+    ],
+    "tables": [
+      {
+        "id": "results-table",
+        "title": "Experiment results and workload",
+        "subtitle": "Accepted 100-question runs; confidence intervals cluster by document set",
+        "dataset": "experiment-results",
+        "sourceId": "comparison-source",
+        "defaultSort": {
+          "field": "experiment",
+          "direction": "asc"
+        },
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "experiment",
+            "label": "Experiment",
+            "type": "text"
+          },
+          {
+            "field": "route",
+            "label": "Route",
+            "type": "text"
+          },
+          {
+            "field": "correct",
+            "label": "Correct",
+            "format": "number"
+          },
+          {
+            "field": "accuracy",
+            "label": "Accuracy",
+            "format": "percent"
+          },
+          {
+            "field": "confidence_interval",
+            "label": "95% CI",
+            "type": "text"
+          },
+          {
+            "field": "input_tokens",
+            "label": "Input tokens",
+            "format": "number"
+          },
+          {
+            "field": "wall_time",
+            "label": "Wall time",
+            "type": "text"
+          }
+        ]
+      },
+      {
+        "id": "examples-table",
+        "title": "Example AA-LCR reasoning tasks",
+        "subtitle": "Abbreviated questions and official reference answers from the reasoning track",
+        "dataset": "benchmark-examples",
+        "sourceId": "dataset-source",
+        "defaultSort": {
+          "field": "task",
+          "direction": "asc"
+        },
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          {
+            "field": "task",
+            "label": "Task",
+            "type": "text"
+          },
+          {
+            "field": "question",
+            "label": "Abbreviated question",
+            "type": "text"
+          },
+          {
+            "field": "reference_answer",
+            "label": "Reference answer",
+            "type": "text"
+          }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "comparison-source",
+        "label": "AA-LCR four-run comparison and accepted run artifacts",
+        "path": "benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json",
+        "description": "Validated comparison of the four accepted 100-question AA-LCR runs, including paired deltas, clustered confidence intervals, route counts, category results, and operational totals.",
+        "query": {
+          "engine": "DuckDB",
+          "language": "sql",
+          "sql": "SELECT * FROM read_json_auto('benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json');",
+          "description": "Read the validated four-run comparison; the report snapshot selects reviewed headline, experiment, route, and operational fields.",
+          "executed_at": "2026-08-31T00:17:03.516815+00:00",
+          "tables_used": [
+            "benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json",
+            "benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z/bridge_rows.jsonl",
+            "benchmark_artifacts/aa_lcr/hybrid_262k/20260830T191732Z/bridge_rows.jsonl",
+            "benchmark_artifacts/aa_lcr/direct_64k/20260830T193428Z/bridge_rows.jsonl",
+            "benchmark_artifacts/aa_lcr/hybrid_64k/20260830T194827Z/bridge_rows.jsonl"
+          ],
+          "filters": [
+            "All 100 official reasoning questions in each cell",
+            "Accepted full runs only",
+            "No row exclusions",
+            "Paired comparisons use identical question IDs and order"
+          ],
+          "metric_definitions": [
+            "Accuracy = CORRECT equality grades / 100 selected questions",
+            "Accuracy delta = left-cell accuracy minus matched right-cell accuracy, in percentage points",
+            "Confidence intervals = percentile bootstrap with 20,000 replicates, resampling 30 document_set_id clusters with seed 20260814",
+            "Hybrid reasoning retention = hybrid 64K accuracy / hybrid 262K accuracy",
+            "Input tokens, API calls, and elapsed seconds = manifest-reported totals"
+          ]
+        }
+      },
+      {
+        "id": "dataset-source",
+        "label": "Pinned AA-LCR reasoning dataset and preparation manifest",
+        "path": "benchmark_data/aa_lcr/AA-LCR_Dataset.csv",
+        "description": "Official AA-LCR questions and reference answers at pinned revision bdae010bbce259820c0e34c1d7cce210d966fb75, validated against the extracted document archive.",
+        "query": {
+          "engine": "DuckDB",
+          "language": "sql",
+          "sql": "SELECT * FROM read_csv_auto('benchmark_data/aa_lcr/AA-LCR_Dataset.csv', header = true);",
+          "description": "Read all official reasoning rows in dataset order; report examples are abbreviated from selected rows without changing their reference answers.",
+          "executed_at": "2026-08-31T00:48:15Z",
+          "tables_used": [
+            "benchmark_data/aa_lcr/AA-LCR_Dataset.csv",
+            "benchmark_data/aa_lcr/dataset_manifest.json"
+          ],
+          "filters": [
+            "All 100 reasoning questions",
+            "Examples abbreviated for readability",
+            "No knowledge-track questions"
+          ],
+          "metric_definitions": [
+            "Question count = number of CSV rows",
+            "Document-set count = distinct document_set_id",
+            "Referenced documents = distinct validated paths named by data_source_filenames"
+          ]
+        }
+      }
+    ],
+    "notes": [
+      "Audience shape: technical report. Required roles map to technical summary, accuracy evidence, benchmark scope, experimental design, limitations, recommendations, and further questions.",
+      "Chart map: Retrieval closes most of the 64K truncation gap; question = compare accuracy across four discrete experiment cells; family = comparison; type = zero-based bar; x = experiment; y = accuracy; single-root palette with direct labels/axis categories and no redundant legend; source = comparison-source.",
+      "A category chart was omitted because seven categories have highly unequal sample sizes (1 to 63); concise narrative reports the robust aggregate pattern and the dominant company-document contribution without inviting overinterpretation of tiny groups."
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "status": "ready",
+    "generatedAt": "2026-08-31T00:48:15Z",
+    "datasets": {
+      "headline": [
+        {
+          "hybrid_64k_accuracy": 0.41,
+          "direct_64k_accuracy": 0.21,
+          "hybrid_64k_gain_pp": 20.0,
+          "hybrid_reasoning_retention": 0.931818,
+          "hybrid_262k_accuracy": 0.44,
+          "hybrid_64k_vs_262k_pp": -3.0,
+          "max_full_prompt_tokens": 122112,
+          "input_budget_262k": 240000,
+          "over_budget_262k": 0
+        }
+      ],
+      "experiment-results": [
+        {
+          "experiment": "1 · Direct 262K",
+          "route": "Full-context direct_fit",
+          "correct": 44,
+          "questions": 100,
+          "accuracy": 0.44,
+          "ci_low": 0.326531,
+          "ci_high": 0.561648,
+          "confidence_interval": "32.7%-56.2%",
+          "input_tokens": 10704833,
+          "wall_time": "14m 47s",
+          "elapsed_seconds": 886.846,
+          "api_calls": 200,
+          "cache_hits": 0
+        },
+        {
+          "experiment": "2 · Hybrid 262K",
+          "route": "Full-context direct_fit",
+          "correct": 44,
+          "questions": 100,
+          "accuracy": 0.44,
+          "ci_low": 0.326531,
+          "ci_high": 0.561648,
+          "confidence_interval": "32.7%-56.2%",
+          "input_tokens": 10706569,
+          "wall_time": "14m 32s",
+          "elapsed_seconds": 871.911,
+          "api_calls": 206,
+          "cache_hits": 0
+        },
+        {
+          "experiment": "3 · Direct 64K",
+          "route": "Middle truncated",
+          "correct": 21,
+          "questions": 100,
+          "accuracy": 0.21,
+          "ci_low": 0.137931,
+          "ci_high": 0.28972,
+          "confidence_interval": "13.8%-29.0%",
+          "input_tokens": 6049452,
+          "wall_time": "10m 16s",
+          "elapsed_seconds": 615.914,
+          "api_calls": 200,
+          "cache_hits": 0
+        },
+        {
+          "experiment": "4 · Hybrid 64K",
+          "route": "Dense child packed",
+          "correct": 41,
+          "questions": 100,
+          "accuracy": 0.41,
+          "ci_low": 0.302326,
+          "ci_high": 0.53192,
+          "confidence_interval": "30.2%-53.2%",
+          "input_tokens": 5666317,
+          "wall_time": "12m 36s",
+          "elapsed_seconds": 755.659,
+          "api_calls": 206,
+          "cache_hits": 0
+        }
+      ],
+      "benchmark-examples": [
+        {
+          "task": "Cross-document identification",
+          "question": "Find the company and quarter associated with a 13.5% operating-income decline, then report adjusted EBITDA.",
+          "reference_answer": "Equinix, $901 million"
+        },
+        {
+          "task": "Multi-step calculation",
+          "question": "Compare two listed companies' stockholders' equity at a specified date and report the difference in thousands.",
+          "reference_answer": "5,597,456"
+        },
+        {
+          "task": "Ranking with exclusion",
+          "question": "Rank industries by ACCC consumer-related infringement counts while excluding broadcasting.",
+          "reference_answer": "Airline Industry (12), Accommodation Industry (4)"
+        }
+      ]
+    },
+    "accessIssues": []
+  },
+  "sources": [
+    {
+      "id": "comparison-source",
+      "label": "AA-LCR four-run comparison and accepted run artifacts",
+      "path": "benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json",
+      "description": "Validated comparison of the four accepted 100-question AA-LCR runs, including paired deltas, clustered confidence intervals, route counts, category results, and operational totals.",
+      "query": {
+        "engine": "DuckDB",
+        "language": "sql",
+        "sql": "SELECT * FROM read_json_auto('benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json');",
+        "description": "Read the validated four-run comparison; the report snapshot selects reviewed headline, experiment, route, and operational fields.",
+        "executed_at": "2026-08-31T00:17:03.516815+00:00",
+        "tables_used": [
+          "benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json",
+          "benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z/bridge_rows.jsonl",
+          "benchmark_artifacts/aa_lcr/hybrid_262k/20260830T191732Z/bridge_rows.jsonl",
+          "benchmark_artifacts/aa_lcr/direct_64k/20260830T193428Z/bridge_rows.jsonl",
+          "benchmark_artifacts/aa_lcr/hybrid_64k/20260830T194827Z/bridge_rows.jsonl"
+        ],
+        "filters": [
+          "All 100 official reasoning questions in each cell",
+          "Accepted full runs only",
+          "No row exclusions",
+          "Paired comparisons use identical question IDs and order"
+        ],
+        "metric_definitions": [
+          "Accuracy = CORRECT equality grades / 100 selected questions",
+          "Accuracy delta = left-cell accuracy minus matched right-cell accuracy, in percentage points",
+          "Confidence intervals = percentile bootstrap with 20,000 replicates, resampling 30 document_set_id clusters with seed 20260814",
+          "Hybrid reasoning retention = hybrid 64K accuracy / hybrid 262K accuracy",
+          "Input tokens, API calls, and elapsed seconds = manifest-reported totals"
+        ]
+      }
+    },
+    {
+      "id": "dataset-source",
+      "label": "Pinned AA-LCR reasoning dataset and preparation manifest",
+      "path": "benchmark_data/aa_lcr/AA-LCR_Dataset.csv",
+      "description": "Official AA-LCR questions and reference answers at pinned revision bdae010bbce259820c0e34c1d7cce210d966fb75, validated against the extracted document archive.",
+      "query": {
+        "engine": "DuckDB",
+        "language": "sql",
+        "sql": "SELECT * FROM read_csv_auto('benchmark_data/aa_lcr/AA-LCR_Dataset.csv', header = true);",
+        "description": "Read all official reasoning rows in dataset order; report examples are abbreviated from selected rows without changing their reference answers.",
+        "executed_at": "2026-08-31T00:48:15Z",
+        "tables_used": [
+          "benchmark_data/aa_lcr/AA-LCR_Dataset.csv",
+          "benchmark_data/aa_lcr/dataset_manifest.json"
+        ],
+        "filters": [
+          "All 100 reasoning questions",
+          "Examples abbreviated for readability",
+          "No knowledge-track questions"
+        ],
+        "metric_definitions": [
+          "Question count = number of CSV rows",
+          "Document-set count = distinct document_set_id",
+          "Referenced documents = distinct validated paths named by data_source_filenames"
+        ]
+      }
+    }
+  ]
+}
