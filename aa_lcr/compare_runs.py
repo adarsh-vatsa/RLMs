@@ -74,6 +74,13 @@ def _shared_contract(manifest: dict) -> tuple:
             "prompt_template_sha256",
             "grader_prompt_version",
             "grader_prompt_template_sha256",
+            "grader_api_style",
+            "grader_reasoning_effort",
+            "grader_max_output_tokens",
+            "grader_temperature",
+            "grader_context_window",
+            "grader_chat_template_sha256",
+            "executor_serving_metadata",
             "executor_tokenizer_model",
             "executor_chat_template_sha256",
         )

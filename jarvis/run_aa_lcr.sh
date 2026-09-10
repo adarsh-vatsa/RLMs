@@ -8,7 +8,7 @@ SCRIPT_DIR="${JARVIS_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 usage() {
   cat <<'EOF'
-Usage: bash jarvis/run_aa_lcr.sh <direct_262k|hybrid_262k|direct_64k|hybrid_64k>
+Usage: bash jarvis/run_aa_lcr.sh <direct_262k|hybrid_262k|direct_64k|hybrid_64k> [runner arguments...]
 
 Required environment:
   OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1
@@ -16,6 +16,11 @@ Required environment:
 
 Optional smoke test:
   AA_LCR_MAX_ROWS=2 bash jarvis/run_aa_lcr.sh direct_262k
+
+AA_LCR_DATA_DIR selects the prepared dataset directory (default benchmark_data/aa_lcr).
+AA_LCR_MAX_OUTPUT_TOKENS defaults to 16384 for 262K cells and 512 for 64K cells.
+AA_LCR_RUN_ID, AA_LCR_REPEAT_ID, and AA_LCR_SERVING_METADATA identify the run.
+Additional runner arguments can select grader prompts, API style, and credentials.
 
 Set AA_LCR_LAUNCH_DRY_RUN=1 to print the allocation and command without submitting.
 EOF
@@ -47,16 +52,38 @@ esac
 
 EXECUTOR_MODEL="${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
 EVALUATOR_MODEL="${OPENAI_COMPAT_EVALUATOR_MODEL:-Qwen/Qwen3.5-35B-A3B}"
-MAX_ROWS_ARG=""
+DATA_DIR="${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr}"
+case "$TARGET" in
+  *_262k) OUTPUT_TOKENS="${AA_LCR_MAX_OUTPUT_TOKENS:-16384}" ;;
+  *_64k) OUTPUT_TOKENS="${AA_LCR_MAX_OUTPUT_TOKENS:-512}" ;;
+esac
+CLIENT_ARGS=(uv run python -m aa_lcr.run_benchmark
+  --experiment "$TARGET"
+  --executor-model "$EXECUTOR_MODEL" --evaluator-model "$EVALUATOR_MODEL"
+  --executor-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL"
+  --evaluator-base-url "$OPENAI_COMPAT_EVALUATOR_BASE_URL"
+  --questions-csv "$DATA_DIR/AA-LCR_Dataset.csv"
+  --documents-root "$DATA_DIR/extracted_text/lcr"
+  --dataset-manifest "$DATA_DIR/dataset_manifest.json"
+  --max-output-tokens "$OUTPUT_TOKENS"
+  --repeat-id "${AA_LCR_REPEAT_ID:-1}")
 if [[ -n "${AA_LCR_MAX_ROWS:-}" ]]; then
   if ! [[ "$AA_LCR_MAX_ROWS" =~ ^[0-9]+$ ]]; then
     echo "AA_LCR_MAX_ROWS must be a non-negative integer" >&2
     exit 2
   fi
-  MAX_ROWS_ARG=" --max-rows ${AA_LCR_MAX_ROWS}"
+  CLIENT_ARGS+=(--max-rows "$AA_LCR_MAX_ROWS")
 fi
+if [[ -n "${AA_LCR_RUN_ID:-}" ]]; then
+  CLIENT_ARGS+=(--run-id "$AA_LCR_RUN_ID")
+fi
+if [[ -n "${AA_LCR_SERVING_METADATA:-}" ]]; then
+  CLIENT_ARGS+=(--serving-metadata "$AA_LCR_SERVING_METADATA")
+fi
+shift
+CLIENT_ARGS+=("$@")
 
-CLIENT_CMD="uv run python -m aa_lcr.run_benchmark --experiment ${TARGET} --executor-model ${EXECUTOR_MODEL} --evaluator-model ${EVALUATOR_MODEL} --executor-base-url ${OPENAI_COMPAT_EXECUTOR_BASE_URL} --evaluator-base-url ${OPENAI_COMPAT_EVALUATOR_BASE_URL}${MAX_ROWS_ARG}"
+printf -v CLIENT_CMD '%q ' "${CLIENT_ARGS[@]}"
 export CLIENT_CMD CLIENT_MEM
 
 echo "[AA-LCR] target=$TARGET"

@@ -11,20 +11,18 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
-from aa_lcr.dataset import load_questions, sha256_file, validate_dataset
+from aa_lcr.dataset import (
+    ARCHIVE_SHA256,
+    DATASET_RELEASES,
+    DEFAULT_DATA_DIR,
+    load_questions,
+    sha256_file,
+    validate_dataset,
+)
 
 
-DATASET_REVISION = "bdae010bbce259820c0e34c1d7cce210d966fb75"
 QUESTIONS_FILENAME = "AA-LCR_Dataset.csv"
 ARCHIVE_FILENAME = "AA-LCR_extracted-text.zip"
-QUESTIONS_SHA256 = "2f90d9c30cfb4dd8df2c0f46547c384065e4c76917bd347a9a97bf797235c1ea"
-ARCHIVE_SHA256 = "5e839249826f6b9bd5324f0d139089c9dc481ccb3f212a6dfad00c51045d9d8a"
-BASE_URL = (
-    "https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR/resolve/"
-    f"{DATASET_REVISION}"
-)
-QUESTIONS_URL = f"{BASE_URL}/{QUESTIONS_FILENAME}"
-ARCHIVE_URL = f"{BASE_URL}/extracted_text/{ARCHIVE_FILENAME}"
 
 
 def _download(url: str, destination: Path) -> None:
@@ -86,15 +84,45 @@ def _extract_archive(archive_path: Path, extract_root: Path) -> None:
     staging_root.replace(extract_root)
 
 
-def prepare_dataset(data_dir: Path) -> dict:
+def prepare_dataset(
+    data_dir: Path | None = None, *, dataset_version: str = "1.0.0"
+) -> dict:
+    release = DATASET_RELEASES[dataset_version]
+    if data_dir is None:
+        data_dir = (
+            DEFAULT_DATA_DIR
+            if dataset_version == "1.0.0"
+            else DEFAULT_DATA_DIR / f"v{dataset_version}"
+        )
     data_dir = Path(data_dir)
     questions_path = data_dir / QUESTIONS_FILENAME
     archive_path = data_dir / ARCHIVE_FILENAME
     extract_root = data_dir / "extracted_text"
     documents_root = extract_root / "lcr"
+    manifest_path = data_dir / "dataset_manifest.json"
+    if manifest_path.exists():
+        existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if existing.get("dataset_revision") != release["revision"]:
+            raise ValueError(
+                "Dataset directory contains another revision; use a separate --data-dir"
+            )
+    if (
+        questions_path.exists()
+        and sha256_file(questions_path) != release["questions_sha256"]
+    ):
+        raise ValueError(
+            "Dataset directory contains a different CSV; use a separate --data-dir"
+        )
 
-    _ensure_file(questions_path, QUESTIONS_URL, QUESTIONS_SHA256)
-    _ensure_file(archive_path, ARCHIVE_URL, ARCHIVE_SHA256)
+    base_url = (
+        "https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR/resolve/"
+        f"{release['revision']}"
+    )
+    questions_url = f"{base_url}/{QUESTIONS_FILENAME}"
+    archive_url = f"{base_url}/extracted_text/{ARCHIVE_FILENAME}"
+
+    _ensure_file(questions_path, questions_url, release["questions_sha256"])
+    _ensure_file(archive_path, archive_url, ARCHIVE_SHA256)
     _extract_archive(archive_path, extract_root)
 
     questions = load_questions(questions_path)
@@ -106,17 +134,17 @@ def prepare_dataset(data_dir: Path) -> dict:
     manifest = {
         "prepared_at": datetime.now(timezone.utc).isoformat(),
         "dataset_repo": "ArtificialAnalysis/AA-LCR",
-        "dataset_revision": DATASET_REVISION,
-        "questions_url": QUESTIONS_URL,
+        "dataset_version": dataset_version,
+        "dataset_revision": release["revision"],
+        "questions_url": questions_url,
         "questions_path": str(questions_path),
         "questions_sha256": sha256_file(questions_path),
-        "archive_url": ARCHIVE_URL,
+        "archive_url": archive_url,
         "archive_path": str(archive_path),
         "archive_sha256": sha256_file(archive_path),
         "documents_root": str(documents_root),
         **validation,
     }
-    manifest_path = data_dir / "dataset_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(json.dumps(manifest, indent=2))
     return manifest
@@ -124,13 +152,20 @@ def prepare_dataset(data_dir: Path) -> dict:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Download and validate AA-LCR")
-    parser.add_argument("--data-dir", type=Path, default=Path("benchmark_data/aa_lcr"))
+    parser.add_argument(
+        "--dataset-version", choices=sorted(DATASET_RELEASES), default="1.0.0"
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=Path,
+        help="Defaults to benchmark_data/aa_lcr for 1.0.0, or its v1.1 subdirectory",
+    )
     return parser
 
 
 def main() -> None:
     args = build_arg_parser().parse_args()
-    prepare_dataset(args.data_dir)
+    prepare_dataset(args.data_dir, dataset_version=args.dataset_version)
 
 
 if __name__ == "__main__":

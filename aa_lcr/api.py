@@ -16,6 +16,7 @@ class Completion:
     input_tokens: int
     output_tokens: int
     raw_usage: dict
+    finish_reason: str | None = None
 
 
 class CompletionRetryError(RuntimeError):
@@ -45,14 +46,19 @@ def call_chat_completion(
     extra_body: dict | None = None,
     api_key: str = "",
     timeout_seconds: int = 1800,
+    api_style: str = "vllm",
     opener: Callable[..., Any] = urllib.request.urlopen,
 ) -> Completion:
     payload = {
         "model": model,
         "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": 0,
     }
+    if api_style == "openai":
+        payload["max_completion_tokens"] = max_tokens
+    elif api_style == "vllm":
+        payload.update(max_tokens=max_tokens, temperature=0)
+    else:
+        raise ValueError(f"Unsupported API style: {api_style}")
     if extra_body:
         payload.update(extra_body)
     headers = {"Content-Type": "application/json"}
@@ -80,6 +86,7 @@ def call_chat_completion(
             usage.get("completion_tokens") or usage.get("output_tokens") or 0
         ),
         raw_usage=usage,
+        finish_reason=(result.get("choices") or [{}])[0].get("finish_reason"),
     )
 
 

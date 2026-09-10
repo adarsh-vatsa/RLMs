@@ -14,6 +14,18 @@ DEFAULT_QUESTIONS_CSV = DEFAULT_DATA_DIR / "AA-LCR_Dataset.csv"
 DEFAULT_DOCUMENTS_ROOT = DEFAULT_DATA_DIR / "extracted_text" / "lcr"
 DEFAULT_DATASET_MANIFEST = DEFAULT_DATA_DIR / "dataset_manifest.json"
 
+ARCHIVE_SHA256 = "5e839249826f6b9bd5324f0d139089c9dc481ccb3f212a6dfad00c51045d9d8a"
+DATASET_RELEASES = {
+    "1.0.0": {
+        "revision": "bdae010bbce259820c0e34c1d7cce210d966fb75",
+        "questions_sha256": "2f90d9c30cfb4dd8df2c0f46547c384065e4c76917bd347a9a97bf797235c1ea",
+    },
+    "1.1": {
+        "revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
+        "questions_sha256": "aea5198982436fa774f616964bbeb34716de9e94368a123275b9355765c9b73b",
+    },
+}
+
 REQUIRED_COLUMNS = {
     "document_category",
     "document_set_id",

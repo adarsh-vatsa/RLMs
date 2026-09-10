@@ -6,13 +6,16 @@ import sys
 import tempfile
 import types
 import unittest
+import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from aa_lcr.api import Completion
 from aa_lcr.compare_runs import compare_runs, validate_runs
 from aa_lcr.dataset import (
+    DATASET_RELEASES,
     build_scope_hash,
     load_documents,
     load_questions,
@@ -26,8 +29,12 @@ from aa_lcr.prompting import (
     parse_grade,
     prepare_direct_messages,
 )
-from aa_lcr.prepare_dataset import _decoded_member_name
-from aa_lcr.run_benchmark import build_arg_parser, run_benchmark
+from aa_lcr.prepare_dataset import _decoded_member_name, prepare_dataset
+from aa_lcr.run_benchmark import (
+    _validate_dataset_manifest,
+    build_arg_parser,
+    run_benchmark,
+)
 
 
 class FakeTokenizer:
@@ -249,6 +256,78 @@ class FakeScs:
 
 
 class AALCRDatasetAndPromptTests(unittest.TestCase):
+    def test_prepare_versioned_dataset_and_preserve_other_revision(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            questions, documents, manifest = write_fixture(root)
+            with questions.open(newline="") as handle:
+                reader = csv.DictReader(handle)
+                fields = reader.fieldnames
+                row = next(reader)
+            with questions.open("w", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=fields)
+                writer.writeheader()
+                for index in range(100):
+                    writer.writerow({**row, "question_id": str(index + 1)})
+            archive = questions.parent / "AA-LCR_extracted-text.zip"
+            with zipfile.ZipFile(archive, "w") as handle:
+                for path in documents.rglob("*.txt"):
+                    handle.write(path, "lcr/" + str(path.relative_to(documents)))
+            manifest.unlink()
+            release = {
+                "revision": "fixture-revision",
+                "questions_sha256": sha256_file(questions),
+            }
+            with (
+                patch.dict(DATASET_RELEASES, {"1.1": release}),
+                patch("aa_lcr.prepare_dataset.DEFAULT_DATA_DIR", root),
+                patch("aa_lcr.prepare_dataset.ARCHIVE_SHA256", sha256_file(archive)),
+                patch("aa_lcr.prepare_dataset._download") as download,
+            ):
+                questions.parent.rename(root / "v1.1")
+                result = prepare_dataset(dataset_version="1.1")
+                self.assertEqual(result["dataset_version"], "1.1")
+                self.assertEqual(result["question_count"], 100)
+                self.assertEqual(
+                    result["questions_path"], str(root / "v1.1" / questions.name)
+                )
+                download.assert_not_called()
+                files = {
+                    p: p.read_bytes()
+                    for p in (root / "v1.1").rglob("*")
+                    if p.is_file()
+                }
+                with self.assertRaisesRegex(ValueError, "another revision"):
+                    prepare_dataset(root / "v1.1", dataset_version="1.0.0")
+                self.assertTrue(
+                    all(p.read_bytes() == data for p, data in files.items())
+                )
+
+    def test_prepare_rejects_different_csv_without_manifest(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            questions, _, manifest = write_fixture(root)
+            manifest.unlink()
+            before = questions.read_bytes()
+            with self.assertRaisesRegex(ValueError, "different CSV"):
+                prepare_dataset(questions.parent, dataset_version="1.1")
+            self.assertEqual(questions.read_bytes(), before)
+
+    def test_runner_rejects_false_release_claims(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            questions, documents, manifest = write_fixture(Path(temporary))
+            payload = json.loads(manifest.read_text())
+            payload["dataset_version"] = "1.1"
+            with self.assertRaisesRegex(ValueError, "version does not match"):
+                _validate_dataset_manifest(
+                    payload, questions, load_questions(questions), documents
+                )
+            payload["dataset_revision"] = DATASET_RELEASES["1.1"]["revision"]
+            with self.assertRaisesRegex(ValueError, "pinned release"):
+                _validate_dataset_manifest(
+                    payload, questions, load_questions(questions), documents
+                )
+
     def test_archive_member_names_recover_upstream_utf8_punctuation(self):
         self.assertEqual(
             str(_decoded_member_name("EUΓÇÖs AI ActΓÇöoverview.txt")),
@@ -376,6 +455,14 @@ class AALCRRunnerTests(unittest.TestCase):
             self.assertEqual(payload["answer_accuracy"], 1.0)
             self.assertEqual(payload["cache_hit_count"], 0)
             self.assertEqual(payload["executor_calls"], 2)
+            self.assertEqual(payload["dataset_version"], "custom")
+            report = json.loads(
+                (run_dir / "aa_lcr_equality_eval_report.json").read_text()
+            )
+            self.assertEqual(report["dataset_version"], "custom")
+            self.assertEqual(
+                report["grader_prompt_version"], payload["grader_prompt_version"]
+            )
             self.assertTrue(all(row["route"] == "direct_fit" for row in rows))
             self.assertFalse((run_dir / "cache_state").exists())
             self.assertEqual(len(caller.calls), 4)
@@ -575,6 +662,32 @@ def write_comparison_run(root: Path, experiment: str, answers: list[bool]):
 
 
 class AALCRComparisonAndLauncherTests(unittest.TestCase):
+    def test_comparison_rejects_dataset_and_grader_changes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runs = {}
+            for experiment in (
+                "direct_262k", "hybrid_262k", "direct_64k", "hybrid_64k"
+            ):
+                path = write_comparison_run(root, experiment, [True, False])
+                runs[experiment] = (
+                    json.loads((path / "manifest.json").read_text()),
+                    [
+                        json.loads(line)
+                        for line in (path / "bridge_rows.jsonl").read_text().splitlines()
+                    ],
+                )
+            for field in (
+                "dataset_revision", "questions_sha256", "grader_prompt_version"
+            ):
+                with self.subTest(field=field):
+                    manifest = runs["direct_64k"][0]
+                    previous = manifest[field]
+                    manifest[field] = "different"
+                    with self.assertRaisesRegex(ValueError, "mismatch"):
+                        validate_runs(runs, require_full_runs=False)
+                    manifest[field] = previous
+
     def test_comparison_validates_and_computes_paired_metrics(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

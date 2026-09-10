@@ -22,6 +22,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from aa_lcr.api import Completion, call_chat_completion, call_with_retries  # noqa: E402
 from aa_lcr.dataset import (  # noqa: E402
+    ARCHIVE_SHA256,
+    DATASET_RELEASES,
     DEFAULT_DATASET_MANIFEST,
     DEFAULT_DOCUMENTS_ROOT,
     DEFAULT_QUESTIONS_CSV,
@@ -36,13 +38,12 @@ from aa_lcr.dataset import (  # noqa: E402
     sha256_file,
     validate_dataset,
 )
+from aa_lcr.grading import Grader, add_grader_arguments  # noqa: E402
 from aa_lcr.prompting import (  # noqa: E402
-    build_grader_prompt,
     build_messages,
     chat_token_count,
     non_thinking_extra_body,
     pack_retrieved_children,
-    parse_grade,
     prepare_direct_messages,
     prompt_contract_metadata,
 )
@@ -52,7 +53,7 @@ DEFAULT_EXECUTOR_MODEL = "Qwen/Qwen3.6-35B-A3B"
 DEFAULT_EVALUATOR_MODEL = "Qwen/Qwen3.5-35B-A3B"
 DEFAULT_EXECUTOR_BASE_URL = "http://127.0.0.1:8000/v1"
 DEFAULT_EVALUATOR_BASE_URL = "http://127.0.0.1:8001/v1"
-DEFAULT_MAX_OUTPUT_TOKENS = 512
+DEFAULT_MAX_OUTPUT_TOKENS = 16384
 DEFAULT_CHILD_TOKENS = 7500
 DEFAULT_CHILD_OVERLAP_TOKENS = 750
 REPORT_FILENAME = "aa_lcr_equality_eval_report.json"
@@ -199,8 +200,21 @@ def _validate_dataset_manifest(
         )
     if int(manifest.get("question_count") or 0) not in {0, len(questions)}:
         raise ValueError("Question count does not match dataset_manifest.json")
+    dataset_version = "custom"
+    for version, release in DATASET_RELEASES.items():
+        if manifest.get("dataset_revision") == release["revision"]:
+            if (
+                actual_questions_hash != release["questions_sha256"]
+                or actual_archive_hash != ARCHIVE_SHA256
+            ):
+                raise ValueError("Dataset files do not match the pinned release")
+            dataset_version = version
+            break
+    if manifest.get("dataset_version", dataset_version) != dataset_version:
+        raise ValueError("Dataset version does not match its revision")
     return {
         **validation,
+        "dataset_version": dataset_version,
         "questions_sha256": actual_questions_hash,
         "archive_sha256": actual_archive_hash,
         "archive_path": str(archive_path),
@@ -333,6 +347,16 @@ def _build_report(run_dir: Path, rows: list[dict], manifest: dict) -> dict:
         "run_dir": str(run_dir),
         "benchmark_target": "aa_lcr_reasoning",
         "experiment": manifest["experiment"],
+        "dataset_version": manifest["dataset_version"],
+        "dataset_revision": manifest["dataset_revision"],
+        "evaluator_model": manifest["evaluator_model"],
+        "grader_prompt_version": manifest["grader_prompt_version"],
+        "max_output_tokens": manifest["max_output_tokens"],
+        "grader_api_style": manifest["grader_api_style"],
+        "grader_reasoning_effort": manifest["grader_reasoning_effort"],
+        "output_length_terminated_count": manifest["output_length_terminated_count"],
+        "grader_length_terminated_count": manifest["grader_length_terminated_count"],
+        "executor_finish_reason_counts": manifest["executor_finish_reason_counts"],
         "scored_rows": len(rows),
         "answer_accuracy": manifest["answer_accuracy"],
         "valid_grade_accuracy": manifest["valid_grade_accuracy"],
@@ -387,9 +411,20 @@ def run_benchmark(
     scs_module: Any | None = None,
 ) -> Path | None:
     experiment = EXPERIMENTS[args.experiment]
-    if args.max_output_tokens != DEFAULT_MAX_OUTPUT_TOKENS:
+    if args.max_output_tokens is None:
+        args.max_output_tokens = (
+            DEFAULT_MAX_OUTPUT_TOKENS
+            if experiment.context_window_tokens == 262144
+            else 512
+        )
+    if args.max_output_tokens <= 0:
+        raise ValueError("--max-output-tokens must be positive")
+    if args.repeat_id < 1:
+        raise ValueError("--repeat-id must be positive")
+    if experiment.mode == "hybrid" and args.grader_api_style != "vllm":
         raise ValueError(
-            f"AA-LCR experiments require --max-output-tokens {DEFAULT_MAX_OUTPUT_TOKENS}"
+            "Hybrid cache verification requires a local vLLM evaluator; "
+            "regrade saved answers for hosted grading"
         )
     if (
         experiment.max_input_tokens + args.max_output_tokens
@@ -435,6 +470,8 @@ def run_benchmark(
     if args.preflight_only:
         payload = {
             **preflight,
+            "dataset_version": dataset_info["dataset_version"],
+            "dataset_revision": str(dataset_manifest.get("dataset_revision") or ""),
             **_tokenizer_metadata(tokenizer, args.executor_model),
             "context_window_tokens": experiment.context_window_tokens,
             "max_input_tokens": experiment.max_input_tokens,
@@ -448,8 +485,21 @@ def run_benchmark(
         print(rendered)
         return None
 
+    grader = Grader(
+        args,
+        tokenizer_factory=tokenizer_factory or _load_tokenizer,
+        completion_caller=completion_caller,
+    )
+    serving_metadata = {}
+    if args.serving_metadata:
+        serving_metadata = json.loads(Path(args.serving_metadata).read_text())
+        if not isinstance(serving_metadata, dict):
+            raise ValueError("--serving-metadata must contain a JSON object")
     started_at = datetime.now(timezone.utc)
-    run_id = args.run_id or started_at.strftime("%Y%m%dT%H%M%SZ")
+    run_id = args.run_id or (
+        f"v{dataset_info['dataset_version']}_out{args.max_output_tokens}_"
+        f"r{args.repeat_id}_{started_at.strftime('%Y%m%dT%H%M%S%fZ')}"
+    )
     run_dir = Path(args.output_root) / experiment.name / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
     predictions_path = run_dir / "predictions.jsonl"
@@ -658,31 +708,13 @@ def run_benchmark(
         grade = ""
         if executor_status == "ok":
             try:
-                grader_usage, grader_attempts = _call_model(
-                    completion_caller,
-                    base_url=args.evaluator_base_url,
-                    model=args.evaluator_model,
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": build_grader_prompt(
-                                question.question,
-                                question.answer,
-                                candidate_answer,
-                            ),
-                        }
-                    ],
-                    max_tokens=8,
-                    extra_body=non_thinking_extra_body(grader=True),
-                    api_key=api_key,
-                    timeout_seconds=args.request_timeout_seconds,
-                    max_retries=args.max_retries,
+                grader_usage, grader_attempts, grade = grader.grade(
+                    question.question, question.answer, candidate_answer
                 )
-                grade = parse_grade(grader_usage.text)
                 grader_status = "ok" if grade else "invalid_output"
                 if not grade:
                     grader_error = (
-                        "Evaluator did not return exactly CORRECT or INCORRECT"
+                        "Evaluator returned an invalid verdict or an incomplete response"
                     )
             except Exception as exc:
                 grader_attempts = int(getattr(exc, "attempts", grader_attempts) or 0)
@@ -711,24 +743,28 @@ def run_benchmark(
             "answer": question.answer,
             "official_answer": question.answer,
             "grade": grade,
+            "data_source_filenames": list(question.data_source_filenames),
+            "source_scope_hash": scope_hash,
+            "executor_status": executor_status,
+            "executor_finish_reason": executor_usage.finish_reason,
+            "executor_output_tokens": executor_usage.output_tokens,
+            "max_output_tokens": args.max_output_tokens,
         }
         prediction_rows.append(prediction)
         bridge_rows.append(
             {
                 **prediction,
                 "reported_input_tokens": question.input_tokens,
-                "data_source_filenames": list(question.data_source_filenames),
                 "mode": experiment.mode,
                 "experiment": experiment.name,
                 "route": route,
                 "from_cache": from_cache,
                 "cache_type": cache_type,
                 "cache_provenance": cache_provenance,
-                "source_scope_hash": scope_hash,
                 "answer_correct": answer_correct,
                 "grade_valid": grade_valid,
                 "grader_raw_output": grader_usage.text,
-                "executor_status": executor_status,
+                "grader_finish_reason": grader_usage.finish_reason,
                 "executor_error": executor_error,
                 "executor_attempts": executor_attempts,
                 "grader_status": grader_status,
@@ -740,7 +776,6 @@ def run_benchmark(
                 "prompt_tokens_removed": prompt_tokens_removed,
                 "context_window_tokens": experiment.context_window_tokens,
                 "max_input_tokens": experiment.max_input_tokens,
-                "max_output_tokens": args.max_output_tokens,
                 "selected_evidence_ranges": selected_evidence_ranges,
                 "ingested_chunks": ingested_chunks,
                 "ingest_ms": round(ingest_ms, 3),
@@ -815,6 +850,12 @@ def run_benchmark(
     total_output_tokens = sum(int(row["delta_output_tokens"]) for row in bridge_rows)
     manifest = {
         "run_id": run_id,
+        "artifact_schema_version": 2,
+        "repeat_id": args.repeat_id,
+        "executor_serving_metadata": serving_metadata,
+        "executor_serving_metadata_sha256": (
+            sha256_file(Path(args.serving_metadata)) if args.serving_metadata else None
+        ),
         "created_at": finished_at.isoformat(),
         "started_at": started_at.isoformat(),
         "finished_at": finished_at.isoformat(),
@@ -845,7 +886,8 @@ def run_benchmark(
         "benchmark_label_field": "answer",
         "benchmark_label_type": "open_answer_string",
         "grader_labels": ["CORRECT", "INCORRECT"],
-        **prompt_contract_metadata(),
+        **prompt_contract_metadata(args.grader_prompt_version),
+        **grader.metadata(),
         **_tokenizer_metadata(tokenizer, args.executor_model),
         "questions_csv": str(questions_csv),
         "questions_sha256": dataset_info["questions_sha256"],
@@ -853,6 +895,7 @@ def run_benchmark(
         "archive_path": dataset_info["archive_path"],
         "archive_sha256": archive_sha,
         "dataset_manifest": str(dataset_manifest_path),
+        "dataset_version": dataset_info["dataset_version"],
         "dataset_revision": str(dataset_manifest.get("dataset_revision") or ""),
         "dataset_signature": signature,
         "document_order_policy": "data_source_filenames_csv_order",
@@ -892,6 +935,18 @@ def run_benchmark(
             ),
             "packing": round(sum(float(row["packing_ms"]) for row in bridge_rows), 3),
         },
+        "executor_finish_reason_counts": dict(
+            Counter(
+                row["executor_finish_reason"] or "unknown"
+                for row in bridge_rows if row["executor_calls"]
+            )
+        ),
+        "output_length_terminated_count": sum(
+            row["executor_finish_reason"] == "length" for row in bridge_rows
+        ),
+        "grader_length_terminated_count": sum(
+            row["grader_finish_reason"] == "length" for row in bridge_rows
+        ),
         "truncated_row_count": sum(
             bool(row["prompt_truncated"]) for row in bridge_rows
         ),
@@ -980,7 +1035,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--api-key-env", default=os.getenv("OPENAI_COMPAT_API_KEY_ENV", "")
     )
     parser.add_argument(
-        "--max-output-tokens", type=int, default=DEFAULT_MAX_OUTPUT_TOKENS
+        "--max-output-tokens",
+        type=int,
+        help="Defaults to 16384 for 262K cells, 512 for 64K cells",
     )
     parser.add_argument("--child-tokens", type=int, default=DEFAULT_CHILD_TOKENS)
     parser.add_argument(
@@ -992,6 +1049,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--output-root", type=Path, default=Path("benchmark_artifacts/aa_lcr")
     )
     parser.add_argument("--run-id", default="")
+    parser.add_argument("--repeat-id", type=int, default=1)
+    parser.add_argument(
+        "--serving-metadata", type=Path,
+        help="JSON of actual executor weights revision, vLLM version and settings",
+    )
+    add_grader_arguments(parser)
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--preflight-output", type=Path, default=None)
