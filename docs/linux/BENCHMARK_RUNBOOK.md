@@ -3,8 +3,8 @@
 Complete the [Linux setup](SETUP_RUNBOOK.md) first. Run these commands from the
 repository root. Preflight validates inputs and budgets; execution runs inference.
 All examples use the shared `common` execution profile.
-For cache verification, component switches, and cross-benchmark comparisons, see
-the [shared execution runbook](SHARED_EXECUTION_RUNBOOK.md).
+For available flags, defaults, and cache settings, consult the optional
+[runner options reference](SHARED_EXECUTION_RUNBOOK.md).
 
 ## Prepare data
 
@@ -145,7 +145,7 @@ LongBench uses original rows from `benchmark_data/long_bench_v2/data.csv`, produ
 by the export above; pass `--suite-csv` and `--source-json-path` for different
 input paths. MRCR and LongBench need no answer-grading service; enabling semantic
 cache reads adds a verifier requirement. See the
-[cache-enabling examples](SHARED_EXECUTION_RUNBOOK.md#execute-with-semantic-answer-caching).
+[answer-cache and verifier options](SHARED_EXECUTION_RUNBOOK.md#answer-cache-and-verifier-options).
 
 Change `hybrid` to `direct` for any benchmark. Direct prompts exceeding the
 input budget are recorded as unsupported; hybrid retrieves and packs evidence.
