@@ -33,12 +33,13 @@ case "$TARGET" in
   *) usage >&2; exit 2 ;;
 esac
 
-: "${OPENAI_COMPAT_EXECUTOR_BASE_URL:?Set OPENAI_COMPAT_EXECUTOR_BASE_URL to the running executor service}"
+source "$SCRIPT_DIR/lib/execution_services.sh"
+jarvis_execution_services 0 0 "${@:2}"
 CLIENT_ARGS=(uv run python -m mrcr_v2.run_benchmark
   --mode "$TARGET"
   --data-dir "${MRCR_DATA_DIR:-benchmark_data/mrcr_v2}"
   --executor-model "${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
-  --executor-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL")
+  --executor-base-url "${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}")
 shift
 CLIENT_ARGS+=("$@")
 printf -v CLIENT_CMD '%q ' "${CLIENT_ARGS[@]}"

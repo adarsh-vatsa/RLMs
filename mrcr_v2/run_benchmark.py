@@ -9,14 +9,18 @@ import os
 from pathlib import Path
 import time
 
-from aa_lcr.api import call_chat_completion, call_with_retries
-from aa_lcr.prompting import chat_token_count
+from execution.client import call_chat_completion
 from mrcr_v2.dataset import (
     DEFAULT_DATA_DIR, DEFAULT_MODEL, file_hash, load_prepared, load_tokenizer,
     read_source, text_hash, tokenizer_metadata, validate_bounds,
 )
-from mrcr_v2.prompting import PROMPT_VERSION, messages, pack_evidence
+from mrcr_v2.prompting import PROMPT_VERSION
 from mrcr_v2.scoring import UPSTREAM_REVISION, score_prediction
+from mrcr_v2.adapter import solver_task
+from execution.contracts import add_arguments, resolve_config
+from execution.pipeline import Pipeline
+from execution.artifacts import record_evaluation, finalize
+from execution.tokens import route as execution_route
 
 
 def _import_semantic_cache_system():
@@ -45,47 +49,7 @@ def _validate_args(args, manifest: dict) -> tuple[int, int]:
 
 
 def _route(mode: str, full_tokens: int, budget: int) -> str:
-    if full_tokens <= budget:
-        return "direct_fit"
-    return "unsupported_context" if mode == "direct" else "dense_child_packed"
-
-
-def _index_source(scs, controller, body: str, source_id: str, args) -> dict:
-    started = time.perf_counter()
-    if args.child_tokens >= scs.EMBEDDING_MAX_LENGTH:
-        raise ValueError("--child-tokens must be below the embedding input limit")
-    # Call the exact chunker directly: ingest() otherwise permits estimated-token fallback.
-    chunks = scs._chunk_text_with_tokenizer(
-        body, tokenizer=controller.embedder.tokenizer,
-        chunk_tokens=args.child_tokens, overlap_tokens=args.child_overlap_tokens,
-    )
-    if not chunks:
-        raise ValueError("Exact embedding-tokenizer offsets are required for MRCR")
-    texts, metadata = [], []
-    for index, (text, meta) in enumerate(chunks):
-        start, end = meta["char_start"], meta["char_end"]
-        if not 0 <= start < end <= len(body) or text != body[start:end]:
-            raise ValueError("Embedding tokenizer returned invalid source offsets")
-        texts.append(text)
-        metadata.append({
-            **meta, "chunk_index": index, "child_index": index,
-            "source_id": source_id, "tokenizer_model": scs.EMBEDDING_MODEL,
-        })
-    embedding_started = time.perf_counter()
-    embeddings = controller.embedder.encode_documents(texts)
-    embedding_ms = (time.perf_counter() - embedding_started) * 1000
-    encoded_max = controller.embedder._last_encode_info["max_sequence_tokens"]
-    if encoded_max >= scs.EMBEDDING_MAX_LENGTH:
-        raise ValueError("A child reached the embedding input limit; reduce --child-tokens")
-    controller.doc_index = scs.FAISSIndex()
-    controller.doc_index.add(embeddings, metadata)
-    controller._doc_chunks = texts
-    controller._doc_chunk_metadata = metadata
-    return {
-        "ingested_chunks": len(texts), "document_embedding_ms": embedding_ms,
-        "ingest_ms": (time.perf_counter() - started) * 1000,
-        "child_encoded_length_max": encoded_max,
-    }
+    return execution_route(mode, full_tokens, budget)
 
 
 def _summary(rows: list[dict]) -> dict:
@@ -137,6 +101,10 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
     minimum, maximum = _validate_args(args, dataset_manifest)
     revision = args.tokenizer_revision or dataset_manifest["tokenizer"]["revision"]
     tokenizer = tokenizer_factory(args.executor_model, revision)
+    config = resolve_config(args, mode=args.mode, legacy_source_order=True,
+                            executor_model=args.executor_model, max_input_tokens=args.max_input_tokens,
+                            max_output_tokens=args.max_output_tokens, context_window_tokens=args.context_window_tokens)
+    preflight_pipeline = Pipeline(config, tokenizer, None)
     token_metadata = tokenizer_metadata(tokenizer, args.executor_model)
     if token_metadata != dataset_manifest["tokenizer"]:
         raise ValueError("Executor tokenizer or chat template changed; prepare a new dataset")
@@ -158,14 +126,16 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
         prompt = prefix + body + row["question"]
         if text_hash(prompt) != row["case_id"]:
             raise ValueError("Prepared prompt does not match its example ID")
-        full_tokens = chat_token_count(tokenizer, messages(prompt))
+        audit_row = preflight_pipeline.preflight(solver_task(row["case_id"], row["source_id"], prefix, body, row["question"]))
+        full_tokens = audit_row["full_rendered_input_tokens"]
         if full_tokens != row["full_rendered_input_tokens"]:
             raise ValueError("Prepared token count changed; prepare a new dataset")
         audited.append({
             "case_id": row["case_id"], "full_rendered_input_tokens": full_tokens,
-            "route": _route(args.mode, full_tokens, args.max_input_tokens),
+            "route": audit_row["route"],
         })
     audit = {
+        "execution": config.metadata(), "cache_assumption": "miss",
         "mode": args.mode, "min_source_tokens": minimum, "max_source_tokens": maximum,
         "selected_count": len(selected), "rows": audited,
         "route_counts": dict(Counter(row["route"] for row in audited)),
@@ -198,17 +168,43 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
         "context_window_tokens": args.context_window_tokens,
         "child_tokens": args.child_tokens, "child_overlap_tokens": args.child_overlap_tokens,
         "executor_model": args.executor_model, "executor_base_url": args.executor_base_url,
-        "temperature": 0, "enable_thinking": False, "answer_cache_enabled": False,
-        "reranker_enabled": False, "knowledge_lookup_enabled": False,
+        "temperature": 0, "enable_thinking": False, "answer_cache_enabled": config.cache_read or config.cache_write,
+        "execution": config.metadata(),
+        "reranker_enabled": config.rerank_top > 0, "knowledge_lookup_enabled": False,
         "retrieval_assisted": args.mode == "hybrid", "serving_metadata": serving_metadata,
         "max_retries": args.max_retries, "request_timeout_seconds": args.request_timeout_seconds,
         "api_usage_note": "Usage is for returned completions; failed HTTP attempts may have unreported usage.",
     }
     _write_json(run_dir / "manifest.json", manifest)
     predictions = []
-    controller = scs = None
-    active_source = previous_source = None
+    previous_source = None
     api_key = os.getenv(args.api_key_env, "") if args.api_key_env else ""
+
+    def backend():
+        scs = scs_module or _import_semantic_cache_system()
+        controller = scs.SemanticCacheController(
+            metrics=scs.ExecutionMetrics(), embedder=scs.EmbeddingEngine(),
+            reranker=scs.Reranker() if config.rerank_top else None,
+            corpus_id=f"mrcr_v2_{run_id}", corpus_domain="mrcr_v2")
+        if config.cache_read and config.cache_matching == "semantic":
+            from execution.cache import configure_verifier
+            configure_verifier(controller, args)
+        manifest["embedding"] = {
+            "model": scs.EMBEDDING_MODEL, "max_length": scs.EMBEDDING_MAX_LENGTH,
+            "tokenizer": tokenizer_metadata(controller.embedder.tokenizer, scs.EMBEDDING_MODEL),
+            "query_instruction": scs.EMBEDDING_QUERY_INSTRUCTION, "contract_version": scs.EMBEDDING_CONTRACT_VERSION,
+            "batch_size": scs.EMBEDDING_BATCH_SIZE, "device": str(controller.embedder.device),
+            "dtype": controller.embedder.torch_dtype_name,
+        }
+        return scs, controller
+
+    def complete(request):
+        return completion_caller(base_url=args.executor_base_url, model=args.executor_model,
+            messages=request, max_tokens=args.max_output_tokens,
+            extra_body={"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
+            api_key=api_key, timeout_seconds=args.request_timeout_seconds)
+
+    pipeline = Pipeline(config, tokenizer, complete, backend_factory=backend, output_dir=run_dir)
     with (run_dir / "predictions.jsonl").open("w", encoding="utf-8") as output, \
             (run_dir / "bridge_rows.csv").open("w", encoding="utf-8", newline="") as bridge:
         writer = None
@@ -231,65 +227,18 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
                 "attempts": 0, "finish_reason": None, "total_ms": 0.0,
                 "upstream_metadata": row["upstream_metadata"],
             }
-            try:
-                if route == "unsupported_context":
-                    record["status"] = "unsupported_context"
-                else:
-                    if row["source_id"] != previous_source:
-                        prefix, body = read_source(data_dir, row["source_id"])
-                        previous_source = row["source_id"]
-                    request = messages(prefix + body + row["question"])
-                    if route == "dense_child_packed":
-                        if controller is None:
-                            scs = scs_module or _import_semantic_cache_system()
-                            controller = scs.SemanticCacheController(
-                                metrics=scs.ExecutionMetrics(), embedder=scs.EmbeddingEngine(),
-                                reranker=None, corpus_id=f"mrcr_v2_{run_id}", corpus_domain="mrcr_v2",
-                            )
-                            manifest["embedding"] = {
-                                "model": scs.EMBEDDING_MODEL, "max_length": scs.EMBEDDING_MAX_LENGTH,
-                                "tokenizer": tokenizer_metadata(controller.embedder.tokenizer, scs.EMBEDDING_MODEL),
-                                "query_instruction": scs.EMBEDDING_QUERY_INSTRUCTION,
-                                "contract_version": scs.EMBEDDING_CONTRACT_VERSION,
-                                "batch_size": scs.EMBEDDING_BATCH_SIZE,
-                                "device": str(controller.embedder.device),
-                                "dtype": controller.embedder.torch_dtype_name,
-                            }
-                        if active_source != row["source_id"]:
-                            record.update(_index_source(scs, controller, body, row["source_id"], args))
-                            active_source = row["source_id"]
-                        retrieved_at = time.perf_counter()
-                        results = controller.retrieve(row["question"], top_k=controller.doc_index.total,
-                                                      rerank_top=0, use_reranker=False)
-                        record["retrieval_ms"] = (time.perf_counter() - retrieved_at) * 1000
-                        packed_at = time.perf_counter()
-                        request, packing = pack_evidence(tokenizer, prefix, body, row["question"],
-                                                        results, args.max_input_tokens)
-                        record.update(packing)
-                        record["packing_ms"] = (time.perf_counter() - packed_at) * 1000
-                    record["final_rendered_input_tokens"] = chat_token_count(tokenizer, request)
-                    generation_started = time.perf_counter()
-                    try:
-                        result, attempts = call_with_retries(
-                            lambda: completion_caller(
-                                base_url=args.executor_base_url, model=args.executor_model,
-                                messages=request, max_tokens=args.max_output_tokens,
-                                extra_body={"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
-                                api_key=api_key, timeout_seconds=args.request_timeout_seconds,
-                            ), max_retries=args.max_retries,
-                        )
-                    finally:
-                        record["generation_ms"] = (time.perf_counter() - generation_started) * 1000
-                    record.update(
-                        prediction=result.text, input_tokens=result.input_tokens,
-                        output_tokens=result.output_tokens, raw_usage=result.raw_usage,
-                        finish_reason=result.finish_reason, attempts=attempts,
-                    )
-                    record.update(score_prediction(result.text, row["answer"]))
-            except Exception as exc:
-                record.update(status="error", error=f"{type(exc).__name__}: {exc}",
-                              mrcr_score=0.0, exact_match=False, prefix_compliant=False,
-                              attempts=int(getattr(exc, "attempts", 0)))
+            if row["source_id"] != previous_source:
+                prefix, body = read_source(data_dir, row["source_id"])
+                previous_source = row["source_id"]
+            result = pipeline.execute(solver_task(row["case_id"], row["source_id"], prefix, body, row["question"]))
+            record.update(result)
+            route = result["route"]
+            if result["status"] == "ok":
+                record.update(score_prediction(result["prediction"], row["answer"]))
+            elif result["status"] == "error":
+                record.update(mrcr_score=0.0, exact_match=False, prefix_compliant=False)
+            record_evaluation(run_dir, row["case_id"], record["status"],
+                {key: record[key] for key in ("mrcr_score", "exact_match", "prefix_compliant") if record[key] is not None})
             record["total_ms"] = (time.perf_counter() - started) * 1000
             output.write(json.dumps(record, ensure_ascii=False) + "\n")
             output.flush()
@@ -303,6 +252,7 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
             print(f"[MRCR] {len(predictions)}/{len(selected)} {route} {record['status']} score={record['mrcr_score']}")
             if args.fail_fast and record["status"] == "error":
                 break
+    finalize(run_dir)
     report = build_report(predictions)
     report["planned_count"] = len(selected)
     manifest.update(status="complete" if len(predictions) == len(selected) else "stopped_early",
@@ -340,6 +290,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--preflight-output", type=Path)
     parser.add_argument("--fail-fast", action="store_true")
+    add_arguments(parser)
     return parser
 
 

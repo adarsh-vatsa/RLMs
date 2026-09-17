@@ -56,7 +56,7 @@ from long_bench_v2.qwen_prompt import (  # noqa: E402
     build_strict_mcq_messages,
     chat_token_count as _chat_token_count,
     mcq_decoder_constraint_metadata,
-    token_ids as _token_ids,
+    token_ids as _token_ids,  # noqa: F401 - existing callers import this helper
 )
 
 
@@ -77,6 +77,14 @@ API_SYSTEM_PROMPT = (
 )
 
 
+from execution.client import Completion
+from execution.contracts import add_arguments, resolve_config
+from execution.pipeline import Pipeline
+from execution.artifacts import record_evaluation, finalize
+from execution.selection import add_source_arguments, filter_sources, selection_limit
+from long_bench_v2.adapter import solver_task
+
+
 def _write_jsonl(path: Path, rows: list[dict]) -> None:
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
@@ -89,16 +97,6 @@ def build_api_prompt(row: dict) -> str:
 
 def build_openai_compatible_messages(row: dict) -> list[dict]:
     return build_strict_mcq_messages(row["context"], build_query(row))
-
-
-def _middle_tokens(token_ids: list[int], limit: int) -> list[int]:
-    if len(token_ids) <= limit:
-        return list(token_ids)
-    if limit <= 0:
-        return []
-    head = limit // 2
-    tail = limit - head
-    return token_ids[:head] + token_ids[-tail:]
 
 
 def prepare_openai_compatible_messages(
@@ -133,27 +131,10 @@ def prepare_openai_compatible_messages(
             "context_window_safety_margin_tokens": safety_margin_tokens,
         }
 
-    user_content = messages[1]["content"]
-    user_token_ids = _token_ids(tokenizer.encode(user_content, add_special_tokens=False))
-    empty_messages = [messages[0], {"role": "user", "content": ""}]
-    chat_overhead = _chat_token_count(tokenizer, empty_messages)
-    keep_tokens = min(len(user_token_ids), max(0, input_budget - chat_overhead))
+    from execution.tokens import truncate_middle
 
-    while True:
-        truncated_user_ids = _middle_tokens(user_token_ids, keep_tokens)
-        truncated_user = tokenizer.decode(truncated_user_ids, skip_special_tokens=True)
-        truncated_messages = [messages[0], {"role": "user", "content": truncated_user}]
-        final_prompt_tokens = _chat_token_count(tokenizer, truncated_messages)
-        if final_prompt_tokens <= input_budget:
-            break
-        overflow = final_prompt_tokens - input_budget
-        next_keep_tokens = max(0, keep_tokens - overflow)
-        if next_keep_tokens == keep_tokens:
-            next_keep_tokens = max(0, keep_tokens - 1)
-        if keep_tokens == 0:
-            raise ValueError("System prompt and chat template exceed the configured input budget")
-        keep_tokens = next_keep_tokens
-
+    truncated_messages = truncate_middle(tokenizer, messages, input_budget)
+    final_prompt_tokens = _chat_token_count(tokenizer, truncated_messages)
     return truncated_messages, {
         "prompt_truncated": True,
         "prompt_tokens_before_truncation": original_prompt_tokens,
@@ -396,31 +377,14 @@ def _call_openai_compatible(client: Any, args: argparse.Namespace, messages: lis
     if not url:
         url = args.api_base_url.rstrip("/") + "/chat/completions"
 
-    payload = {
-        "model": args.api_model,
-        "messages": messages,
-        "max_tokens": args.max_output_tokens,
-        "temperature": 0,
-    }
-    payload.update(build_openai_compatible_mcq_extra_body())
-    headers = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-    request = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
-        method="POST",
-    )
-    try:
-        with opener(request, timeout=120) as response:
-            raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"OpenAI-compatible HTTP {exc.code}: {body}") from exc
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"OpenAI-compatible request failed: {exc}") from exc
-    return json.loads(raw)
+    from execution.client import call_chat_completion
+
+    completion = call_chat_completion(base_url=url.removesuffix("/chat/completions"),
+        model=args.api_model, messages=messages, max_tokens=args.max_output_tokens,
+        extra_body=build_openai_compatible_mcq_extra_body(), api_key=api_key,
+        timeout_seconds=getattr(args, "request_timeout_seconds", 120), opener=opener)
+    return {"choices": [{"message": {"content": completion.text}, "finish_reason": completion.finish_reason}],
+            "usage": completion.raw_usage}
 
 
 def _call_api(
@@ -471,7 +435,7 @@ def run_longbench_api_benchmark(
     selected_rows = filter_suite_rows(
         all_rows,
         row_types=row_types,
-        max_rows=args.max_rows,
+        max_rows=selection_limit(args),
         source_ids=source_ids,
     )
     if not selected_rows:
@@ -494,13 +458,38 @@ def run_longbench_api_benchmark(
     print(f"[LONGBENCH-V2-API] Provider/model: {args.api_provider}/{args.api_model}")
     print(f"[LONGBENCH-V2-API] Output dir: {out_dir}")
 
-    if client_factory is None:
-        client_factory = _build_default_api_client_factory(args)
-    client = client_factory()
     tokenizer = None
+    pipeline = None
+    config = None
     if args.api_provider == "openai_compatible":
-        tokenizer_factory = tokenizer_factory or _load_tokenizer
-        tokenizer = tokenizer_factory(args.api_model)
+        tokenizer = (tokenizer_factory or _load_tokenizer)(args.api_model)
+        if selection_limit(args) == 0 and (getattr(args, "min_source_tokens", None) is not None or getattr(args, "max_source_tokens", None) is not None):
+            selected_rows = filter_sources(selected_rows, args, tokenizer, lambda row: solver_task(
+                row["case_id"], row["source_id"], row["context"], build_query(row)))
+        config = resolve_config(args, mode="direct", legacy_overflow="middle",
+            executor_model=args.api_model, max_input_tokens=args.max_input_tokens,
+            max_output_tokens=args.max_output_tokens, context_window_tokens=args.context_window_tokens)
+        if config.cache_read or config.cache_write:
+            raise ValueError("The direct baseline requires answer caching disabled")
+        if getattr(args, "preflight_only", False):
+            audit_pipeline = Pipeline(config, tokenizer, None)
+            audit = [audit_pipeline.preflight(solver_task(row["case_id"], row["source_id"],
+                row["context"], build_query(row))) for row in selected_rows]
+            (out_dir / "route_audit.json").write_text(json.dumps(audit, indent=2))
+            return
+    elif (getattr(args, "execution_profile", "legacy") != "legacy" or getattr(args, "preflight_only", False)
+          or getattr(args, "min_source_tokens", None) is not None or getattr(args, "max_source_tokens", None) is not None):
+        raise ValueError("Shared direct execution requires --api-provider openai_compatible")
+    client = (client_factory or _build_default_api_client_factory(args))()
+
+    def complete(request):
+        response = _call_api(client, args, "", messages=request)
+        usage = parse_api_usage(response, args.api_model, success=True)
+        return Completion(_extract_response_text(response), usage["input_tokens"], usage["output_tokens"],
+                          usage["raw"], (response.get("choices") or [{}])[0].get("finish_reason"))
+
+    if config is not None:
+        pipeline = Pipeline(config, tokenizer, complete, output_dir=out_dir)
 
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
@@ -518,52 +507,62 @@ def run_longbench_api_benchmark(
             "input_token_budget": 0,
             "context_window_safety_margin_tokens": 0,
         }
-        if tokenizer is not None:
-            messages, truncation = prepare_openai_compatible_messages(
-                row,
-                tokenizer,
-                args.context_window_tokens,
-                args.max_input_tokens,
-                args.max_output_tokens,
-            )
         generation = ""
         api_status = "ok"
         api_error = ""
         response = None
         api_attempt_count = 0
         t0 = time.time()
-        try:
-            while api_attempt_count < args.max_retries:
-                api_attempt_count += 1
-                try:
-                    response = _call_api(client, args, prompt, messages=messages)
-                    break
-                except Exception:
-                    if api_attempt_count >= args.max_retries:
-                        raise
-                    time.sleep(1)
-            generation = _extract_response_text(response)
-            usage = parse_api_usage(response, args.api_model, success=True)
-        except Exception as exc:
-            latency_ms = (time.time() - t0) * 1000.0
-            if args.fail_fast:
-                raise
-            api_status = "error"
-            api_error = f"{type(exc).__name__}: {exc}"
-            usage = {
-                "raw": {},
-                "calls": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_tokens": 0,
-                "cost_usd": 0.0,
-                "usage_parse_status": "api_error",
-            }
+        if pipeline is not None:
+            result = pipeline.execute(solver_task(row["case_id"], row["source_id"], row["context"], build_query(row)))
+            generation = result["prediction"]
+            api_status, api_error, api_attempt_count = result["status"], result["error"], result["attempts"]
+            latency_ms = result["total_ms"]
+            usage = parse_api_usage({"usage": result["raw_usage"]}, args.api_model, success=result["status"] == "ok")
+            before_tokens, after_tokens = result["full_rendered_input_tokens"], result["final_rendered_input_tokens"]
+            truncated = result["route"] == "middle_truncated"
+            truncation.update(prompt_truncated=truncated, prompt_tokens_before_truncation=before_tokens,
+                prompt_tokens_after_truncation=after_tokens, prompt_tokens_removed=before_tokens-after_tokens if truncated else 0,
+                context_window_tokens=args.context_window_tokens, input_token_budget=args.max_input_tokens,
+                context_window_safety_margin_tokens=args.context_window_tokens-args.max_input_tokens-args.max_output_tokens,
+                route=result["route"])
+            if args.fail_fast and api_status == "error":
+                raise RuntimeError(api_error)
         else:
-            latency_ms = (time.time() - t0) * 1000.0
+            try:
+                while api_attempt_count < args.max_retries:
+                    api_attempt_count += 1
+                    try:
+                        response = _call_api(client, args, prompt, messages=messages)
+                        break
+                    except Exception:
+                        if api_attempt_count >= args.max_retries:
+                            raise
+                        time.sleep(1)
+                generation = _extract_response_text(response)
+                usage = parse_api_usage(response, args.api_model, success=True)
+            except Exception as exc:
+                latency_ms = (time.time() - t0) * 1000.0
+                if args.fail_fast:
+                    raise
+                api_status = "error"
+                api_error = f"{type(exc).__name__}: {exc}"
+                usage = {
+                    "raw": {},
+                    "calls": 0,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cost_usd": 0.0,
+                    "usage_parse_status": "api_error",
+                }
+            else:
+                latency_ms = (time.time() - t0) * 1000.0
 
         prediction = parse_choice(generation)
         correct = answer_correct(generation, row.get("answer", ""))
+        if pipeline is not None:
+            record_evaluation(out_dir, row["case_id"], api_status, {"accuracy": correct})
         valid_choice = generation.strip() in MCQ_ALLOWED_CHOICES
         prediction_row = {
             "id": row["case_id"],
@@ -617,6 +616,7 @@ def run_longbench_api_benchmark(
     _write_csv_rows(bridge_rows_csv_path, bridge_rows)
 
     totals = _aggregate_bridge_row_totals(bridge_rows)
+    finalize(out_dir)
     finished_at = datetime.now(timezone.utc)
     elapsed_seconds = round((finished_at - started_at).total_seconds(), 3)
     correct_count = sum(1 for row in bridge_rows if row["answer_correct"])
@@ -630,7 +630,12 @@ def run_longbench_api_benchmark(
         bool(row["valid_choice"] and row["answer_correct"]) for row in bridge_rows
     )
 
+    supported_count = sum(row["api_status"] != "unsupported_context" for row in bridge_rows)
     manifest = {
+        "execution": config.metadata() if config else None,
+        "min_source_tokens": getattr(args, "min_source_tokens", None), "max_source_tokens": getattr(args, "max_source_tokens", None),
+        "supported_count": supported_count,
+        "unsupported_count": len(bridge_rows) - supported_count,
         "run_id": run_id,
         "created_at": finished_at.isoformat(),
         "started_at": started_at.isoformat(),
@@ -648,7 +653,7 @@ def run_longbench_api_benchmark(
         "rows_selected": len(bridge_rows),
         "row_type_counts": row_type_counts,
         "answer_correct_count": correct_count,
-        "answer_accuracy": round(correct_count / len(bridge_rows), 6) if bridge_rows else 0.0,
+        "answer_accuracy": round(correct_count / supported_count, 6) if supported_count else None,
         "by_row_type": summarize_rows(bridge_rows, "row_type"),
         "api_provider": args.api_provider,
         "api_model": args.api_model,
@@ -712,7 +717,7 @@ def run_longbench_api_benchmark(
     print(f"[LONGBENCH-V2-API] Bridge CSV  : {bridge_rows_csv_path}")
     print(f"[LONGBENCH-V2-API] Manifest    : {manifest_path}")
     print(f"[LONGBENCH-V2-API] Eval report : {report_path}")
-    print(f"[LONGBENCH-V2-API] Accuracy    : {manifest['answer_accuracy']:.3f}")
+    print(f"[LONGBENCH-V2-API] Accuracy    : {manifest['answer_accuracy']}")
     if error_count:
         print(f"[LONGBENCH-V2-API] API errors  : {error_count}")
 
@@ -771,6 +776,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_artifacts"))
     parser.add_argument("--manifest-note", type=str, default="")
+    parser.add_argument("--preflight-only", action="store_true")
+    parser.add_argument("--request-timeout-seconds", type=int, default=120)
+    add_source_arguments(parser)
+    add_arguments(parser)
     return parser
 
 

@@ -60,9 +60,21 @@ wait_for_endpoint() {
 }
 
 if [[ "$WAIT_FOR_ENDPOINTS" == "1" ]]; then
-  wait_for_endpoint "executor" "$OPENAI_COMPAT_EXECUTOR_BASE_URL"
-  if [[ "$OPENAI_COMPAT_EVALUATOR_BASE_URL" != "$OPENAI_COMPAT_EXECUTOR_BASE_URL" ]]; then
-    wait_for_endpoint "evaluator" "$OPENAI_COMPAT_EVALUATOR_BASE_URL"
+  if [[ "${JARVIS_REQUIRED_SERVICES_SET:-0}" == 1 ]]; then
+    if [[ "$JARVIS_WAIT_FOR_EXECUTOR" == 1 ]]; then
+      wait_for_endpoint "executor" "$OPENAI_COMPAT_EXECUTOR_BASE_URL"
+    fi
+    if [[ -n "$JARVIS_GRADER_BASE_URL" && "$JARVIS_GRADER_BASE_URL" != "$OPENAI_COMPAT_EXECUTOR_BASE_URL" ]]; then
+      wait_for_endpoint "grader" "$JARVIS_GRADER_BASE_URL"
+    fi
+    if [[ -n "$JARVIS_VERIFIER_BASE_URL" && "$JARVIS_VERIFIER_BASE_URL" != "$OPENAI_COMPAT_EXECUTOR_BASE_URL" && "$JARVIS_VERIFIER_BASE_URL" != "$JARVIS_GRADER_BASE_URL" ]]; then
+      wait_for_endpoint "cache verifier" "$JARVIS_VERIFIER_BASE_URL"
+    fi
+  else
+    wait_for_endpoint "executor" "$OPENAI_COMPAT_EXECUTOR_BASE_URL"
+    if [[ "$OPENAI_COMPAT_EVALUATOR_BASE_URL" != "$OPENAI_COMPAT_EXECUTOR_BASE_URL" ]]; then
+      wait_for_endpoint "evaluator" "$OPENAI_COMPAT_EVALUATOR_BASE_URL"
+    fi
   fi
 fi
 

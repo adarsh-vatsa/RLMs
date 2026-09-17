@@ -1,4 +1,4 @@
-"""Run one of the four AA-LCR direct/hybrid benchmark cells."""
+"""Run AA-LCR in direct or hybrid mode with a configurable context budget."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import os
 import sys
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -20,7 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from aa_lcr.api import Completion, call_chat_completion, call_with_retries  # noqa: E402
+from aa_lcr.api import Completion, call_chat_completion  # noqa: E402
 from aa_lcr.dataset import (  # noqa: E402
     ARCHIVE_SHA256,
     DATASET_RELEASES,
@@ -43,10 +43,18 @@ from aa_lcr.prompting import (  # noqa: E402
     build_messages,
     chat_token_count,
     non_thinking_extra_body,
-    pack_retrieved_children,
     prepare_direct_messages,
     prompt_contract_metadata,
 )
+
+
+from aa_lcr.adapter import solver_task
+from execution.contracts import add_arguments, resolve_config
+from execution.client import served_context_window
+from execution.pipeline import Pipeline
+from execution.artifacts import record_evaluation, finalize
+from execution.selection import add_source_arguments, filter_sources, selection_limit
+from execution.tokens import route as execution_route
 
 
 DEFAULT_EXECUTOR_MODEL = "Qwen/Qwen3.6-35B-A3B"
@@ -74,6 +82,34 @@ EXPERIMENTS = {
     "direct_64k": Experiment("direct_64k", "direct", 65536, 60000, True),
     "hybrid_64k": Experiment("hybrid_64k", "hybrid", 65536, 60000, False),
 }
+
+
+def resolve_experiment(args: argparse.Namespace) -> Experiment:
+    legacy = EXPERIMENTS[args.experiment] if args.experiment else None
+    if args.max_output_tokens is None:
+        args.max_output_tokens = (
+            512 if legacy and legacy.context_window_tokens == 65536
+            else DEFAULT_MAX_OUTPUT_TOKENS
+        )
+    for option in ("context_window_tokens", "max_input_tokens", "max_output_tokens"):
+        value = getattr(args, option)
+        if value is not None and value <= 0:
+            raise ValueError(f"--{option.replace('_', '-')} must be positive")
+    context = args.context_window_tokens
+    if context is None:
+        context = legacy.context_window_tokens if legacy else served_context_window(
+            base_url=args.executor_base_url, model=args.executor_model,
+            api_key=os.getenv(args.api_key_env, "") if args.api_key_env else "",
+            timeout_seconds=args.request_timeout_seconds,
+        )
+    max_input = args.max_input_tokens
+    if max_input is None:
+        max_input = legacy.max_input_tokens if legacy else context - args.max_output_tokens
+    if max_input <= 0 or max_input + args.max_output_tokens > context:
+        raise ValueError("Input and output budgets exceed the executor context window")
+    if legacy:
+        return replace(legacy, max_input_tokens=max_input, context_window_tokens=context)
+    return Experiment(args.mode, args.mode, context, max_input, False)
 
 
 def _load_tokenizer(model: str) -> Any:
@@ -226,6 +262,7 @@ def preflight_questions(
     documents_root: Path,
     tokenizer: Any,
     experiment: Experiment,
+    config=None,
 ) -> dict:
     document_cache: dict[str, list[tuple[str, str]]] = {}
     rows = []
@@ -238,7 +275,7 @@ def preflight_questions(
         messages = build_messages([text for _, text in documents], question.question)
         tokens = chat_token_count(tokenizer, messages)
         if (
-            experiment.mode == "direct"
+            config is None and experiment.mode == "direct"
             and not experiment.allow_direct_truncation
             and tokens > experiment.max_input_tokens
         ):
@@ -250,7 +287,7 @@ def preflight_questions(
             tokens if tokens <= experiment.max_input_tokens else None
         )
         prompt_truncated = False
-        if experiment.mode == "direct" and tokens > experiment.max_input_tokens:
+        if (config is None or config.direct_overflow == "middle") and experiment.mode == "direct" and tokens > experiment.max_input_tokens:
             prepared_messages, truncation = prepare_direct_messages(
                 [text for _, text in documents],
                 question.question,
@@ -264,6 +301,9 @@ def preflight_questions(
                 raise ValueError(
                     f"Direct truncation removed the question for {question.case_id}"
                 )
+        shared_route = None
+        if config is not None:
+            shared_route = execution_route(config.mode, tokens, config.max_input_tokens, config.direct_overflow)
         rows.append(
             {
                 "case_id": question.case_id,
@@ -273,7 +313,7 @@ def preflight_questions(
                 "full_rendered_input_tokens": tokens,
                 "final_rendered_input_tokens": final_tokens,
                 "prompt_truncated": prompt_truncated,
-                "route": (
+                "route": shared_route or (
                     "direct_fit"
                     if tokens <= experiment.max_input_tokens
                     else (
@@ -296,32 +336,6 @@ def preflight_questions(
             "max": token_counts[-1],
         },
     }
-
-
-def _call_model(
-    completion_caller: Callable[..., Completion],
-    *,
-    base_url: str,
-    model: str,
-    messages: list[dict[str, str]],
-    max_tokens: int,
-    extra_body: dict,
-    api_key: str,
-    timeout_seconds: int,
-    max_retries: int,
-) -> tuple[Completion, int]:
-    return call_with_retries(
-        lambda: completion_caller(
-            base_url=base_url,
-            model=model,
-            messages=messages,
-            max_tokens=max_tokens,
-            extra_body=extra_body,
-            api_key=api_key,
-            timeout_seconds=timeout_seconds,
-        ),
-        max_retries=max_retries,
-    )
 
 
 def _summarize(rows: list[dict], field: str) -> dict[str, dict]:
@@ -410,40 +424,21 @@ def run_benchmark(
     completion_caller: Callable[..., Completion] = call_chat_completion,
     scs_module: Any | None = None,
 ) -> Path | None:
-    experiment = EXPERIMENTS[args.experiment]
-    if args.max_output_tokens is None:
-        args.max_output_tokens = (
-            DEFAULT_MAX_OUTPUT_TOKENS
-            if experiment.context_window_tokens == 262144
-            else 512
-        )
-    if args.max_output_tokens <= 0:
-        raise ValueError("--max-output-tokens must be positive")
+    experiment = resolve_experiment(args)
     if args.repeat_id < 1:
         raise ValueError("--repeat-id must be positive")
-    if experiment.mode == "hybrid" and args.grader_api_style != "vllm":
-        raise ValueError(
-            "Hybrid cache verification requires a local vLLM evaluator; "
-            "regrade saved answers for hosted grading"
-        )
-    if (
-        experiment.max_input_tokens + args.max_output_tokens
-        > experiment.context_window_tokens
-    ):
-        raise ValueError(
-            "Input and output budgets exceed the experiment context window"
-        )
     if args.child_tokens <= 0:
         raise ValueError("--child-tokens must be positive")
     if args.child_overlap_tokens < 0 or args.child_overlap_tokens >= args.child_tokens:
         raise ValueError("--child-overlap-tokens must be smaller than --child-tokens")
-    if experiment.mode == "hybrid" and (
-        args.child_tokens != DEFAULT_CHILD_TOKENS
-        or args.child_overlap_tokens != DEFAULT_CHILD_OVERLAP_TOKENS
-    ):
-        raise ValueError(
-            "AA-LCR hybrid experiments require 7500-token children with 750-token overlap"
-        )
+    config = resolve_config(args, mode=experiment.mode, legacy_cache=experiment.mode == "hybrid",
+        legacy_overflow="middle" if experiment.allow_direct_truncation else "error",
+        executor_model=args.executor_model, max_input_tokens=experiment.max_input_tokens,
+        max_output_tokens=args.max_output_tokens, context_window_tokens=experiment.context_window_tokens)
+    verifier_model = args.cache_verifier_model or args.evaluator_model
+    verifier_url = args.cache_verifier_base_url or args.evaluator_base_url
+    if config.cache_read and config.cache_matching == "semantic" and args.grader_api_style != "vllm" and not args.cache_verifier_base_url:
+        raise ValueError("Hosted grading with semantic caching requires a separate --cache-verifier-base-url")
 
     questions_csv = Path(args.questions_csv)
     documents_root = Path(args.documents_root)
@@ -460,20 +455,24 @@ def run_benchmark(
         questions,
         question_ids=_parse_values(args.question_ids),
         document_set_ids=_parse_values(args.document_set_ids),
-        max_rows=args.max_rows,
+        max_rows=selection_limit(args),
     )
     if not selected:
         raise ValueError("No AA-LCR questions matched the requested filters")
 
     tokenizer = (tokenizer_factory or _load_tokenizer)(args.executor_model)
-    preflight = preflight_questions(selected, documents_root, tokenizer, experiment)
+    selected = filter_sources(selected, args, tokenizer, lambda question: solver_task(
+        question.case_id, question.document_set_id, load_documents(question, documents_root), question.question))
+    preflight = preflight_questions(selected, documents_root, tokenizer, experiment, config=config)
     if args.preflight_only:
         payload = {
             **preflight,
+            "execution": config.metadata(), "cache_assumption": "miss",
             "dataset_version": dataset_info["dataset_version"],
             "dataset_revision": str(dataset_manifest.get("dataset_revision") or ""),
             **_tokenizer_metadata(tokenizer, args.executor_model),
             "context_window_tokens": experiment.context_window_tokens,
+            "context_window_source": "explicit" if args.context_window_tokens is not None else ("legacy_preset" if args.experiment else "executor_models_endpoint"),
             "max_input_tokens": experiment.max_input_tokens,
             "max_output_tokens": args.max_output_tokens,
         }
@@ -485,7 +484,7 @@ def run_benchmark(
         print(rendered)
         return None
 
-    grader = Grader(
+    grader = None if args.execution_only else Grader(
         args,
         tokenizer_factory=tokenizer_factory or _load_tokenizer,
         completion_caller=completion_caller,
@@ -513,200 +512,81 @@ def run_benchmark(
     print(f"[AA-LCR] Output: {run_dir}")
 
     api_key = os.getenv(args.api_key_env, "") if args.api_key_env else ""
-    document_cache: dict[str, list[tuple[str, str]]] = {}
     controller = None
-    active_ingested_set = ""
     cache_state_path = run_dir / "cache_state"
-    if experiment.mode == "hybrid":
+
+    def backend():
+        nonlocal controller
         scs = scs_module or _import_semantic_cache_system()
-        scs.configure_llm_provider(
-            provider="openai_compatible",
-            executor_model=args.executor_model,
-            evaluator_model=args.evaluator_model,
-            openai_compat_executor_base_url=args.executor_base_url,
-            openai_compat_evaluator_base_url=args.evaluator_base_url,
-            openai_compat_api_key_env=args.api_key_env,
-        )
         scs.DOCUMENT_CHUNK_TOKENS = args.child_tokens
         scs.DOCUMENT_CHUNK_OVERLAP_TOKENS = args.child_overlap_tokens
         scs.DOCUMENT_CHUNK_TOKENIZER_MODEL = str(getattr(scs, "EMBEDDING_MODEL", ""))
-        embedder = scs.EmbeddingEngine()
-        if args.child_tokens >= int(getattr(scs, "EMBEDDING_MAX_LENGTH", 8192)):
-            raise ValueError("--child-tokens must be below the embedding input limit")
-        controller = scs.SemanticCacheController(
-            metrics=scs.ExecutionMetrics(),
-            embedder=embedder,
-            reranker=None,
-            corpus_id=f"aa_lcr_{run_id}",
-            corpus_domain="aa_lcr",
-        )
+        controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics(), embedder=scs.EmbeddingEngine(),
+            reranker=scs.Reranker() if config.rerank_top else None,
+            corpus_id=f"aa_lcr_{run_id}", corpus_domain="aa_lcr")
+        if config.cache_read and config.cache_matching == "semantic":
+            from execution.cache import configure_verifier
+            configure_verifier(controller, args, default_model=verifier_model,
+                               default_url=verifier_url, default_key_env=args.api_key_env)
+        return scs, controller
 
+    def complete(request):
+        return completion_caller(base_url=args.executor_base_url, model=args.executor_model,
+            messages=request, max_tokens=args.max_output_tokens, extra_body=non_thinking_extra_body(),
+            api_key=api_key, timeout_seconds=args.request_timeout_seconds)
+
+    pipeline = Pipeline(config, tokenizer, complete, backend_factory=backend, output_dir=run_dir)
+    active_document_set = None
+    documents = []
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
     for index, question in enumerate(selected, start=1):
         row_started = time.time()
         print(f"[AA-LCR] {index}/{len(selected)} {question.case_id}")
-        if question.document_set_id not in document_cache:
-            document_cache[question.document_set_id] = load_documents(
-                question, documents_root
-            )
-        documents = document_cache[question.document_set_id]
+        if question.document_set_id != active_document_set:
+            documents = load_documents(question, documents_root)
+            active_document_set = question.document_set_id
         scope_hash = build_scope_hash(documents)
-        document_texts = [text for _, text in documents]
-        full_messages = build_messages(document_texts, question.question)
-        full_tokens = chat_token_count(tokenizer, full_messages)
+        task = solver_task(question.case_id, question.document_set_id, documents, question.question,
+            legacy=config.profile == "legacy" and config.evidence_order == "score",
+            docs_dir=document_paths(question, documents_root)[0].parent)
+        result = pipeline.execute(task)
+        route = result["route"]
+        from_cache, cache_type = result["from_cache"], result["cache_type"]
+        cache_provenance = result["cache_provenance"]
+        selected_evidence_ranges = result["selected_evidence_ranges"]
+        full_tokens, final_tokens = result["full_rendered_input_tokens"], result["final_rendered_input_tokens"]
+        prompt_truncated = route == "middle_truncated"
+        prompt_tokens_removed = full_tokens - final_tokens if prompt_truncated else 0
+        ingested_chunks, ingest_ms = result["ingested_chunks"], result["ingest_ms"]
+        document_embedding_ms = result["document_embedding_ms"]
+        faiss_search_ms, packing_ms = result["retrieval_ms"], result["packing_ms"]
+        semantic_verifier_calls = result["semantic_verifier_calls"]
+        verifier_input_tokens, verifier_output_tokens = result["verifier_input_tokens"], result["verifier_output_tokens"]
+        executor_status, executor_error = result["status"], result["error"]
+        executor_attempts = result["attempts"]
+        executor_usage = Completion(result["prediction"], result["input_tokens"], result["output_tokens"],
+                                   result["raw_usage"], result["finish_reason"])
+        candidate_answer = result["prediction"]
+        if args.fail_fast and executor_status == "error":
+            raise RuntimeError(executor_error)
 
-        route = "direct"
-        from_cache = False
-        cache_type = "miss"
-        cache_provenance: dict = {}
-        selected_evidence_ranges: list[dict] = []
-        final_tokens = full_tokens
-        prompt_truncated = False
-        prompt_tokens_removed = 0
-        ingested_chunks = 0
-        ingest_ms = 0.0
-        document_embedding_ms = 0.0
-        faiss_search_ms = 0.0
-        packing_ms = 0.0
-        semantic_verifier_calls = 0
-        verifier_input_tokens = 0
-        verifier_output_tokens = 0
-        executor_status = "ok"
-        executor_error = ""
-        executor_attempts = 0
-        executor_usage = Completion("", 0, 0, {})
-        candidate_answer = ""
-
-        try:
-            if experiment.mode == "direct":
-                request_messages, truncation = prepare_direct_messages(
-                    document_texts,
-                    question.question,
-                    tokenizer,
-                    experiment.max_input_tokens,
-                    allow_truncation=experiment.allow_direct_truncation,
-                )
-                prompt_truncated = truncation["prompt_truncated"]
-                final_tokens = truncation["prompt_tokens_after_truncation"]
-                prompt_tokens_removed = truncation["prompt_tokens_removed"]
-                route = "middle_truncated" if prompt_truncated else "direct_fit"
-            else:
-                assert controller is not None
-                controller.activate_data_scope(scope_hash)
-                before = _snapshot_metrics(controller.metrics)
-                cached = controller.lookup_cached_result(question.question)
-                after = _snapshot_metrics(controller.metrics)
-                semantic_verifier_calls = int(after["calls"] - before["calls"])
-                verifier_input_tokens = int(
-                    after["input_tokens"] - before["input_tokens"]
-                )
-                verifier_output_tokens = int(
-                    after["output_tokens"] - before["output_tokens"]
-                )
-                if cached is not None:
-                    from_cache = True
-                    cache_type = str(cached.get("cache_type") or "unknown")
-                    cache_provenance = cached.get("cache_provenance") or {}
-                    route = f"{cache_type}_cache"
-                    candidate_answer = str(cached.get("answer") or "").strip()
-                    request_messages = []
-                    final_tokens = 0
-                else:
-                    controller.metrics.cache_misses += 1
-                    if full_tokens <= experiment.max_input_tokens:
-                        route = "direct_fit"
-                        request_messages = full_messages
-                    else:
-                        route = "dense_child_packed"
-                        if active_ingested_set != question.document_set_id:
-                            ingest_started = time.time()
-                            ingested_chunks = controller.ingest(
-                                document_paths(question, documents_root)[0].parent,
-                                data_scope_hash=scope_hash,
-                                source_id=question.document_set_id,
-                                ordered_filenames=list(question.data_source_filenames),
-                            )
-                            ingest_ms = (time.time() - ingest_started) * 1000.0
-                            active_ingested_set = question.document_set_id
-                            ingest_info = (
-                                getattr(controller, "_last_ingest_info", {}) or {}
-                            )
-                            document_embedding_ms = float(
-                                ingest_info.get("embedding_ms") or 0.0
-                            )
-                            encoded_max = int(
-                                ingest_info.get("child_encoded_length_max") or 0
-                            )
-                            if encoded_max >= int(
-                                getattr(scs, "EMBEDDING_MAX_LENGTH", 8192)
-                            ):
-                                raise RuntimeError(
-                                    "A child reached the embedding input limit; reduce --child-tokens"
-                                )
-                        search_started = time.time()
-                        results = controller.retrieve(
-                            question.question,
-                            top_k=int(getattr(controller.doc_index, "total", 0) or 0),
-                            rerank_top=0,
-                            use_reranker=False,
-                            query_embedding=getattr(
-                                controller, "_last_cache_query_embedding", None
-                            ),
-                        )
-                        faiss_search_ms = (time.time() - search_started) * 1000.0
-                        packing_started = time.time()
-                        request_messages, packing = pack_retrieved_children(
-                            tokenizer,
-                            question.question,
-                            results,
-                            experiment.max_input_tokens,
-                        )
-                        packing_ms = (time.time() - packing_started) * 1000.0
-                        final_tokens = packing["rendered_input_tokens"]
-                        selected_evidence_ranges = packing["selected_evidence_ranges"]
-
-            if not from_cache:
-                executor_usage, executor_attempts = _call_model(
-                    completion_caller,
-                    base_url=args.executor_base_url,
-                    model=args.executor_model,
-                    messages=request_messages,
-                    max_tokens=args.max_output_tokens,
-                    extra_body=non_thinking_extra_body(),
-                    api_key=api_key,
-                    timeout_seconds=args.request_timeout_seconds,
-                    max_retries=args.max_retries,
-                )
-                candidate_answer = executor_usage.text
-                if experiment.mode == "hybrid" and candidate_answer:
-                    assert controller is not None
-                    controller.store_compact_answer(
-                        question.question,
-                        candidate_answer,
-                        model_used=args.executor_model,
-                        source_id=question.document_set_id,
-                        route=route,
-                        provenance={
-                            "source_scope_hash": scope_hash,
-                            "full_rendered_input_tokens": full_tokens,
-                            "final_rendered_input_tokens": final_tokens,
-                            "selected_evidence_ranges": selected_evidence_ranges,
-                        },
-                    )
-        except Exception as exc:
-            executor_attempts = int(getattr(exc, "attempts", executor_attempts) or 0)
-            executor_status = "error"
-            executor_error = f"{type(exc).__name__}: {exc}"
-            if args.fail_fast:
-                raise
-
+        with predictions_path.open("a", encoding="utf-8") as saved:
+            saved.write(json.dumps({"id": question.case_id, "sample_id": question.case_id,
+                "case_id": question.case_id, "question_id": question.question_id,
+                "document_set_id": question.document_set_id, "document_category": question.document_category,
+                "question": question.question, "candidate_answer": candidate_answer,
+                "generation": candidate_answer, "answer": question.answer,
+                "official_answer": question.answer, "data_source_filenames": list(question.data_source_filenames),
+                "executor_status": executor_status, "executor_finish_reason": executor_usage.finish_reason,
+                "executor_output_tokens": executor_usage.output_tokens, "max_output_tokens": args.max_output_tokens,
+            }, ensure_ascii=False) + "\n")
         grader_status = "not_run"
         grader_error = ""
         grader_attempts = 0
         grader_usage = Completion("", 0, 0, {})
         grade = ""
-        if executor_status == "ok":
+        if executor_status == "ok" and grader is not None:
             try:
                 grader_usage, grader_attempts, grade = grader.grade(
                     question.question, question.answer, candidate_answer
@@ -723,6 +603,8 @@ def run_benchmark(
                 if args.fail_fast:
                     raise
 
+        record_evaluation(run_dir, question.case_id, "ok" if grade else grader_status,
+                          {"accuracy": grade == "CORRECT"} if grade else {})
         grade_valid = bool(grade)
         answer_correct = grade == "CORRECT" if grade_valid else None
         delta_calls = (
@@ -805,13 +687,14 @@ def run_benchmark(
             }
         )
 
-    if controller is not None:
+    if controller is not None and config.cache_write:
         controller.save(cache_state_path)
 
     _write_jsonl(predictions_path, prediction_rows)
     _write_jsonl(bridge_path, bridge_rows)
     _write_csv(bridge_csv_path, bridge_rows)
 
+    finalize(run_dir)
     finished_at = datetime.now(timezone.utc)
     valid_rows = [row for row in bridge_rows if row["grade_valid"]]
     correct_count = sum(row["answer_correct"] is True for row in valid_rows)
@@ -848,7 +731,15 @@ def run_benchmark(
     )
     total_input_tokens = sum(int(row["delta_input_tokens"]) for row in bridge_rows)
     total_output_tokens = sum(int(row["delta_output_tokens"]) for row in bridge_rows)
+    supported_count = sum(row["executor_status"] != "unsupported_context" for row in bridge_rows)
+    grading_pending = sum(row["executor_status"] == "ok" and not row["grade_valid"] for row in bridge_rows)
     manifest = {
+        "execution": config.metadata(),
+        "min_source_tokens": args.min_source_tokens, "max_source_tokens": args.max_source_tokens,
+        "supported_count": supported_count, "unsupported_count": len(bridge_rows) - supported_count,
+        "grading_pending_count": grading_pending,
+        "operational_accuracy": correct_count / supported_count if supported_count and not grading_pending else None,
+        "evaluation_complete": grading_pending == 0,
         "run_id": run_id,
         "artifact_schema_version": 2,
         "repeat_id": args.repeat_id,
@@ -864,6 +755,7 @@ def run_benchmark(
         "experiment": experiment.name,
         "mode": experiment.mode,
         "context_window_tokens": experiment.context_window_tokens,
+        "context_window_source": "explicit" if args.context_window_tokens is not None else ("legacy_preset" if args.experiment else "executor_models_endpoint"),
         "max_input_tokens": experiment.max_input_tokens,
         "max_output_tokens": args.max_output_tokens,
         "context_window_safety_margin_tokens": (
@@ -887,7 +779,7 @@ def run_benchmark(
         "benchmark_label_type": "open_answer_string",
         "grader_labels": ["CORRECT", "INCORRECT"],
         **prompt_contract_metadata(args.grader_prompt_version),
-        **grader.metadata(),
+        **(grader.metadata() if grader is not None else {"grading_deferred": True, "grader_api_style": args.grader_api_style, "grader_reasoning_effort": args.grader_reasoning_effort}),
         **_tokenizer_metadata(tokenizer, args.executor_model),
         "questions_csv": str(questions_csv),
         "questions_sha256": dataset_info["questions_sha256"],
@@ -979,11 +871,11 @@ def run_benchmark(
         "child_overlap_tokens": (
             args.child_overlap_tokens if experiment.mode == "hybrid" else None
         ),
-        "fresh_cache_state": experiment.mode == "hybrid",
+        "fresh_cache_state": config.cache_read or config.cache_write,
         "cache_entries_after_run": (
-            controller.get_total_entries() if controller is not None else 0
+            controller.get_total_entries() if controller is not None and (config.cache_read or config.cache_write) else 0
         ),
-        "cache_state_path": str(cache_state_path) if controller is not None else "",
+        "cache_state_path": str(cache_state_path) if config.cache_write and controller is not None else "",
         "preflight_route_counts": preflight["route_counts"],
         "artifacts": {
             "predictions": str(predictions_path),
@@ -1004,7 +896,9 @@ def run_benchmark(
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run one AA-LCR reasoning experiment")
-    parser.add_argument("--experiment", choices=sorted(EXPERIMENTS), required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--mode", choices=("direct", "hybrid"))
+    mode.add_argument("--experiment", choices=sorted(EXPERIMENTS), help="Historical budget presets; prefer --mode")
     parser.add_argument("--questions-csv", type=Path, default=DEFAULT_QUESTIONS_CSV)
     parser.add_argument("--documents-root", type=Path, default=DEFAULT_DOCUMENTS_ROOT)
     parser.add_argument(
@@ -1037,7 +931,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--max-output-tokens",
         type=int,
-        help="Defaults to 16384 for 262K cells, 512 for 64K cells",
+        help="Defaults to 16384; historical 64K experiment presets retain 512",
     )
     parser.add_argument("--child-tokens", type=int, default=DEFAULT_CHILD_TOKENS)
     parser.add_argument(
@@ -1058,6 +952,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--preflight-output", type=Path, default=None)
+    parser.add_argument("--max-input-tokens", type=int, help="With --mode, defaults to context window minus output allowance")
+    parser.add_argument("--context-window-tokens", type=int, help="With --mode, defaults to the selected executor's served limit from /models")
+    parser.add_argument("--execution-only", action="store_true", help="Save predictions for later grading")
+    add_source_arguments(parser)
+    add_arguments(parser)
     return parser
 
 

@@ -24,6 +24,8 @@ For the exact first-run sequence on the cluster, start with
 [`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) for benchmark runs.
 For the four AA-LCR experiments, use
 [`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md).
+For the shared LongBench/AA-LCR/MRCR execution profile and component switches,
+use [`SHARED_EXECUTION_RUNBOOK.md`](SHARED_EXECUTION_RUNBOOK.md).
 For MRCR v2 preparation, executor startup, token bounds, and direct/hybrid runs,
 use [`MRCR_V2_RUNBOOK.md`](MRCR_V2_RUNBOOK.md). MRCR does not require an evaluator.
 

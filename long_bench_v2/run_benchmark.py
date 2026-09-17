@@ -23,7 +23,6 @@ if str(REPO_ROOT) not in sys.path:
 from long_bench_v2.qwen_prompt import (  # noqa: E402
     build_openai_compatible_mcq_extra_body,
     build_strict_mcq_messages,
-    chat_token_count,
     mcq_decoder_constraint_metadata,
 )
 
@@ -33,6 +32,14 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 ARTIFACT_SUBDIR = "longbench_v2"
 REPORT_FILENAME = "official_longbench_v2_eval_report.json"
+from execution.client import Completion
+from execution.contracts import add_arguments, resolve_config
+from execution.pipeline import Pipeline
+from execution.artifacts import record_evaluation, finalize
+from execution.selection import add_source_arguments, filter_sources, selection_limit
+from long_bench_v2.adapter import solver_task
+
+
 DEFAULT_SUITE_CSV = Path("benchmark_data/long_bench_v2/data_cache_suite.csv")
 DEFAULT_SOURCE_JSON = Path("benchmark_data/long_bench_v2/data.json")
 DEFAULT_ROW_TYPES = "original,exact,semantic"
@@ -313,49 +320,14 @@ def pack_hybrid_children(
     results: list[dict],
     max_input_tokens: int,
 ) -> tuple[list[dict], dict]:
-    """Pack FAISS-ranked children until the next exact chat request would overflow."""
-    separator = "\n\n---\n\n"
-    selected: list[dict] = []
-    selected_texts: list[str] = []
-    rendered_tokens = chat_token_count(tokenizer, build_strict_mcq_messages("", query))
+    from execution.packing import pack
 
-    for result in results:
-        candidate_texts = [*selected_texts, result["text"]]
-        candidate_context = separator.join(candidate_texts)
-        candidate_messages = build_strict_mcq_messages(candidate_context, query)
-        candidate_tokens = chat_token_count(tokenizer, candidate_messages)
-        if candidate_tokens > max_input_tokens:
-            break
-        selected.append(result)
-        selected_texts = candidate_texts
-        rendered_tokens = candidate_tokens
-
-    if not selected:
-        raise RuntimeError("No retrieved child fits within the configured hybrid input budget")
-
-    selected_ranges = []
-    for result in selected:
-        metadata = result.get("metadata") or {}
-        selected_ranges.append(
-            {
-                "child_index": metadata.get("child_index", metadata.get("chunk_index")),
-                "token_start": metadata.get("token_start"),
-                "token_end": metadata.get("token_end"),
-                "char_start": metadata.get("char_start"),
-                "char_end": metadata.get("char_end"),
-                "score": round(float(result.get("score") or 0.0), 8),
-            }
-        )
-
-    packed_context = separator.join(selected_texts)
-    return build_strict_mcq_messages(packed_context, query), {
-        "rendered_input_tokens": rendered_tokens,
-        "faiss_candidate_count": len(results),
-        "selected_child_count": len(selected),
-        "dropped_child_count": max(0, len(results) - len(selected)),
-        "selected_child_indices": [item["child_index"] for item in selected_ranges],
-        "selected_evidence_ranges": selected_ranges,
-    }
+    request, info = pack(tokenizer,
+        lambda evidence: build_strict_mcq_messages("\n\n---\n\n".join(item["text"] for item in evidence), query),
+        (), results, max_input_tokens, order="score", merge=False)
+    return request, {**info, "rendered_input_tokens": info["final_rendered_input_tokens"],
+        "faiss_candidate_count": info["candidate_count"], "selected_child_count": len(info["selected_child_indices"]),
+        "dropped_child_count": len(results) - len(info["selected_child_indices"])}
 
 
 def _build_dataset_signature(rows: list[dict]) -> str:
@@ -814,7 +786,7 @@ def normalize_llm_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def _call_hybrid_executor(scs, controller, args: argparse.Namespace, messages: list[dict]) -> str:
+def _call_hybrid_executor(scs, controller, args: argparse.Namespace, messages: list[dict]) -> Completion:
     response = scs.create_llm_message(
         model=args.executor_model,
         max_tokens=args.max_output_tokens,
@@ -828,14 +800,15 @@ def _call_hybrid_executor(scs, controller, args: argparse.Namespace, messages: l
         int(getattr(response.usage, "input_tokens", 0) or 0),
         int(getattr(response.usage, "output_tokens", 0) or 0),
     )
-    return _response_text(response)
+    raw = getattr(response, "raw", {}) or {}
+    finish_reason = (raw.get("choices") or [{}])[0].get("finish_reason", getattr(response, "finish_reason", None))
+    return Completion(_response_text(response), int(getattr(response.usage, "input_tokens", 0) or 0),
+                      int(getattr(response.usage, "output_tokens", 0) or 0), raw.get("usage", {}), finish_reason)
 
 
 def _validate_hybrid_args(args: argparse.Namespace, embedding_max_length: int | None = None) -> None:
     if args.llm_provider != "openai_compatible":
         raise ValueError("Hybrid LongBench-v2 routing requires --llm-provider openai_compatible")
-    if args.mode != "cache":
-        raise ValueError("Hybrid LongBench-v2 routing requires --mode cache")
     if args.context_window_tokens <= args.max_output_tokens:
         raise ValueError("--context-window-tokens must exceed --max-output-tokens")
     if args.max_input_tokens <= 0:
@@ -863,13 +836,15 @@ def run_hybrid_route_audit(
     _validate_hybrid_args(args)
     tokenizer = tokenizer_factory(args.executor_model)
     tokenizer_info = executor_tokenizer_metadata(tokenizer, args.executor_model)
+    config = resolve_config(args, mode="hybrid", legacy_cache=args.mode == "cache",
+        executor_model=args.executor_model, max_input_tokens=args.max_input_tokens,
+        max_output_tokens=args.max_output_tokens, context_window_tokens=args.context_window_tokens)
+    pipeline = Pipeline(config, tokenizer, None)
     audited_rows = []
     for row in selected_rows:
         query = build_query(row)
-        rendered_tokens = chat_token_count(
-            tokenizer,
-            build_strict_mcq_messages(row["context"], query),
-        )
+        audit = pipeline.preflight(solver_task(row["case_id"], row["source_id"], row["context"], query))
+        rendered_tokens = audit["full_rendered_input_tokens"]
         audited_rows.append(
             {
                 "case_id": row["case_id"],
@@ -877,7 +852,7 @@ def run_hybrid_route_audit(
                 "source_scope_hash": build_source_scope_hash(row["source_id"], row["context"]),
                 "row_type": row["row_type"],
                 "rendered_input_tokens": rendered_tokens,
-                "route": "direct_fit" if rendered_tokens <= args.max_input_tokens else "dense_child_packed",
+                "route": audit["route"],
             }
         )
 
@@ -903,6 +878,7 @@ def run_hybrid_route_audit(
     out_dir.mkdir(parents=True, exist_ok=False)
     output_path = out_dir / "route_audit.json"
     payload = {
+        "execution": config.metadata(), "cache_assumption": "miss",
         "run_id": run_id,
         "created_at": started_at.isoformat(),
         "route_version": HYBRID_ROUTE_VERSION,
@@ -967,14 +943,23 @@ def run_longbench_benchmark(
     selected_rows = filter_suite_rows(
         all_rows,
         row_types=row_types,
-        max_rows=args.max_rows,
+        max_rows=selection_limit(args),
         source_ids=source_ids,
     )
     selected_rows = order_suite_rows(selected_rows, args.row_order)
     if not selected_rows:
         raise ValueError("No LongBench-v2 rows matched the requested filters")
 
+    if getattr(args, "min_source_tokens", None) is not None or getattr(args, "max_source_tokens", None) is not None:
+        if args.llm_provider != "openai_compatible":
+            raise ValueError("Exact source bounds require the OpenAI-compatible execution path")
+        selection_tokenizer = (tokenizer_factory or _load_executor_tokenizer)(args.executor_model)
+        selected_rows = filter_sources(selected_rows, args, selection_tokenizer, lambda row: solver_task(
+            row["case_id"], row["source_id"], row["context"], build_query(row)))
+
     configured_search_mode = os.getenv("SEMANTIC_CACHE_SEARCH_MODE", "packed").strip().lower() or "packed"
+    if args.execution_profile == "common" and configured_search_mode != "hybrid":
+        raise ValueError("The common profile requires SEMANTIC_CACHE_SEARCH_MODE=hybrid; other architectures remain legacy")
     if configured_search_mode == "hybrid":
         _validate_hybrid_args(args)
     if args.route_audit_only:
@@ -1042,6 +1027,18 @@ def run_longbench_benchmark(
         effective_fields.update(tokenizer_info)
         effective_config["hybrid_policy"].update(tokenizer_info)
 
+    pipeline_config = None
+    if hybrid_enabled:
+        pipeline_config = resolve_config(args, mode="hybrid", legacy_cache=args.mode == "cache",
+            executor_model=args.executor_model, max_input_tokens=args.max_input_tokens,
+            max_output_tokens=args.max_output_tokens, context_window_tokens=args.context_window_tokens)
+        effective_fields["execution"] = pipeline_config.metadata()
+        effective_fields["min_source_tokens"] = args.min_source_tokens
+        effective_fields["max_source_tokens"] = args.max_source_tokens
+        effective_fields["reranker_disabled"] = not bool(pipeline_config.rerank_top)
+        effective_fields["rerank_top_effective"] = pipeline_config.rerank_top or None
+        cache_state_enabled = pipeline_config.cache_read or pipeline_config.cache_write
+
     if cache_state_enabled:
         cache_namespace, dataset_signature = resolve_cache_namespace(
             suite_csv_sha256=suite_csv_sha256,
@@ -1056,6 +1053,8 @@ def run_longbench_benchmark(
             openai_compatible_extra_body=openai_compatible_extra_body_config,
             **effective_config["namespace_kwargs"],
         )
+        if pipeline_config is not None:
+            cache_namespace += "__" + hashlib.sha256(json.dumps(pipeline_config.cache_identity(), sort_keys=True).encode()).hexdigest()[:12]
         cache_state_root = (
             Path(args.cache_state_root)
             if args.cache_state_root
@@ -1098,7 +1097,7 @@ def run_longbench_benchmark(
             f"max_output_tokens={args.max_output_tokens}, "
             f"child_tokens={args.child_tokens}, "
             f"child_overlap_tokens={args.child_overlap_tokens}, "
-            "candidate_strategy=all_children_exact_faiss, reranker_disabled=True"
+            f"candidate_strategy=all_children_exact_faiss, reranker_disabled={effective_fields['reranker_disabled']}"
         )
     else:
         print(
@@ -1116,14 +1115,15 @@ def run_longbench_benchmark(
         print(f"[LONGBENCH-V2] Cache namespace : {cache_namespace}")
         print(f"[LONGBENCH-V2] Cache state: {'warm start' if cache_state_existed_before_run else 'cold start'}")
 
-    shared_embedder = scs.EmbeddingEngine()
+    shared_embedder = None if hybrid_enabled and not cache_state_enabled else scs.EmbeddingEngine()
     effective_fields["embedding_device_effective"] = _coerce_text(
         getattr(shared_embedder, "device", effective_fields["embedding_device"])
     )
     effective_fields["embedding_dtype_effective"] = _coerce_text(
         getattr(shared_embedder, "torch_dtype_name", effective_fields["embedding_dtype"])
     )
-    shared_reranker = None if effective_fields["reranker_disabled"] else scs.Reranker()
+    shared_reranker = scs.Reranker() if (pipeline_config and pipeline_config.rerank_top) else (
+        None if effective_fields["reranker_disabled"] else scs.Reranker())
 
     prediction_rows: list[dict] = []
     bridge_rows: list[dict] = []
@@ -1152,6 +1152,28 @@ def run_longbench_benchmark(
             cache_controller._persist_path = None
         cache_entries_before_run = cache_controller.get_total_entries()
 
+    pipeline = None
+    hybrid_controller = cache_controller
+    if hybrid_enabled:
+        if hybrid_controller is None:
+            hybrid_controller = scs.SemanticCacheController(metrics=scs.ExecutionMetrics(),
+                embedder=shared_embedder, reranker=shared_reranker,
+                corpus_id=f"longbench_v2_{run_id}", corpus_domain="longbench_v2")
+
+        def backend():
+            if shared_embedder is None and getattr(hybrid_controller, "embedder", None) is None:
+                hybrid_controller.embedder = scs.EmbeddingEngine()
+            if pipeline_config.cache_read and pipeline_config.cache_matching == "semantic":
+                from execution.cache import configure_verifier
+                configure_verifier(hybrid_controller, args, default_model=args.evaluator_model,
+                    default_url=args.openai_compat_evaluator_base_url or args.openai_compat_base_url,
+                    default_key_env=args.openai_compat_api_key_env or "")
+            return scs, hybrid_controller
+
+        pipeline = Pipeline(pipeline_config, executor_tokenizer,
+            lambda request: _call_hybrid_executor(scs, hybrid_controller, args, request),
+            backend_factory=backend, output_dir=out_dir)
+
     for idx, row in enumerate(selected_rows, start=1):
         row_t0 = time.time()
         print(f"[LONGBENCH-V2] Row {idx}/{len(selected_rows)}: {row['case_id']}")
@@ -1165,7 +1187,9 @@ def run_longbench_benchmark(
             context_write_ms = (time.time() - t_write) * 1000.0
             context_doc_cache[source_id] = docs_dir
 
-        if cache_state_enabled:
+        if hybrid_enabled:
+            controller = hybrid_controller
+        elif cache_state_enabled:
             controller = cache_controller
         else:
             controller = scs.SemanticCacheController(
@@ -1205,160 +1229,34 @@ def run_longbench_benchmark(
             "selected_evidence_ranges": [],
         }
         if hybrid_enabled:
-            try:
-                controller.activate_data_scope(source_scope_hash)
-                output = controller.lookup_cached_result(query) if cache_state_enabled else None
-                lookup_after = _snapshot_metrics(controller.metrics)
-                hybrid_telemetry["semantic_verifier_calls"] = int(
-                    lookup_after["calls"] - before["calls"]
-                )
-                if output is not None:
-                    hybrid_telemetry["hybrid_route"] = f"{output['cache_type']}_cache"
-                    hybrid_telemetry["valid_choice"] = bool(_strict_choice(output.get("answer", "")))
-                else:
-                    controller.metrics.cache_misses += 1
-                    full_messages = build_strict_mcq_messages(row["context"], query)
-                    full_rendered_tokens = chat_token_count(executor_tokenizer, full_messages)
-                    hybrid_telemetry["full_rendered_input_tokens"] = full_rendered_tokens
-
-                    if full_rendered_tokens <= args.max_input_tokens:
-                        hybrid_telemetry["hybrid_route"] = "direct_fit"
-                        hybrid_telemetry["final_rendered_input_tokens"] = full_rendered_tokens
-                        answer = _call_hybrid_executor(scs, controller, args, full_messages)
-                    else:
-                        hybrid_telemetry["hybrid_route"] = "dense_child_packed"
-                        if docs_dir is None:
-                            t_write = time.time()
-                            docs_dir = _write_context_doc(out_dir, row)
-                            context_write_ms = (time.time() - t_write) * 1000.0
-                            context_doc_cache[source_id] = docs_dir
-                        if source_id != active_source_id:
-                            t_ingest = time.time()
-                            ingested_chunks = controller.ingest(
-                                docs_dir,
-                                data_scope_hash=source_scope_hash,
-                                source_id=source_id,
-                            )
-                            ingest_ms = (time.time() - t_ingest) * 1000.0
-                            active_source_id = source_id
-                            ingest_info = getattr(controller, "_last_ingest_info", {}) or {}
-                            hybrid_telemetry["document_embedding_count"] = ingested_chunks
-                            hybrid_telemetry["document_embedding_ms"] = float(
-                                ingest_info.get("embedding_ms") or 0.0
-                            )
-                            hybrid_telemetry["child_encoded_length_max"] = int(
-                                ingest_info.get("child_encoded_length_max") or 0
-                            )
-                            if (
-                                hybrid_telemetry["child_encoded_length_max"]
-                                >= effective_fields["embedding_max_length"]
-                            ):
-                                raise RuntimeError(
-                                    "Hybrid child reached the embedding input limit; "
-                                    "reduce --child-tokens"
-                                )
-                        total_children = int(getattr(controller.doc_index, "total", 0) or 0)
-                        hybrid_telemetry["document_child_count"] = total_children
-                        if not hybrid_telemetry["child_encoded_length_max"]:
-                            ingest_info = getattr(controller, "_last_ingest_info", {}) or {}
-                            hybrid_telemetry["child_encoded_length_max"] = int(
-                                ingest_info.get("child_encoded_length_max") or 0
-                            )
-                        search_started = time.time()
-                        results = controller.retrieve(
-                            query,
-                            top_k=total_children,
-                            rerank_top=0,
-                            use_reranker=False,
-                            query_embedding=getattr(
-                                controller,
-                                "_last_cache_query_embedding",
-                                None,
-                            ),
-                        )
-                        hybrid_telemetry["faiss_search_ms"] = round(
-                            (time.time() - search_started) * 1000.0,
-                            3,
-                        )
-                        hybrid_telemetry["faiss_candidates"] = [
-                            {
-                                "child_index": (result.get("metadata") or {}).get(
-                                    "child_index",
-                                    (result.get("metadata") or {}).get("chunk_index"),
-                                ),
-                                "score": round(float(result.get("score") or 0.0), 8),
-                            }
-                            for result in results
-                        ]
-                        packing_started = time.time()
-                        packed_messages, packing_info = pack_hybrid_children(
-                            tokenizer=executor_tokenizer,
-                            query=query,
-                            results=results,
-                            max_input_tokens=args.max_input_tokens,
-                        )
-                        hybrid_telemetry["exact_packing_ms"] = round(
-                            (time.time() - packing_started) * 1000.0,
-                            3,
-                        )
-                        hybrid_telemetry.update(
-                            {
-                                "faiss_candidate_count": packing_info["faiss_candidate_count"],
-                                "final_rendered_input_tokens": packing_info["rendered_input_tokens"],
-                                "selected_child_count": packing_info["selected_child_count"],
-                                "dropped_child_count": packing_info["dropped_child_count"],
-                                "selected_child_indices": packing_info["selected_child_indices"],
-                                "selected_evidence_ranges": packing_info["selected_evidence_ranges"],
-                            }
-                        )
-                        full_messages = packed_messages
-                        answer = _call_hybrid_executor(scs, controller, args, packed_messages)
-
-                    hybrid_telemetry["executor_answer_calls"] = 1
-                    valid_choice = _strict_choice(answer)
-                    hybrid_telemetry["valid_choice"] = bool(valid_choice)
-                    if valid_choice:
-                        controller.store_compact_mcq(
-                            query,
-                            valid_choice,
-                            model_used=args.executor_model,
-                            source_id=source_id,
-                            route=hybrid_telemetry["hybrid_route"],
-                            provenance={
-                                "source_scope_hash": source_scope_hash,
-                                "full_rendered_input_tokens": full_rendered_tokens,
-                                "final_rendered_input_tokens": hybrid_telemetry[
-                                    "final_rendered_input_tokens"
-                                ],
-                                "selected_evidence_ranges": hybrid_telemetry[
-                                    "selected_evidence_ranges"
-                                ],
-                            },
-                        )
-                        hybrid_telemetry["compact_cache_write"] = True
-                    retrieval_info = (
-                        getattr(controller, "_last_retrieval_info", {}) or {}
-                        if hybrid_telemetry["hybrid_route"] == "dense_child_packed"
-                        else {}
-                    )
-                    output = {
-                        "query": query,
-                        "answer": answer,
-                        "from_cache": False,
-                        "retrieval": {
-                            **retrieval_info,
-                            **hybrid_telemetry,
-                        },
-                    }
-            except Exception as exc:
-                api_status = "error"
-                api_error = f"{type(exc).__name__}: {exc}"
-                output = {
-                    "query": query,
-                    "answer": "",
-                    "from_cache": False,
-                    "retrieval": hybrid_telemetry,
-                }
+            if not pipeline_config.exact_offsets and docs_dir is None:
+                t_write = time.time()
+                docs_dir = _write_context_doc(out_dir, row)
+                context_write_ms = (time.time() - t_write) * 1000.0
+                context_doc_cache[source_id] = docs_dir
+            task = solver_task(row["case_id"], source_id, row["context"], query,
+                legacy=pipeline_config.profile == "legacy" and pipeline_config.evidence_order == "score", docs_dir=docs_dir)
+            result = pipeline.execute(task)
+            api_status, api_error = result["status"], result["error"]
+            ingested_chunks, ingest_ms = result["ingested_chunks"], result["ingest_ms"]
+            hybrid_telemetry.update(
+                hybrid_route=result["route"], full_rendered_input_tokens=result["full_rendered_input_tokens"],
+                final_rendered_input_tokens=result["final_rendered_input_tokens"],
+                valid_choice=bool(_strict_choice(result["prediction"])), compact_cache_write=result["cache_written"],
+                executor_answer_calls=int(result["attempts"] > 0 and result["status"] == "ok"),
+                semantic_verifier_calls=result["semantic_verifier_calls"],
+                document_embedding_count=ingested_chunks, document_embedding_ms=result["document_embedding_ms"],
+                document_child_count=int(getattr(controller.doc_index, "total", 0) or 0),
+                child_encoded_length_max=result["child_encoded_length_max"],
+                faiss_search_ms=result["retrieval_ms"], exact_packing_ms=result["packing_ms"],
+                faiss_candidates=result["faiss_candidates"],
+                faiss_candidate_count=result["candidate_count"], selected_child_count=len(result["selected_child_indices"]),
+                dropped_child_count=result["candidate_count"] - len(result["selected_child_indices"]),
+                selected_child_indices=result["selected_child_indices"],
+                selected_evidence_ranges=result["selected_evidence_ranges"],
+            )
+            output = {"query": query, "answer": result["prediction"], "from_cache": result["from_cache"],
+                      "cache_type": result["cache_type"], "retrieval": hybrid_telemetry}
         else:
             if not cache_state_enabled or source_id != active_source_id:
                 t_ingest = time.time()
@@ -1378,6 +1276,8 @@ def run_longbench_benchmark(
         generation = _coerce_text(output.get("answer"))
         prediction = parse_choice(generation)
         correct = answer_correct(generation, row.get("answer", ""))
+        if hybrid_enabled:
+            record_evaluation(out_dir, row["case_id"], api_status, {"accuracy": correct})
         actual_cache_type = _normalize_cache_type(output)
         actual_from_cache = bool(output.get("from_cache"))
         if actual_from_cache:
@@ -1486,6 +1386,7 @@ def run_longbench_benchmark(
         if (
             cache_state_enabled
             and cache_state_path is not None
+            and (pipeline_config is None or pipeline_config.cache_write)
             and idx % args.cache_save_interval == 0
         ):
             t_save = time.time()
@@ -1496,7 +1397,7 @@ def run_longbench_benchmark(
             cache_entries_after_run = controller.get_total_entries()
         bridge_row["row_wall_ms"] = round((time.time() - row_t0) * 1000.0, 3)
 
-    if cache_state_enabled and cache_state_path is not None and cache_controller is not None:
+    if cache_state_enabled and cache_state_path is not None and cache_controller is not None and (pipeline_config is None or pipeline_config.cache_write):
         t_final_save = time.time()
         cache_controller.save(cache_state_path)
         cache_final_save_ms = (time.time() - t_final_save) * 1000.0
@@ -1513,6 +1414,7 @@ def run_longbench_benchmark(
     _write_csv_rows(bridge_rows_csv_path, bridge_rows)
 
     totals = aggregate_bridge_row_totals(bridge_rows)
+    finalize(out_dir)
     finished_at = datetime.now(timezone.utc)
     elapsed_seconds = round((finished_at - started_at).total_seconds(), 3)
     correct_count = sum(1 for row in bridge_rows if row["answer_correct"])
@@ -1771,6 +1673,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--disable-reranker", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_artifacts"))
     parser.add_argument("--manifest-note", type=str, default="")
+    add_source_arguments(parser)
+    add_arguments(parser)
     return parser
 
 

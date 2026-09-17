@@ -10,6 +10,15 @@ Push the implementation and pull it on HPC before starting. Commands assume
 the existing [HPC setup](HPC_RUNBOOK_SETUP.md) and run from the repository root.
 The historical four-cell comparison at the end is optional.
 
+For new runs, use `bash jarvis/run_aa_lcr.sh direct` or `hybrid` (Python:
+`--mode direct` or `--mode hybrid`). Set `--context-window-tokens 65536` for a
+64K window; otherwise the runner reads the full served limit from the executor's
+`/v1/models` endpoint. Input allowance defaults to context minus output allowance
+(16,384 by default). Supply the context explicitly for offline preflight or
+servers that do not expose `max_model_len`. The historical `--experiment` presets
+in this runbook retain their original budgets. See the
+[shared execution examples](SHARED_EXECUTION_RUNBOOK.md).
+
 ## Prepare the dataset
 
 Download the pinned CSV and extracted-text archive, verify their SHA-256 hashes, extract the documents, and validate all official references:

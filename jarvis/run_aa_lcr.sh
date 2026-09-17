@@ -8,17 +8,21 @@ SCRIPT_DIR="${JARVIS_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 usage() {
   cat <<'EOF'
-Usage: bash jarvis/run_aa_lcr.sh <direct_262k|hybrid_262k|direct_64k|hybrid_64k> [runner arguments...]
+Usage: bash jarvis/run_aa_lcr.sh <direct|hybrid> [runner arguments...]
+
+--context-window-tokens sets the context limit; omit to use the served executor limit.
+--max-input-tokens defaults to that limit minus --max-output-tokens.
+Historical direct_262k/hybrid_262k/direct_64k/hybrid_64k presets remain accepted.
 
 Required environment:
   OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1
   OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1
 
 Optional smoke test:
-  AA_LCR_MAX_ROWS=2 bash jarvis/run_aa_lcr.sh direct_262k
+  AA_LCR_MAX_ROWS=2 bash jarvis/run_aa_lcr.sh direct
 
 AA_LCR_DATA_DIR selects the prepared dataset directory (default benchmark_data/aa_lcr).
-AA_LCR_MAX_OUTPUT_TOKENS defaults to 16384 for 262K cells and 512 for 64K cells.
+AA_LCR_MAX_OUTPUT_TOKENS defaults to 16384 (512 for historical 64K presets).
 AA_LCR_RUN_ID, AA_LCR_REPEAT_ID, and AA_LCR_SERVING_METADATA identify the run.
 Additional runner arguments can select grader prompts, API style, and credentials.
 
@@ -27,11 +31,11 @@ EOF
 }
 
 case "$TARGET" in
-  direct_262k|direct_64k)
+  direct|direct_262k|direct_64k)
     SUBMIT_MODE="client"
     CLIENT_MEM="${CLIENT_MEM:-32G}"
     ;;
-  hybrid_262k|hybrid_64k)
+  hybrid|hybrid_262k|hybrid_64k)
     SUBMIT_MODE="client-gpu"
     CLIENT_MEM="${CLIENT_MEM:-96G}"
     export SEMANTIC_CACHE_EMBEDDING_DEVICE="${SEMANTIC_CACHE_EMBEDDING_DEVICE:-cuda}"
@@ -47,21 +51,25 @@ case "$TARGET" in
     ;;
 esac
 
-: "${OPENAI_COMPAT_EXECUTOR_BASE_URL:?Set OPENAI_COMPAT_EXECUTOR_BASE_URL to the running executor service}"
-: "${OPENAI_COMPAT_EVALUATOR_BASE_URL:?Set OPENAI_COMPAT_EVALUATOR_BASE_URL to the running evaluator service}"
+source "$SCRIPT_DIR/lib/execution_services.sh"
+LEGACY_CACHE=0
+[[ "$TARGET" == hybrid || "$TARGET" == hybrid_* ]] && LEGACY_CACHE=1
+jarvis_execution_services "$LEGACY_CACHE" 1 "${@:2}"
 
 EXECUTOR_MODEL="${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
 EVALUATOR_MODEL="${OPENAI_COMPAT_EVALUATOR_MODEL:-Qwen/Qwen3.5-35B-A3B}"
 DATA_DIR="${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr}"
 case "$TARGET" in
-  *_262k) OUTPUT_TOKENS="${AA_LCR_MAX_OUTPUT_TOKENS:-16384}" ;;
+  direct|hybrid|*_262k) OUTPUT_TOKENS="${AA_LCR_MAX_OUTPUT_TOKENS:-16384}" ;;
   *_64k) OUTPUT_TOKENS="${AA_LCR_MAX_OUTPUT_TOKENS:-512}" ;;
 esac
+MODE_OPTION=--mode
+[[ "$TARGET" == *_* ]] && MODE_OPTION=--experiment
 CLIENT_ARGS=(uv run python -m aa_lcr.run_benchmark
-  --experiment "$TARGET"
+  "$MODE_OPTION" "$TARGET"
   --executor-model "$EXECUTOR_MODEL" --evaluator-model "$EVALUATOR_MODEL"
-  --executor-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL"
-  --evaluator-base-url "$OPENAI_COMPAT_EVALUATOR_BASE_URL"
+  --executor-base-url "${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}"
+  --evaluator-base-url "${OPENAI_COMPAT_EVALUATOR_BASE_URL:-http://127.0.0.1:8001/v1}"
   --questions-csv "$DATA_DIR/AA-LCR_Dataset.csv"
   --documents-root "$DATA_DIR/extracted_text/lcr"
   --dataset-manifest "$DATA_DIR/dataset_manifest.json"

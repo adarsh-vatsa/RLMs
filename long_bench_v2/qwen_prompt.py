@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
 
 
 STRICT_MCQ_SYSTEM_PROMPT = (
@@ -42,33 +40,7 @@ def mcq_decoder_constraint_metadata() -> dict:
     }
 
 
-def token_ids(value: Any) -> list[int]:
-    """Extract a single sequence of token IDs from common HF result shapes."""
-    if isinstance(value, Mapping):
-        if "input_ids" not in value:
-            raise ValueError("Tokenizer result does not contain input_ids")
-        value = value["input_ids"]
-    elif hasattr(value, "input_ids"):
-        value = value.input_ids
-    if hasattr(value, "tolist"):
-        value = value.tolist()
-    if value and isinstance(value[0], list):
-        value = value[0]
-    return list(value)
-
-
-def chat_token_count(tokenizer: Any, messages: list[dict]) -> int:
-    """Count the rendered non-thinking Qwen chat request exactly."""
-    return len(
-        token_ids(
-            tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                enable_thinking=False,
-            )
-        )
-    )
+from execution.tokens import token_ids as token_ids, chat_token_count as chat_token_count
 
 
 def build_strict_mcq_messages(context: str, query: str) -> list[dict]:

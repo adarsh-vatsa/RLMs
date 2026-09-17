@@ -2265,7 +2265,8 @@ class SemanticCacheController:
                 flat_idx += 1
         return None
 
-    def lookup_cached_result(self, query: str) -> dict | None:
+    def lookup_cached_result(self, query: str, *, semantic: bool = True,
+                             strict_exact: bool = False) -> dict | None:
         """Return an exact or source-scoped semantic cache hit without knowledge lookup."""
         self._last_cache_query_embedding = None
         self._last_cache_lookup_info = {"semantic_verifier_calls": 0}
@@ -2275,7 +2276,8 @@ class SemanticCacheController:
         for entries in self.cache.values():
             for entry in entries:
                 if (
-                    entry["query"].lower().strip() == query.lower().strip()
+                    (entry["query"] == query if strict_exact else
+                     entry["query"].lower().strip() == query.lower().strip())
                     and self._entry_matches_active_scope(entry)
                 ):
                     self.metrics.exact_hits += 1
@@ -2289,7 +2291,7 @@ class SemanticCacheController:
                         "cache_provenance": entry.get("provenance", {}),
                     }
 
-        if not self._cache_index or self._cache_index.total <= 0:
+        if not semantic or not self._cache_index or self._cache_index.total <= 0:
             return None
 
         query_emb = self.embedder.encode_query(query)
@@ -2385,7 +2387,7 @@ class SemanticCacheController:
             if response_format:
                 llm_kwargs["response_format"] = response_format
 
-            response = create_llm_message(**llm_kwargs)
+            response = getattr(self, "verifier_complete", create_llm_message)(**llm_kwargs)
             self.metrics.record_call(
                 self.EVALUATOR_MODEL,
                 response.usage.input_tokens,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
 from typing import Any
 
 
@@ -52,10 +51,11 @@ END CANDIDATE ANSWER TO ASSESS
 Reply as JSON, with a verdict of CORRECT or INCORRECT."""
 
 
-def build_prompt(documents: list[str], question: str) -> str:
+def build_prompt(documents: list[str], question: str, *, document_numbers=None) -> str:
+    numbers = document_numbers if document_numbers is not None else range(1, len(documents) + 1)
     documents_text = "\n\n".join(
         f"BEGIN DOCUMENT {index}:\n{document}\nEND DOCUMENT {index}"
-        for index, document in enumerate(documents, start=1)
+        for index, document in zip(numbers, documents)
     )
     return (
         "BEGIN INPUT DOCUMENTS\n\n"
@@ -140,31 +140,7 @@ def non_thinking_extra_body(*, grader: bool = False) -> dict:
     return body
 
 
-def token_ids(value: Any) -> list[int]:
-    if isinstance(value, Mapping):
-        if "input_ids" not in value:
-            raise ValueError("Tokenizer result does not contain input_ids")
-        value = value["input_ids"]
-    elif hasattr(value, "input_ids"):
-        value = value.input_ids
-    if hasattr(value, "tolist"):
-        value = value.tolist()
-    if value and isinstance(value[0], list):
-        value = value[0]
-    return list(value)
-
-
-def chat_token_count(tokenizer: Any, messages: list[dict[str, str]]) -> int:
-    return len(
-        token_ids(
-            tokenizer.apply_chat_template(
-                messages,
-                add_generation_prompt=True,
-                tokenize=True,
-                enable_thinking=False,
-            )
-        )
-    )
+from execution.tokens import token_ids as token_ids, chat_token_count
 
 
 def prepare_direct_messages(
@@ -190,26 +166,10 @@ def prepare_direct_messages(
             f"{max_input_tokens}-token input budget"
         )
 
-    user_ids = token_ids(
-        tokenizer.encode(messages[0]["content"], add_special_tokens=False)
-    )
-    overhead = chat_token_count(tokenizer, [{"role": "user", "content": ""}])
-    keep_tokens = min(len(user_ids), max(0, max_input_tokens - overhead))
-    while True:
-        head = keep_tokens // 2
-        tail = keep_tokens - head
-        kept_ids = user_ids[:head] + (user_ids[-tail:] if tail else [])
-        content = tokenizer.decode(kept_ids, skip_special_tokens=True)
-        truncated = [{"role": "user", "content": content}]
-        rendered_tokens = chat_token_count(tokenizer, truncated)
-        if rendered_tokens <= max_input_tokens:
-            break
-        if keep_tokens == 0:
-            raise ValueError(
-                "Chat template overhead exceeds the configured input budget"
-            )
-        keep_tokens = max(0, keep_tokens - max(1, rendered_tokens - max_input_tokens))
+    from execution.tokens import truncate_middle
 
+    truncated = truncate_middle(tokenizer, messages, max_input_tokens)
+    rendered_tokens = chat_token_count(tokenizer, truncated)
     return truncated, {
         "prompt_truncated": True,
         "prompt_tokens_before_truncation": original_tokens,
@@ -224,40 +184,13 @@ def pack_retrieved_children(
     results: list[dict],
     max_input_tokens: int,
 ) -> tuple[list[dict[str, str]], dict]:
-    selected: list[dict] = []
-    rendered_tokens = chat_token_count(tokenizer, build_messages([], question))
-    for result in results:
-        candidate = [*selected, result]
-        messages = build_messages([item["text"] for item in candidate], question)
-        candidate_tokens = chat_token_count(tokenizer, messages)
-        if candidate_tokens > max_input_tokens:
-            break
-        selected = candidate
-        rendered_tokens = candidate_tokens
-    if not selected:
-        raise RuntimeError("No retrieved child fits within the configured input budget")
+    from execution.packing import pack
 
-    ranges = []
-    for result in selected:
-        metadata = result.get("metadata") or {}
-        ranges.append(
-            {
-                "filename": metadata.get("filename"),
-                "child_index": metadata.get("child_index", metadata.get("chunk_index")),
-                "token_start": metadata.get("token_start"),
-                "token_end": metadata.get("token_end"),
-                "char_start": metadata.get("char_start"),
-                "char_end": metadata.get("char_end"),
-                "score": round(float(result.get("score") or 0.0), 8),
-            }
-        )
-    return build_messages([item["text"] for item in selected], question), {
-        "rendered_input_tokens": rendered_tokens,
-        "faiss_candidate_count": len(results),
-        "selected_child_count": len(selected),
-        "dropped_child_count": len(results) - len(selected),
-        "selected_evidence_ranges": ranges,
-    }
+    request, info = pack(tokenizer, lambda evidence: build_messages([item["text"] for item in evidence], question),
+                         (), results, max_input_tokens, order="score", merge=False)
+    return request, {**info, "rendered_input_tokens": info["final_rendered_input_tokens"],
+        "faiss_candidate_count": info["candidate_count"], "selected_child_count": len(info["selected_child_indices"]),
+        "dropped_child_count": len(results) - len(info["selected_child_indices"])}
 
 
 def prompt_contract_metadata(grader_version: str = GRADER_PROMPT_VERSION) -> dict:
