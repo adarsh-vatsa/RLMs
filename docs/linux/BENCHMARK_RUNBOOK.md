@@ -29,6 +29,14 @@ not require repeating successful AA-LCR or MRCR preparation.
   --data-dir benchmark_data/mrcr_v2_60k_250k
 ```
 
+MRCR preparation is a one-time step for each output directory. If it reports
+`FileExistsError`, check that directory before retrying. A completed preparation
+writes `dataset_manifest.json` last; if present, proceed to MRCR preflight to
+validate and reuse the dataset. If it is absent and no preparation is still
+running, the directory is incomplete. Retry preparation with a new `--data-dir`
+and use that same path for preflight/execution. Do not delete a completed dataset
+just to rerun preparation.
+
 ### LongBench v2
 
 The exporter reads a local JSON file; it does not download the dataset.
