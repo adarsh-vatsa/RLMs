@@ -10,17 +10,48 @@ For available flags, defaults, and cache settings, consult the optional
 
 These are existing preparation commands; preparation does not need model servers.
 The tokenizer and requested dataset files may download on first use.
+Prepare only the benchmarks you intend to run. A failed LongBench export does
+not require repeating successful AA-LCR or MRCR preparation.
+
+### AA-LCR
 
 ```bash
 .venv/bin/python -m aa_lcr.prepare_dataset --dataset-version 1.1
+```
 
+### MRCR v2
+
+```bash
 .venv/bin/python -m mrcr_v2.prepare_dataset \
   --executor-model "${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}" \
   --download-bands 65536:131072,131072:262144 --needles 8 \
   --min-source-tokens 60000 --max-source-tokens 250000 \
   --data-dir benchmark_data/mrcr_v2_60k_250k
+```
 
-# Use your existing official LongBench JSON; this does not generate new questions.
+### LongBench v2
+
+The exporter reads a local JSON file; it does not download the dataset.
+`benchmark_data/long_bench_v2/*.json` is excluded from Git, so a fresh clone will
+not contain `data.json`. Copy the file from your previous server to preserve the
+same dataset, or download the [official dataset](https://huggingface.co/datasets/zai-org/LongBench-v2/blob/main/data.json)
+(approximately 465 MB). This command pins revision
+`2b48e494f2c7a2f0af81aae178e05c7e1dde0fe9` and keeps an existing JSON file:
+
+```bash
+mkdir -p benchmark_data/long_bench_v2
+if [ ! -f benchmark_data/long_bench_v2/data.json ]; then
+  curl -fL --retry 3 \
+    'https://huggingface.co/datasets/zai-org/LongBench-v2/resolve/2b48e494f2c7a2f0af81aae178e05c7e1dde0fe9/data.json' \
+    -o benchmark_data/long_bench_v2/data.json.download &&
+  mv benchmark_data/long_bench_v2/data.json.download benchmark_data/long_bench_v2/data.json
+fi
+```
+
+After the download succeeds, export the CSV. Keep both files: the CSV references
+the full source contexts in `data.json`.
+
+```bash
 .venv/bin/python -m long_bench_v2.export_csv \
   --input-path benchmark_data/long_bench_v2/data.json \
   --output-path benchmark_data/long_bench_v2/data.csv
