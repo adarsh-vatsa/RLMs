@@ -16,7 +16,9 @@ case "${1:-}" in
       run_command uv venv "$VLLM_VENV" --python "${SERVER_PYTHON_VERSION:-3.12}"
     fi
     run_command uv pip install --python "$VLLM_VENV/bin/python" \
-      "vllm==${VLLM_VERSION:-0.19.1}" --torch-backend "${TORCH_BACKEND:-auto}"
+      "vllm==${VLLM_VERSION:-0.19.1}" --torch-backend "${TORCH_BACKEND:-cu129}"
+    run_command "$VLLM_VENV/bin/python" -c \
+      'import torch; import vllm._C; print("vLLM CUDA extension loaded; torch:", torch.__version__, "CUDA:", torch.version.cuda)'
     ;;
   help|-h|--help|"")
     echo 'Usage: bash linux/setup.sh <client|server>'

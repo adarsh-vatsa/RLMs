@@ -95,6 +95,18 @@ class LinuxLauncherTests(unittest.TestCase):
                 self.assertIn("uv pip install", result.stdout)
                 self.assertFalse(path.exists())
 
+    def test_server_setup_matches_cuda_wheel_and_checks_extension(self):
+        for backend, expected in (("", "cu129"), ("cu128", "cu128")):
+            result = self.launch("setup.sh", "server", env={"TORCH_BACKEND": backend})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            commands = [shlex.split(line.split("command:", 1)[1])
+                        for line in result.stdout.splitlines() if "command:" in line]
+            install = next(command for command in commands if command[:3] == ["uv", "pip", "install"])
+            self.assertEqual(install[install.index("--torch-backend") + 1], expected)
+            self.assertIn("vllm==0.19.1", install)
+            self.assertEqual(commands[-1][0], "/tmp/server env/bin/python")
+            self.assertIn("import vllm._C", commands[-1][-1])
+
     def test_invalid_modes_and_help(self):
         for script in ("run_benchmark.sh", "serve_vllm.sh", "setup.sh"):
             self.assertEqual(self.launch(script, "--help").returncode, 0)

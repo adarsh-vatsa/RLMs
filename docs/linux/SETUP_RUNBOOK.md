@@ -34,15 +34,56 @@ The client uses `.venv` with Python 3.13; vLLM uses
 directly, so activation and `uv run` are unnecessary. Setup installs into the
 selected environments; it does not delete or recreate existing environments.
 
-The default vLLM pin is `0.19.1`, matching the existing project setup.
-`VLLM_VERSION` overrides it; `TORCH_BACKEND` defaults to `auto` and can be set to
-the server's required backend (for example `cu128`). Standard `HF_HOME` and
-`VLLM_CACHE_ROOT` settings control model caches. No cluster modules, scratch
-staging, synchronization, or automatic cleanup are used.
+The default vLLM pin is `0.19.1`. Server setup uses `TORCH_BACKEND=cu129` to
+match its default CUDA 12.9 wheel and checks that the CUDA extension imports
+after installation. Client setup still defaults to `TORCH_BACKEND=auto`.
+Changing `VLLM_VERSION` or `TORCH_BACKEND` requires matching the vLLM wheel and
+PyTorch CUDA build; changing the PyTorch backend alone does not select a different
+vLLM wheel. See the [vLLM 0.19.1 installation guide](https://docs.vllm.ai/en/v0.19.1/getting_started/installation/gpu/).
+Standard `HF_HOME` and `VLLM_CACHE_ROOT` settings control model caches. No cluster
+modules, scratch staging, synchronization, or automatic cleanup are used.
+
+### Repair a CUDA runtime mismatch
+
+If vLLM reports missing `libcudart.so.12` while PyTorch is `+cu130` and only
+`libcudart.so.13` is installed, the CUDA builds are mismatched. On a driver that
+supports CUDA 12.9, create a separate environment with matching packages:
+
+```bash
+export VLLM_VENV="$HOME/.venvs/adarsh-vllm-cu129"
+uv venv "$VLLM_VENV" --python 3.12
+uv pip install --python "$VLLM_VENV/bin/python" \
+  'vllm==0.19.1' --torch-backend=cu129
+"$VLLM_VENV/bin/python" -c \
+  'import torch; import vllm._C; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())'
+```
+
+Use a new directory for this repair; the original environment remains intact.
+Keep `VLLM_VENV` exported in each service terminal. A CUDA-13-capable driver can
+run CUDA 12 applications through [driver backward compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html).
+The CUDA version in `nvidia-smi` describes driver support, not which runtime the
+Python environment has installed.
 
 ## Start model services, or reuse endpoints
 
-Start each service in a separate terminal or `tmux` session. The GPU lists below
+Start each service in a separate terminal or `tmux` session. For a server with
+one GPU, use device 0 and tensor parallelism 1:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 EXECUTOR_TP_SIZE=1 \
+  bash linux/serve_vllm.sh executor \
+  --reasoning-parser qwen3 --language-model-only \
+  --enable-chunked-prefill
+```
+
+On the single 96 GB RTX PRO 6000 server, run AA-LCR with `--execution-only` and
+defer grading, or use a remote grader. Do not start both default 35B services
+concurrently on that GPU: each service reserves 90% of GPU memory by default.
+For later local grading, stop the executor and start the evaluator with
+`CUDA_VISIBLE_DEVICES=0 EVALUATOR_TP_SIZE=1`. Hybrid runs can use
+`SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu` to leave GPU memory for the executor.
+
+For a server with multiple GPUs, the following lists
 are examples: choose devices and tensor parallelism for your server. Keep executor,
 evaluator, and hybrid embedding devices separate when running concurrently.
 
