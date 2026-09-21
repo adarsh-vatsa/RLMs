@@ -42,9 +42,6 @@ under a context budget, and all current experiments use local Qwen models.
 
   Both lines change `semantic_cache_system.py` and `README.md`, so a merge will
   have conflicts.
-- **There are uncommitted changes.** [task_adapters.md](task_adapters.md) is new,
-  and [shared_execution_architecture.md](shared_execution_architecture.md) has a
-  new link to it.
 - **All 210 unit tests pass**, in about 2 seconds on a laptop. They use mocked
   clients and synthetic fixtures. They check the plumbing, not model quality.
 - **Hardware:** runs from June to August used the Jarvis cluster at Stevens
@@ -250,7 +247,6 @@ been run yet.
 6. **Housekeeping:**
    - merge this branch with `main`, and decide what happens to the memoization
      work
-   - commit `task_adapters.md`
    - rewrite `README.md`. It still describes the March prototype (Claude models,
      plus `epstein_search.py` and `paper_draft.tex`, which are not on this
      branch). [system_architecture.md](system_architecture.md) and
