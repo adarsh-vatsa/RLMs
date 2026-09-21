@@ -17,14 +17,25 @@ If documentation conflicts with behavior, follow the requested behavior and curr
 
 ## Project Orientation
 
-- `semantic_cache_system.py`: main semantic-cache implementation and current model, routing, persistence, and pricing behavior.
+- `execution/`: shared direct/hybrid pipeline, contracts, token accounting, retrieval packing, cache verification, HTTP client, and execution artifacts.
+- `semantic_cache_system.py`: embedding, FAISS retrieval, reranking, semantic-cache implementation, and legacy search paths. Shared benchmark orchestration lives in `execution/`.
+- `aa_lcr/`: dataset preparation, task adapter, runner, LLM grading, deferred regrading, and comparison tools.
+- `mrcr_v2/`: released-dataset preparation, task adapter, runner, and deterministic scoring.
 - `long_bench_v2/`: LongBench-v2 runners and supporting tools. Read the runner being changed before modifying benchmark behavior.
 - `test/`: executable expectations and focused regression tests.
-- `jarvis/`: local/HPC serving and launch scripts with their own focused documentation.
+- `jarvis/`: Slurm serving and submission scripts; runbooks live in `docs/jarvis/`.
+- `linux/`: standalone serving and benchmark scripts without Slurm; runbooks live in `docs/linux/`.
 - `docs/`: design context, experiment reports, and plans; not guaranteed to describe the current implementation.
 - `benchmark_artifacts/`, `benchmark_data/`, and `benchmark_fixtures/`: experimental inputs and outputs. Treat historical artifacts as read-only unless the user asks to regenerate or edit them.
 
 Use `rg` to find the current implementation rather than relying on class names, model names, flows, or return shapes described in prose. In particular, confirm model and pricing constants in code before changing model-related behavior.
+
+## Benchmark Execution Boundaries
+
+- AA-LCR, MRCR, and LongBench's OpenAI-compatible direct/hybrid paths use `execution.pipeline.Pipeline`. Dataset parsing, task formatting, and scoring remain benchmark-specific; keep gold answers and scoring metadata outside solver inputs.
+- LongBench iterative/RLM and other hosted-provider paths are separate. Do not assume a shared-pipeline change covers them.
+- Execution profiles and launcher defaults differ. Inspect the selected runner and launcher before claiming that caching, packing, or overflow behavior is identical.
+- Answer caching, document-index reuse, semantic cache verification, and answer grading are distinct components. A service called `evaluator` can support verification or grading; confirm the enabled roles rather than inferring requirements from the service name.
 
 ## Prototype Engineering Rules
 
@@ -44,6 +55,7 @@ Use `rg` to find the current implementation rather than relying on class names, 
 - Keep docstrings limited to useful contracts or surprising behavior.
 - Documentation should follow the implementation. Do not distort code to match stale prose.
 - Update only the narrow documentation affected by a user-facing command, contract, or workflow change; do not refresh unrelated documents.
+- Keep operational commands in `docs/linux/` or `docs/jarvis/`; script-directory READMEs point to those runbooks. The Linux workflow is `SETUP_RUNBOOK.md` then `BENCHMARK_RUNBOOK.md`; `SHARED_EXECUTION_RUNBOOK.md` is an options reference without setup or execution commands.
 
 ## Validation
 
@@ -51,6 +63,7 @@ Use `rg` to find the current implementation rather than relying on class names, 
 - Add or change tests for behavior introduced by the task, not for incidental implementation details.
 - Prefer `uv` for Python commands when practical.
 - Do not regenerate benchmark outputs as a side effect of validation.
+- Use synthetic fixtures and injected tokenizers/clients for routine benchmark tests; do not download model weights, call inference services, or launch real benchmark jobs as a test side effect. Shared-pipeline changes should cover the affected adapters; launcher changes should validate argument forwarding with dry runs.
 - For benchmark changes, keep runs attributable and comparable. Preserve existing artifact data and record behavior-affecting settings, but do not treat the current experiment design as immutable when the task explicitly changes it.
 
 ## Working Style
