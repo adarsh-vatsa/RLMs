@@ -29,6 +29,20 @@ not require repeating successful AA-LCR or MRCR preparation.
   --data-dir benchmark_data/mrcr_v2_60k_250k
 ```
 
+To exercise retrieval on sources the executor cannot hold, prepare a band above
+the served context as a second dataset. Expect this step, not inference, to
+dominate the runtime: preparation counts tokens for every CSV row before
+`--max-rows` applies, so the whole band is tokenized however few examples you
+later select.
+
+```bash
+.venv/bin/python -m mrcr_v2.prepare_dataset \
+  --executor-model "${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}" \
+  --download-bands 262144:524288 --needles 8 \
+  --min-source-tokens 250000 --max-source-tokens 600000 \
+  --data-dir benchmark_data/mrcr_v2_250k_600k
+```
+
 MRCR preparation is a one-time step for each output directory. If it reports
 `FileExistsError`, check that directory before retrying. A completed preparation
 writes `dataset_manifest.json` last; if present, proceed to MRCR preflight to
@@ -110,6 +124,13 @@ bash linux/run_benchmark.sh mrcr_v2 direct \
   --max-output-tokens 4096 --max-rows 10 --preflight-only
 ```
 
+The budget decides the route, so preflight the budget you intend to execute.
+This 60,000-token pair reports `dense_child_packed` for hybrid and
+`unsupported_context` for direct, or `middle_truncated` when
+`--direct-overflow middle` is added. Repeating it with
+`--context-window-tokens 262144 --max-input-tokens 240000` reports `direct_fit`
+for both modes instead.
+
 ### LongBench v2
 
 ```bash
@@ -121,25 +142,35 @@ bash linux/run_benchmark.sh longbench_v2 direct --preflight-only
 
 Start or connect to the executor using the [service instructions](SETUP_RUNBOOK.md#start-model-services-or-reuse-endpoints).
 These commands execute the benchmark; unsupported direct examples are skipped
-without an API call. GPU 6 below is an example embedding device;
-choose the device for your server. The budgets and selections match the
-preflight examples above.
+without an API call. The hybrid commands below place embeddings on the CPU,
+which suits a single-GPU server where the executor already reserves most of the
+card. On a multi-GPU server, drop `SEMANTIC_CACHE_EMBEDDING_DEVICE` and pick a
+free device with `CUDA_VISIBLE_DEVICES` instead; selecting an index that the
+server does not have makes `torch.cuda.is_available()` false and fails every
+row before any inference. The budgets and selections match the preflight
+examples above.
 
 ### AA-LCR
 
 ```bash
-CUDA_VISIBLE_DEVICES=6 bash linux/run_benchmark.sh aa_lcr hybrid \
+SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh aa_lcr hybrid \
   --execution-only --context-window-tokens 65536 --max-input-tokens 60000 \
   --max-output-tokens 4096
 
 bash linux/run_benchmark.sh aa_lcr direct \
   --execution-only --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096
+  --max-output-tokens 4096 --direct-overflow middle
 ```
 
 These runs save answers for later grading. To grade during execution, start or
 connect to the evaluator and omit `--execution-only`. This option does not
 disable semantic cache verification if you explicitly enable it.
+
+Every AA-LCR question exceeds a 60,000-token input budget, so the direct command
+needs `--direct-overflow middle` to produce a baseline; without it the common
+profile records every example as unsupported. The historical `direct_64k`
+preset enabled this truncation through `--experiment`, which this launcher does
+not use: `--mode` builds its budgets from the flags above instead.
 
 AA-LCR discovers the full served context from `/models` when
 `--context-window-tokens` is omitted. Its input allowance defaults to context
@@ -151,28 +182,86 @@ no inference calls.
 
 ### MRCR v2
 
-The selected 100,000–200,000-token interval exceeds the 60,000-token input budget.
-The direct command therefore records zero supported examples; the hybrid command
-tests retrieval on oversized inputs. For a supported direct/hybrid comparison,
-prepare/select smaller prompts or increase both the served and runner budgets.
+The input budget is the variable under test here, so run both budgets and
+compare them. Check the served context first with
+`curl -s "$OPENAI_COMPAT_EXECUTOR_BASE_URL/models"`; the commands below assume
+the 262,144-token default, which a 100,000–200,000-token selection fits.
+
+The constrained pair uses a 60,000-token budget. Hybrid retrieves and packs
+evidence; direct adds `--direct-overflow middle` to keep a head and a tail
+slice, preserving roughly `max-input-tokens / full-rendered-tokens` of the
+context. Because MRCR needles are spread through the source, that fraction also
+approximates the share of needles the direct baseline can still see. Omit the
+option to record the examples as unsupported without an API call.
 
 ```bash
 export MRCR_DATA_DIR=benchmark_data/mrcr_v2_60k_250k
-CUDA_VISIBLE_DEVICES=6 bash linux/run_benchmark.sh mrcr_v2 hybrid \
+SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
   --min-source-tokens 100000 --max-source-tokens 200000 \
   --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --max-rows 10
+  --max-output-tokens 4096 --max-rows 10 --fail-fast
 
 bash linux/run_benchmark.sh mrcr_v2 direct \
   --min-source-tokens 100000 --max-source-tokens 200000 \
   --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --max-rows 10
+  --max-output-tokens 4096 --max-rows 10 --direct-overflow middle --fail-fast
 ```
+
+The full served budget sends the whole prompt with no truncation, which is the
+baseline the constrained runs are measured against:
+
+```bash
+bash linux/run_benchmark.sh mrcr_v2 direct \
+  --min-source-tokens 100000 --max-source-tokens 200000 \
+  --context-window-tokens 262144 --max-input-tokens 240000 \
+  --max-output-tokens 4096 --max-rows 10 --fail-fast
+```
+
+Do not pair that with a hybrid run at the same budget. When the prompt fits,
+both modes route `direct_fit` and send an identical request, and hybrid never
+builds the embedding backend, so the two runs measure the same thing. The
+preflight above already reports that route for both modes without inference.
+
+Sources larger than the served context are the case retrieval exists for, and
+they need the dataset prepared above. Here hybrid routes `dense_child_packed`
+at either budget, so running both separates retrieval quality from the packing
+budget it is given, while direct can only truncate:
+
+```bash
+export MRCR_DATA_DIR=benchmark_data/mrcr_v2_250k_600k
+
+# retrieval on a tight budget
+SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
+  --min-source-tokens 250000 --max-source-tokens 600000 \
+  --context-window-tokens 65536 --max-input-tokens 60000 \
+  --max-output-tokens 4096 --max-rows 10 --fail-fast
+
+# retrieval on the full served budget
+SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
+  --min-source-tokens 250000 --max-source-tokens 600000 \
+  --context-window-tokens 262144 --max-input-tokens 240000 \
+  --max-output-tokens 4096 --max-rows 10 --fail-fast
+
+# truncated direct baseline at the full served budget
+bash linux/run_benchmark.sh mrcr_v2 direct \
+  --min-source-tokens 250000 --max-source-tokens 600000 \
+  --context-window-tokens 262144 --max-input-tokens 240000 \
+  --max-output-tokens 4096 --max-rows 10 --direct-overflow middle --fail-fast
+```
+
+Dropping `--direct-overflow middle` from that last command records every example
+as unsupported without an API call, which is the measurement that the selection
+does not fit the served context at all.
+
+`--fail-fast` stops on the first execution error and marks the run
+`stopped_early`. Without it, a run whose examples all fail still reports
+`status: complete` with a mean score of zero, because execution failures count
+as supported examples scoring zero.
 
 ### LongBench v2
 
 ```bash
-CUDA_VISIBLE_DEVICES=6 bash linux/run_benchmark.sh longbench_v2 hybrid
+SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh longbench_v2 hybrid
 bash linux/run_benchmark.sh longbench_v2 direct
 ```
 
