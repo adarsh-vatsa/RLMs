@@ -230,12 +230,6 @@ budget it is given, while direct can only truncate:
 ```bash
 export MRCR_DATA_DIR=benchmark_data/mrcr_v2_250k_600k
 
-# retrieval on a tight budget
-SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
-  --min-source-tokens 250000 --max-source-tokens 600000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --max-rows 10 --fail-fast
-
 # retrieval on the full served budget
 SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
   --min-source-tokens 250000 --max-source-tokens 600000 \
