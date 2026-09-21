@@ -52,7 +52,9 @@ flowchart TB
 ```
 
 The adapter's renderer formats engine-selected evidence; it cannot select or
-reorder evidence. References and gold positions stay outside the solver, cache,
+reorder evidence. See [task adapters](task_adapters.md) for the solver contract,
+the renderer's two modes, and what a new adapter must implement.
+References and gold positions stay outside the solver, cache,
 and verifier. Scoring never controls cache writes or feeds back into generation.
 The AA-LCR grader and cache verifier are separate roles even if they use the same
 model service.
