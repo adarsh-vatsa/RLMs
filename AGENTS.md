@@ -59,3 +59,4 @@ Cache/search flow:
 - Read the relevant benchmark runner before changing benchmark behavior.
 - Avoid broad rewrites, artifact churn, and unrelated formatting.
 - Protect benchmark reproducibility, persistent cache behavior, and source provenance semantics.
+- For literature questions about a specific paper or line of work, follow `.claude/skills/citation-graph-research/SKILL.md`: walk the citation graph from seed papers first, and use open web search only to fill gaps.
