@@ -17,10 +17,12 @@ every hit comes with a verifiable link.
    example, use RLM (`arXiv:2512.24601`) plus a semantic-caching paper when
    asking about memoizing RLM sub-calls.
 
-2. **Walk forward (who cites the seed).** Run:
+2. **Walk forward (who cites the seed).** Run the script bundled with this skill,
+   `scripts/citation_graph.py` in this skill's directory. That directory is
+   `.claude/skills/citation-graph-research/` in a project, or
+   `~/.claude/skills/citation-graph-research/` when installed per-user:
    ```bash
-   python .claude/skills/citation-graph-research/scripts/citation_graph.py <seed> \
-       --keywords <topic terms> --top 40
+   python <skill-dir>/scripts/citation_graph.py <seed> --keywords <topic terms> --top 40
    ```
    Seeds can be an arXiv ID or URL, a DOI, or a title. Use `--only-matching` on
    heavily cited seeds, `--json` to save results, and `--direction references` or
