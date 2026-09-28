@@ -42,21 +42,52 @@ does not imply 8M tokens of unique information. Our default is 8 needles.
 
 Source-length filtering and executor limits are independent:
 
-- `--min-source-tokens 100000 --max-source-tokens 200000` selects complete
+- `--min-source-tokens 100000 --max-source-tokens 1200000` selects complete
   examples whose rendered executor prompts fall inside that inclusive interval.
-- `--max-input-tokens 60000` limits each executor request after retrieval.
+- `--max-input-tokens 258048` limits each executor request after retrieval.
 - Published file bands use a Gemini tokenizer; our source bounds use the
   executor tokenizer. Selection searches only the supplied files and never
   truncates examples to meet the bounds.
 
+### Released files from 100K to 1.2M tokens
+
+Each released 8-needle file (the `_fast` variant we download) holds **one**
+conversation, sitting just under its band's upper limit, plus many questions
+about it. Each question targets one group of eight matching responses. A file
+therefore contributes a single source length, and results for a file describe
+one conversation. Source bounds only filter these files; they cannot produce
+other lengths.
+
+| Band file | Conversation (executor tokens) | Questions | Download | Basis |
+|---|---:|---:|---:|---|
+| 64K–128K | 133,000 | 103 | 62.5 MB | Measured |
+| 128K–256K | ~265,000–270,000 | 141 | 173.7 MB | Questions counted in an earlier preparation; length estimated |
+| 256K–512K | 534,000 | 236 | 572.4 MB | Measured |
+| 512K–1M | ~1,070,000 | ~310 | 1,524.2 MB | Estimated |
+| **Total** | | **~790** | **2.33 GB** | |
+
+Estimates divide file size by question count, because every row stores the
+whole conversation; the two measured files use about 4.55 bytes per executor
+token. The 512K–1M count assumes its conversation also sits just under the band
+limit. File sizes were read on 28 September 2026. Replace the estimates with
+the values in `dataset_manifest.json` and `questions.jsonl` after preparation.
+The next file, 1M–2M (3.06 GB), should hold one conversation of about 2.1M
+tokens.
+
+Questions within a file are ordered by needle group, so the first ten cover only
+one or two groups. `--max-rows-per-source` instead takes evenly spaced questions
+from each conversation; ten of them cover ten groups in the measured files.
+
 ## How our system runs it
 
-Hybrid routing matches LongBench. With a 60K executor input budget:
+Hybrid routing matches LongBench. Runs use the executor's full served window:
+a 262,144-token context with 4,096 tokens reserved for output, leaving a
+258,048-token input budget.
 
 | Full prompt length | Direct mode | Hybrid mode |
 |---|---|---|
-| 50K tokens | Send the full prompt | Send the full prompt |
-| 150K tokens | Record unsupported; no call | Index the source and retrieve evidence |
+| 133K tokens | Send the full prompt | Send the full prompt |
+| 534K tokens | Keep a head and a tail slice with `--direct-overflow middle`; otherwise record unsupported with no call | Index the source and retrieve evidence |
 
 For oversized sources, hybrid selects chunks by relevance, merges overlapping
 ranges, and presents them in original conversation order. Few-shot examples
@@ -86,5 +117,6 @@ whole system, rather than the model's native context capacity.
 
 ## Further reading
 
+- [Linux runbook: preparation, preflight, and run commands](linux/BENCHMARK_RUNBOOK.md)
 - [Jarvis runbook: preparation, executor startup, bounds, and run commands](jarvis/MRCR_V2_RUNBOOK.md)
 - [Upstream MRCR v2 benchmark](https://github.com/google-deepmind/eval_hub/tree/master/eval_hub/mrcr_v2)

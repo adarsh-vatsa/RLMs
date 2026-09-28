@@ -21,27 +21,45 @@ not require repeating successful AA-LCR or MRCR preparation.
 
 ### MRCR v2
 
-```bash
-.venv/bin/python -m mrcr_v2.prepare_dataset \
-  --executor-model "${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}" \
-  --download-bands 65536:131072,131072:262144 --needles 8 \
-  --min-source-tokens 60000 --max-source-tokens 250000 \
-  --data-dir benchmark_data/mrcr_v2_60k_250k
-```
-
-To exercise retrieval on sources the executor cannot hold, prepare a band above
-the served context as a second dataset. Expect this step, not inference, to
-dominate the runtime: preparation counts tokens for every CSV row before
-`--max-rows` applies, so the whole band is tokenized however few examples you
-later select.
+One dataset covers sources from about 100K to 1.2M executor tokens: four
+released files, each holding one conversation of about 133K, 265K–270K, 534K
+and 1.07M tokens, with roughly 790 questions in total. See
+[released files](../mrcr_v2.md#released-files-from-100k-to-12m-tokens) for the
+per-file counts and which of them are estimates.
 
 ```bash
 .venv/bin/python -m mrcr_v2.prepare_dataset \
   --executor-model "${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}" \
-  --download-bands 262144:524288 --needles 8 \
-  --min-source-tokens 250000 --max-source-tokens 600000 \
-  --data-dir benchmark_data/mrcr_v2_250k_600k
+  --download-bands 65536:131072,131072:262144,262144:524288,524288:1048576 \
+  --needles 8 --min-source-tokens 100000 --max-source-tokens 1200000 \
+  --data-dir benchmark_data/mrcr_v2_100k_1200k
 ```
+
+This downloads about 2.3 GB. Expect preparation, not inference, to dominate the
+runtime: it counts tokens for every question's full prompt, roughly 510 million
+tokens here, regardless of how many questions you later run. A file whose
+conversation falls outside the bounds contributes no rows without raising an
+error, so list each prepared conversation before running:
+
+```bash
+.venv/bin/python - benchmark_data/mrcr_v2_100k_1200k <<'EOF'
+import collections, json, sys
+from pathlib import Path
+
+lengths = collections.defaultdict(list)
+for line in (Path(sys.argv[1]) / "questions.jsonl").open():
+    row = json.loads(line)
+    lengths[row["source_id"]].append(row["full_rendered_input_tokens"])
+for source_id, tokens in sorted(lengths.items(), key=lambda item: min(item[1])):
+    band = 1 << (min(tokens).bit_length() - 1)
+    print(f"{source_id[:12]}  {min(tokens):>9,}-{max(tokens):,} tokens  "
+          f"{len(tokens):>4} questions  report band [{band:,}, {2 * band:,})")
+EOF
+```
+
+Expect four lines, one per conversation, each in a different report band. Update
+the estimates in the [released files](../mrcr_v2.md#released-files-from-100k-to-12m-tokens)
+table with these values.
 
 MRCR preparation is a one-time step for each output directory. If it reports
 `FileExistsError`, check that directory before retrying. A completed preparation
@@ -112,24 +130,22 @@ bash linux/run_benchmark.sh aa_lcr direct --execution-only \
 ### MRCR v2
 
 ```bash
-export MRCR_DATA_DIR=benchmark_data/mrcr_v2_60k_250k
+export MRCR_DATA_DIR=benchmark_data/mrcr_v2_100k_1200k MRCR_ROWS_PER_SOURCE=10
 bash linux/run_benchmark.sh mrcr_v2 hybrid \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --max-rows 10 --preflight-only
+  --context-window-tokens 262144 --max-input-tokens 258048 \
+  --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
+  --preflight-only
 
 bash linux/run_benchmark.sh mrcr_v2 direct \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --max-rows 10 --preflight-only
+  --context-window-tokens 262144 --max-input-tokens 258048 \
+  --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
+  --direct-overflow middle --preflight-only
 ```
 
-The budget decides the route, so preflight the budget you intend to execute.
-This 60,000-token pair reports `dense_child_packed` for hybrid and
-`unsupported_context` for direct, or `middle_truncated` when
-`--direct-overflow middle` is added. Repeating it with
-`--context-window-tokens 262144 --max-input-tokens 240000` reports `direct_fit`
-for both modes instead.
+Preflight reports each question's route. The 133K conversation fits the
+258,048-token input budget and reports `direct_fit` for both modes. The larger
+ones report `dense_child_packed` for hybrid and `middle_truncated` for direct,
+or `unsupported_context` if `--direct-overflow middle` is omitted.
 
 ### LongBench v2
 
@@ -182,70 +198,60 @@ no inference calls.
 
 ### MRCR v2
 
-The input budget is the variable under test here, so run both budgets and
-compare them. Check the served context first with
+Check the served context first with
 `curl -s "$OPENAI_COMPAT_EXECUTOR_BASE_URL/models"`; the commands below assume
-the 262,144-token default, which a 100,000–200,000-token selection fits.
+the 262,144-token default. Run each mode once over the whole dataset. The
+prepared bounds apply by default; add `--min-source-tokens` and
+`--max-source-tokens` to narrow a run to some of the conversations.
 
-The constrained pair uses a 60,000-token budget. Hybrid retrieves and packs
-evidence; direct adds `--direct-overflow middle` to keep a head and a tail
-slice, preserving roughly `max-input-tokens / full-rendered-tokens` of the
-context. Because MRCR needles are spread through the source, that fraction also
-approximates the share of needles the direct baseline can still see. Omit the
-option to record the examples as unsupported without an API call.
+`--max-rows-per-source` takes that many evenly spaced questions from each
+conversation, spreading them across needle groups; `0` runs all of them, about
+790 in total.
 
 ```bash
-export MRCR_DATA_DIR=benchmark_data/mrcr_v2_60k_250k
+export MRCR_DATA_DIR=benchmark_data/mrcr_v2_100k_1200k MRCR_ROWS_PER_SOURCE=10
+```
+
+Both modes use the full served context: the input budget is the context window
+minus the output allowance (262,144 − 4,096 = 258,048), so recompute it if you
+change either. The runner counts tokens with the executor's tokenizer and chat
+template, and the served input counts have matched it exactly, so no extra
+margin is needed. Hybrid retrieves evidence and packs it into that budget.
+Direct sends the whole prompt when it fits; otherwise
+`--direct-overflow middle` keeps a head and a tail slice, preserving roughly
+`max-input-tokens / full-rendered-tokens` of the context. Because MRCR needles
+are spread through the source, that fraction also approximates the share of
+needles direct can still see.
+
+```bash
 SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --max-rows 10 --fail-fast
+  --context-window-tokens 262144 --max-input-tokens 258048 \
+  --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
+  --fail-fast
 
 bash linux/run_benchmark.sh mrcr_v2 direct \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --max-rows 10 --direct-overflow middle --fail-fast
+  --context-window-tokens 262144 --max-input-tokens 258048 \
+  --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
+  --direct-overflow middle --fail-fast
 ```
 
-The full served budget sends the whole prompt with no truncation, which is the
-baseline the constrained runs are measured against:
+The 133K conversation fits the budget, so direct reads it whole, which makes it
+the full-context reference for the larger conversations. Hybrid routes those
+questions as `direct_fit` and sends the identical request, so treat its rows on
+that conversation as a control. The report's `by_source_length_band` separates
+the four conversations, provided the ~265K one renders above 262,144 tokens;
+the conversation list after preparation shows its band.
 
-```bash
-bash linux/run_benchmark.sh mrcr_v2 direct \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 262144 --max-input-tokens 240000 \
-  --max-output-tokens 4096 --max-rows 10 --fail-fast
-```
-
-Do not pair that with a hybrid run at the same budget. When the prompt fits,
-both modes route `direct_fit` and send an identical request, and hybrid never
-builds the embedding backend, so the two runs measure the same thing. The
-preflight above already reports that route for both modes without inference.
-
-Sources larger than the served context are the case retrieval exists for, and
-they need the dataset prepared above. Here hybrid routes `dense_child_packed`
-at either budget, so running both separates retrieval quality from the packing
-budget it is given, while direct can only truncate:
-
-```bash
-export MRCR_DATA_DIR=benchmark_data/mrcr_v2_250k_600k
-
-# retrieval on the full served budget
-SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
-  --min-source-tokens 250000 --max-source-tokens 600000 \
-  --context-window-tokens 262144 --max-input-tokens 240000 \
-  --max-output-tokens 4096 --max-rows 10 --fail-fast
-
-# truncated direct baseline at the full served budget
-bash linux/run_benchmark.sh mrcr_v2 direct \
-  --min-source-tokens 250000 --max-source-tokens 600000 \
-  --context-window-tokens 262144 --max-input-tokens 240000 \
-  --max-output-tokens 4096 --max-rows 10 --direct-overflow middle --fail-fast
-```
-
-Dropping `--direct-overflow middle` from that last command records every example
-as unsupported without an API call, which is the measurement that the selection
-does not fit the served context at all.
+Each hybrid run builds its own index, embedding each conversation once and
+reusing it for every question on that conversation. CPU embeddings measured
+about 11 seconds per 7,500-token chunk, so expect about 55 minutes for the four
+conversations, half of it for the 1.07M one. With 10 questions per
+conversation, generation adds roughly 15–20 minutes per mode; all questions take
+roughly 5–6 hours per mode.
+To measure how much retrieval depends on the budget, rerun the hybrid command
+with `--context-window-tokens 65536 --max-input-tokens 60000`; that repeats the
+embedding. Dropping `--direct-overflow middle` records every oversized example
+as unsupported without an API call instead.
 
 `--fail-fast` stops on the first execution error and marks the run
 `stopped_early`. Without it, a run whose examples all fail still reports

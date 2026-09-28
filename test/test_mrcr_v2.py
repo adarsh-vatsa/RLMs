@@ -315,6 +315,26 @@ class MRCRTests(unittest.TestCase):
         self.assertEqual(report["mean_mrcr_score"], 0.5)
         self.assertEqual(report["exact_match_accuracy"], 0.5)
 
+    def test_max_rows_per_source_spreads_within_each_source(self):
+        other = "".join(f"User: Write a poem about moons in formal style.\n\nAssistant: response {i}\n\n" for i in range(8))
+        ordinals = ["first", "second", "third", "fourth"]
+        rows = [example(index=name) for name in ordinals] + [example(index=name, body=other) for name in ordinals]
+        data_dir, _ = self.prepare(rows)
+        expected = [text_hash(rows[index]["queries"]) for index in (0, 2, 4, 6)]
+
+        directory, calls, records, _ = self.execute(self.run_args(data_dir, extra=["--max-rows-per-source", "2"]))
+        self.assertEqual([record["case_id"] for record in records], expected)
+        self.assertEqual(len(calls), 4)
+        manifest = json.loads((directory / "manifest.json").read_text())
+        self.assertEqual((manifest["max_rows"], manifest["max_rows_per_source"]), (0, 2))
+
+        _, _, capped, _ = self.execute(self.run_args(data_dir, extra=["--max-rows-per-source", "2", "--max-rows", "3"]))
+        self.assertEqual([record["case_id"] for record in capped], expected[:3])
+        _, _, all_rows, _ = self.execute(self.run_args(data_dir, extra=["--max-rows-per-source", "10"]))
+        self.assertEqual(len(all_rows), 8)
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            self.execute(self.run_args(data_dir, extra=["--max-rows-per-source", "-1"]))
+
     def test_runtime_narrowing_and_equal_input_budget(self):
         first, second = example(), example(index="second")
         data_dir, _ = self.prepare([first, second])

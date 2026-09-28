@@ -50,6 +50,7 @@ For AA-LCR, keep the CSV, documents, manifest, and grading version consistent.
 |---|---|---|
 | `--min-source-tokens`, `--max-source-tokens` | All | Inclusive bounds on the complete rendered executor prompt, independent of the executor input budget |
 | `--max-rows` | All | Deterministic limit after filtering; `0` means all eligible rows |
+| `--max-rows-per-source` | MRCR | At most N evenly spaced questions per source conversation, applied before `--max-rows`; `0` means no per-source limit |
 | `--question-ids`, `--document-set-ids` | AA-LCR | Comma-separated identifier filters |
 | `--source-ids` | LongBench | Comma-separated source identifiers |
 | `--row-types` | LongBench | Defaults to `original`; other row types must exist in the selected CSV |

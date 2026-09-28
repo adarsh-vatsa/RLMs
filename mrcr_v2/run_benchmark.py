@@ -35,8 +35,8 @@ def _validate_args(args, manifest: dict) -> tuple[int, int]:
     validate_bounds(minimum, maximum)
     if minimum < manifest["min_source_tokens"] or maximum > manifest["max_source_tokens"]:
         raise ValueError("Cannot widen prepared source bounds; prepare a new dataset")
-    if args.max_rows < 0:
-        raise ValueError("--max-rows must be non-negative")
+    if args.max_rows < 0 or args.max_rows_per_source < 0:
+        raise ValueError("--max-rows and --max-rows-per-source must be non-negative")
     if min(args.context_window_tokens, args.max_input_tokens, args.max_output_tokens) <= 0:
         raise ValueError("Executor token budgets must be positive")
     if args.max_input_tokens + args.max_output_tokens > args.context_window_tokens:
@@ -46,6 +46,20 @@ def _validate_args(args, manifest: dict) -> tuple[int, int]:
     if args.max_retries < 1 or args.request_timeout_seconds <= 0:
         raise ValueError("Retry count and request timeout must be positive")
     return minimum, maximum
+
+
+def _spread_per_source(rows: list[dict], count: int) -> list[dict]:
+    # Prepared questions are grouped by needle group, so the first N of a source
+    # would cover only one or two groups; evenly spaced rows cover more of them.
+    by_source = {}
+    for row in rows:
+        by_source.setdefault(row["source_id"], []).append(row)
+    selected = []
+    for group in by_source.values():
+        if len(group) > count:
+            group = [group[index * len(group) // count] for index in range(count)]
+        selected.extend(group)
+    return selected
 
 
 def _route(mode: str, full_tokens: int, budget: int) -> str:
@@ -109,6 +123,8 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
     if token_metadata != dataset_manifest["tokenizer"]:
         raise ValueError("Executor tokenizer or chat template changed; prepare a new dataset")
     selected = [row for row in all_rows if minimum <= row["full_rendered_input_tokens"] <= maximum]
+    if args.max_rows_per_source:
+        selected = _spread_per_source(selected, args.max_rows_per_source)
     if args.max_rows:
         selected = selected[:args.max_rows]
     if not selected:
@@ -137,6 +153,7 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
     audit = {
         "execution": config.metadata(), "cache_assumption": "miss",
         "mode": args.mode, "min_source_tokens": minimum, "max_source_tokens": maximum,
+        "max_rows": args.max_rows, "max_rows_per_source": args.max_rows_per_source,
         "selected_count": len(selected), "rows": audited,
         "route_counts": dict(Counter(row["route"] for row in audited)),
         "tokenizer": token_metadata, "max_input_tokens": args.max_input_tokens,
@@ -163,6 +180,7 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
         "dataset_manifest_sha256": file_hash(data_dir / "dataset_manifest.json"),
         "dataset": dataset_manifest, "tokenizer": token_metadata,
         "min_source_tokens": minimum, "max_source_tokens": maximum,
+        "max_rows": args.max_rows, "max_rows_per_source": args.max_rows_per_source,
         "selected_example_ids": [row["case_id"] for row in selected],
         "max_input_tokens": args.max_input_tokens, "max_output_tokens": args.max_output_tokens,
         "context_window_tokens": args.context_window_tokens,
@@ -281,6 +299,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--child-tokens", type=int, default=7500)
     parser.add_argument("--child-overlap-tokens", type=int, default=750)
     parser.add_argument("--max-rows", type=int, default=0)
+    parser.add_argument("--max-rows-per-source", type=int, default=0,
+                        help="At most N evenly spaced questions per source, applied before --max-rows")
     parser.add_argument("--max-retries", type=int, default=5)
     parser.add_argument("--request-timeout-seconds", type=int, default=1800)
     parser.add_argument("--output-root", type=Path, default=Path("benchmark_artifacts/mrcr_v2"))
