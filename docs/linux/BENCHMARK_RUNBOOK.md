@@ -22,27 +22,36 @@ not require repeating successful AA-LCR or MRCR preparation.
 ### MRCR v2
 
 One dataset covers sources from about 100K to 1.2M executor tokens: four
-released files, each holding one conversation of about 133K, 265K–270K, 534K
-and 1.07M tokens, with roughly 790 questions in total. See
+released files, each holding one conversation of about 133K, 267K, 534K and
+1.07M tokens. See
 [released files](../mrcr_v2.md#released-files-from-100k-to-12m-tokens) for the
-per-file counts and which of them are estimates.
+per-file counts.
+
+The release comes with 2, 4 or 8 needles per question group. Fewer needles
+means fewer identical requests for the model to count, so its own ceiling is
+higher and retrieval differences show more clearly. The 29 September runs used
+8 needles, prepared in `benchmark_data/mrcr_v2_100k_1200k`. Set the count once;
+the dataset directory follows it:
 
 ```bash
+export MRCR_NEEDLES=4
+export MRCR_DATA_DIR=benchmark_data/mrcr_v2_${MRCR_NEEDLES}needle_100k_1200k
 .venv/bin/python -m mrcr_v2.prepare_dataset \
   --executor-model "${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}" \
   --download-bands 65536:131072,131072:262144,262144:524288,524288:1048576 \
-  --needles 8 --min-source-tokens 100000 --max-source-tokens 1200000 \
-  --data-dir benchmark_data/mrcr_v2_100k_1200k
+  --needles "$MRCR_NEEDLES" --min-source-tokens 100000 --max-source-tokens 1200000 \
+  --data-dir "$MRCR_DATA_DIR"
 ```
 
-This downloads about 2.3 GB. Expect preparation, not inference, to dominate the
-runtime: it counts tokens for every question's full prompt, roughly 510 million
-tokens here, regardless of how many questions you later run. A file whose
-conversation falls outside the bounds contributes no rows without raising an
-error, so list each prepared conversation before running:
+This downloads about 2.6 GB for 2 or 4 needles (2.3 GB for 8). Expect
+preparation, not inference, to dominate the runtime: it counts tokens for every
+question's full prompt, roughly 510 million tokens for the 8-needle files,
+regardless of how many questions you later run. A file whose conversation falls
+outside the bounds contributes no rows without raising an error, so list each
+prepared conversation before running:
 
 ```bash
-.venv/bin/python - benchmark_data/mrcr_v2_100k_1200k <<'EOF'
+.venv/bin/python - "$MRCR_DATA_DIR" <<'EOF'
 import collections, json, sys
 from pathlib import Path
 
@@ -57,9 +66,9 @@ for source_id, tokens in sorted(lengths.items(), key=lambda item: min(item[1])):
 EOF
 ```
 
-Expect four lines, one per conversation, each in a different report band. Update
-the estimates in the [released files](../mrcr_v2.md#released-files-from-100k-to-12m-tokens)
-table with these values.
+Expect four lines, one per conversation, each in a different report band. The
+[released files](../mrcr_v2.md#released-files-from-100k-to-12m-tokens) table
+lists the 8-needle values; question counts differ for other needle counts.
 
 MRCR preparation is a one-time step for each output directory. If it reports
 `FileExistsError`, check that directory before retrying. A completed preparation
@@ -130,7 +139,9 @@ bash linux/run_benchmark.sh aa_lcr direct --execution-only \
 ### MRCR v2
 
 ```bash
-export MRCR_DATA_DIR=benchmark_data/mrcr_v2_100k_1200k MRCR_ROWS_PER_SOURCE=10
+export MRCR_NEEDLES=4
+export MRCR_DATA_DIR=benchmark_data/mrcr_v2_${MRCR_NEEDLES}needle_100k_1200k
+export MRCR_ROWS_PER_SOURCE=10
 bash linux/run_benchmark.sh mrcr_v2 hybrid \
   --context-window-tokens 262144 --max-input-tokens 258048 \
   --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
@@ -205,11 +216,12 @@ prepared bounds apply by default; add `--min-source-tokens` and
 `--max-source-tokens` to narrow a run to some of the conversations.
 
 `--max-rows-per-source` takes that many evenly spaced questions from each
-conversation, spreading them across needle groups; `0` runs all of them, about
-790 in total.
+conversation, spreading them across needle groups; `0` runs all of them.
 
 ```bash
-export MRCR_DATA_DIR=benchmark_data/mrcr_v2_100k_1200k MRCR_ROWS_PER_SOURCE=10
+export MRCR_NEEDLES=4
+export MRCR_DATA_DIR=benchmark_data/mrcr_v2_${MRCR_NEEDLES}needle_100k_1200k
+export MRCR_ROWS_PER_SOURCE=10 MRCR_CHILD_TOKENS=1000 MRCR_CHILD_OVERLAP_TOKENS=100
 ```
 
 Both modes use the full served context: the input budget is the context window
@@ -227,6 +239,7 @@ needles direct can still see.
 SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
   --context-window-tokens 262144 --max-input-tokens 258048 \
   --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
+  --child-tokens "$MRCR_CHILD_TOKENS" --child-overlap-tokens "$MRCR_CHILD_OVERLAP_TOKENS" \
   --fail-fast
 
 bash linux/run_benchmark.sh mrcr_v2 direct \
@@ -239,15 +252,29 @@ The 133K conversation fits the budget, so direct reads it whole, which makes it
 the full-context reference for the larger conversations. Hybrid routes those
 questions as `direct_fit` and sends the identical request, so treat its rows on
 that conversation as a control. The report's `by_source_length_band` separates
-the four conversations, provided the ~265K one renders above 262,144 tokens;
-the conversation list after preparation shows its band.
+the four conversations. The 267K conversation is just over the budget, so
+hybrid retrieves on it while direct drops only about 3% of it.
+
+Hybrid splits each conversation into chunks of `MRCR_CHILD_TOKENS`
+embedding-tokenizer tokens that overlap by `MRCR_CHILD_OVERLAP_TOKENS`, and
+ranks them against the request the question describes, for example
+`poem about stars in a formal style`. The marker, the ordinal and the output
+instruction are left out of the retrieval query; the model still receives the
+full question, and each row records the query as `retrieval_query`. A needle's
+only link to its question is its request line, about 15 tokens, so smaller
+chunks give it more weight; the 29 September runs used the 7,500-token default.
+The same two flags set the chunk size for AA-LCR and LongBench hybrid runs,
+where the defaults remain 7,500 and 750. Chunks must stay below the embedding
+model's 8,192-token input limit, and the overlap below the chunk size.
 
 Each hybrid run builds its own index, embedding each conversation once and
-reusing it for every question on that conversation. CPU embeddings measured
-about 11 seconds per 7,500-token chunk, so expect about 55 minutes for the four
-conversations, half of it for the 1.07M one. With 10 questions per
-conversation, generation adds roughly 15–20 minutes per mode; all questions take
-roughly 5–6 hours per mode.
+reusing it for every question on that conversation. With 7,500-token chunks on
+CPU, embedding took 7.7, 15 and 28.5 minutes for the 267K, 534K and 1.07M
+conversations; smaller chunks embed about as many tokens but have not been
+timed. Packing re-tokenizes the prompt once per candidate chunk, about 160 ms
+each at this budget, so 1,000-token chunks add roughly 40 seconds per question,
+against about 6 seconds with 7,500-token chunks. Generation takes about 30
+seconds per question at this budget.
 To measure how much retrieval depends on the budget, rerun the hybrid command
 with `--context-window-tokens 65536 --max-input-tokens 60000`; that repeats the
 embedding. Dropping `--direct-overflow middle` records every oversized example

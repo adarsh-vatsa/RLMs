@@ -83,11 +83,19 @@ AA-LCR is the only one that groups fragments per document, using `groupby` over
 `item["document_id"]` so each document renders as one numbered block with its
 internal gaps marked.
 
-MRCR derives its `required_prefix` by parsing the question in the adapter:
+MRCR parses the question in the adapter to derive both its `required_prefix`
+and its retrieval `query`:
 
 ```python
-marker = question.removeprefix("User: Prepend ").split(" to the ", 1)[0]
+QUESTION = re.compile(r"User: Prepend (\S+) to the \w+ (.+?)\. Do not include any other text in your response\.")
+marker, request = QUESTION.match(question).groups()
 ```
+
+The query is the described request (`poem about stars in a formal style`),
+without the random marker, the ordinal or the output instruction, because only
+the request appears in the conversation. The rendered prompt still contains the
+full question. An adapter may set `query` to anything that describes what to
+retrieve; it never changes what the model is asked.
 
 ## What the pipeline does with the declarative fields
 

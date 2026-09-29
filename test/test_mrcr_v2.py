@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from aa_lcr.api import Completion
 from aa_lcr.prompting import chat_token_count
+from mrcr_v2.adapter import solver_task
 from mrcr_v2.dataset import band_urls, load_prepared, read_source, text_hash
 from mrcr_v2.prepare_dataset import build_arg_parser as prepare_parser, prepare_dataset
 from mrcr_v2.prompting import FEWSHOT_END, OMITTED, messages, pack_evidence
@@ -364,19 +365,25 @@ class MRCRTests(unittest.TestCase):
         _, calls, records, report = self.execute(args, scs)
         self.assertEqual(len(calls), 2)
         self.assertEqual(FakeEmbedder.calls, 1)
-        self.assertEqual(len(FakeController.instances[0].queries), 2)
+        self.assertEqual(FakeController.instances[0].queries, ["poem about stars in a formal style"] * 2)
         self.assertEqual(report["status_counts"], {"ok": 2})
         for record, call in zip(records, calls):
+            self.assertEqual(record["retrieval_query"], "poem about stars in a formal style")
             self.assertLessEqual(record["final_rendered_input_tokens"], 500)
             self.assertEqual(record["route"], "dense_child_packed")
             text = call["messages"][0]["content"]
             self.assertTrue(text.startswith(PREFIX))
+            self.assertIn(f"Prepend {MARKER} to the", text)
             self.assertIn(OMITTED, text)
             ranges = record["selected_evidence_ranges"]
             self.assertEqual(ranges, sorted(ranges, key=lambda value: value["char_start"]))
             self.assertNotIn("GOLD_POSITION_ONLY", text)
         self.assertGreater(records[0]["ingested_chunks"], 0)
         self.assertEqual(records[1]["ingested_chunks"], 0)
+
+    def test_unrecognized_final_instruction_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "final instruction"):
+            solver_task("case", "source", PREFIX, "User: x\n\n", f"User: Prepend {MARKER} to the first poem.\n\nAssistant:")
 
     def test_missing_offsets_never_fall_back(self):
         data_dir, _ = self.prepare()

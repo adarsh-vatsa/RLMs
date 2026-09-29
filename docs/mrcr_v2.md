@@ -58,21 +58,31 @@ therefore contributes a single source length, and results for a file describe
 one conversation. Source bounds only filter these files; they cannot produce
 other lengths.
 
-| Band file | Conversation (executor tokens) | Questions | Download | Basis |
+| Band file | Conversation (executor tokens) | Questions | Download | Report band |
 |---|---:|---:|---:|---|
-| 64K–128K | 133,000 | 103 | 62.5 MB | Measured |
-| 128K–256K | ~265,000–270,000 | 141 | 173.7 MB | Questions counted in an earlier preparation; length estimated |
-| 256K–512K | 534,000 | 236 | 572.4 MB | Measured |
-| 512K–1M | ~1,070,000 | ~310 | 1,524.2 MB | Estimated |
-| **Total** | | **~790** | **2.33 GB** | |
+| 64K–128K | 132,994–133,001 | 103 | 62.5 MB | [131,072, 262,144) |
+| 128K–256K | 266,651–266,659 | 141 | 173.7 MB | [262,144, 524,288) |
+| 256K–512K | 534,018–534,025 | 236 | 572.4 MB | [524,288, 1,048,576) |
+| 512K–1M | 1,066,311–1,066,319 | 310 | 1,524.2 MB | [1,048,576, 2,097,152) |
+| **Total** | | **790** | **2.33 GB** | |
 
-Estimates divide file size by question count, because every row stores the
-whole conversation; the two measured files use about 4.55 bytes per executor
-token. The 512K–1M count assumes its conversation also sits just under the band
-limit. File sizes were read on 28 September 2026. Replace the estimates with
-the values in `dataset_manifest.json` and `questions.jsonl` after preparation.
-The next file, 1M–2M (3.06 GB), should hold one conversation of about 2.1M
-tokens.
+Lengths and counts come from the prepared `mrcr_v2_100k_1200k` dataset (29
+September 2026); lengths vary by a few tokens because the final questions
+differ. Download sizes were read on 28 September 2026. Each conversation sits
+just under its band's upper limit, so the next file, 1M–2M (3.06 GB), should
+hold one conversation of about 2.1M tokens.
+
+The 2- and 4-needle files for the same bands share this structure: our
+preparation code parses their first rows, which show one conversation just
+under the 128K limit and only the ordinals the needle count allows. Their
+question counts are not yet measured. Download sizes (MB, read 29 September
+2026):
+
+| Needles | 64K–128K | 128K–256K | 256K–512K | 512K–1M | Total |
+|---:|---:|---:|---:|---:|---:|
+| 2 | 119.9 | 346.5 | 693.9 | 1,390.8 | 2,551.1 |
+| 4 | 81.4 | 266.4 | 738.8 | 1,485.9 | 2,572.5 |
+| 8 | 62.5 | 173.7 | 572.4 | 1,524.2 | 2,332.8 |
 
 Questions within a file are ordered by needle group, so the first ten cover only
 one or two groups. `--max-rows-per-source` instead takes evenly spaced questions
@@ -91,7 +101,10 @@ a 262,144-token context with 4,096 tokens reserved for output, leaving a
 
 For oversized sources, hybrid selects chunks by relevance, merges overlapping
 ranges, and presents them in original conversation order. Few-shot examples
-are preserved. Missing earlier matches can still cause an incorrect occurrence
+are preserved. The retrieval query is the request the question describes, such
+as `poem about stars in a formal style`: the matching responses all follow that
+exact request, while the marker is random and the ordinal never appears in the
+conversation. The model still receives the full question. Missing earlier matches can still cause an incorrect occurrence
 count. Answer caching is disabled, and gold answers/positions never guide
 retrieval. An 8M-token source does not require an 8M-token executor window.
 

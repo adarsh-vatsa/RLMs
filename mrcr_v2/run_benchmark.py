@@ -248,7 +248,9 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
             if row["source_id"] != previous_source:
                 prefix, body = read_source(data_dir, row["source_id"])
                 previous_source = row["source_id"]
-            result = pipeline.execute(solver_task(row["case_id"], row["source_id"], prefix, body, row["question"]))
+            task = solver_task(row["case_id"], row["source_id"], prefix, body, row["question"])
+            record["retrieval_query"] = task.query
+            result = pipeline.execute(task)
             record.update(result)
             route = result["route"]
             if result["status"] == "ok":
