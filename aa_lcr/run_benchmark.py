@@ -778,7 +778,7 @@ def run_benchmark(
         "benchmark_label_field": "answer",
         "benchmark_label_type": "open_answer_string",
         "grader_labels": ["CORRECT", "INCORRECT"],
-        **prompt_contract_metadata(args.grader_prompt_version),
+        **prompt_contract_metadata(),
         **(grader.metadata() if grader is not None else {"grading_deferred": True, "grader_api_style": args.grader_api_style, "grader_reasoning_effort": args.grader_reasoning_effort}),
         **_tokenizer_metadata(tokenizer, args.executor_model),
         "questions_csv": str(questions_csv),

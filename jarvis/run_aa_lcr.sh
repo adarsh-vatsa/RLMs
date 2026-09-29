@@ -21,10 +21,10 @@ Required environment:
 Optional smoke test:
   AA_LCR_MAX_ROWS=2 bash jarvis/run_aa_lcr.sh direct
 
-AA_LCR_DATA_DIR selects the prepared dataset directory (default benchmark_data/aa_lcr).
+AA_LCR_DATA_DIR selects the prepared dataset directory (default benchmark_data/aa_lcr/v1.1).
 AA_LCR_MAX_OUTPUT_TOKENS defaults to 16384 (512 for historical 64K presets).
 AA_LCR_RUN_ID, AA_LCR_REPEAT_ID, and AA_LCR_SERVING_METADATA identify the run.
-Additional runner arguments can select grader prompts, API style, and credentials.
+Additional runner arguments can select the grader API style and credentials.
 
 Set AA_LCR_LAUNCH_DRY_RUN=1 to print the allocation and command without submitting.
 EOF
@@ -58,7 +58,7 @@ jarvis_execution_services "$LEGACY_CACHE" 1 "${@:2}"
 
 EXECUTOR_MODEL="${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
 EVALUATOR_MODEL="${OPENAI_COMPAT_EVALUATOR_MODEL:-Qwen/Qwen3.5-35B-A3B}"
-DATA_DIR="${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr}"
+DATA_DIR="${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}"
 case "$TARGET" in
   direct|hybrid|*_262k) OUTPUT_TOKENS="${AA_LCR_MAX_OUTPUT_TOKENS:-16384}" ;;
   *_64k) OUTPUT_TOKENS="${AA_LCR_MAX_OUTPUT_TOKENS:-512}" ;;

@@ -97,8 +97,8 @@ skips AA-LCR grading, but still generates answers unless `--preflight-only` is s
 
 ### AA-LCR
 
-AA-LCR defaults to the prepared v1.1 directory. For a different dataset, set
-`AA_LCR_DATA_DIR` and pass its matching `--grader-prompt-version`.
+AA-LCR defaults to the prepared v1.1 directory; set `AA_LCR_DATA_DIR` to use
+another copy of it.
 
 ```bash
 bash linux/run_benchmark.sh aa_lcr hybrid --execution-only \
@@ -194,9 +194,10 @@ executor service, so grading needs no second model and no service restart. Both
 modes are graded by the same model, which keeps the hybrid–direct comparison
 even. Because the model grades its own answers, regrade with an independent
 grader before reporting absolute scores. Regrading writes to a new directory and
-never changes the saved answers. Pass the v1.1 grader prompt, since the tool's
-default is the v1.0 one, and pass the grader model explicitly, since
-`aa_lcr.regrade` does not read `OPENAI_COMPAT_EVALUATOR_MODEL`.
+never changes the saved answers. The grader prompt applies the official AA-LCR
+equivalence rules, so, for example, `0.09`, `9%` and `9 percentage points` match.
+Pass the grader model explicitly, since `aa_lcr.regrade` does not read
+`OPENAI_COMPAT_EVALUATOR_MODEL`.
 
 ```bash
 AA_LCR_DATA_DIR=${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}
@@ -209,8 +210,7 @@ for run in hybrid/"$AA_LCR_RUN_ID" direct/"$AA_LCR_RUN_ID" direct/"${AA_LCR_RUN_
     --questions-csv "$AA_LCR_DATA_DIR/AA-LCR_Dataset.csv" \
     --documents-root "$AA_LCR_DATA_DIR/extracted_text/lcr" \
     --dataset-manifest "$AA_LCR_DATA_DIR/dataset_manifest.json" \
-    --evaluator-model "$AA_LCR_GRADER_MODEL" --evaluator-base-url "$AA_LCR_GRADER_URL" \
-    --grader-prompt-version aa_lcr_equality_v1.1
+    --evaluator-model "$AA_LCR_GRADER_MODEL" --evaluator-base-url "$AA_LCR_GRADER_URL"
 done
 ```
 
@@ -238,7 +238,7 @@ conversation, spreading them across needle groups; `0` runs all of them.
 ```bash
 export MRCR_NEEDLES=4
 export MRCR_DATA_DIR=benchmark_data/mrcr_v2_${MRCR_NEEDLES}needle_100k_1200k
-export MRCR_ROWS_PER_SOURCE=10 MRCR_CHILD_TOKENS=1000 MRCR_CHILD_OVERLAP_TOKENS=100
+export MRCR_ROWS_PER_SOURCE=10 MRCR_CHILD_TOKENS=3500 MRCR_CHILD_OVERLAP_TOKENS=350
 ```
 
 Both modes use the full served context: the input budget is the context window

@@ -8,8 +8,8 @@ from typing import Any
 
 
 PROMPT_VERSION = "aa_lcr_official_v1"
-GRADER_PROMPT_VERSION = "aa_lcr_equality_v1"
-GRADER_PROMPT_VERSIONS = (GRADER_PROMPT_VERSION, "aa_lcr_equality_v1.1")
+GRADER_PROMPT_VERSION = "aa_lcr_equality_v1.1"
+GRADER_PROMPT_VERSIONS = (GRADER_PROMPT_VERSION,)
 
 # ArtificialAnalysis/AA-LCR README at 9a77ef56b717057ade24ceab4d273712a0b4f19e.
 GRADER_SYSTEM_V1_1 = """Decide whether the CANDIDATE ANSWER is correct or incorrect against the OFFICIAL ANSWER.
@@ -72,37 +72,9 @@ def build_messages(documents: list[str], question: str) -> list[dict[str, str]]:
     return [{"role": "user", "content": build_prompt(documents, question)}]
 
 
-def build_grader_prompt(
-    question: str, official_answer: str, candidate_answer: str
-) -> str:
-    return (
-        "Assess whether the following CANDIDATE ANSWER is CORRECT or INCORRECT.\n"
-        "For the CANDIDATE ANSWER to be correct, it must be consistent with the "
-        "OFFICIAL ANSWER.\n\n"
-        f"The question, for reference only: {question}\n"
-        f"The OFFICIAL ANSWER: {official_answer}\n"
-        f"CANDIDATE ANSWER TO ASSESS: {candidate_answer}\n\n"
-        "Reply only with CORRECT or INCORRECT."
-    )
-
-
 def build_grader_messages(
-    question: str,
-    official_answer: str,
-    candidate_answer: str,
-    version: str = GRADER_PROMPT_VERSION,
+    question: str, official_answer: str, candidate_answer: str
 ) -> list[dict[str, str]]:
-    if version == GRADER_PROMPT_VERSION:
-        return [
-            {
-                "role": "user",
-                "content": build_grader_prompt(
-                    question, official_answer, candidate_answer
-                ),
-            }
-        ]
-    if version != "aa_lcr_equality_v1.1":
-        raise ValueError(f"Unknown grader prompt version: {version}")
     return [
         {"role": "system", "content": GRADER_SYSTEM_V1_1},
         {
@@ -116,28 +88,18 @@ def build_grader_messages(
     ]
 
 
-def parse_grade(text: str, version: str = GRADER_PROMPT_VERSION) -> str:
-    if version == "aa_lcr_equality_v1.1":
-        try:
-            payload = json.loads(text)
-        except (ValueError, TypeError):
-            return ""
-        if not isinstance(payload, dict) or not isinstance(payload.get("verdict"), str):
-            return ""
-        return (
-            payload["verdict"] if payload["verdict"] in {"CORRECT", "INCORRECT"} else ""
-        )
-    if version != GRADER_PROMPT_VERSION:
-        raise ValueError(f"Unknown grader prompt version: {version}")
-    grade = str(text or "").strip().upper()
-    return grade if grade in {"CORRECT", "INCORRECT"} else ""
+def parse_grade(text: str) -> str:
+    try:
+        payload = json.loads(text)
+    except (ValueError, TypeError):
+        return ""
+    if not isinstance(payload, dict) or not isinstance(payload.get("verdict"), str):
+        return ""
+    return payload["verdict"] if payload["verdict"] in {"CORRECT", "INCORRECT"} else ""
 
 
-def non_thinking_extra_body(*, grader: bool = False) -> dict:
-    body: dict[str, Any] = {"chat_template_kwargs": {"enable_thinking": False}}
-    if grader:
-        body["structured_outputs"] = {"choice": ["CORRECT", "INCORRECT"]}
-    return body
+def non_thinking_extra_body() -> dict:
+    return {"chat_template_kwargs": {"enable_thinking": False}}
 
 
 from execution.tokens import token_ids as token_ids, chat_token_count
@@ -193,25 +155,18 @@ def pack_retrieved_children(
         "dropped_child_count": len(results) - len(info["selected_child_indices"])}
 
 
-def prompt_contract_metadata(grader_version: str = GRADER_PROMPT_VERSION) -> dict:
-    if grader_version == GRADER_PROMPT_VERSION:
-        grader_template = build_grader_prompt(
-            "{question}", "{official_answer}", "{candidate_answer}"
-        )
-    else:
-        grader_template = json.dumps(
-            build_grader_messages(
-                "{question}", "{official_answer}", "{candidate_answer}", grader_version
-            ),
-            ensure_ascii=False,
-            sort_keys=True,
-        )
+def prompt_contract_metadata() -> dict:
+    grader_template = json.dumps(
+        build_grader_messages("{question}", "{official_answer}", "{candidate_answer}"),
+        ensure_ascii=False,
+        sort_keys=True,
+    )
     return {
         "prompt_version": PROMPT_VERSION,
         "prompt_template_sha256": hashlib.sha256(
             build_prompt(["{document}"], "{question}").encode("utf-8")
         ).hexdigest(),
-        "grader_prompt_version": grader_version,
+        "grader_prompt_version": GRADER_PROMPT_VERSION,
         "grader_prompt_template_sha256": hashlib.sha256(
             grader_template.encode("utf-8")
         ).hexdigest(),

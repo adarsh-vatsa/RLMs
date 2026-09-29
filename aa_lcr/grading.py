@@ -50,14 +50,13 @@ class Grader:
     ):
         self.args = args
         self.caller = completion_caller
-        self.version = args.grader_prompt_version
         self.style = args.grader_api_style
         self.max_tokens = args.grader_max_output_tokens
         if self.max_tokens is None:
             if self.style == "openai":
                 self.max_tokens = 16384
             else:
-                self.max_tokens = 8 if self.version == GRADER_PROMPT_VERSION else 64
+                self.max_tokens = 64
         if self.max_tokens <= 0 or args.grader_context_window <= 0:
             raise ValueError("Grader token budgets must be positive")
         if self.style == "vllm" and args.grader_reasoning_effort not in {None, "none"}:
@@ -82,7 +81,7 @@ class Grader:
         return {
             **{
                 key: value
-                for key, value in prompt_contract_metadata(self.version).items()
+                for key, value in prompt_contract_metadata().items()
                 if key.startswith("grader_")
             },
             "evaluator_model": self.args.evaluator_model,
@@ -107,7 +106,7 @@ class Grader:
         }
 
     def grade(self, question, answer, candidate):
-        messages = build_grader_messages(question, answer, candidate, self.version)
+        messages = build_grader_messages(question, answer, candidate)
         if self.tokenizer is not None:
             count = chat_token_count(self.tokenizer, messages)
             if count + self.max_tokens > self.args.grader_context_window:
@@ -118,11 +117,8 @@ class Grader:
         if self.style == "openai":
             extra = {"reasoning_effort": self.reasoning_effort}
         else:
-            extra = non_thinking_extra_body(
-                grader=self.version == GRADER_PROMPT_VERSION
-            )
-        if self.version != GRADER_PROMPT_VERSION:
-            extra["response_format"] = {"type": "json_object"}
+            extra = non_thinking_extra_body()
+        extra["response_format"] = {"type": "json_object"}
         completion, attempts = call_with_retries(
             lambda: self.caller(
                 base_url=self.args.evaluator_base_url,
@@ -136,7 +132,7 @@ class Grader:
             ),
             max_retries=self.args.max_retries,
         )
-        grade = parse_grade(completion.text, self.version)
+        grade = parse_grade(completion.text)
         if completion.finish_reason in {"length", "content_filter"}:
             grade = ""
         return completion, attempts, grade

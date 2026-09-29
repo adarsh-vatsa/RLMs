@@ -23,7 +23,7 @@ from aa_lcr.dataset import (
     validate_dataset,
 )
 from aa_lcr.prompting import (
-    build_grader_prompt,
+    build_grader_messages,
     build_prompt,
     pack_retrieved_children,
     parse_grade,
@@ -70,7 +70,7 @@ class FakeCompletionCaller:
     def __call__(self, **kwargs):
         self.calls.append(kwargs)
         if kwargs["model"] == "Qwen/Qwen3.5-35B-A3B":
-            text = "CORRECT"
+            text = '{"verdict": "CORRECT"}'
         else:
             text = "Equinix, $901 M"
         return Completion(
@@ -280,7 +280,7 @@ class AALCRDatasetAndPromptTests(unittest.TestCase):
             }
             with (
                 patch.dict(DATASET_RELEASES, {"1.1": release}),
-                patch("aa_lcr.prepare_dataset.DEFAULT_DATA_DIR", root),
+                patch("aa_lcr.prepare_dataset.DEFAULT_DATA_DIR", root / "v1.1"),
                 patch("aa_lcr.prepare_dataset.ARCHIVE_SHA256", sha256_file(archive)),
                 patch("aa_lcr.prepare_dataset._download") as download,
             ):
@@ -297,8 +297,12 @@ class AALCRDatasetAndPromptTests(unittest.TestCase):
                     for p in (root / "v1.1").rglob("*")
                     if p.is_file()
                 }
-                with self.assertRaisesRegex(ValueError, "another revision"):
-                    prepare_dataset(root / "v1.1", dataset_version="1.0.0")
+                other = {"revision": "other-revision", "questions_sha256": "0" * 64}
+                with (
+                    patch.dict(DATASET_RELEASES, {"other": other}),
+                    self.assertRaisesRegex(ValueError, "another revision"),
+                ):
+                    prepare_dataset(root / "v1.1", dataset_version="other")
                 self.assertTrue(
                     all(p.read_bytes() == data for p, data in files.items())
                 )
@@ -366,15 +370,15 @@ class AALCRDatasetAndPromptTests(unittest.TestCase):
         prompt = build_prompt(["Document A", "Document B"], "What happened?")
         self.assertIn("BEGIN DOCUMENT 1:\nDocument A\nEND DOCUMENT 1", prompt)
         self.assertLess(prompt.index("Document A"), prompt.index("Document B"))
-        grader = build_grader_prompt(
+        grader = build_grader_messages(
             "What was adjusted EBITDA?",
             "Equinix, $901 million",
             "Equinix, $901 M",
-        )
+        )[1]["content"]
         self.assertIn("Equinix, $901 million", grader)
         self.assertIn("Equinix, $901 M", grader)
-        self.assertEqual(parse_grade(" CORRECT\n"), "CORRECT")
-        self.assertEqual(parse_grade("Correct because equivalent"), "")
+        self.assertEqual(parse_grade('{"verdict": "CORRECT"}'), "CORRECT")
+        self.assertEqual(parse_grade("CORRECT"), "")
 
     def test_direct_middle_truncation_preserves_question_tail(self):
         tokenizer = FakeTokenizer()

@@ -85,16 +85,10 @@ def _extract_archive(archive_path: Path, extract_root: Path) -> None:
 
 
 def prepare_dataset(
-    data_dir: Path | None = None, *, dataset_version: str = "1.0.0"
+    data_dir: Path | None = None, *, dataset_version: str = "1.1"
 ) -> dict:
     release = DATASET_RELEASES[dataset_version]
-    if data_dir is None:
-        data_dir = (
-            DEFAULT_DATA_DIR
-            if dataset_version == "1.0.0"
-            else DEFAULT_DATA_DIR / f"v{dataset_version}"
-        )
-    data_dir = Path(data_dir)
+    data_dir = Path(data_dir or DEFAULT_DATA_DIR)
     questions_path = data_dir / QUESTIONS_FILENAME
     archive_path = data_dir / ARCHIVE_FILENAME
     extract_root = data_dir / "extracted_text"
@@ -153,12 +147,12 @@ def prepare_dataset(
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Download and validate AA-LCR")
     parser.add_argument(
-        "--dataset-version", choices=sorted(DATASET_RELEASES), default="1.0.0"
+        "--dataset-version", choices=sorted(DATASET_RELEASES), default="1.1"
     )
     parser.add_argument(
         "--data-dir",
         type=Path,
-        help="Defaults to benchmark_data/aa_lcr for 1.0.0, or its v1.1 subdirectory",
+        help="Defaults to benchmark_data/aa_lcr/v1.1",
     )
     return parser
 

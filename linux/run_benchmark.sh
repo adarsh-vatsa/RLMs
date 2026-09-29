@@ -30,7 +30,6 @@ case "$BENCHMARK" in
       --executor-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL"
       --evaluator-model "${OPENAI_COMPAT_EVALUATOR_MODEL:-$OPENAI_COMPAT_EXECUTOR_MODEL}"
       --evaluator-base-url "${OPENAI_COMPAT_EVALUATOR_BASE_URL:-$OPENAI_COMPAT_EXECUTOR_BASE_URL}"
-      --grader-prompt-version aa_lcr_equality_v1.1
       --questions-csv "$DATA_DIR/AA-LCR_Dataset.csv"
       --documents-root "$DATA_DIR/extracted_text/lcr"
       --dataset-manifest "$DATA_DIR/dataset_manifest.json")

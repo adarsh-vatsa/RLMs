@@ -42,7 +42,7 @@ in the benchmark runbook differs from its default, so that example sets
 | MRCR v2 | `benchmark_data/mrcr_v2` | `MRCR_DATA_DIR` or `--data-dir` |
 
 Explicit runner path options override the paths inserted by the launcher.
-For AA-LCR, keep the CSV, documents, manifest, and grading version consistent.
+For AA-LCR, keep the CSV, documents, and manifest from the same prepared directory.
 
 | Option | Applies to | Behavior |
 |---|---|---|
@@ -85,7 +85,7 @@ MRCR does not automatically expand its default budgets.
 | `--preflight-only` | AA-LCR, MRCR | Validate selection/budgets and report expected routes without inference or embedding |
 | `--preflight-output` | AA-LCR, MRCR | Save the preflight JSON to a file |
 | `--execution-only` | AA-LCR | Generate and save answers but skip grading; this is not preflight |
-| `--grader-prompt-version` | AA-LCR | Linux default `aa_lcr_equality_v1.1`; match the dataset version |
+| `--grader-prompt-version` | AA-LCR | Only `aa_lcr_equality_v1.1`, which applies the official AA-LCR equivalence rules; recorded in manifests |
 | `--grader-context-window` | AA-LCR | Grader's served context; default 32,768 |
 | `--grader-max-output-tokens` | AA-LCR | Grader response allowance; default depends on prompt version and API style |
 | `--grader-api-style` | AA-LCR | `vllm` (default) or `openai` |

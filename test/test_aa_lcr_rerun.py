@@ -152,23 +152,8 @@ class RerunTests(unittest.TestCase):
                 512,
             )
 
-    def test_prompt_versions_and_json_verdict_parsing(self):
-        legacy = prompt_contract_metadata()
-        original = json.loads(
-            Path(
-                "benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z/manifest.json"
-            ).read_text()
-        )
-        self.assertEqual(
-            legacy["grader_prompt_template_sha256"],
-            original["grader_prompt_template_sha256"],
-        )
-        self.assertEqual(
-            legacy["prompt_template_sha256"], original["prompt_template_sha256"]
-        )
-        messages = build_grader_messages(
-            "question", "0.14", "14%", "aa_lcr_equality_v1.1"
-        )
+    def test_grader_prompt_and_json_verdict_parsing(self):
+        messages = build_grader_messages("question", "0.14", "14%")
         self.assertEqual(messages[0]["content"], GRADER_SYSTEM_V1_1)
         self.assertEqual(
             messages[1]["content"],
@@ -176,15 +161,10 @@ class RerunTests(unittest.TestCase):
                 question="question", official_answer="0.14", candidate_answer="14%"
             ),
         )
-        self.assertNotEqual(
-            legacy["grader_prompt_template_sha256"],
-            prompt_contract_metadata("aa_lcr_equality_v1.1")[
-                "grader_prompt_template_sha256"
-            ],
-        )
         self.assertEqual(
-            parse_grade('{"verdict":"CORRECT"}', "aa_lcr_equality_v1.1"), "CORRECT"
+            prompt_contract_metadata()["grader_prompt_version"], "aa_lcr_equality_v1.1"
         )
+        self.assertEqual(parse_grade('{"verdict":"CORRECT"}'), "CORRECT")
         for text in (
             "CORRECT",
             "[]",
@@ -193,7 +173,7 @@ class RerunTests(unittest.TestCase):
             '{"verdict":"probably"}',
             '```json\n{"verdict":"CORRECT"}\n```',
         ):
-            self.assertEqual(parse_grade(text, "aa_lcr_equality_v1.1"), "")
+            self.assertEqual(parse_grade(text), "")
 
     def test_grader_context_and_hosted_parameters(self):
         args = build_arg_parser().parse_args(["--experiment", "direct_262k"])
