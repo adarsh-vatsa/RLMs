@@ -2,7 +2,10 @@
 
 Complete the [Linux setup](SETUP_RUNBOOK.md) first. Run these commands from the
 repository root. Preflight validates inputs and budgets; execution runs inference.
-All examples use the shared `common` execution profile.
+All examples use the shared `common` execution profile. LongBench-v2 was run on
+Jarvis, not on the Linux server; see the [Jarvis runbooks](../jarvis/README.md).
+Its results are in `benchmark_artifacts/longbench_v2` and
+`benchmark_artifacts/longbench_v2_api`.
 For available flags, defaults, and cache settings, consult the optional
 [runner options reference](SHARED_EXECUTION_RUNBOOK.md).
 
@@ -10,8 +13,7 @@ For available flags, defaults, and cache settings, consult the optional
 
 These are existing preparation commands; preparation does not need model servers.
 The tokenizer and requested dataset files may download on first use.
-Prepare only the benchmarks you intend to run. A failed LongBench export does
-not require repeating successful AA-LCR or MRCR preparation.
+Prepare only the benchmarks you intend to run.
 
 ### AA-LCR
 
@@ -78,34 +80,6 @@ running, the directory is incomplete. Retry preparation with a new `--data-dir`
 and use that same path for preflight/execution. Do not delete a completed dataset
 just to rerun preparation.
 
-### LongBench v2
-
-The exporter reads a local JSON file; it does not download the dataset.
-`benchmark_data/long_bench_v2/*.json` is excluded from Git, so a fresh clone will
-not contain `data.json`. Copy the file from your previous server to preserve the
-same dataset, or download the [official dataset](https://huggingface.co/datasets/zai-org/LongBench-v2/blob/main/data.json)
-(approximately 465 MB). This command pins revision
-`2b48e494f2c7a2f0af81aae178e05c7e1dde0fe9` and keeps an existing JSON file:
-
-```bash
-mkdir -p benchmark_data/long_bench_v2
-if [ ! -f benchmark_data/long_bench_v2/data.json ]; then
-  curl -fL --retry 3 \
-    'https://huggingface.co/datasets/zai-org/LongBench-v2/resolve/2b48e494f2c7a2f0af81aae178e05c7e1dde0fe9/data.json' \
-    -o benchmark_data/long_bench_v2/data.json.download &&
-  mv benchmark_data/long_bench_v2/data.json.download benchmark_data/long_bench_v2/data.json
-fi
-```
-
-After the download succeeds, export the CSV. Keep both files: the CSV references
-the full source contexts in `data.json`.
-
-```bash
-.venv/bin/python -m long_bench_v2.export_csv \
-  --input-path benchmark_data/long_bench_v2/data.json \
-  --output-path benchmark_data/long_bench_v2/data.csv
-```
-
 Use `$BENCHMARK_VENV/bin/python` instead when you chose a custom client environment.
 MRCR requires a fresh prepared output directory. Existing prepared datasets can
 be copied from the old server, preserving their manifests and referenced files;
@@ -128,13 +102,16 @@ AA-LCR defaults to the prepared v1.1 directory. For a different dataset, set
 
 ```bash
 bash linux/run_benchmark.sh aa_lcr hybrid --execution-only \
-  --context-window-tokens 65536 --max-input-tokens 60000 \
+  --context-window-tokens 65536 --max-input-tokens 61440 \
   --max-output-tokens 4096 --preflight-only
 
 bash linux/run_benchmark.sh aa_lcr direct --execution-only \
-  --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --preflight-only
+  --context-window-tokens 65536 --max-input-tokens 61440 \
+  --max-output-tokens 4096 --direct-overflow middle --preflight-only
 ```
+
+Every question should report `dense_child_packed` for hybrid and
+`middle_truncated` for direct.
 
 ### MRCR v2
 
@@ -158,13 +135,6 @@ Preflight reports each question's route. The 133K conversation fits the
 ones report `dense_child_packed` for hybrid and `middle_truncated` for direct,
 or `unsupported_context` if `--direct-overflow middle` is omitted.
 
-### LongBench v2
-
-```bash
-bash linux/run_benchmark.sh longbench_v2 hybrid --route-audit-only
-bash linux/run_benchmark.sh longbench_v2 direct --preflight-only
-```
-
 ## Actual execution
 
 Start or connect to the executor using the [service instructions](SETUP_RUNBOOK.md#start-model-services-or-reuse-endpoints).
@@ -179,33 +149,80 @@ examples above.
 
 ### AA-LCR
 
+AA-LCR prompts are 87,847–122,112 executor tokens (median 107,136), so the
+full served context would fit every one and hybrid would send the same request
+as direct. The comparison instead uses a 64K model window: 65,536 tokens minus
+the 4,096-token output allowance leaves a 61,440-token input budget, which every
+question exceeds. Direct keeps a head and a tail slice of each prompt, a median
+of 57%. All runs share one run ID so the grading step can find them.
+
 ```bash
+export AA_LCR_RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh aa_lcr hybrid \
-  --execution-only --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096
+  --execution-only --context-window-tokens 65536 --max-input-tokens 61440 \
+  --max-output-tokens 4096 --run-id "$AA_LCR_RUN_ID" --fail-fast
 
 bash linux/run_benchmark.sh aa_lcr direct \
-  --execution-only --context-window-tokens 65536 --max-input-tokens 60000 \
-  --max-output-tokens 4096 --direct-overflow middle
+  --execution-only --context-window-tokens 65536 --max-input-tokens 61440 \
+  --max-output-tokens 4096 --direct-overflow middle --run-id "$AA_LCR_RUN_ID" --fail-fast
 ```
 
-These runs save answers for later grading. To grade during execution, start or
-connect to the evaluator and omit `--execution-only`. This option does not
-disable semantic cache verification if you explicitly enable it.
+Without `--direct-overflow middle`, the common profile records every example as
+unsupported. Hybrid embeds each of the 30 document sets once and reuses the
+index for that set's questions; with CPU embeddings this should take about 1.5
+hours, and direct about 15 minutes.
 
-Every AA-LCR question exceeds a 60,000-token input budget, so the direct command
-needs `--direct-overflow middle` to produce a baseline; without it the common
-profile records every example as unsupported. The historical `direct_64k`
-preset enabled this truncation through `--experiment`, which this launcher does
-not use: `--mode` builds its budgets from the flags above instead.
+For the full-context reference, run direct once at the full served window,
+where every prompt fits. A hybrid run there would send identical requests.
 
-AA-LCR discovers the full served context from `/models` when
-`--context-window-tokens` is omitted. Its input allowance defaults to context
-minus output allowance (16,384 output tokens by default). To use the full served
-context, omit both `--context-window-tokens` and `--max-input-tokens` from the
-preflight and execution commands.
-That preflight needs a reachable executor for metadata discovery, but still makes
-no inference calls.
+```bash
+bash linux/run_benchmark.sh aa_lcr direct \
+  --execution-only --context-window-tokens 262144 --max-input-tokens 258048 \
+  --max-output-tokens 4096 --run-id "${AA_LCR_RUN_ID}_full" --fail-fast
+```
+
+`--execution-only` saves answers without grading them, so generation and
+grading stay separate steps and grading can be repeated with any grader. To
+grade during execution instead, omit it; the grader is then the executor, as
+below. It does not disable semantic cache verification if you explicitly enable
+that.
+
+#### Grade the saved answers
+
+By default the grader is the executor model, reached through the running
+executor service, so grading needs no second model and no service restart. Both
+modes are graded by the same model, which keeps the hybrid–direct comparison
+even. Because the model grades its own answers, regrade with an independent
+grader before reporting absolute scores. Regrading writes to a new directory and
+never changes the saved answers. Pass the v1.1 grader prompt, since the tool's
+default is the v1.0 one, and pass the grader model explicitly, since
+`aa_lcr.regrade` does not read `OPENAI_COMPAT_EVALUATOR_MODEL`.
+
+```bash
+AA_LCR_DATA_DIR=${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}
+AA_LCR_GRADER_MODEL=${OPENAI_COMPAT_EVALUATOR_MODEL:-${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}}
+AA_LCR_GRADER_URL=${OPENAI_COMPAT_EVALUATOR_BASE_URL:-${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}}
+for run in hybrid/"$AA_LCR_RUN_ID" direct/"$AA_LCR_RUN_ID" direct/"${AA_LCR_RUN_ID}_full"; do
+  .venv/bin/python -m aa_lcr.regrade \
+    --source-run "benchmark_artifacts/aa_lcr/$run" \
+    --output-dir "benchmark_artifacts/aa_lcr/regrades/${AA_LCR_GRADER_MODEL##*/}/$run" \
+    --questions-csv "$AA_LCR_DATA_DIR/AA-LCR_Dataset.csv" \
+    --documents-root "$AA_LCR_DATA_DIR/extracted_text/lcr" \
+    --dataset-manifest "$AA_LCR_DATA_DIR/dataset_manifest.json" \
+    --evaluator-model "$AA_LCR_GRADER_MODEL" --evaluator-base-url "$AA_LCR_GRADER_URL" \
+    --grader-prompt-version aa_lcr_equality_v1.1
+done
+```
+
+The grader's model name in the output path keeps regrades by different graders
+apart. For an independent grader, set `OPENAI_COMPAT_EVALUATOR_BASE_URL` and
+`OPENAI_COMPAT_EVALUATOR_MODEL` as in the
+[setup runbook](SETUP_RUNBOOK.md#start-model-services-or-reuse-endpoints) and run
+the loop again. A hosted OpenAI-style grader also needs
+`--grader-api-style openai` and `--evaluator-api-key-env`; a local grader served
+with fewer than 32,768 context tokens needs a matching `--grader-context-window`.
+Set `AA_LCR_RUN_ID` again in a new shell. Add `--validate-only` to check that a
+run's answers and sources are intact without calling the grader.
 
 ### MRCR v2
 
@@ -263,8 +280,8 @@ instruction are left out of the retrieval query; the model still receives the
 full question, and each row records the query as `retrieval_query`. A needle's
 only link to its question is its request line, about 15 tokens, so smaller
 chunks give it more weight; the 29 September runs used the 7,500-token default.
-The same two flags set the chunk size for AA-LCR and LongBench hybrid runs,
-where the defaults remain 7,500 and 750. Chunks must stay below the embedding
+The same two flags set the chunk size for AA-LCR hybrid runs, where the
+defaults remain 7,500 and 750. Chunks must stay below the embedding
 model's 8,192-token input limit, and the overlap below the chunk size.
 
 Each hybrid run builds its own index, embedding each conversation once and
@@ -276,7 +293,7 @@ each at this budget, so 1,000-token chunks add roughly 40 seconds per question,
 against about 6 seconds with 7,500-token chunks. Generation takes about 30
 seconds per question at this budget.
 To measure how much retrieval depends on the budget, rerun the hybrid command
-with `--context-window-tokens 65536 --max-input-tokens 60000`; that repeats the
+with `--context-window-tokens 65536 --max-input-tokens 61440`; that repeats the
 embedding. Dropping `--direct-overflow middle` records every oversized example
 as unsupported without an API call instead.
 
@@ -285,20 +302,10 @@ as unsupported without an API call instead.
 `status: complete` with a mean score of zero, because execution failures count
 as supported examples scoring zero.
 
-### LongBench v2
-
-```bash
-SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh longbench_v2 hybrid
-bash linux/run_benchmark.sh longbench_v2 direct
-```
-
 ## Budget and routing options
 
-MRCR defaults to context/input/output budgets of 65,536/60,000/4,096;
-LongBench defaults to 65,536/60,000/8. Both accept explicit budget overrides.
-LongBench uses original rows from `benchmark_data/long_bench_v2/data.csv`, produced
-by the export above; pass `--suite-csv` and `--source-json-path` for different
-input paths. MRCR and LongBench need no answer-grading service; enabling semantic
+MRCR defaults to context/input/output budgets of 65,536/60,000/4,096 and accepts
+explicit overrides. MRCR needs no answer-grading service; enabling semantic
 cache reads adds a verifier requirement. See the
 [answer-cache and verifier options](SHARED_EXECUTION_RUNBOOK.md#answer-cache-and-verifier-options).
 
@@ -321,7 +328,7 @@ DRY_RUN=1 bash linux/run_benchmark.sh aa_lcr hybrid --execution-only
 ## Execution logs and outputs
 
 Benchmark artifacts use the existing runner output directories and manifests.
-Use `--output-root` for AA-LCR/MRCR or `--output-dir` for LongBench to change them.
+Use `--output-root` to change them.
 Retain the complete run directory, including manifests, predictions, bridge rows,
 and JSON reports, for later comparison documents. Console logs alone do not
 contain all the structured settings and per-example results. Keep dataset
@@ -334,8 +341,8 @@ mkdir -p .cache/linux-logs
 # In Bash, preserve the benchmark exit status when piping to tee.
 set -o pipefail
 bash linux/run_benchmark.sh aa_lcr direct --execution-only \
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 4096 \
-  2>&1 | tee .cache/linux-logs/aa-lcr-direct.log
+  --context-window-tokens 65536 --max-input-tokens 61440 --max-output-tokens 4096 \
+  --direct-overflow middle 2>&1 | tee .cache/linux-logs/aa-lcr-direct.log
 ```
 
 See the [shared execution architecture](../shared_execution_architecture.md)

@@ -251,6 +251,27 @@ class SharedExecutionTests(unittest.TestCase):
             self.assertTrue(all(call["model"] == options.evaluator_model for call in grader.calls))
             self.assertTrue((regraded / "manifest.json").exists())
 
+    def test_aa_runner_common_direct_middle_truncation(self):
+        from test_aa_lcr import write_fixture, FakeCompletionCaller, FakeTokenizer as TruncatingTokenizer
+        from aa_lcr.run_benchmark import build_arg_parser, run_benchmark
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            questions, documents, manifest = write_fixture(root, long_document=True)
+            args = build_arg_parser().parse_args([
+                "--mode", "direct", "--context-window-tokens", "65536", "--execution-profile", "common", "--execution-only",
+                "--questions-csv", str(questions), "--documents-root", str(documents),
+                "--dataset-manifest", str(manifest), "--output-root", str(root / "runs"),
+                "--max-input-tokens", "1000", "--max-output-tokens", "20", "--direct-overflow", "middle",
+            ])
+            calls = FakeCompletionCaller()
+            output = run_benchmark(args, tokenizer_factory=lambda _: TruncatingTokenizer(), completion_caller=calls)
+            rows = [json.loads(line) for line in (output / "execution.jsonl").read_text().splitlines()]
+            self.assertEqual([(row["status"], row["route"]) for row in rows], [("ok", "middle_truncated")] * 2)
+            self.assertTrue(all(row["final_rendered_input_tokens"] <= 1000 for row in rows))
+            self.assertEqual(len(calls.calls), 2)
+            payload = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(payload["direct_truncation_policy"], "middle_keep_first_last")
+
     def test_aa_rejects_zero_input_override_before_loading_data(self):
         from aa_lcr.run_benchmark import build_arg_parser, run_benchmark
         args = build_arg_parser().parse_args(["--experiment", "direct_64k", "--max-input-tokens", "0"])

@@ -1,7 +1,7 @@
 # Linux setup and model services
 
-These scripts run processes directly. They reuse the existing AA-LCR, MRCR v2,
-and LongBench-v2 runners and default to the `common` execution profile. Jarvis
+These scripts run processes directly. They reuse the existing AA-LCR and MRCR v2
+runners and default to the `common` execution profile. Jarvis
 scripts remain separate and unchanged. Run the examples from the repository root.
 
 | Script | Purpose |
@@ -76,12 +76,21 @@ CUDA_VISIBLE_DEVICES=0 EXECUTOR_TP_SIZE=1 \
   --enable-chunked-prefill
 ```
 
-On the single 96 GB RTX PRO 6000 server, run AA-LCR with `--execution-only` and
-defer grading, or use a remote grader. Do not start both default 35B services
-concurrently on that GPU: each service reserves 90% of GPU memory by default.
-For later local grading, stop the executor and start the evaluator with
-`CUDA_VISIBLE_DEVICES=0 EVALUATOR_TP_SIZE=1`. Hybrid runs can use
-`SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu` to leave GPU memory for the executor.
+This executor is the only service the Linux workflow needs. MRCR scores
+deterministically, and AA-LCR grades its answers with the executor model through
+the same service, so no second model is downloaded or started. Hybrid runs can
+use `SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu` to leave GPU memory for the executor.
+
+A separate evaluator service is optional: use it for an independent AA-LCR
+grader or a semantic cache verifier. On the single 96 GB RTX PRO 6000 server, do
+not start it alongside the executor, because each default 35B service reserves
+90% of GPU memory. Stop the executor (Ctrl-C in its terminal) first, then:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 EVALUATOR_TP_SIZE=1 \
+  bash linux/serve_vllm.sh evaluator \
+  --reasoning-parser qwen3 --language-model-only
+```
 
 For a server with multiple GPUs, the following lists
 are examples: choose devices and tensor parallelism for your server. Keep executor,
@@ -93,7 +102,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 EXECUTOR_TP_SIZE=4 \
   --reasoning-parser qwen3 --language-model-only \
   --enable-chunked-prefill
 
-# Needed for AA-LCR grading or optional semantic cache verification.
+# Optional: an independent AA-LCR grader or a semantic cache verifier.
 CUDA_VISIBLE_DEVICES=4,5 EVALUATOR_TP_SIZE=2 \
   bash linux/serve_vllm.sh evaluator \
   --reasoning-parser qwen3 --language-model-only
@@ -105,13 +114,13 @@ Defaults: executor `Qwen/Qwen3.6-35B-A3B` on port 8000; evaluator
 `_MAX_MODEL_LEN` variables to change them. Omitting `EXECUTOR_MAX_MODEL_LEN`
 leaves the context limit to vLLM's model configuration; set it to `65536` for a
 64K service. Tensor parallelism defaults to 1 unless configured.
-Keep each service running in its own terminal; use a third terminal for the
+Keep each service running in its own terminal, and use another terminal for the
 benchmark. Export custom environment/cache paths in each terminal that needs them.
 
 Runner budget flags do not resize an already-running service. Choose a runner
 context no larger than the served limit, with input plus output allowance within
-that context. AA-LCR can discover the executor limit automatically; MRCR and
-LongBench retain explicit defaults. If you change `EVALUATOR_MAX_MODEL_LEN` for
+that context. AA-LCR can discover the executor limit automatically; MRCR retains
+explicit defaults. If you change `EVALUATOR_MAX_MODEL_LEN` for
 AA-LCR grading, pass the matching `--grader-context-window` to the runner.
 
 Services bind to `127.0.0.1` by default. Set `HOST` when clients must reach this
@@ -132,12 +141,14 @@ terminal are not automatically shared with another terminal.
 ```bash
 export OPENAI_COMPAT_EXECUTOR_BASE_URL=http://127.0.0.1:8000/v1
 export OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B
-export OPENAI_COMPAT_EVALUATOR_BASE_URL=http://127.0.0.1:8001/v1
-export OPENAI_COMPAT_EVALUATOR_MODEL=Qwen/Qwen3.5-35B-A3B
 curl -fsS "$OPENAI_COMPAT_EXECUTOR_BASE_URL/models"
-# Only if using this service for grading or cache verification:
-curl -fsS "$OPENAI_COMPAT_EVALUATOR_BASE_URL/models"
 ```
+
+AA-LCR's grader follows these executor settings. To grade with a separate model
+instead, also set `OPENAI_COMPAT_EVALUATOR_BASE_URL` and
+`OPENAI_COMPAT_EVALUATOR_MODEL`, for example `http://127.0.0.1:8001/v1` and
+`Qwen/Qwen3.5-35B-A3B` for the local evaluator service, and check that endpoint
+with `curl` the same way.
 
 To use services already running locally or remotely, skip local service startup
 and set those URLs/model names to the actual endpoints. They need not be on

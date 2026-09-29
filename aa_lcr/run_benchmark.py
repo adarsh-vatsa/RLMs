@@ -109,7 +109,7 @@ def resolve_experiment(args: argparse.Namespace) -> Experiment:
         raise ValueError("Input and output budgets exceed the executor context window")
     if legacy:
         return replace(legacy, max_input_tokens=max_input, context_window_tokens=context)
-    return Experiment(args.mode, args.mode, context, max_input, False)
+    return Experiment(args.mode, args.mode, context, max_input, args.direct_overflow == "middle")
 
 
 def _load_tokenizer(model: str) -> Any:

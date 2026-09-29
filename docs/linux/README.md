@@ -10,6 +10,7 @@ This is not a third execution step.
 
 The [scripts](../../linux/) launch the existing benchmark runners directly.
 For Slurm-based execution, use the [Jarvis runbooks](../jarvis/README.md).
+These runbooks cover AA-LCR and MRCR v2; LongBench-v2 was run on Jarvis.
 
 ## Server Configuration
 

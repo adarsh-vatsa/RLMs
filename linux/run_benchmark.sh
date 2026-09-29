@@ -6,7 +6,7 @@ usage() {
   echo 'Usage: bash linux/run_benchmark.sh <aa_lcr|mrcr_v2|longbench_v2> <direct|hybrid> [runner arguments...]'
   echo 'Uses the common execution profile. All runner arguments are forwarded unchanged.'
   echo 'Set OPENAI_COMPAT_EXECUTOR_BASE_URL/MODEL for an existing local or remote executor.'
-  echo 'AA-LCR grading uses OPENAI_COMPAT_EVALUATOR_BASE_URL/MODEL; --execution-only skips grading.'
+  echo 'AA-LCR grades with the executor unless OPENAI_COMPAT_EVALUATOR_BASE_URL/MODEL are set; --execution-only skips grading.'
   echo 'DRY_RUN=1 prints without running; BENCHMARK_VENV selects the Python environment.'
 }
 BENCHMARK="${1:-}"
@@ -28,8 +28,8 @@ case "$BENCHMARK" in
       --mode "$TARGET" --execution-profile common
       --executor-model "$OPENAI_COMPAT_EXECUTOR_MODEL"
       --executor-base-url "$OPENAI_COMPAT_EXECUTOR_BASE_URL"
-      --evaluator-model "${OPENAI_COMPAT_EVALUATOR_MODEL:-Qwen/Qwen3.5-35B-A3B}"
-      --evaluator-base-url "${OPENAI_COMPAT_EVALUATOR_BASE_URL:-http://127.0.0.1:8001/v1}"
+      --evaluator-model "${OPENAI_COMPAT_EVALUATOR_MODEL:-$OPENAI_COMPAT_EXECUTOR_MODEL}"
+      --evaluator-base-url "${OPENAI_COMPAT_EVALUATOR_BASE_URL:-$OPENAI_COMPAT_EXECUTOR_BASE_URL}"
       --grader-prompt-version aa_lcr_equality_v1.1
       --questions-csv "$DATA_DIR/AA-LCR_Dataset.csv"
       --documents-root "$DATA_DIR/extracted_text/lcr"
