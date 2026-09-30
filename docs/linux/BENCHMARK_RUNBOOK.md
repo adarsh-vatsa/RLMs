@@ -239,7 +239,7 @@ conversation, spreading them across needle groups; `0` runs all of them.
 ```bash
 export MRCR_NEEDLES=4
 export MRCR_DATA_DIR=benchmark_data/mrcr_v2_${MRCR_NEEDLES}needle_100k_1200k
-export MRCR_ROWS_PER_SOURCE=10 MRCR_CHILD_TOKENS=3500 MRCR_CHILD_OVERLAP_TOKENS=350
+export MRCR_ROWS_PER_SOURCE=30 MRCR_CHILD_TOKENS=3500 MRCR_CHILD_OVERLAP_TOKENS=350
 ```
 
 Both modes use the full served context: the input budget is the context window
