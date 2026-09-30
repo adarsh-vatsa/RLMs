@@ -172,7 +172,7 @@ unsupported. Hybrid embeds each of the 30 document sets once and reuses the
 index for that set's questions; with CPU embeddings this should take about 1.5
 hours, and direct about 15 minutes.
 
-For the full-context reference, run direct once at the full served window,
+OPTIONAL: For the full-context reference, run direct once at the full served window,
 where every prompt fits. A hybrid run there would send identical requests.
 
 ```bash
@@ -199,11 +199,12 @@ equivalence rules, so, for example, `0.09`, `9%` and `9 percentage points` match
 Pass the grader model explicitly, since `aa_lcr.regrade` does not read
 `OPENAI_COMPAT_EVALUATOR_MODEL`.
 
+IMPORTANT: Do not forget to change experiment IDs below.
 ```bash
 AA_LCR_DATA_DIR=${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}
 AA_LCR_GRADER_MODEL=${OPENAI_COMPAT_EVALUATOR_MODEL:-${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}}
 AA_LCR_GRADER_URL=${OPENAI_COMPAT_EVALUATOR_BASE_URL:-${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}}
-for run in hybrid/"$AA_LCR_RUN_ID" direct/"$AA_LCR_RUN_ID" direct/"${AA_LCR_RUN_ID}_full"; do
+for run in hybrid/20260930T025706Z direct/20260930T134555Z; do
   .venv/bin/python -m aa_lcr.regrade \
     --source-run "benchmark_artifacts/aa_lcr/$run" \
     --output-dir "benchmark_artifacts/aa_lcr/regrades/${AA_LCR_GRADER_MODEL##*/}/$run" \
