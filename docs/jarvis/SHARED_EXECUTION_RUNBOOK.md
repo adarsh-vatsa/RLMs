@@ -1,266 +1,85 @@
-# Shared direct/hybrid execution on Jarvis
+# LongBench options on Jarvis
 
-LongBench-v2 (OpenAI-compatible direct and hybrid), AA-LCR, and MRCR v2 now call
-`execution.pipeline.Pipeline`. Dataset parsing, task formatting, and scoring
-remain in their adapters. Iterative/RLM and other hosted-provider LongBench paths
-are still separate architectures.
+An optional reference for changing LongBench-v2 run settings on Jarvis. The
+workflow is in the [LongBench runbook](HPC_RUNBOOK_EXPERIMENT.md). AA-LCR and
+MRCR v2 run on the Neselab Linux server; see the
+[Linux runbooks](../linux/README.md). Their Jarvis launchers
+(`jarvis/run_aa_lcr.sh`, `jarvis/run_mrcr_v2.sh`) still work but are not
+documented here.
 
-See the [architecture diagrams](../shared_execution_architecture.md) and
-[implementation plan](../shared_execution_pipeline_plan.md).
-Commands below submit Slurm jobs from the repository root. For a server without
-Slurm, use the [Linux version](../linux/SHARED_EXECUTION_RUNBOOK.md).
+LongBench's direct and hybrid runners use the shared execution pipeline, so the
+shared options (budgets, overflow, chunking, evidence order, answer caching and
+artifacts) behave as described in the
+[Linux options reference](../linux/SHARED_EXECUTION_RUNBOOK.md). This page covers
+what is specific to LongBench and to Jarvis.
 
-## Select the execution profile
+## The launcher
 
-Existing Python entry points retain `--execution-profile legacy` as the default
-to preserve their historical routing/packing choices. Use
-`--execution-profile common` explicitly for the shared quality configuration:
+`bash adarsh-rlms/jarvis/run_longbench_v2.sh <direct|hybrid> [runner options...]`
+submits one Slurm client job:
 
-- Direct overflow is unsupported; hybrid overflow uses dense retrieval.
-- Exact embedding-tokenizer offsets are required.
-- Evidence overlaps merge within each document and render in source order.
-- Answer-cache reads/writes and reranking are disabled; document indexes reuse
-  within each source group and are not persisted between processes.
-- Temperature is zero and thinking is disabled.
+| Mode | Runner | Allocation | Default memory |
+|---|---|---|---|
+| `direct` | `long_bench_v2.run_api_benchmark` | `client` (CPU) | 32 GB |
+| `hybrid` | `long_bench_v2.run_benchmark --mode baseline` | `client-gpu` (one L40S) | 96 GB |
 
-The new LongBench launcher below defaults to `common` and original rows.
-AA-LCR/MRCR launchers retain their existing defaults. Always record the explicit
-profile in an experiment command. Legacy cache namespaces are versioned by the
-new pipeline, so old answer-cache snapshots are not silently reused.
+It always passes `--execution-profile common --row-types original`,
+`--suite-csv benchmark_data/long_bench_v2/data.csv` and the full-window budgets
+`--context-window-tokens 262144 --max-input-tokens 262136 --max-output-tokens 8`,
+plus the executor model and endpoint. Options given on the command line come
+later and override these.
 
-All three accept `--min-source-tokens` and `--max-source-tokens`, measured on the
-complete rendered executor prompt. For AA-LCR/LongBench, supply both together;
-the row limit is applied after filtering. MRCR retains its prepared bounds and
-allows narrowing only. Source selection never truncates an example.
-
-## Dataset selection
-
-Use the existing [AA-LCR](AA_LCR_RUNBOOK.md), [MRCR](MRCR_V2_RUNBOOK.md), and
-[LongBench](HPC_RUNBOOK_EXPERIMENT.md) preparation instructions. Set the prepared
-dataset paths in the terminal used to launch jobs:
-
-```bash
-export AA_LCR_DATA_DIR=benchmark_data/aa_lcr/v1.1
-export MRCR_DATA_DIR=benchmark_data/mrcr_v2_60k_250k
-```
-
-The MRCR examples assume preparation includes the 100,000–200,000 source-token
-interval. The LongBench examples explicitly select the exported `data.csv` and
-original rows. Use the same files, source bounds, and row limits for paired runs.
-The Jarvis AA-LCR launcher otherwise defaults to the historical
-`benchmark_data/aa_lcr` directory and legacy grading prompt; these examples
-select v1.1 data and its matching grader prompt explicitly.
-
-## Preflight only
-
-Preflight loads the executor tokenizer but makes no embedding or inference calls. AA-LCR also
-reads executor metadata when its context limit is omitted; supply an explicit
-limit for offline preflight. With caching enabled, predicted routes assume a cache miss.
-
-```bash
-bash jarvis/run_mrcr_v2.sh hybrid \
-  --execution-profile common --preflight-only \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 4096
-
-bash jarvis/run_aa_lcr.sh hybrid \
-  --execution-profile common --execution-only --preflight-only \
-  --grader-prompt-version aa_lcr_equality_v1.1 \
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 4096
-
-bash jarvis/run_longbench_v2.sh hybrid --route-audit-only \
-  --suite-csv benchmark_data/long_bench_v2/data.csv
-```
-
-These commands submit validation jobs, not inference runs. For direct preflight,
-replace `hybrid` with `direct` for AA-LCR/MRCR. LongBench direct uses a different
-validation flag:
-
-```bash
-bash jarvis/run_longbench_v2.sh direct --preflight-only \
-  --suite-csv benchmark_data/long_bench_v2/data.csv
-```
-
-## Actual execution with the same system policy
-
-Start an executor with a 65,536-token context using the
-[executor startup instructions](MRCR_V2_RUNBOOK.md), then set its endpoint.
-The examples deliberately choose the same model and input allowance. Output
-allowances follow the task; retain each allowance for its direct/hybrid pair.
-
-```bash
-export OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1
-export OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B
-
-bash jarvis/run_mrcr_v2.sh hybrid \
-  --execution-profile common \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 4096
-
-bash jarvis/run_aa_lcr.sh hybrid \
-  --execution-profile common --execution-only \
-  --grader-prompt-version aa_lcr_equality_v1.1 \
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 4096
-
-bash jarvis/run_longbench_v2.sh hybrid \
-  --suite-csv benchmark_data/long_bench_v2/data.csv
-```
-
-Replace `hybrid` with `direct` for any of the three benchmarks.
-In the common profile, all three record unsupported direct
-examples without inference. Compare quality on common supported examples and
-report oversized hybrid results separately.
-The MRCR interval shown here is entirely above the 60,000-token input budget,
-so its direct run has zero supported examples. To compare direct and hybrid on
-supported MRCR examples, prepare/select an interval that includes prompts within
-the input budget, or increase the served context and runner budgets together.
-
-AA-LCR separates mode from context size. With `--mode direct|hybrid` (or the
-launcher names above), omitting `--context-window-tokens` reads the selected
-executor's `max_model_len` from its `/v1/models` endpoint. Omitting
-`--max-input-tokens` uses that window minus the output allowance (16,384 by
-default). This uses the served limit, which can be lower than the model's
-advertised capacity. If discovery is unavailable, supply the limit explicitly.
-MRCR and LongBench retain their existing budget defaults.
-
-```bash
-# AA-LCR: full served context, reserving 4,096 tokens for the answer.
-bash jarvis/run_aa_lcr.sh hybrid \
-  --execution-profile common --execution-only --max-output-tokens 4096
-
-# AA-LCR: explicit 64K context; usable input defaults to 61,440 tokens.
-bash jarvis/run_aa_lcr.sh direct \
-  --execution-profile common --execution-only \
-  --context-window-tokens 65536 --max-output-tokens 4096
-```
-
-Historical AA-LCR experiment names remain accepted with their original budgets.
-
-AA-LCR's `--execution-only` saves answers for its existing `aa_lcr.regrade`
-workflow. To grade during the run, omit this flag and configure the evaluator
-using the [AA-LCR grading instructions](AA_LCR_RUNBOOK.md). LongBench and MRCR
-have deterministic scorers and do not need an answer-grading service.
-`--execution-only` still runs inference; it is not a preflight option.
-
-## Service roles
-
-| Role | When needed |
+| Variable | Purpose |
 |---|---|
-| Executor | Generate answers on cache misses |
-| Embedding model + FAISS | Retrieve source evidence for oversized hybrid inputs; also used for semantic cache lookup |
-| Cache verifier | Verify semantic answer-cache candidates when cache reads and semantic matching are enabled |
-| Answer grader | Grade AA-LCR predictions, unless `--execution-only` defers grading |
+| `OPENAI_COMPAT_EXECUTOR_BASE_URL` | Executor endpoint; required except for preflight |
+| `OPENAI_COMPAT_EXECUTOR_MODEL` | Served model name; default `Qwen/Qwen3.6-35B-A3B` |
+| `LONGBENCH_SERVING_METADATA` | Serving-setup JSON copied into the run manifest |
+| `CLIENT_MEM` | Slurm memory for the client job |
+| `SEMANTIC_CACHE_EMBEDDING_DEVICE` | Hybrid embedding device; default `cuda` |
+| `SEMANTIC_CACHE_EMBEDDING_DTYPE` | Hybrid embedding precision; default `auto` |
+| `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE` | Chunks embedded per batch; default 16, lower it if the GPU runs out of memory |
+| `LONGBENCH_LAUNCH_DRY_RUN=1` | Print the job and command without submitting |
 
-Dense document retrieval does not call the evaluator service. Optional reranking
-uses the local reranker model, not the grader. The service named `evaluator` can
-host the model for grading, cache verification, or both. Those roles have separate
-prompts and configuration. MRCR/LongBench can therefore need this service for
-semantic caching even though their answer scoring is deterministic.
+The launcher checks which services the options need before submitting. With
+answer caching off (the default), only the executor is needed. Semantic cache
+reads also need a cache verifier (`--cache-verifier-model` and
+`--cache-verifier-base-url`). Preflight and route audits need no service.
 
-## Explicit component experiments
+## Runner options
 
-The runner options are shared:
+| Option | Applies to | Behavior |
+|---|---|---|
+| `--direct-overflow middle` | Direct | Keep a head and tail of oversized prompts; without it they are recorded as unsupported |
+| `--min-source-tokens`, `--max-source-tokens` | Both | Select questions by full rendered prompt length; supply both |
+| `--max-rows` | Both | Limit the number of questions; with source bounds, applied after the length filter |
+| `--source-ids` | Both | Comma-separated document identifiers |
+| `--row-types` | Both | The launcher selects `original`; `data.csv` also holds `exact` repeats |
+| `--row-order` | Hybrid | `source_grouped` (default) or `input` |
+| `--preflight-only` | Direct | Write `route_audit.json` without inference |
+| `--route-audit-only` | Hybrid | Write `route_audit.json` without embedding or inference |
+| `--answer-cache-read`, `--answer-cache-write` | Hybrid | Reuse and store answers; off by default |
+| `--cache-matching` | Hybrid | `semantic` (default) or `exact` question matching |
+| `--cache-verifier-model`, `--cache-verifier-base-url` | Hybrid | Model that confirms semantic matches |
+| `--cache-reset` | Hybrid | Start from an empty saved cache |
+| `--fail-fast` | Both | Stop on the first failed request |
+| `--serving-metadata` | Both | JSON object recorded in the manifest |
+| `--manifest-note` | Both | Free-text note recorded in the manifest |
+| `--output-dir` | Both | Artifact parent directory; default `benchmark_artifacts` |
+| `--child-tokens`, `--child-overlap-tokens` | Hybrid | Chunk size and overlap in embedding tokens; default 7,500 and 750 |
+| `--evidence-order`, `--merge-overlaps` | Hybrid | Evidence presentation; default source order with overlaps merged |
+| `--max-retries` | Direct | Request attempts per question; default 5 for local endpoints |
+| `--request-timeout-seconds` | Direct | Per-request timeout; default 120 |
 
-| Options | Behavior |
-|---|---|
-| `--answer-cache-read` / `--no-answer-cache-read` | Enable/disable answer lookup |
-| `--answer-cache-write` / `--no-answer-cache-write` | Enable/disable storage of generated answers |
-| `--cache-matching exact` | Exact lookup without a verifier |
-| `--cache-matching semantic` | Semantic candidate verification in addition to exact lookup |
-| `--cache-verifier-model`, `--cache-verifier-base-url`, `--cache-verifier-api-key-env` | Separate cache-verifier service configuration |
-| `--pipeline-rerank-top N` | Use the existing reranker; zero disables it |
-| `--evidence-order source` / `score` | Evidence presentation policy |
-| `--merge-overlaps` / `--no-merge-overlaps` | Source-range overlap policy; merging requires source order |
-| `--direct-overflow unsupported` / `middle` / `error` | Explicit direct baseline policy |
-| `--child-tokens`, `--child-overlap-tokens` | Shared chunk settings |
+Direct runs are written under `benchmark_artifacts/longbench_v2_api/` and hybrid
+runs under `benchmark_artifacts/longbench_v2/`; hybrid route audits go under
+`benchmark_artifacts/longbench_v2_route_audit/`.
 
-LongBench's direct API baseline remains uncached. Run cache experiments through
-hybrid mode. The verifier and AA-LCR grader are separate roles and can point to
-different services. Hosted AA-LCR grading with semantic caching requires an
-explicit verifier endpoint. Launcher readiness waits follow enabled roles for
-execution; preflight skips those waits. AA-LCR automatic context discovery still
-requires a reachable executor during preflight when no limit is supplied.
-
-### Execute with semantic answer caching
-
-Start a verifier service using the evaluator startup instructions, or reuse a
-compatible endpoint. Configure it explicitly so it is independent of grading.
-These commands perform inference and cache operations:
-
-```bash
-export OPENAI_COMPAT_EVALUATOR_BASE_URL=http://evaluator-host:8001/v1
-export OPENAI_COMPAT_EVALUATOR_MODEL=Qwen/Qwen3.5-35B-A3B
-
-CACHE_ARGS=(--answer-cache-read --answer-cache-write --cache-matching semantic
-  --cache-verifier-model "$OPENAI_COMPAT_EVALUATOR_MODEL"
-  --cache-verifier-base-url "$OPENAI_COMPAT_EVALUATOR_BASE_URL")
-
-bash jarvis/run_aa_lcr.sh hybrid \
-  --execution-profile common --execution-only \
-  --grader-prompt-version aa_lcr_equality_v1.1 \
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 4096 \
-  "${CACHE_ARGS[@]}"
-
-bash jarvis/run_mrcr_v2.sh hybrid --execution-profile common \
-  --min-source-tokens 100000 --max-source-tokens 200000 \
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 4096 \
-  "${CACHE_ARGS[@]}"
-
-bash jarvis/run_longbench_v2.sh hybrid \
-  --suite-csv benchmark_data/long_bench_v2/data.csv "${CACHE_ARGS[@]}"
-```
-
-Reads and writes are independent. Writes populate the cache; reads attempt reuse
-within the same source and execution scope. A semantic verifier call happens
-only when a candidate needs verification, not for every retrieval. Enabling
-caching does not guarantee cache hits on distinct original questions.
-`--execution-only` disables AA-LCR grading, not cache verification.
-
-For exact-only reuse, pass `--answer-cache-read --answer-cache-write
---cache-matching exact`; no verifier endpoint is needed. To disable caching,
-pass `--no-answer-cache-read --no-answer-cache-write`. For an authenticated
-verifier, pass `--cache-verifier-api-key-env NAME` and export the key as `NAME`.
-
-For a rank-order ablation, pass `--evidence-order score --no-merge-overlaps` to
-each benchmark. Such a run is a different system configuration; do not pool it
-with the primary common-profile results. Original and repeated/paraphrased
-LongBench rows should likewise be reported separately.
-
-## Launch preview (dry run)
-
-Dry run prints the resolved launch command; it does not validate data or token
-budgets and does not submit a job. Supply the endpoint settings required by the
-chosen service roles even for the launcher preview.
+## Dry run
 
 ```bash
-AA_LCR_LAUNCH_DRY_RUN=1 bash jarvis/run_aa_lcr.sh hybrid \
-  --execution-profile common --execution-only
-MRCR_LAUNCH_DRY_RUN=1 bash jarvis/run_mrcr_v2.sh hybrid --execution-profile common
-LONGBENCH_LAUNCH_DRY_RUN=1 bash jarvis/run_longbench_v2.sh hybrid
+OPENAI_COMPAT_EXECUTOR_BASE_URL=http://executor-host:8000/v1 LONGBENCH_LAUNCH_DRY_RUN=1 \
+  bash adarsh-rlms/jarvis/run_longbench_v2.sh hybrid --min-source-tokens 262137 --max-source-tokens 5000000
 ```
 
-## Artifacts and limitations
-
-Existing prediction/report files remain available. Each shared run also writes:
-
-- `execution_manifest.json`: resolved pipeline settings and tokenizer identity.
-- `embedding_manifest.json`: embedding settings, if a backend was needed.
-- `execution.jsonl`: predictions and execution telemetry, flushed before scoring.
-- `evaluation.jsonl`: separate scoring outcomes.
-- `execution_report.json`: supported coverage, failure counts, quality, timings,
-  and summaries by route and source-length band.
-
-The common report counts execution failures as zero, excludes unsupported direct
-examples, and leaves quality incomplete while grading is unresolved. Existing
-legacy reports retain their historical metric definitions. AA-LCR grading
-usage remains separately available in its bridge rows; common execution costs
-exclude grading. Failed API attempts may not return token usage.
-
-Cache and index policies are shared, but persistent cache lifecycle stays with
-the existing runners: LongBench can reload saved answer-cache state; AA-LCR saves
-its run-local cache; MRCR currently uses run-local answer caching only when
-explicitly enabled. Cross-run document-index persistence is not implemented.
-Real inference and held-out-benchmark validation are separate from mocked tests.
-Keep the full run directories for later comparison reports, not only console logs.
-Compare direct/hybrid quality on identical supported examples; report oversized
-hybrid results and cache-enabled experiments separately.
+This prints the allocation, the services the run will wait for and the resolved
+command. It does not read data or contact services.

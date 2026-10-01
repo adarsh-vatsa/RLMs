@@ -521,11 +521,11 @@ both the hybrid command above and the direct-Qwen command below:
 ```
 
 Require five valid letters, zero API/context errors, and decoder metadata on
-both paths; accuracy is not the smoke criterion. The exact Jarvis submission
-and artifact-validation commands are in Sections 3 and 4 of
-`docs/jarvis/HPC_RUNBOOK_EXPERIMENT.md`.
-The 36-row domain-stratified, source-linked pre-full cache gate and the full
-1,509-row hybrid run are in Sections 5 and 6.
+both paths; accuracy is not the smoke criterion. The Jarvis submission and
+artifact-validation commands for this rerun, the 36-row domain-stratified cache
+gate and the full 1,509-row hybrid run were in an earlier version of
+`docs/jarvis/HPC_RUNBOOK_EXPERIMENT.md` (see Git history). That page now covers
+the shared-pipeline direct and hybrid runs.
 
 ## STEP 7 - Run RLM Baseline
 

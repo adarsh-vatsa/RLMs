@@ -19,15 +19,17 @@ is the parent directory that contains the repo. If you `cd` directly into the
 repo, use `jarvis/run.sh` instead. The other scripts are role scripts that
 `run.sh` submits or delegates to inside Slurm allocations.
 
-For the exact first-run sequence on the cluster, start with
-[`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md), then use
-[`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) for benchmark runs.
-For the four AA-LCR experiments, use
-[`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md).
-For the shared LongBench/AA-LCR/MRCR execution profile and component switches,
-use [`SHARED_EXECUTION_RUNBOOK.md`](SHARED_EXECUTION_RUNBOOK.md).
-For MRCR v2 preparation, executor startup, token bounds, and direct/hybrid runs,
-use [`MRCR_V2_RUNBOOK.md`](MRCR_V2_RUNBOOK.md). MRCR does not require an evaluator.
+Jarvis runs LongBench-v2. AA-LCR and MRCR v2 run on the Neselab Linux server;
+see the [Linux runbooks](../linux/README.md).
+
+| Document | Use |
+|---|---|
+| [`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md) | First-time setup: storage, vLLM, client environment, smoke checks |
+| [`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) | LongBench-v2 direct and hybrid runs on the shared pipeline |
+| [`SHARED_EXECUTION_RUNBOOK.md`](SHARED_EXECUTION_RUNBOOK.md) | LongBench launcher variables and runner options |
+| [`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md), [`MRCR_V2_RUNBOOK.md`](MRCR_V2_RUNBOOK.md) | Pointers to the Linux runbooks |
+
+This page is a reference for the Slurm scripts themselves.
 
 ## Storage Policy
 
@@ -77,24 +79,16 @@ These thresholds are larger than the model weights because first startup can
 also need partial download files and cache overhead. Override with
 `MIN_LOCAL_FREE_GB=<gb>` only when the model is already cached or you have
 inspected the node manually.
-The client threshold is scratch free space, not Slurm RAM. The dispatcher client
-job requests 32 GB RAM by default; smaller LongBench chunk profiles can require
-`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1` inside `CLIENT_CMD` plus
-`CLIENT_MEM=64G` or `CLIENT_MEM=96G` on the outer client submission command.
-Use `submit client-gpu` with `SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda` when local
-embedding ingest is the bottleneck.
+The client threshold is scratch free space, not Slurm RAM. `client` jobs
+request 32 GB of RAM and `client-gpu` jobs 96 GB by default; set `CLIENT_MEM` on
+the submission command to change it.
 
-Expected persistent storage for the current explicit Qwen LongBench-v2 profile:
+Expected storage for the LongBench-v2 setup:
 
 ```text
 Qwen3.6 35B-A3B executor:   about 72 GB, https://huggingface.co/Qwen/Qwen3.6-35B-A3B
-Qwen3.5 35B-A3B evaluator:  about 72 GB, https://huggingface.co/Qwen/Qwen3.5-35B-A3B
-Qwen3 30B-A3B fallback:     about 61 GB, https://huggingface.co/Qwen/Qwen3-30B-A3B-Instruct-2507
 Qwen2.5 7B smoke model:     about 15-25 GB, https://huggingface.co/Qwen/Qwen2.5-7B-Instruct
 Qwen embed/reranker:        about 2-4 GB, https://huggingface.co/Qwen/Qwen3-Embedding-0.6B and https://huggingface.co/Qwen/Qwen3-Reranker-0.6B
-Qwen executor+evaluator:    about 145 GB before cache overhead
-Comfortable cache size:     about 300 GB
-Room for fallback variants: about 500 GB
 ```
 
 Do not place model weights under `/home`, because `/home` is backed by
@@ -286,7 +280,7 @@ The submit helper applies the expected Slurm resources:
 
 ```text
 small-smoke: gpu-l40s, gpu:l40s:1, Qwen2.5 7B, tensor parallel 1
-executor:  gpu-l40s, gpu:l40s:4, Llama 3.3 70B, tensor parallel 4
+executor:  gpu-l40s, gpu:l40s:4, Qwen3.6 35B-A3B, tensor parallel 4
 evaluator: gpu-l40s, gpu:l40s:2, Mistral Small 24B, tensor parallel 2
 smoke:     gpu-l40s, gpu:l40s:2, one shared endpoint
 client:    compute-short, no GPU, benchmark/client command only
@@ -322,15 +316,16 @@ Each vLLM service writes its advertised URL to:
 $PROJECT_LOG_DIR/<mode>-<job_id>.url
 ```
 
-For serious benchmark runs, start two services and point the client at both:
+LongBench-v2 needs only the executor. `jarvis/run_longbench_v2.sh` passes its
+model and URL to the runner and makes the client wait for it:
 
 ```bash
-export LLM_PROVIDER=openai_compatible
-export OPENAI_COMPAT_EXECUTOR_MODEL=meta-llama/Llama-3.3-70B-Instruct
-export OPENAI_COMPAT_EVALUATOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501
+export OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B
 export OPENAI_COMPAT_EXECUTOR_BASE_URL=http://<executor-node>:8000/v1
-export OPENAI_COMPAT_EVALUATOR_BASE_URL=http://<evaluator-node>:8001/v1
 ```
+
+The `evaluator` service mode is still available for runs that enable semantic
+cache verification or grading on a separate model.
 
 For a one-service smoke test, point both roles at the same endpoint:
 
@@ -347,7 +342,7 @@ export OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen2.5-7B-Instruct
 export OPENAI_COMPAT_EVALUATOR_MODEL=Qwen/Qwen2.5-7B-Instruct
 ```
 
-Then submit a client job with the command you want to run:
+To run an arbitrary command, submit a client job with `CLIENT_CMD`:
 
 ```bash
 WAIT_FOR_ENDPOINTS=1 \
@@ -356,29 +351,7 @@ CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_ll
 ```
 
 `WAIT_FOR_ENDPOINTS=1` makes the client poll `/v1/models` on the executor and
-evaluator endpoints before it starts the command. For benchmark runs, set
-`CLIENT_CMD` to the desired benchmark command.
-
-### Direct Qwen3.6 LongBench-v2 Client
-
-The direct ablation reuses the Qwen3.6 executor service and runs through
-`submit client`; it does not need the evaluator service, local embeddings, or a
-client GPU. Set both endpoint variables to the executor URL so the client waits
-for only that service, then use `long_bench_v2/run_api_benchmark.py` with
-`--api-provider openai_compatible`, `--row-types original`,
-`--context-window-tokens 262144`, and `--max-output-tokens 8`.
-Set `--max-input-tokens 240000` so the direct request follows LongBench-v2
-first-half/last-half truncation with a 22,136-token safety margin inside the
-served window.
-
-The runner sends the same strict non-thinking MCQ prompt in one direct chat
-request. Overlength requests follow LongBench-v2 middle truncation, and every run
-writes a new protected directory under `benchmark_artifacts/longbench_v2_api/`.
-See the direct-ablation section in
-[`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) for smoke and full
-commands, and
-[`LONGBENCH_PARAMETER_REFERENCE.md`](LONGBENCH_PARAMETER_REFERENCE.md) for the
-recorded truncation and retry fields.
+evaluator endpoints before it starts the command.
 
 ## Cache Hydration
 

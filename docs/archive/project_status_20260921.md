@@ -4,7 +4,7 @@ This is an orientation for someone joining the project. It covers what the
 system does, which results hold up, what is unfinished or known to be wrong,
 and where to start. Figures were checked against the committed artifacts on
 2026-09-21. When a document disagrees with the code, trust the code. See
-[AGENTS.md](../AGENTS.md) for more on this.
+[AGENTS.md](../../AGENTS.md) for more on this.
 
 ## The project in brief
 
@@ -46,7 +46,7 @@ under a context budget, and all current experiments use local Qwen models.
   clients and synthetic fixtures. They check the plumbing, not model quality.
 - **Hardware:** runs from June to August used the Jarvis cluster at Stevens
   (Slurm, L40S GPUs). Since 2026-09-20, runs happen on a standalone Linux GPU
-  server (Neselab) without Slurm, using the scripts in [`linux/`](../linux/).
+  server (Neselab) without Slurm, using the scripts in [`linux/`](../../linux).
 - **Models:**
   - executor: `Qwen/Qwen3.6-35B-A3B` behind vLLM's OpenAI-compatible API,
     temperature 0, thinking disabled
@@ -57,7 +57,7 @@ under a context budget, and all current experiments use local Qwen models.
 
 ## How the system works now
 
-The core is `execution.pipeline.Pipeline` in [`execution/`](../execution/),
+The core is `execution.pipeline.Pipeline` in [`execution/`](../../execution),
 about 700 lines. AA-LCR, MRCR v2 and the direct/hybrid path of LongBench-v2
 each provide a small adapter, under 20 lines, that turns one example into a
 `Task`. A `Task` holds the documents, the question and a `render` function that
@@ -91,12 +91,12 @@ enter the `Task`, the cache or the verifier.
 
 What is **not** on the shared pipeline:
 
-- [`semantic_cache_system.py`](../semantic_cache_system.py) (4,448 lines) is
+- [`semantic_cache_system.py`](../../semantic_cache_system.py) (4,448 lines) is
   the original prototype. It contains the embeddings, FAISS, the reranker, the
   cache controller with dragnet/sniper verification, knowledge-triple
   extraction and the iterative reader.
 - The LongBench-v2 cache runner
-  ([`long_bench_v2/run_benchmark.py`](../long_bench_v2/run_benchmark.py)) and
+  ([`long_bench_v2/run_benchmark.py`](../../long_bench_v2/run_benchmark.py)) and
   the iterative and RLM baselines still call that prototype directly. **The
   August LongBench results came from this runner, not from the shared
   pipeline.**
@@ -112,7 +112,7 @@ Setup: all 503 LongBench-v2 questions, a 262,144-token context and a
 240,000-token input budget. To exercise the cache, the suite also includes 503
 paraphrases of the questions, plus 503 exact repeats in the second experiment.
 Full report:
-[longbench_v2_four_run_comparison_20260813/report.html](reports/longbench_v2_four_run_comparison_20260813/report.html).
+[longbench_v2_four_run_comparison_20260813/report.html](../reports/archive/longbench_v2_four_run_comparison_20260813/report.html).
 
 | Measure | Cache + retrieval | Full-context baseline | Difference |
 |---|---:|---:|---:|
@@ -141,7 +141,7 @@ Where the effects come from:
 
 AA-LCR has 100 questions over 30 sets of long documents (229 documents in
 total). Answers are free-form and graded by an LLM, Qwen3.5-35B-A3B. Report:
-[aa_lcr_four_run_results_20260830.md](reports/aa_lcr_four_run_results_20260830/aa_lcr_four_run_results_20260830.md).
+[aa_lcr_four_run_results_20260830.md](../reports/archive/aa_lcr_four_run_results_20260830/aa_lcr_four_run_results_20260830.md).
 
 | Run | Route (all 100 questions) | Accuracy |
 |---|---|---:|
@@ -175,8 +175,8 @@ The code for a corrected rerun is done:
 - a configurable output budget, with `finish_reason` recorded
 - v1.1 pinned alongside v1.0
 - versioned grader prompts
-- [`aa_lcr/regrade.py`](../aa_lcr/regrade.py) and
-  [`aa_lcr/compare_conditions.py`](../aa_lcr/compare_conditions.py)
+- [`aa_lcr/regrade.py`](../../aa_lcr/regrade.py) and
+  [`aa_lcr/compare_conditions.py`](../../aa_lcr/compare_conditions.py)
 
 See the [rerun plan](aa_lcr_rerun_plan_20260908.md) and the
 [rerun commands](aa_lcr_rerun_commands.md). **No regrading or rerun has been
@@ -188,7 +188,7 @@ leaves only about 49K input tokens in a 64K window.
 MRCR (multi-round coreference resolution) hides 8 matching responses in a long
 synthetic conversation. The model must find the requested one (say, the second
 moon poem) and copy it exactly. Scoring is deterministic, with no grader model.
-Each run below used 10 examples. Overview: [mrcr_v2.md](mrcr_v2.md).
+Each run below used 10 examples. Overview: [mrcr_v2.md](../mrcr_v2.md).
 
 | Source length (executor tokens) | Input budget | Direct (middle cut) | Hybrid (retrieval) |
 |---|---|---|---|
@@ -200,7 +200,7 @@ conclusions. The hybrid runs computed embeddings on the CPU, and this took
 longer than generation: 871 s versus 269 s for the 524K to 600K runs.
 
 Artifacts are in
-[`benchmark_artifacts/mrcr_v2/`](../benchmark_artifacts/mrcr_v2/). That folder
+[`benchmark_artifacts/mrcr_v2/`](../../benchmark_artifacts/mrcr_v2). That folder
 also holds two earlier attempts from 00:25 UTC the same day. They are not
 results:
 
@@ -249,11 +249,11 @@ been run yet.
      work
    - rewrite `README.md`. It still describes the March prototype (Claude models,
      plus `epstein_search.py` and `paper_draft.tex`, which are not on this
-     branch). [system_architecture.md](system_architecture.md) and
-     [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md) also
+     branch). [system_architecture.md](../system_architecture.md) and
+     [semantic_cache_concept_guide.md](../semantic_cache_concept_guide.md) also
      describe that original design.
-7. **Add more benchmarks.** [benchmarks.md](benchmarks.md) and
-   [Benchmarks.xlsx - Benchmarks.csv](Benchmarks.xlsx%20-%20Benchmarks.csv)
+7. **Add more benchmarks.** [benchmarks.md](../benchmarks.md) and
+   the survey spreadsheet (now folded into `benchmarks.md`)
    compare candidates such as OOLONG, CorpusQA, LongMemEval and
    MemoryAgentBench.
 
@@ -266,12 +266,12 @@ been run yet.
    ```
 
 2. Read these, in order:
-   1. [AGENTS.md](../AGENTS.md): short working rules for the repository
+   1. [AGENTS.md](../../AGENTS.md): short working rules for the repository
    2. this file
-   3. [shared_execution_architecture.md](shared_execution_architecture.md)
-   4. [task_adapters.md](task_adapters.md)
-   5. the benchmark overviews, [aa_lcr.md](aa_lcr.md) and
-      [mrcr_v2.md](mrcr_v2.md)
+   3. [shared_execution_architecture.md](../shared_execution_architecture.md)
+   4. [task_adapters.md](../task_adapters.md)
+   5. the benchmark overviews, [aa_lcr.md](../aa_lcr.md) and
+      [mrcr_v2.md](../mrcr_v2.md)
    6. the three result documents linked above
 
 3. Set up a local environment and run the tests. Setup needs `uv` and creates
@@ -285,13 +285,13 @@ been run yet.
    Tests should use mocks and synthetic fixtures, never downloaded model
    weights or live model services.
 
-4. On a GPU server, follow [linux/SETUP_RUNBOOK.md](linux/SETUP_RUNBOOK.md) and
-   then [linux/BENCHMARK_RUNBOOK.md](linux/BENCHMARK_RUNBOOK.md). Two options
+4. On a GPU server, follow [linux/SETUP_RUNBOOK.md](../linux/SETUP_RUNBOOK.md) and
+   then [linux/BENCHMARK_RUNBOOK.md](../linux/BENCHMARK_RUNBOOK.md). Two options
    let you check a run before starting inference:
    - `--preflight-only` reports each example's route without calling the model.
    - `DRY_RUN=1` prints the command without running it.
 
-   For Jarvis, start at [jarvis/README.md](jarvis/README.md).
+   For Jarvis, start at [jarvis/README.md](../jarvis/README.md).
 
 Questions to ask early:
 
@@ -335,15 +335,15 @@ Questions to ask early:
 
 | Path | Contents |
 |---|---|
-| [`execution/`](../execution/) | Shared pipeline: routing, token counting, chunking and retrieval, packing, cache hooks, HTTP client, output files |
-| [`aa_lcr/`](../aa_lcr/) | AA-LCR: dataset preparation (v1.0 and v1.1 pinned), adapter, runner, LLM grading, regrading, comparisons |
-| [`mrcr_v2/`](../mrcr_v2/) | MRCR v2: dataset preparation by token band, adapter, runner, deterministic scoring |
-| [`long_bench_v2/`](../long_bench_v2/) | LongBench-v2: older cache runner, API baseline, RLM baseline, CSV tools |
-| [`semantic_cache_system.py`](../semantic_cache_system.py) | Original prototype: embeddings, FAISS, reranker, semantic cache, iterative reader |
-| [`linux/`](../linux/) | Scripts for a server without Slurm: setup, vLLM services, benchmark launcher |
-| [`jarvis/`](../jarvis/) | Slurm scripts for the Jarvis cluster |
-| [`test/`](../test/) | Unit tests |
-| [`docs/`](.) | Design notes, runbooks, investigations, reports |
+| [`execution/`](../../execution) | Shared pipeline: routing, token counting, chunking and retrieval, packing, cache hooks, HTTP client, output files |
+| [`aa_lcr/`](../../aa_lcr) | AA-LCR: dataset preparation (v1.0 and v1.1 pinned), adapter, runner, LLM grading, regrading, comparisons |
+| [`mrcr_v2/`](../../mrcr_v2) | MRCR v2: dataset preparation by token band, adapter, runner, deterministic scoring |
+| [`long_bench_v2/`](../../long_bench_v2) | LongBench-v2: older cache runner, API baseline, RLM baseline, CSV tools |
+| [`semantic_cache_system.py`](../../semantic_cache_system.py) | Original prototype: embeddings, FAISS, reranker, semantic cache, iterative reader |
+| [`linux/`](../../linux) | Scripts for a server without Slurm: setup, vLLM services, benchmark launcher |
+| [`jarvis/`](../../jarvis) | Slurm scripts for the Jarvis cluster |
+| [`test/`](../../test) | Unit tests |
+| [`docs/`](..) | Design notes, runbooks, investigations, reports |
 | `benchmark_data/`, `benchmark_artifacts/` | Prepared inputs and every run's outputs, committed to git |
 
 ## Timeline

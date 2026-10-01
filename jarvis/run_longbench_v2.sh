@@ -8,7 +8,9 @@ case "$TARGET" in
   hybrid) MODULE=long_bench_v2.run_benchmark; SUBMIT_MODE=client-gpu ;;
   help|-h|--help|"")
     echo 'Usage: bash jarvis/run_longbench_v2.sh <direct|hybrid> [runner arguments...]'
-    echo 'Uses the common profile, original rows, and the executor endpoint.'
+    echo 'Uses the common profile, original rows, the executor endpoint and its full'
+    echo '262,144-token window (262,136 input, 8 output); later arguments override these.'
+    echo 'LONGBENCH_SERVING_METADATA records a serving-setup JSON file in the run manifest.'
     echo 'LONGBENCH_LAUNCH_DRY_RUN=1 prints without submitting.'
     exit 0 ;;
   *) echo "Unknown mode: $TARGET" >&2; exit 2 ;;
@@ -17,7 +19,11 @@ shift
 source "$SCRIPT_DIR/lib/execution_services.sh"
 jarvis_execution_services 0 0 --execution-profile common "$@"
 CLIENT_ARGS=(uv run python -m "$MODULE" --execution-profile common --row-types original
-  --context-window-tokens 65536 --max-input-tokens 60000 --max-output-tokens 8)
+  --suite-csv benchmark_data/long_bench_v2/data.csv
+  --context-window-tokens 262144 --max-input-tokens 262136 --max-output-tokens 8)
+if [[ -n "${LONGBENCH_SERVING_METADATA:-}" ]]; then
+  CLIENT_ARGS+=(--serving-metadata "$LONGBENCH_SERVING_METADATA")
+fi
 if [[ "$TARGET" == direct ]]; then
   CLIENT_ARGS+=(--api-provider openai_compatible
     --api-model "${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"

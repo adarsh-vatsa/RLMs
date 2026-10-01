@@ -1,6 +1,10 @@
 # Two-Stage Semantic Cache — System Architecture
 
-> **File**: [`semantic_cache_system.py`](semantic_cache_system.py)
+> **Describes the original cache prototype** (`semantic_cache_system.py`, Claude models), not the
+> shared execution pipeline that current experiments use. For the current design, see the
+> [shared execution architecture](shared_execution_architecture.md) and [task adapters](task_adapters.md).
+
+> **File**: [`semantic_cache_system.py`](../semantic_cache_system.py)
 > **Dependencies**: `transformers`, `torch`, `faiss-cpu`, `anthropic`, `python-dotenv`, `numpy`
 > **Local Models**: `Qwen3-Embedding-0.6B` (596M params, 1024-dim embeddings), `Qwen3-Reranker-0.6B` (yes/no cross-encoder)
 > **API Models**: `claude-sonnet-4-20250514` (execution/synthesis), `claude-haiku-4-5-20251001` (evaluation/sniper/consensus/knowledge extraction)

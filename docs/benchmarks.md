@@ -1,24 +1,23 @@
 # Benchmarks
 
-This document separates the active LongBench-v2 benchmark track from candidate benchmarks discussed for later evaluation phases.
-
-The goal is to evaluate whether the semantic cache system preserves reasoning quality while reducing latency, API calls, and cost compared with uncached baselines.
+The benchmarks this project runs, and candidates surveyed for later phases. The
+research question is whether retrieval under a context budget, and optionally a
+semantic answer cache, keeps reasoning accuracy while using fewer tokens and
+less time than sending the full context.
 
 ## Implemented Benchmarks
 
-### Benchmarks Table
+All three run on the shared direct/hybrid pipeline
+(`--execution-profile common`).
 
-| Track | Status | Purpose | Main Artifacts |
-|-------|--------|---------|----------------|
-| LongBench-v2 cache runner | Implemented | Modified LongBench-v2 cache-route suite for exact, semantic, miss, and knowledge behavior | `benchmark_artifacts/longbench_v2/<run_id>/` |
-| LongBench-v2 API baseline | Implemented | Plain full-context API baseline over prepared LongBench-v2 rows | `benchmark_artifacts/longbench_v2_api/<run_id>/` |
-| LongBench-v2 RLM baseline | Implemented | Uncached RLM baseline over prepared LongBench-v2 rows | `benchmark_artifacts/longbench_v2_rlm/<run_id>/` |
+| Benchmark | Server | Scoring | Overview | Current results |
+|---|---|---|---|---|
+| AA-LCR | Neselab | LLM grader | [aa_lcr.md](aa_lcr.md) | [30 Sep report](reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
+| MRCR v2 | Neselab | Deterministic text similarity | [mrcr_v2.md](mrcr_v2.md) | [30 Sep report](reports/mrcr_results_20260930/mrcr_results_20260930.md) |
+| LongBench-v2 | Jarvis | Multiple-choice letter | [longbench_v2.md](../long_bench_v2/docs/longbench_v2.md) | Shared-pipeline runs pending; August results in [reports/archive](reports/archive/) |
 
-### LongBench-v2
-
-The active benchmark runner lives in `long_bench_v2/run_benchmark.py`. It evaluates the semantic cache system on prepared LongBench-v2 CSV suites while preserving deterministic multiple-choice labels.
-
-The plain full-context API baseline lives in `long_bench_v2/run_api_benchmark.py`, and the uncached RLM baseline lives in `long_bench_v2/run_rlm_benchmark.py`. These write under the `longbench_v2_api` and `longbench_v2_rlm` artifact namespaces and intentionally bypass semantic-cache reuse.
+LongBench-v2 also has an RLM baseline (`long_bench_v2/run_rlm_benchmark.py`)
+and the older iterative cache runner; neither uses the shared pipeline.
 
 ## Candidate Benchmarks
 
@@ -133,3 +132,42 @@ It is a good candidate after the main reasoning benchmark is in place, especiall
 - LongMemEval: https://github.com/xiaowu0162/LongMemEval
 - LongMemEval (LME-MC10): https://huggingface.co/datasets/Percena/lme-mc10/viewer/default/train?row=1
 - LegalBench-RAG: https://github.com/zeroentropy-cc/legalbenchrag
+
+## Survey List
+
+A broader list of long-context benchmarks from the team's survey spreadsheet.
+
+| Benchmark | Task | Input tokens | Reference | Code or data |
+|---|---|---|---|---|
+| AbsenceBench | Omission Detection | - | AbsenceBench: Language Models Can't Tell What's Missing | — |
+| AcademicEval | Abstraction | ~32K | [2510.17725] AcademicEval: Live Long-Context LLM Benchmark | — |
+| Ada-LEval | Adaptable QA / Sorting | ~128K | [2404.06480] Ada-LEval: Evaluating long-context LLMs with length-adaptable benchmarks | — |
+| BABILong | Multi-hop Reasoning | ~10M | [2406.10149] BABILong: Testing the Limits of LLMs with Long Context Reasoning-in-a-Haystack | https://github.com/booydar/babilong?tab=readme-ov-file |
+| Beyond a Million Tokens (BEAM) | Long-term Memory / Reasoning | ~10M | Beyond a Million Tokens: Benchmarking and Enhancing Long-Term Memory in LLMs \| OpenReview | https://github.com/mohammadtavakoli78/BEAM |
+| BooookScore | Summarization Evaluation | ~100K | [2310.00785] BooookScore: A systematic exploration of book-length summarization in the era of LLMs | — |
+| BrowseComp-Plus | Agentic Search | - | [2508.06600] BrowseComp-Plus: A More Fair and Transparent Evaluation Benchmark of Deep-Research Agent | https://github.com/texttron/BrowseComp-Plus |
+| CorpusQA | Long Context Reasoning | ~10M | CorpusQA: A 10 Million Token Benchmark for Corpus-Level Analysis and Reasoning | — |
+| DocFinQA | Financial QA / Reasoning | ~100K | [2401.06915] DocFinQA: A Long-Context Financial Reasoning Dataset | — |
+| ETHIC | High Information Coverage QA | ~100K | ETHIC: Evaluating Large Language Models on Long-Context Tasks with High Information Coverage - ACL Anthology | — |
+| Fables | Summarization / Faithfulness | ~121K | [2404.01261] FABLES: Evaluating faithfulness and content selection in book-length summarization | — |
+| FlenQA | Reasoning Performance | ~3000 | Same Task, More Tokens: the Impact of Input Length on the Reasoning Performance of Large Language Models | — |
+| HELMET | Multi-task | ~128K | [2410.02694] HELMET: How to Evaluate Long-Context Language Models Effectively and Thoroughly | — |
+| L-CiteEval (and LongCite) | Citation QA | ~48K | [2410.02115] L-CiteEval: Do Long-Context Models Truly Leverage Context for Responding? | — |
+| LoCoBench | Software Engineering / Multi-file | ~1M | [2509.09614] LoCoBench: A Benchmark for Long-Context Large Language Models in Complex Software Engineering | https://github.com/SalesforceAIResearch/LoCoBench |
+| LongBench | Multi-task | ~32K | [2308.14508] LongBench: A Bilingual, Multitask Benchmark for Long Context Understanding | — |
+| LongBench Pro | Multi-task | ~256K | [2601.02872] LongBench Pro: A More Realistic and Comprehensive Bilingual Long-Context Evaluation Benchmark | — |
+| LongBench v2 | Multi-task Reasoning | ~128K | [2412.15204] LongBench v2: Towards Deeper Understanding and Reasoning on Realistic Long-context Multitasks | — |
+| LongHealth | Clinical QA / Info Extraction | ~32K | [2401.14490] LongHealth: A Question Answering Benchmark with Long Clinical Documents | — |
+| Michelangelo | Reasoning / Synthesis | ~128K | [2409.12640] Michelangelo: Long Context Evaluations Beyond Haystacks via Latent Structure Queries | — |
+| Needle in a Haystack (NIAH) | Retrieval | - | The Needle In a Haystack Test \| Towards Data Science | https://github.com/gkamradt/LLMTest_NeedleInAHaystack |
+| NeedleBench | Retrieval / Reasoning | ~128K | [2407.11963] NeedleBench: Evaluating LLM Retrieval and Reasoning Across Varying Information Densities | — |
+| NoCha | Claim Verification | ~128K | [2406.16264] One Thousand and One Pairs: A "novel" challenge for long-context language models | — |
+| NoLiMa | Latent Retrieval | ~32K | NoLiMa: Long-Context Evaluation Beyond Literal Matching | https://github.com/adobe-research/NoLiMa |
+| NovelQA | Multi-hop QA / Narrative | ~200K | [2403.12766] NovelQA: Benchmarking Question Answering on Documents Exceeding 200K Tokens | — |
+| OOLONG | Long Context Reasoning | ~1M | [2511.02817] Oolong: Evaluating Long Context Reasoning and Aggregation Capabilities | https://huggingface.co/oolongbench |
+| RULER | Retrieval / Retrieval-QA | ~256K | [2404.06654] RULER: What's the Real Context Size of Your Long-Context Language Models? | https://github.com/NVIDIA/RULER |
+| SCROLLS | Long Text Understanding | - | [2201.03533] SCROLLS: Standardized CompaRison Over Long Language Sequences | — |
+| SWE-bench | Software Engineering | ~100K | [2310.06770] SWE-bench: Can Language Models Resolve Real-World GitHub Issues? | — |
+| TAIL | Evaluation Toolkit | ~128K | TAIL: A Toolkit for Automatic and Realistic Long-Context Large Language Model Evaluation - ACL Anthology | — |
+| ZeroSCROLLS | Zero-shot Reasoning | - | [2305.14196] ZeroSCROLLS: A Zero-Shot Benchmark for Long Text Understanding | — |
+| ∞Bench | Multi-task | ~100K | ∞Bench: Extending Long Context Evaluation Beyond 100K Tokens - ACL Anthology | — |

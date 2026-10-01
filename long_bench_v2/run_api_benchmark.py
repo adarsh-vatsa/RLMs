@@ -38,6 +38,7 @@ from long_bench_v2.run_benchmark import (  # noqa: E402
     build_query,
     filter_suite_rows,
     load_context_by_source_id,
+    load_serving_metadata,
     load_suite_rows,
     parse_choice,
     summarize_rows,
@@ -428,6 +429,7 @@ def run_longbench_api_benchmark(
     row_types = _parse_csv_values(args.row_types)
     if not row_types:
         raise ValueError("--row-types must include at least one row type")
+    serving_metadata = load_serving_metadata(getattr(args, "serving_metadata", None))
 
     contexts = load_context_by_source_id(source_json_path)
     all_rows = load_suite_rows(suite_csv, contexts)
@@ -704,6 +706,7 @@ def run_longbench_api_benchmark(
                 **mcq_decoder_constraint_metadata(),
             }
         )
+    manifest["serving_metadata"] = serving_metadata
     if args.manifest_note:
         manifest["note"] = args.manifest_note
 
@@ -776,6 +779,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_artifacts"))
     parser.add_argument("--manifest-note", type=str, default="")
+    parser.add_argument("--serving-metadata", type=Path, help="JSON object describing the executor service")
     parser.add_argument("--preflight-only", action="store_true")
     parser.add_argument("--request-timeout-seconds", type=int, default=120)
     add_source_arguments(parser)

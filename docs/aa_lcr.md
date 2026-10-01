@@ -31,13 +31,15 @@ equivalent to `Equinix, $901 million` when the company and amount are correct.
 
 ## Use in this repository
 
-This project compares direct and semantic-cache-enabled execution at 262K and
-64K context windows. It uses the official reasoning questions and reference
+This project compares three runs: the whole prompt in the full 262K window,
+and, in a 64K window, either middle truncation or retrieval with packing
+(hybrid). The current results are in the
+[AA-LCR report](reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md). It uses the official reasoning questions and reference
 answers, but its model choices and equality grader make the resulting scores
 internal comparison results rather than official AA-LCR leaderboard scores.
 
-See the [AA-LCR Jarvis runbook](jarvis/AA_LCR_RUNBOOK.md) for dataset preparation,
-service startup, experiment commands, and result comparison.
+See the [Linux benchmark runbook](linux/BENCHMARK_RUNBOOK.md) for dataset
+preparation, experiment commands, grading, and result comparison.
 
 Official resources: [Artificial Analysis evaluation](https://artificialanalysis.ai/evaluations/artificial-analysis-long-context-reasoning)
 and [AA-LCR dataset](https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR).

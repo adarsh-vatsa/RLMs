@@ -828,6 +828,15 @@ def _validate_hybrid_args(args: argparse.Namespace, embedding_max_length: int | 
         raise ValueError("--child-tokens must be less than the embedding input limit")
 
 
+def load_serving_metadata(path: Path | None) -> dict:
+    if not path:
+        return {}
+    metadata = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(metadata, dict):
+        raise ValueError("--serving-metadata must contain a JSON object")
+    return metadata
+
+
 def run_hybrid_route_audit(
     args: argparse.Namespace,
     selected_rows: list[dict],
@@ -936,6 +945,7 @@ def run_longbench_benchmark(
     row_types = _parse_csv_values(args.row_types)
     if not row_types:
         raise ValueError("--row-types must include at least one row type")
+    serving_metadata = load_serving_metadata(args.serving_metadata)
 
     contexts = load_context_by_source_id(source_json_path)
     all_rows = load_suite_rows(suite_csv, contexts)
@@ -1238,6 +1248,8 @@ def run_longbench_benchmark(
                 legacy=pipeline_config.profile == "legacy" and pipeline_config.evidence_order == "score", docs_dir=docs_dir)
             result = pipeline.execute(task)
             api_status, api_error = result["status"], result["error"]
+            if args.fail_fast and api_status == "error":
+                raise RuntimeError(api_error)
             ingested_chunks, ingest_ms = result["ingested_chunks"], result["ingest_ms"]
             hybrid_telemetry.update(
                 hybrid_route=result["route"], full_rendered_input_tokens=result["full_rendered_input_tokens"],
@@ -1577,6 +1589,7 @@ def run_longbench_benchmark(
         cache_hits=cache_hits,
         row_count=len(bridge_rows),
     )
+    manifest["serving_metadata"] = serving_metadata
     if args.manifest_note:
         manifest["note"] = args.manifest_note
 
@@ -1673,6 +1686,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--disable-reranker", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_artifacts"))
     parser.add_argument("--manifest-note", type=str, default="")
+    parser.add_argument("--fail-fast", action="store_true")
+    parser.add_argument("--serving-metadata", type=Path, help="JSON object describing the executor service")
     add_source_arguments(parser)
     add_arguments(parser)
     return parser

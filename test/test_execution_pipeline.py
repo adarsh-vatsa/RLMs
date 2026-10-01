@@ -278,45 +278,87 @@ class SharedExecutionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "positive"):
             run_benchmark(args, tokenizer_factory=lambda _: self.fail("must validate before loading models"))
 
-    def test_longbench_runner_common_hybrid_without_cache(self):
+    def _run_longbench_hybrid(self, root, extra=(), fail=False, row_types=("original",)):
         from test_long_bench_v2_hybrid import FakeHybridScs, source_row, suite_row
         from test_mrcr_v2 import FakeController, FakeEmbedder
         from long_bench_v2.run_benchmark import build_arg_parser, run_longbench_benchmark
-        class Controller(FakeController):
+        class Controller(FakeController, MemoryCache):
             def __init__(self, metrics, **kwargs):
-                super().__init__(**kwargs)
+                FakeController.__init__(self, **kwargs)
+                MemoryCache.__init__(self)
                 self.metrics = metrics
                 self.doc_index = None
+            def retrieve(self, query, query_embedding=None, **kwargs):
+                return FakeController.retrieve(self, query, **kwargs)
+            lookup_cached_result = MemoryCache.lookup_cached_result
+            store_compact_mcq = MemoryCache.store_compact_answer
+            load = save = lambda self, path: False
+            get_total_entries = lambda self: len(self.entries)
         class Scs(FakeHybridScs):
             SemanticCacheController = Controller
             EmbeddingEngine = FakeEmbedder
+        if fail:
+            Scs.create_llm_message = staticmethod(lambda **kwargs: (_ for _ in ()).throw(RuntimeError("executor down")))
         fixture = fake_scs()
         Scs.FAISSIndex = fixture.FAISSIndex
         Scs._chunk_text_with_tokenizer = staticmethod(fixture._chunk_text_with_tokenizer)
+        root.mkdir(parents=True, exist_ok=True)
+        source = root / "data.json"
+        source.write_text(json.dumps([source_row("source", "x" * 5000)]))
+        suite = root / "suite.csv"
+        rows = [suite_row("source", row_type) for row_type in row_types]
+        with suite.open("w", newline="") as output:
+            writer = csv.DictWriter(output, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        args = build_arg_parser().parse_args([
+            "--suite-csv", str(suite), "--source-json-path", str(source),
+            "--llm-provider", "openai_compatible", "--execution-profile", "common",
+            "--context-window-tokens", "2000", "--max-input-tokens", "1800",
+            "--child-tokens", "100", "--child-overlap-tokens", "20", "--output-dir", str(root / "runs"), *extra,
+        ])
+        with patch.dict(os.environ, {"SEMANTIC_CACHE_SEARCH_MODE": "hybrid"}), patch(
+            "long_bench_v2.run_benchmark._import_semantic_cache_system", return_value=Scs):
+            run_longbench_benchmark(args, tokenizer_factory=lambda _: FakeTokenizer())
+        return next((root / "runs" / "longbench_v2").glob("20*"))
+
+    def test_longbench_runner_common_hybrid_without_cache(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            source = root / "data.json"
-            source.write_text(json.dumps([source_row("source", "x" * 5000)]))
-            suite = root / "suite.csv"
-            row = suite_row("source", "original")
-            with suite.open("w", newline="") as output:
-                writer = csv.DictWriter(output, fieldnames=list(row))
-                writer.writeheader()
-                writer.writerow(row)
-            args = build_arg_parser().parse_args([
-                "--suite-csv", str(suite), "--source-json-path", str(source),
-                "--llm-provider", "openai_compatible", "--execution-profile", "common",
-                "--context-window-tokens", "2000", "--max-input-tokens", "1800",
-                "--child-tokens", "100", "--child-overlap-tokens", "20", "--output-dir", str(root / "runs"),
-            ])
-            with patch.dict(os.environ, {"SEMANTIC_CACHE_SEARCH_MODE": "hybrid"}), patch(
-                "long_bench_v2.run_benchmark._import_semantic_cache_system", return_value=Scs):
-                run_longbench_benchmark(args, tokenizer_factory=lambda _: FakeTokenizer())
-            output = next((root / "runs" / "longbench_v2").glob("20*"))
+            output = self._run_longbench_hybrid(Path(temporary))
             result = json.loads((output / "execution.jsonl").read_text())
             self.assertEqual(result["status"], "ok", result["error"])
             self.assertEqual(result["route"], "dense_child_packed")
             self.assertFalse(result["cache_written"])
+
+    def test_longbench_hybrid_answer_cache_serves_repeat(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = self._run_longbench_hybrid(Path(temporary), [
+                "--row-types", "original,exact", "--answer-cache-read", "--answer-cache-write",
+                "--cache-matching", "exact"], row_types=("original", "exact"))
+            original, repeat = map(json.loads, (output / "execution.jsonl").read_text().splitlines())
+            self.assertEqual(original["route"], "dense_child_packed")
+            self.assertTrue(original["cache_written"])
+            self.assertTrue(repeat["from_cache"])
+            self.assertEqual(repeat["prediction"], original["prediction"])
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(manifest["by_row_type"]["exact"]["cache_hit_rate"], 1.0)
+
+    def test_longbench_hybrid_serving_metadata_and_fail_fast(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            metadata = root / "serving.json"
+            metadata.write_text(json.dumps({"host": "node-1", "vllm_version": "0.19.1"}))
+            output = self._run_longbench_hybrid(root / "ok", ["--serving-metadata", str(metadata)])
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(manifest["serving_metadata"], {"host": "node-1", "vllm_version": "0.19.1"})
+            metadata.write_text("[]")
+            with self.assertRaisesRegex(ValueError, "JSON object"):
+                self._run_longbench_hybrid(root / "bad", ["--serving-metadata", str(metadata)])
+            self.assertFalse((root / "bad" / "runs").exists())
+            with self.assertRaisesRegex(RuntimeError, "executor down"):
+                self._run_longbench_hybrid(root / "fail", ["--fail-fast"], fail=True)
+            unstopped = self._run_longbench_hybrid(root / "continue", fail=True)
+            self.assertEqual(json.loads((unstopped / "execution.jsonl").read_text())["status"], "error")
 
     def test_jarvis_service_requirements_and_forwarding(self):
         env = {**os.environ, "OPENAI_COMPAT_EXECUTOR_BASE_URL": "http://executor:8000/v1",

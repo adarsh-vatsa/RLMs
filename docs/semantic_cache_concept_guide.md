@@ -1,5 +1,9 @@
 # The Semantic Cache Playbook: Never Pay for the Same Thought Twice
 
+> **Describes the original cache prototype** (`semantic_cache_system.py`, Claude models), not the
+> shared execution pipeline that current experiments use. For the current design, see the
+> [shared execution architecture](shared_execution_architecture.md) and [task adapters](task_adapters.md).
+
 ## The Big Idea
 
 Imagine you hire a brilliant (but expensive) consultant to read a 10,000-page legal document. You ask them, "Does page 42 mention fraud?" They read it, say "Yes," and charge you $1.

@@ -1,12 +1,11 @@
 # Shared execution architecture
 
-**Implemented for direct and dense hybrid execution** for LongBench-v2's
-OpenAI-compatible path, AA-LCR, and MRCR v2. Select `--execution-profile common`
-explicitly; existing entry points retain legacy defaults. See the
-[shared execution runbook](jarvis/SHARED_EXECUTION_RUNBOOK.md) for commands and
-remaining limitations.
-See the [implementation plan](shared_execution_pipeline_plan.md) for migration
-steps, legacy configurations, and acceptance tests.
+Direct and dense hybrid execution for LongBench-v2's OpenAI-compatible path,
+AA-LCR, and MRCR v2. The runners default to `--execution-profile legacy`; the
+Linux and Jarvis launchers select `common`. See the
+[shared execution options](linux/SHARED_EXECUTION_RUNBOOK.md) and the
+[Linux](linux/README.md) and [Jarvis](jarvis/README.md) runbooks for commands.
+The original migration plan is [archived](archive/shared_execution_pipeline_plan.md).
 
 ## Component boundaries
 
@@ -61,9 +60,11 @@ model service.
 
 ## Request flow
 
-This diagram shows the proposed common profile: exact offsets, source-order
-packing with overlap merging, and `unsupported` for direct overflow. Answer-cache
-reads and writes are independent switches, both off for primary quality runs.
+This diagram shows the common profile: exact offsets and source-order packing
+with overlap merging. Direct overflow is recorded as `unsupported_context` by
+default, or truncated in the middle with `--direct-overflow middle`, which all
+current direct runs use. Answer-cache reads and writes are independent switches,
+both off for primary quality runs.
 
 ```mermaid
 flowchart TD
@@ -76,7 +77,9 @@ flowchart TD
     HIT{"Accepted hit?"}
     FIT{"Full rendered prompt fits?"}
     MODE{"Execution mode?"}
+    OVERFLOW{"Direct overflow policy?"}
     UNSUPPORTED["Record unsupported_context<br/>No executor call"]
+    TRUNCATE["middle_truncated<br/>Keep equal head and tail"]
     INDEX["Build or reuse document index<br/>Exact chunks, embeddings and FAISS"]
     RANK["Rank all children by dense relevance<br/>Optional configured reranker"]
     PACK["Add candidates in score order<br/>Merge ranges within each document<br/>Render exact slices in source order<br/>Stop before the next candidate exceeds budget"]
@@ -95,7 +98,9 @@ flowchart TD
     HIT -->|No| FIT
     FIT -->|Yes: direct_fit| GENERATE
     FIT -->|No| MODE
-    MODE -->|Direct| UNSUPPORTED --> SAVE
+    MODE -->|Direct| OVERFLOW
+    OVERFLOW -->|unsupported| UNSUPPORTED --> SAVE
+    OVERFLOW -->|middle| TRUNCATE --> GENERATE
     MODE -->|Hybrid| INDEX --> RANK --> PACK --> GENERATE
     GENERATE --> WRITE
     WRITE -->|Yes| STORE --> SAVE

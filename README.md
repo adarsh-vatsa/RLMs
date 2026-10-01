@@ -1,120 +1,78 @@
-# Two-Stage Semantic Cache for Autonomous Agents
+# Long-context execution with retrieval and semantic caching
 
-A production-grade semantic caching system that makes autonomous LLM agent execution economically viable. Achieves **96.7% cost reduction** on redundant workloads through a novel "Dragnet & Sniper" architecture.
+A research prototype for answering questions over long sources with an LLM.
+When a source fits the model's input budget, the system sends all of it. When it
+does not, it retrieves the most relevant passages and packs them into the
+budget. Optionally, it reuses verified answers from a semantic cache when a
+question is repeated or reworded.
 
-## Key Features
+The research question: compared with sending the full context to the same model,
+does this keep or improve accuracy while using fewer tokens and less time?
+Current experiments use `Qwen/Qwen3.6-35B-A3B` served locally by vLLM.
 
-| Feature | What it does |
-|---------|-------------|
-| **Two-Stage Dragnet & Sniper** | Fast vector search (FAISS) + LLM-verified semantic equivalence (Haiku) — eliminates catastrophic collisions that break pure-vector caches |
-| **Context Collapse Guard** | Prevents oversized cache returns from degrading agent reasoning — ephemeral tagging + recursive parallel summarization |
-| **Source Provenance** | Every cached entry is grounded against source text + independently verified by a second LLM (consensus) |
-| **Knowledge Extraction** | Decomposes answers into `(subject, relation, object)` triples, FAISS-indexed for cross-query reuse |
-| **Batch Cache Saturation** | Programmatic query sweeps can populate cache state before interactive use |
-| **Corpus Namespace Isolation** | Multi-domain deployment (legal, finance, medical) with isolated FAISS indices, caches, and knowledge graphs |
-| **Heterogeneous Routing** | Dispatches simple tasks to Haiku ($0.25/MTok), complex to Sonnet ($3/MTok) |
+For an orientation, results and open work, start with the
+[project status](docs/project_status_20261001.md).
 
-## Architecture
+## How it works
 
-```
-Query → Cache Check (free/cheap)
-  ├─ HIT  → Serve cached answer (with provenance metadata)
-  └─ MISS → FAISS Dragnet → Qwen3-Reranker → Sonnet Synthesis
-              → Grounding Check → Consensus Verify → Cache Store
-              → Knowledge Extraction → Fact Index
-```
+Every benchmark goes through one shared pipeline, `execution.pipeline.Pipeline`.
+A small per-benchmark adapter turns each example into a task (documents,
+question and prompt renderer). The pipeline counts the full prompt's tokens with
+the executor's tokenizer and picks a route:
 
-## Stack
+| Route | When | What is sent |
+|---|---|---|
+| `direct_fit` | The prompt fits the input budget | The whole prompt |
+| `middle_truncated` | Direct mode with `--direct-overflow middle`, the prompt is too long | An equal head and tail |
+| `dense_child_packed` | Hybrid mode, the prompt is too long | Retrieved chunks, packed to the budget in source order |
 
-- **Embeddings**: Qwen3-Embedding-0.6B (596M params, 1024-dim, local CPU)
-- **Reranker**: Qwen3-Reranker-0.6B (cross-encoder, local CPU)
-- **Vector Index**: FAISS IndexFlatIP (exact cosine similarity)
-- **LLM API**: Claude Sonnet 4.5 (synthesis) + Claude Haiku 4.5 (evaluation/sniper/consensus)
-- **Python**: 3.9+, single-file library (~1,900 lines)
+Retrieval uses `Qwen3-Embedding-0.6B` and a FAISS index. Answer caching (exact
+or semantic, with a verifier model) is a separate switch, off by default.
+Scoring happens after each prediction is saved; gold answers never reach the
+solver or the cache. See the
+[shared execution architecture](docs/shared_execution_architecture.md) and
+[task adapters](docs/task_adapters.md).
 
-## Quick Start
+## Benchmarks
 
-```bash
-# Install dependencies
-pip install transformers torch faiss-cpu anthropic python-dotenv numpy
+| Benchmark | Server | Overview | Results |
+|---|---|---|---|
+| AA-LCR | Neselab (Linux) | [aa_lcr.md](docs/aa_lcr.md) | [30 Sep report](docs/reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
+| MRCR v2 | Neselab (Linux) | [mrcr_v2.md](docs/mrcr_v2.md) | [30 Sep report](docs/reports/mrcr_results_20260930/mrcr_results_20260930.md) |
+| LongBench-v2 | Jarvis (Slurm) | [longbench_v2.md](long_bench_v2/docs/longbench_v2.md) | Shared-pipeline runs pending; August results in [docs/reports/archive](docs/reports/archive/) |
 
-# Run the test suite
-python -m unittest discover -s test
-```
+Candidate benchmarks are compared in [docs/benchmarks.md](docs/benchmarks.md).
 
-## Benchmarking
+## Quick start
 
-This repository keeps benchmark instructions in dedicated documentation pages.
-The README only summarizes the purpose of each benchmark track.
-
-| Benchmark | Role |
-|-----------|------|
-| LongBench-v2 | primary long-context reasoning benchmark with deterministic multiple-choice scoring |
-| CorpusQA | candidate for very high-context corpus-level reasoning if the dataset and scoring harness are reproducible |
-| OOLONG | candidate for aggregation-heavy long-context reasoning that may require map-reduce style execution |
-| LongMemEval | candidate for persistent memory and knowledge reuse across sessions |
-| ContractNLI | optional focused legal reasoning sanity check |
-| LegalBench-RAG | optional retrieval/evidence-grounding benchmark |
-
-Current implemented benchmark tracks:
-
-| Track | Purpose | Documentation |
-|-------|---------|---------------|
-| LongBench-v2 cache runner | Modified LongBench-v2 cache-route suite | `long_bench_v2/run_benchmark.py` |
-| LongBench-v2 API baseline | Plain full-context API baseline over prepared LongBench-v2 rows | `long_bench_v2/run_api_benchmark.py` |
-| LongBench-v2 RLM baseline | Uncached RLM baseline over prepared LongBench-v2 rows | `long_bench_v2/run_rlm_benchmark.py` |
-
-The current benchmark recommendation is documented in `docs/benchmarks.md`. The active track is `(Modified) LongBench-v2`: preserve original multiple-choice accuracy labels, then add cache-route wrappers for exact duplicates, semantic paraphrases, misses, and knowledge hits only when repeated contexts support them naturally.
-
-Benchmark artifacts are written under `benchmark_artifacts/`. Historical
-artifacts should be treated as read-only unless a run is intentionally being
-regenerated.
-
-### Cost Accounting
-
-Benchmark `delta_cost_usd` values are estimated from token usage using the
-centralized pricing map in `semantic_cache_system.py`:
-
-- `MODEL_FAMILY_PRICING_USD_PER_1K["sonnet"]`: input `$0.003` / 1K, output `$0.015` / 1K
-- `MODEL_FAMILY_PRICING_USD_PER_1K["haiku"]`: input `$0.001` / 1K, output `$0.005` / 1K
-
-These are explicit Anthropic-style reference rates, not live billing API values.
-Run-level totals in each benchmark `manifest.json` use the same estimated token
-pricing. LongBench-v2 cache manifests also record the selected rows'
-`full_context_query_baseline_input_tokens`, legacy
-`total_dataset_context_token_estimate`, unique-source context estimate, and
-input-token savings percentages against both query-row and unique-source
-baselines.
-
-### Epstein Court Document Search (Domain Client Example)
+Requires [`uv`](https://docs.astral.sh/uv/). Unit tests use mocks and synthetic
+fixtures; they never download model weights or call model services.
 
 ```bash
-# Ingest 1,000 court documents → FAISS index
-python epstein_search.py --ingest
-
-# Search with full cache pipeline
-python epstein_search.py --search "What charges did Ghislaine Maxwell face?"
-
-# Interactive mode
-python epstein_search.py --interactive
+uv sync
+uv run python -m unittest discover -s test
 ```
 
-## Files
+To run benchmarks, follow the [Linux runbooks](docs/linux/README.md) on a GPU
+server or the [Jarvis runbooks](docs/jarvis/README.md) on the cluster.
 
-| File | Description |
-|------|-------------|
-| `semantic_cache_system.py` | Core library — embeddings, FAISS, reranker, cache controller, router, agent |
-| `epstein_search.py` | Domain client — Epstein court document search using the core library |
-| `system_architecture.md` | Full architecture documentation with scenarios and use cases |
-| `paper_draft.tex` | LaTeX research paper draft |
+## Repository layout
 
-## Results
+| Path | Contents |
+|---|---|
+| `execution/` | Shared pipeline: routing, token counting, chunking, retrieval, packing, cache hooks, HTTP client, artifacts |
+| `aa_lcr/`, `mrcr_v2/`, `long_bench_v2/` | Per-benchmark dataset preparation, adapters, runners and scoring |
+| `semantic_cache_system.py` | Embeddings, FAISS, reranker and the semantic cache controller; also the original prototype |
+| `linux/`, `jarvis/` | Serving and launch scripts for a standalone GPU server and for Slurm |
+| `test/` | Unit tests |
+| `docs/` | Design notes, runbooks, reports; older material in `docs/archive/` |
+| `benchmark_data/`, `benchmark_artifacts/` | Prepared inputs and run outputs; treat existing artifacts as read-only |
 
-| Metric | Baseline RLM | Optimized | Improvement |
-|--------|-------------|-----------|-------------|
-| API Cost | $0.00182 | $0.00006 | **96.7% ↓** |
-| Execution Time | 11.20s | 5.87s | **1.9× faster** |
-| Model Calls | 5 | 2 (+3 cached) | **60% fewer** |
+The project began in March 2026 as a "Two-Stage Semantic Cache" on Claude models.
+That design is described in [docs/system_architecture.md](docs/system_architecture.md)
+and still lives in `semantic_cache_system.py`, which defaults to the Anthropic
+provider; the benchmark launchers switch it to the local OpenAI-compatible
+endpoint. Its five-call demo figures are not benchmark results.
 
 ## License
 

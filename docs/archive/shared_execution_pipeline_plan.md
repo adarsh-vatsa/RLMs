@@ -3,11 +3,11 @@
 Status: direct/hybrid implementation completed with mocked validation; real
 benchmark runs and held-out transfer validation remain separate. Existing entry
 points preserve legacy defaults; select `--execution-profile common` explicitly.
-See the [runbook](jarvis/SHARED_EXECUTION_RUNBOOK.md) for commands, artifacts, and
+See the [runbook](../jarvis/SHARED_EXECUTION_RUNBOOK.md) for commands, artifacts, and
 remaining persistent-cache/provider limitations. The sections below retain the
 implementation contract and migration sequence.
 
-See the [architecture diagrams](shared_execution_architecture.md) for component
+See the [architecture diagrams](../shared_execution_architecture.md) for component
 boundaries, request routing, and the separation of scoring from cache verification.
 
 ## Objective and scope
@@ -38,12 +38,12 @@ results. Preserve historical artifacts and give changed behavior new versions.
 | Oversized direct | OpenAI-compatible baseline removes middle | 64K removes middle; 262K preflight rejects overflow | Unsupported; no inference |
 | Grading | Choice matching | Separate LLM grader | Official similarity plus strict metrics |
 
-Execution evidence: [LongBench runner](../long_bench_v2/run_benchmark.py),
-[LongBench direct runner](../long_bench_v2/run_api_benchmark.py),
-[AA-LCR runner](../aa_lcr/run_benchmark.py),
-[AA-LCR prompt/packing helpers](../aa_lcr/prompting.py),
-[MRCR runner](../mrcr_v2/run_benchmark.py), and
-[shared core](../semantic_cache_system.py).
+Execution evidence: [LongBench runner](../../long_bench_v2/run_benchmark.py),
+[LongBench direct runner](../../long_bench_v2/run_api_benchmark.py),
+[AA-LCR runner](../../aa_lcr/run_benchmark.py),
+[AA-LCR prompt/packing helpers](../../aa_lcr/prompting.py),
+[MRCR runner](../../mrcr_v2/run_benchmark.py), and
+[shared core](../../semantic_cache_system.py).
 
 AA-LCR also hardcodes experiment budgets and hybrid chunk sizes, and requires a
 local vLLM evaluator for hybrid cache verification. Its grading and cache

@@ -83,5 +83,5 @@ hybrid cell retrieves and packs evidence. This would directly test whether the
 262K ablation on the current dataset would separately show whether selective
 evidence packing helps even when the complete documents fit.
 
-Evidence: [four-run comparison](../../benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json),
-[dataset overview](../aa_lcr.md), and [Jarvis runbook](../jarvis/AA_LCR_RUNBOOK.md).
+Evidence: [four-run comparison](../../../../benchmark_artifacts/aa_lcr/comparisons/20260831T001712Z/comparison.json),
+[dataset overview](../../../aa_lcr.md), and [Jarvis runbook](../../../jarvis/AA_LCR_RUNBOOK.md).

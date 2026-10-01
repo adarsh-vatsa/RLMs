@@ -8,7 +8,7 @@ identify concrete sources of lost credit, but do not establish how much of
 the complete leaderboard gap each one explains.
 
 The run under review is
-[`direct_262k/20260830T235804Z`](../benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z/manifest.json):
+[`direct_262k/20260830T235804Z`](../../benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z/manifest.json):
 Qwen/Qwen3.6-35B-A3B, temperature zero, thinking disabled, 100 questions,
 44 correct. The corresponding hybrid 262K run has identical answers and grades;
 it is not an independent replication.
@@ -35,7 +35,7 @@ The dataset repository identifies v1.1 as a September 2026 update and explicitly
 disallows direct comparison with v1.0.0. The older run predates that update.
 
 **Answer budget: the most substantial observed execution problem.**
-[`run_benchmark.py`](../aa_lcr/run_benchmark.py) sets
+[`run_benchmark.py`](../../aa_lcr/run_benchmark.py) sets
 `DEFAULT_MAX_OUTPUT_TOKENS = 512` and rejects any other value, even if supplied
 through `--max-output-tokens`. Non-thinking mode still permits explanations
 and calculations in the answer text; it does not make 512 tokens sufficient.
@@ -71,7 +71,7 @@ in the units requested by its question.
 
 These are four points of erroneous penalties under semantic equivalence.
 They are not a complete regrade or a corrected aggregate score.
-[`prompting.py`](../aa_lcr/prompting.py) supplies no explicit unit-equivalence
+[`prompting.py`](../../aa_lcr/prompting.py) supplies no explicit unit-equivalence
 guidance; it also omits the boundaries in the published legacy grader prompt.
 Valid output labels and zero API errors do not imply accurate judgments.
 
@@ -127,4 +127,4 @@ over-240K extension would not isolate the discrepancies identified here.
 No benchmark code, historical artifacts, or pinned inputs were changed, and
 no model inference or automated regrading was run for this investigation.
 Counts and examples above come from
-[`bridge_rows.jsonl`](../benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z/bridge_rows.jsonl).
+[`bridge_rows.jsonl`](../../benchmark_artifacts/aa_lcr/direct_262k/20260830T235804Z/bridge_rows.jsonl).

@@ -5,37 +5,13 @@ benchmark client on Jarvis. Run these commands from the Jarvis login node unless
 the step explicitly says otherwise. The commands below assume your current
 directory is the parent directory that contains the `adarsh-rlms` repo.
 
-After the production services pass the checks here, continue with
-[`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md).
+After the checks here pass, continue with the
+[LongBench-v2 runbook](HPC_RUNBOOK_EXPERIMENT.md), which starts the production
+executor.
 
-## 0. Push Locally, Pull Remotely
+## 0. Update The Repository
 
-On your local machine, commit and push the changes:
-
-```bash
-git status --short
-git diff --check
-git add \
-  long_bench_v2/qwen_prompt.py \
-  long_bench_v2/run_benchmark.py \
-  long_bench_v2/run_api_benchmark.py \
-  test/test_long_bench_v2_hybrid.py \
-  test/test_long_bench_v2_api_benchmark.py \
-  test/test_semantic_cache_llm_provider.py \
-  docs/system_architecture.md \
-  docs/longbench_v2_hierarchical_retrieval_plan_20260808.md \
-  long_bench_v2/docs/longbench_v2.md \
-  docs/jarvis/README.md \
-  docs/jarvis/jarvis.md \
-  docs/jarvis/HPC_RUNBOOK_SETUP.md \
-  docs/jarvis/HPC_RUNBOOK_EXPERIMENT.md
-git add -u docs/jarvis
-git diff --cached --check
-git commit -m "Enforce decoder choices and split Jarvis runbooks"
-git push
-```
-
-On Jarvis:
+Commit and push local changes, then on Jarvis:
 
 ```bash
 ssh edogu@jarvis.stevens.edu
@@ -103,14 +79,9 @@ client:              30 GB free required
 client-gpu:          30 GB free required
 ```
 
-The `client` line above is a scratch free-space check, not the Slurm RAM
-allocation. The dispatcher submits benchmark client jobs with 32 GB RAM. Smaller
-token chunks and higher overlap increase chunk count, duplicated chunk text,
-tokenizer offset maps, embeddings, metadata, and FAISS state held by the client.
-If a smaller chunk profile is OOM-killed, set
-`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`, use `submit client-gpu` for CUDA
-embeddings, raise the client Slurm memory, or use a less aggressive chunk-count
-profile.
+The `client` lines above are scratch free-space checks, not the Slurm RAM
+allocation. `client` jobs get 32 GB of RAM and `client-gpu` jobs 96 GB by
+default; set `CLIENT_MEM` to change it.
 
 Override only if you know the model is already cached or you intentionally want a
 lower threshold:
@@ -349,7 +320,7 @@ cd ..
 
 ## 8. Run Small-Smoke Client Checks
 
-Submit a client smoke test against that endpoint:
+Submit the provider tests against the small-smoke endpoint:
 
 ```bash
 SMALL_SMOKE_URL=http://<small-smoke-node>:8000/v1
@@ -372,256 +343,31 @@ squeue -u "$USER"
 tail -f "$PROJECT_LOG_DIR"/rlms-client-<job_id>.out
 ```
 
-Run a tiny LongBench-v2 plumbing check against the same endpoint. The client
-command first creates a bounded random source-linked sample; this is preferable
-to `--max-rows` on the full CSV because the first LongBench rows can be very
-large.
+Then run two LongBench-v2 questions through the direct launcher. The
+small-smoke service has an 8,192-token window and every LongBench prompt is
+longer, so this overrides the launcher's full-window budgets and truncates each
+prompt to fit. It needs `benchmark_data/long_bench_v2/data.json`; see
+[preparing the data](HPC_RUNBOOK_EXPERIMENT.md#1-prepare-the-data).
 
 ```bash
-LLM_PROVIDER=openai_compatible \
 OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMALL_SMOKE_URL" \
-OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMALL_SMOKE_URL" \
-WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD='export SEMANTIC_CACHE_SEARCH_MODE=iterative
-export SEMANTIC_CACHE_EMBEDDING_QUERY_INSTRUCTION="Given a long-context multiple-choice question, retrieve chunks containing evidence, demonstrations, mappings, or facts needed to answer it."
-export SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1
-export SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH=8192
-export SEMANTIC_CACHE_DOC_CHUNK_SIZE=10000
-export SEMANTIC_CACHE_DOC_CHUNK_OVERLAP=1000
-export SEMANTIC_CACHE_SCAN_MIN_CHUNK_RATIO=0.30
-export SEMANTIC_CACHE_SCAN_MAX_CHUNK_RATIO=1.0
-export SEMANTIC_CACHE_SCAN_MIN_CHUNKS=3
-export SEMANTIC_CACHE_SCAN_MAX_CHUNKS=0
-export SEMANTIC_CACHE_SCAN_MAX_TOKENS=768
-export SEMANTIC_CACHE_SCAN_EMPTY_LEDGER_FALLBACK_RATIO=1.0
-export SEMANTIC_CACHE_ITERATIVE_PACKED_FALLBACK_INPUT_TOKEN_BUDGET=60000
-export SEMANTIC_CACHE_ITERATIVE_MEMORY_MAX_CHARS=16000
-export SEMANTIC_CACHE_ITERATIVE_BATCH_MAX_CHUNKS=3
-export SEMANTIC_CACHE_ITERATIVE_BATCH_INPUT_TOKEN_BUDGET=50000
-export SEMANTIC_CACHE_MCQ_SYNTHESIS_MAX_TOKENS=8
-
-uv run python long_bench_v2/sample_csv.py \
-  --input-path benchmark_data/long_bench_v2/data_cache_suite.csv \
-  --output-path benchmark_artifacts/longbench_v2_samples/small_smoke.csv \
-  --sample-size 1 \
-  --max-token-count 75000 \
-  --selection-strategy random \
-  --seed 0 && \
-uv run python long_bench_v2/run_benchmark.py \
-  --suite-csv benchmark_artifacts/longbench_v2_samples/small_smoke.csv \
-  --llm-provider openai_compatible \
-  --executor-model Qwen/Qwen2.5-7B-Instruct \
-  --evaluator-model Qwen/Qwen2.5-7B-Instruct \
-  --mode cache \
-  --cache-state-root "$JARVIS_CACHE_STATE_ROOT" \
-  --row-types original,exact,semantic \
-  --output-dir benchmark_artifacts \
-  --manifest-note jarvis-l40s-small-smoke' \
-  bash adarsh-rlms/jarvis/run.sh submit client
+OPENAI_COMPAT_EXECUTOR_MODEL=Qwen/Qwen2.5-7B-Instruct \
+  bash adarsh-rlms/jarvis/run_longbench_v2.sh direct \
+  --context-window-tokens 8192 --max-input-tokens 8184 \
+  --direct-overflow middle --max-rows 2 --fail-fast \
+  --manifest-note jarvis-small-smoke
 ```
 
-Treat this run as plumbing validation, not benchmark-quality accuracy.
+The run is written under `benchmark_artifacts/longbench_v2_api/`. Treat it as
+plumbing validation, not benchmark accuracy.
 
-Stop the small-smoke service when the provider test and tiny LongBench check are
-done:
+Stop the small-smoke service when both checks are done:
 
 ```bash
 scancel <small_smoke_job_id>
 ```
 
-## 9. Optional 24B One-Service Smoke Test
-
-After `small-smoke` passes, you can run the Mistral 24B one-service smoke path
-before starting both production services. This path now uses
-`mistralai/Mistral-Small-24B-Instruct-2501` because the newer
-`mistralai/Mistral-Small-3.2-24B-Instruct-2506` resolves as a Pixtral/multimodal
-architecture in vLLM and failed on Jarvis with a
-`MistralCommonPixtralProcessor` startup error.
-
-```bash
-MODULES="cuda12.8/toolkit/12.8.1" \
-SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash adarsh-rlms/jarvis/run.sh submit smoke
-```
-
-Wait until the log shows:
-
-```text
-Application startup complete.
-```
-
-Then read the endpoint URL and verify `/v1/models`:
-
-```bash
-SMOKE_URL=$(cat "$PROJECT_LOG_DIR"/smoke-<job_id>.url)
-echo "$SMOKE_URL"
-curl "$SMOKE_URL/models"
-```
-
-The model response should include:
-
-```text
-mistralai/Mistral-Small-24B-Instruct-2501
-```
-
-Run the provider smoke test with both roles pointing at the one 24B endpoint:
-
-```bash
-LLM_PROVIDER=openai_compatible \
-OPENAI_COMPAT_BASE_URL="$SMOKE_URL" \
-OPENAI_COMPAT_EXECUTOR_BASE_URL="$SMOKE_URL" \
-OPENAI_COMPAT_EVALUATOR_BASE_URL="$SMOKE_URL" \
-OPENAI_COMPAT_EXECUTOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501 \
-OPENAI_COMPAT_EVALUATOR_MODEL=mistralai/Mistral-Small-24B-Instruct-2501 \
-WAIT_FOR_ENDPOINTS=1 \
-CLIENT_CMD="uv run python -m unittest discover -s test -p test_semantic_cache_llm_provider.py" \
-  bash adarsh-rlms/jarvis/run.sh submit client
-```
-
-That job should report:
-
-```text
-Ran 9 tests
-OK
-```
-
-Stop the one-service smoke job after these checks unless you want to run another
-tiny benchmark against it:
-
-```bash
-scancel <smoke_job_id>
-```
-
-If you explicitly override `SMOKE_MODEL` or `EVALUATOR_MODEL` back to the 3.2
-model and it fails with `MistralCommonImageProcessor` or
-`MistralCommonPixtralProcessor`, it is a Mistral/vLLM processor dependency
-issue, not a Jarvis storage or Slurm issue. First update the Mistral processor
-dependency inside the vLLM venv:
-
-```bash
-source /home/edogu/.venvs/adarsh-vllm/bin/activate
-uv pip install --upgrade "mistral_common>=1.6.2"
-python -c "import mistral_common; print(mistral_common.__version__)"
-```
-
-Then resubmit with an explicit override only if you still want to test 3.2:
-
-```bash
-MODULES="cuda12.8/toolkit/12.8.1" \
-SMOKE_MODEL=mistralai/Mistral-Small-3.2-24B-Instruct-2506 \
-SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash adarsh-rlms/jarvis/run.sh submit smoke
-```
-
-Step 9 is optional; if `small-smoke` and the tiny client benchmark already
-passed, you can skip it.
-
-## 10. Start The Two Production Services
-
-Start the executor service:
-
-```bash
-MODULES="cuda12.8/toolkit/12.8.1" \
-EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B \
-EXECUTOR_TP_SIZE=4 \
-EXECUTOR_MAX_MODEL_LEN=262144 \
-VLLM_GPU_MEMORY_UTILIZATION=0.90 \
-VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1 --enable-chunked-prefill --max-num-batched-tokens 8192" \
-SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash adarsh-rlms/jarvis/run.sh submit executor
-```
-
-Start the evaluator service:
-
-```bash
-MODULES="cuda12.8/toolkit/12.8.1" \
-EVALUATOR_MODEL=Qwen/Qwen3.5-35B-A3B \
-EVALUATOR_TP_SIZE=2 \
-EVALUATOR_MAX_MODEL_LEN=16384 \
-EVALUATOR_PORT=8011 \
-VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only" \
-SYNC_BACK_MODELS=1 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm \
-  bash adarsh-rlms/jarvis/run.sh submit evaluator
-```
-
-This Qwen profile is explicit on purpose: it does not change the repository
-defaults. `Qwen/Qwen3.6-35B-A3B` is the executor candidate, and
-`Qwen/Qwen3.5-35B-A3B` is the evaluator candidate. Both are run as text-only
-non-thinking services for the LongBench-v2 MCQ path. If the evaluator has
-serving or output-format issues, use `Qwen/Qwen3-30B-A3B-Instruct-2507` as the
-fallback evaluator with the same `EVALUATOR_MAX_MODEL_LEN`.
-
-The executor uses Qwen3.6's native `EXECUTOR_MAX_MODEL_LEN=262144` window. Keep
-the evaluator at `16384`; evaluator calls are short semantic-equivalence and
-routing checks, not full synthesis prompts. This command affects only a newly
-submitted executor job; it does not alter an already-running service.
-
-Watch both jobs:
-
-```bash
-squeue -u "$USER"
-tail -f "$PROJECT_LOG_DIR"/rlms-executor-<executor_job_id>.out
-tail -f "$PROJECT_LOG_DIR"/rlms-evaluator-<evaluator_job_id>.out
-```
-
-Before using the executor, verify its startup log reports all of the following:
-
-```text
-Available KV cache memory: ...
-GPU KV cache size: ... tokens
-Maximum concurrency for 262,144 tokens per request: X.XXx
-Application startup complete.
-```
-
-Require `X.XX` to be at least `1.00` and reject a startup with a CUDA OOM or
-engine-initialization failure. For Qwen's hybrid attention layout, use the
-explicit maximum-concurrency line as the capacity check rather than dividing
-the displayed GPU KV cache token count by the context length.
-
-Read the endpoint files:
-
-```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-<executor_job_id>.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-<evaluator_job_id>.url)
-
-echo "$EXECUTOR_URL"
-echo "$EVALUATOR_URL"
-```
-
-Example:
-
-```bash
-EXECUTOR_URL=$(cat "$PROJECT_LOG_DIR"/executor-1123664.url)
-EVALUATOR_URL=$(cat "$PROJECT_LOG_DIR"/evaluator-1123665.url)
-
-echo "$EXECUTOR_URL"
-echo "$EVALUATOR_URL"
-```
-
-The expected shape is:
-
-```text
-executor:  http://<executor-node>:8000/v1
-evaluator: http://<evaluator-node>:8001/v1
-```
-
-## 11. Stop Services After The Experiment
-
-The vLLM service jobs are long-running servers. They do not stop automatically
-when a client job finishes.
-
-```bash
-scancel <executor_job_id>
-scancel <evaluator_job_id>
-```
-
-Confirm:
-
-```bash
-squeue -u "$USER"
-```
-
-## 12. Clean Node-Local Scratch
+## 9. Clean Node-Local Scratch
 
 `/local` is per node, so cleanup must run on the node you want to clean. The
 cleanup script defaults to dry-run behavior and removes nothing unless
@@ -671,13 +417,13 @@ The cleanup script is guarded to target only this project's paths:
 
 Stop active vLLM jobs before deleting node-local model cache on their node.
 
-## 13. Common Failure Checks
+
+## 10. Common Failure Checks
 
 If a service never becomes reachable:
 
 ```bash
 tail -n 200 "$PROJECT_LOG_DIR"/rlms-executor-<job_id>.out
-tail -n 200 "$PROJECT_LOG_DIR"/rlms-evaluator-<job_id>.out
 ```
 
 Likely causes:
@@ -688,8 +434,8 @@ Likely causes:
   only the exact module name shown by `module avail` or recommended by admins.
 - Local scratch has too little free space; run the cleanup script on that node
   or lower `MIN_LOCAL_FREE_GB` if the model is already cached.
-- The model context length is too high for available GPU memory; lower
-  `EXECUTOR_MAX_MODEL_LEN` or `EVALUATOR_MAX_MODEL_LEN`.
+- The model context length is too high for available GPU memory; check the
+  `Maximum concurrency` line in the executor log.
 - The endpoint URL points to `127.0.0.1` from a different Slurm job. Use the
   hostname URL written to the `.url` file.
 
@@ -700,23 +446,11 @@ sacct -j <client_job_id> --format=JobID,JobName,State,ExitCode,MaxRSS,ReqMem,Ela
 tail -n 200 "$PROJECT_LOG_DIR"/rlms-client-<client_job_id>.out
 ```
 
-Likely causes:
-
-- The client Slurm allocation is still the dispatcher default of 32 GB.
-- The local embedding model is still using the default embedding batch size of
-  16 chunks per CPU forward pass.
-- `SEMANTIC_CACHE_DOC_CHUNK_TOKENS` is low and
-  `SEMANTIC_CACHE_DOC_CHUNK_OVERLAP_TOKENS` is high, increasing chunk count and
-  duplicated text.
-- The sampled suite includes 50k-200k token contexts, so ingest, tokenizer
-  offsets, embeddings, metadata, and FAISS state are all larger.
-
-Rerun only the client job with `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE=1`,
-`SEMANTIC_CACHE_EMBEDDING_DEVICE=cuda` through `submit client-gpu`, a larger
-`CLIENT_MEM` value, or a less chunk-heavy profile such as `12000/3000` or
-`20000/4000`. If the traceback still points inside `EmbeddingEngine.encode` after
-batch size 1 on GPU, lower `SEMANTIC_CACHE_EMBEDDING_MAX_LENGTH` to `4096` as a
-memory tradeoff. The vLLM service jobs can stay running.
+For a hybrid job, lower `SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE` (default 16
+chunks per forward pass) or raise `CLIENT_MEM` (default 96 GB) and resubmit only
+the client job. Smaller `--child-tokens` or larger `--child-overlap-tokens`
+increase the number of chunks and the memory they need. The vLLM service jobs
+can stay running.
 
 If the benchmark imports fail, fix the client environment and rerun only the
-client job. The vLLM service jobs can stay running.
+client job.

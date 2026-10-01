@@ -8,7 +8,7 @@ is disabled. No evaluator service is required.
 See the [benchmark overview with examples](../docs/mrcr_v2.md) for the task,
 token bounds, execution modes, and scoring.
 
-All preparation, executor startup, endpoint setup, preflight, evaluation,
-Jarvis submission, and validation commands are in the
-[MRCR v2 Jarvis runbook](../docs/jarvis/MRCR_V2_RUNBOOK.md).
-The runbook also documents token bounds, metrics, and output artifacts.
+MRCR runs on the Neselab Linux server. Setup and executor startup are in the
+[Linux setup runbook](../docs/linux/SETUP_RUNBOOK.md); preparation, preflight
+and run commands are in the
+[Linux benchmark runbook](../docs/linux/BENCHMARK_RUNBOOK.md).

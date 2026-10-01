@@ -536,7 +536,9 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
                 output_dir=root / "artifacts",
                 manifest_note="local direct test",
                 source_ids="row_1",
+                serving_metadata=root / "serving.json",
             )
+            (root / "serving.json").write_text(json.dumps({"host": "node-1"}), encoding="utf-8")
 
             run_longbench_api_benchmark(
                 args,
@@ -548,6 +550,7 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
             manifest = json.loads((run_dir / "manifest.json").read_text())
             bridge_row = json.loads((run_dir / "bridge_rows.jsonl").read_text().splitlines()[0])
 
+        self.assertEqual(manifest["serving_metadata"], {"host": "node-1"})
         payload = calls[0]["body"]
         self.assertEqual(payload["model"], "Qwen/Qwen3.6-35B-A3B")
         self.assertEqual(payload["max_tokens"], 8)

@@ -155,4 +155,4 @@ establish live grading quality or accuracy recovery.
 
 References: [official testing methodology](https://artificialanalysis.ai/methodology/intelligence-benchmarking),
 [pinned v1.1 documentation](https://huggingface.co/datasets/ArtificialAnalysis/AA-LCR/blob/9a77ef56b717057ade24ceab4d273712a0b4f19e/README.md),
-[AA-LCR runbook](jarvis/AA_LCR_RUNBOOK.md).
+[AA-LCR runbook](../jarvis/AA_LCR_RUNBOOK.md).

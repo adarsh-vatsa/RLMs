@@ -38,7 +38,8 @@ matching response and copy it, with the required 12-character marker.
 Released datasets have **2, 4, or 8 matching responses**, called needles. Longer
 synthetic conversations contain more surrounding exchanges and distractors;
 the release extends to approximately **8M tokens**. Filler can repeat, so this
-does not imply 8M tokens of unique information. Our default is 8 needles.
+does not imply 8M tokens of unique information. The preparation script defaults
+to 8 needles; the current results use 4.
 
 Source-length filtering and executor limits are independent:
 
@@ -131,5 +132,5 @@ whole system, rather than the model's native context capacity.
 ## Further reading
 
 - [Linux runbook: preparation, preflight, and run commands](linux/BENCHMARK_RUNBOOK.md)
-- [Jarvis runbook: preparation, executor startup, bounds, and run commands](jarvis/MRCR_V2_RUNBOOK.md)
+- [Linux setup runbook: environment and executor startup](linux/SETUP_RUNBOOK.md)
 - [Upstream MRCR v2 benchmark](https://github.com/google-deepmind/eval_hub/tree/master/eval_hub/mrcr_v2)
