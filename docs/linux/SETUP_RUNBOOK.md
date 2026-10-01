@@ -150,6 +150,44 @@ instead, also set `OPENAI_COMPAT_EVALUATOR_BASE_URL` and
 `Qwen/Qwen3.5-35B-A3B` for the local evaluator service, and check that endpoint
 with `curl` the same way.
 
+### Record the serving setup
+
+Benchmarks run on different servers (LongBench on Jarvis; MRCR and AA-LCR here),
+so each run should record what served it. With the executor running, save its
+setup once in the benchmark terminal, and again whenever the service restarts
+with different settings. The benchmark commands pass this file with
+`--serving-metadata`, which copies it into each run's manifest.
+
+```bash
+mkdir -p .cache
+.venv/bin/python - <<'EOF'
+import datetime, json, os, platform, subprocess, urllib.request
+
+base = os.environ.get("OPENAI_COMPAT_EXECUTOR_BASE_URL", "http://127.0.0.1:8000/v1")
+with urllib.request.urlopen(base.rstrip("/") + "/models", timeout=10) as response:
+    served = json.load(response)["data"]
+gpus = subprocess.run(
+    ["nvidia-smi", "--query-gpu=name,memory.total,driver_version", "--format=csv,noheader"],
+    capture_output=True, text=True, check=True).stdout.strip().splitlines()
+vllm_python = os.path.join(os.environ.get("VLLM_VENV", os.path.expanduser("~/.venvs/adarsh-vllm")), "bin", "python")
+vllm = subprocess.run([vllm_python, "-c", "import importlib.metadata as m; print(m.version('vllm'))"],
+                      capture_output=True, text=True, check=True).stdout.strip()
+metadata = {
+    "recorded_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+    "host": platform.node(),
+    "gpus": gpus,
+    "vllm_version": vllm,
+    "executor_base_url": base,
+    "served_models": [{"id": m["id"], "max_model_len": m.get("max_model_len")} for m in served],
+}
+with open(".cache/serving_metadata.json", "w") as handle:
+    handle.write(json.dumps(metadata, indent=2) + "\n")
+print(json.dumps(metadata, indent=2))
+EOF
+```
+
+Set `VLLM_VENV` first if you use the repaired environment.
+
 To use services already running locally or remotely, skip local service startup
 and set those URLs/model names to the actual endpoints. They need not be on
 Jarvis. For authenticated endpoints, set `OPENAI_COMPAT_API_KEY_ENV` to the name

@@ -154,23 +154,33 @@ full served context would fit every one and hybrid would send the same request
 as direct. The comparison instead uses a 64K model window: 65,536 tokens minus
 the 4,096-token output allowance leaves a 61,440-token input budget, which every
 question exceeds. Direct keeps a head and a tail slice of each prompt, a median
-of 57%. All runs share one run ID so the grading step can find them.
+of 57%. Record the serving setup first, as in the
+[setup runbook](SETUP_RUNBOOK.md#record-the-serving-setup); each command copies it
+into its run manifest.
 
 ```bash
 export AA_LCR_RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
 SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh aa_lcr hybrid \
   --execution-only --context-window-tokens 65536 --max-input-tokens 61440 \
-  --max-output-tokens 4096 --run-id "$AA_LCR_RUN_ID" --fail-fast
+  --max-output-tokens 4096 --run-id "$AA_LCR_RUN_ID" --fail-fast \
+  --serving-metadata .cache/serving_metadata.json
 
 bash linux/run_benchmark.sh aa_lcr direct \
   --execution-only --context-window-tokens 65536 --max-input-tokens 61440 \
-  --max-output-tokens 4096 --direct-overflow middle --run-id "$AA_LCR_RUN_ID" --fail-fast
+  --max-output-tokens 4096 --direct-overflow middle --run-id "$AA_LCR_RUN_ID" --fail-fast \
+  --serving-metadata .cache/serving_metadata.json
 ```
 
 Without `--direct-overflow middle`, the common profile records every example as
 unsupported. Hybrid embeds each of the 30 document sets once and reuses the
-index for that set's questions; with CPU embeddings this should take about 1.5
-hours, and direct about 15 minutes.
+index for that set's questions. On this server with CPU embeddings, the 30
+September runs took about 2.75 hours for hybrid and 14 minutes for direct.
+
+With thinking disabled, the model still reasons inside its answer, and 9 of those
+200 answers reached the 4,096-token output limit before giving a final value
+(4 hybrid, 5 direct). A larger `--max-output-tokens` needs a matching smaller
+`--max-input-tokens` (65,536 minus the output allowance), and both modes must use
+the same values.
 
 OPTIONAL: For the full-context reference, run direct once at the full served window,
 where every prompt fits. A hybrid run there would send identical requests.
@@ -178,7 +188,8 @@ where every prompt fits. A hybrid run there would send identical requests.
 ```bash
 bash linux/run_benchmark.sh aa_lcr direct \
   --execution-only --context-window-tokens 262144 --max-input-tokens 258048 \
-  --max-output-tokens 4096 --run-id "${AA_LCR_RUN_ID}_full" --fail-fast
+  --max-output-tokens 4096 --run-id "${AA_LCR_RUN_ID}_full" --fail-fast \
+  --serving-metadata .cache/serving_metadata.json
 ```
 
 `--execution-only` saves answers without grading them, so generation and
@@ -192,19 +203,26 @@ that.
 By default the grader is the executor model, reached through the running
 executor service, so grading needs no second model and no service restart. Both
 modes are graded by the same model, which keeps the hybrid–direct comparison
-even. Because the model grades its own answers, regrade with an independent
-grader before reporting absolute scores. Regrading writes to a new directory and
+even. Absolute scores need an independent grader, though: in the 30 September
+runs, the executor grading its own answers made 3 errors among 30 grades that
+were checked by hand. It accepted a cut-off answer with no final value, and
+rejected "$901,170 (in thousands)" against "$901 million" and a ranking with
+country names spelled out. Regrading writes to a new directory and
 never changes the saved answers. The grader prompt applies the official AA-LCR
 equivalence rules, so, for example, `0.09`, `9%` and `9 percentage points` match.
 Pass the grader model explicitly, since `aa_lcr.regrade` does not read
 `OPENAI_COMPAT_EVALUATOR_MODEL`.
 
-IMPORTANT: Do not forget to change experiment IDs below.
+Set the two run folders first. They default to the shared run ID; if the runs
+got different IDs, as the 30 September runs did, set them explicitly.
+
 ```bash
+AA_LCR_HYBRID_RUN=${AA_LCR_HYBRID_RUN:-hybrid/$AA_LCR_RUN_ID}   # e.g. hybrid/20260930T025706Z
+AA_LCR_DIRECT_RUN=${AA_LCR_DIRECT_RUN:-direct/$AA_LCR_RUN_ID}   # e.g. direct/20260930T134555Z
 AA_LCR_DATA_DIR=${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}
 AA_LCR_GRADER_MODEL=${OPENAI_COMPAT_EVALUATOR_MODEL:-${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}}
 AA_LCR_GRADER_URL=${OPENAI_COMPAT_EVALUATOR_BASE_URL:-${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}}
-for run in hybrid/20260930T025706Z direct/20260930T134555Z; do
+for run in "$AA_LCR_HYBRID_RUN" "$AA_LCR_DIRECT_RUN"; do
   .venv/bin/python -m aa_lcr.regrade \
     --source-run "benchmark_artifacts/aa_lcr/$run" \
     --output-dir "benchmark_artifacts/aa_lcr/regrades/${AA_LCR_GRADER_MODEL##*/}/$run" \
@@ -222,8 +240,26 @@ apart. For an independent grader, set `OPENAI_COMPAT_EVALUATOR_BASE_URL` and
 the loop again. A hosted OpenAI-style grader also needs
 `--grader-api-style openai` and `--evaluator-api-key-env`; a local grader served
 with fewer than 32,768 context tokens needs a matching `--grader-context-window`.
-Set `AA_LCR_RUN_ID` again in a new shell. Add `--validate-only` to check that a
+Set these variables again in a new shell. Add `--validate-only` to check that a
 run's answers and sources are intact without calling the grader.
+
+#### Compare the two modes
+
+Compare regrades made by the same grader. The report gives the paired accuracy
+difference with a 95% interval that resamples whole document sets, the questions
+each mode gained and lost, and how many answers hit the output limit. It refuses
+to overwrite an existing report.
+
+```bash
+AA_LCR_REGRADES=benchmark_artifacts/aa_lcr/regrades/${AA_LCR_GRADER_MODEL##*/}
+.venv/bin/python -m aa_lcr.compare_conditions \
+  --baseline "$AA_LCR_REGRADES/$AA_LCR_DIRECT_RUN" \
+  --candidate "$AA_LCR_REGRADES/$AA_LCR_HYBRID_RUN" \
+  --output "benchmark_artifacts/aa_lcr/comparisons/${AA_LCR_GRADER_MODEL##*/}/${AA_LCR_HYBRID_RUN#*/}.json"
+```
+
+For the 30 September runs graded by Qwen3.6, this gives +17 points for hybrid
+(37% to 54%; 95% interval +8.4 to +25.9), with 23 questions gained and 6 lost.
 
 ### MRCR v2
 
@@ -258,12 +294,12 @@ SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
   --context-window-tokens 262144 --max-input-tokens 258048 \
   --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
   --child-tokens "$MRCR_CHILD_TOKENS" --child-overlap-tokens "$MRCR_CHILD_OVERLAP_TOKENS" \
-  --fail-fast
+  --fail-fast --serving-metadata .cache/serving_metadata.json
 
 bash linux/run_benchmark.sh mrcr_v2 direct \
   --context-window-tokens 262144 --max-input-tokens 258048 \
   --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
-  --direct-overflow middle --fail-fast
+  --direct-overflow middle --fail-fast --serving-metadata .cache/serving_metadata.json
 ```
 
 The 133K conversation fits the budget, so direct reads it whole, which makes it
