@@ -325,10 +325,10 @@ Each hybrid run builds its own index, embedding each conversation once and
 reusing it for every question on that conversation. With 7,500-token chunks on
 CPU, embedding took 7.7, 15 and 28.5 minutes for the 267K, 534K and 1.07M
 conversations; smaller chunks embed about as many tokens but have not been
-timed. Packing re-tokenizes the prompt once per candidate chunk, about 160 ms
-each at this budget, so 1,000-token chunks add roughly 40 seconds per question,
-against about 6 seconds with 7,500-token chunks. Generation takes about 30
-seconds per question at this budget.
+timed. Packing re-counts the full prompt (about 160 ms at this budget) only when
+token bounds cannot decide, a handful of times per question, so smaller chunks no
+longer add a recount per chunk. Generation takes about 30 seconds per question at
+this budget.
 To measure how much retrieval depends on the budget, rerun the hybrid command
 with `--context-window-tokens 65536 --max-input-tokens 61440`; that repeats the
 embedding. Dropping `--direct-overflow middle` records every oversized example
@@ -338,6 +338,63 @@ as unsupported without an API call instead.
 `stopped_early`. Without it, a run whose examples all fail still reports
 `status: complete` with a mean score of zero, because execution failures count
 as supported examples scoring zero.
+
+## Overflow-policy conditions
+
+These runs compare what each policy keeps when the prompt exceeds the window,
+at the same budget, for the [workshop paper plan](../workshop_paper_plan_20261012.md).
+A condition changes only the flags below; keep data, budgets and serving
+identical within a comparison and give each run its own `--run-id` suffix.
+Option details are in the
+[options reference](SHARED_EXECUTION_RUNBOOK.md#retrieval-and-packing-options).
+
+| Condition | Mode | Flags |
+|---|---|---|
+| Middle truncation (benchmark default) | direct | `--direct-overflow middle` |
+| Middle truncation with an omission marker | direct | `--direct-overflow middle-marked` |
+| Head only | direct | `--direct-overflow head` |
+| Head and tail of every document | hybrid | `--evidence-selection position` |
+| Random chunks | hybrid | `--evidence-selection random --selection-seed 0` (repeat with seeds 1 and 2) |
+| BM25 | hybrid | `--evidence-selection bm25` |
+| Dense (current default) | hybrid | none |
+| Dense + BM25 fusion | hybrid | `--evidence-selection fusion` |
+| Upgraded recipe | hybrid | `--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --document-floor --packing fill` |
+
+`position` and `random` are rendered exactly like retrieval: source order,
+original document numbers and the benchmark's omission markers. They differ from
+dense retrieval only in which chunks they keep. Only `dense` and `fusion`
+embed chunks, so the other hybrid conditions take minutes.
+
+```bash
+export AA_LCR_RUN_ID=$(date -u +%Y%m%dT%H%M%SZ)
+AA_LCR_64K=(--execution-only --context-window-tokens 65536 --max-input-tokens 61440
+  --max-output-tokens 4096 --fail-fast --serving-metadata .cache/serving_metadata.json)
+
+bash linux/run_benchmark.sh aa_lcr direct "${AA_LCR_64K[@]}" \
+  --direct-overflow middle-marked --run-id "${AA_LCR_RUN_ID}_middle_marked"
+
+SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh aa_lcr hybrid "${AA_LCR_64K[@]}" \
+  --evidence-selection random --selection-seed 0 --run-id "${AA_LCR_RUN_ID}_random0"
+```
+
+MRCR takes the same flags after its usual budget options. It also accepts
+`--retrieval-query question`, which ranks chunks by the full final question,
+marker and ordinal included, instead of the described request:
+
+```bash
+SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu bash linux/run_benchmark.sh mrcr_v2 hybrid \
+  --context-window-tokens 262144 --max-input-tokens 258048 \
+  --max-output-tokens 4096 --max-rows-per-source "$MRCR_ROWS_PER_SOURCE" \
+  --child-tokens "$MRCR_CHILD_TOKENS" --child-overlap-tokens "$MRCR_CHILD_OVERLAP_TOKENS" \
+  --evidence-selection bm25 --fail-fast --serving-metadata .cache/serving_metadata.json
+```
+
+For embedding time on the GPU, drop `SEMANTIC_CACHE_EMBEDDING_DEVICE=cpu`. On the
+single-GPU server, vLLM's default `VLLM_GPU_MEMORY_UTILIZATION=0.90` leaves about
+9 GB for the 0.6B embedding model; if embedding runs out of memory, lower
+`SEMANTIC_CACHE_EMBEDDING_BATCH_SIZE` or restart vLLM with
+`VLLM_GPU_MEMORY_UTILIZATION=0.85`. Records keep `document_embedding_ms` for the
+cost comparison.
 
 ## Budget and routing options
 

@@ -49,7 +49,7 @@ reads also need a cache verifier (`--cache-verifier-model` and
 
 | Option | Applies to | Behavior |
 |---|---|---|
-| `--direct-overflow middle` | Direct | Keep a head and tail of oversized prompts; without it they are recorded as unsupported |
+| `--direct-overflow middle` | Direct | Keep a head and tail of oversized prompts; without it they are recorded as unsupported. `middle-marked` adds an omission marker at the cut; `head` keeps only the start |
 | `--min-source-tokens`, `--max-source-tokens` | Both | Select questions by full rendered prompt length; supply both |
 | `--max-rows` | Both | Limit the number of questions; with source bounds, applied after the length filter |
 | `--source-ids` | Both | Comma-separated document identifiers |
@@ -67,6 +67,8 @@ reads also need a cache verifier (`--cache-verifier-model` and
 | `--output-dir` | Both | Artifact parent directory; default `benchmark_artifacts` |
 | `--child-tokens`, `--child-overlap-tokens` | Hybrid | Chunk size and overlap in embedding tokens; default 7,500 and 750 |
 | `--evidence-order`, `--merge-overlaps` | Hybrid | Evidence presentation; default source order with overlaps merged |
+| `--evidence-selection`, `--selection-seed` | Hybrid | Chunk ordering: `dense` (default), `bm25`, `fusion`, `random` or `position`; see the [options reference](../linux/SHARED_EXECUTION_RUNBOOK.md#retrieval-and-packing-options) |
+| `--neighbor-children`, `--document-floor`, `--packing` | Hybrid | Neighbour widening, per-document floor and `stop`/`skip`/`fill` packing; defaults reproduce earlier runs |
 | `--max-retries` | Direct | Request attempts per question; default 5 for local endpoints |
 | `--request-timeout-seconds` | Direct | Per-request timeout; default 120 |
 

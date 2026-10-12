@@ -62,8 +62,9 @@ model service.
 
 This diagram shows the common profile: exact offsets and source-order packing
 with overlap merging. Direct overflow is recorded as `unsupported_context` by
-default, or truncated in the middle with `--direct-overflow middle`, which all
-current direct runs use. Answer-cache reads and writes are independent switches,
+default, or truncated with `--direct-overflow middle` (an equal head and tail
+joined silently, the LongBench protocol, which all current direct runs use),
+`middle-marked` (the same with an omission marker) or `head`. Answer-cache reads and writes are independent switches,
 both off for primary quality runs.
 
 ```mermaid
@@ -79,10 +80,10 @@ flowchart TD
     MODE{"Execution mode?"}
     OVERFLOW{"Direct overflow policy?"}
     UNSUPPORTED["Record unsupported_context<br/>No executor call"]
-    TRUNCATE["middle_truncated<br/>Keep equal head and tail"]
+    TRUNCATE["middle_truncated, middle_marked_truncated or head_truncated<br/>Head and tail, marked cut, or head only"]
     INDEX["Build or reuse document index<br/>Exact chunks, embeddings and FAISS"]
-    RANK["Rank all children by dense relevance<br/>Optional configured reranker"]
-    PACK["Add candidates in score order<br/>Merge ranges within each document<br/>Render exact slices in source order<br/>Stop before the next candidate exceeds budget"]
+    RANK["Order all children: dense (default), BM25, fusion,<br/>random or position; optional reranker over the head;<br/>optional document floor and neighbour widening"]
+    PACK["Add candidates in that order<br/>Merge ranges within each document<br/>Render exact slices in source order<br/>stop at the first overflow, skip it, or fill the leftover"]
     GENERATE["Shared executor client<br/>Full prompt or packed evidence<br/>Output contract, retries and usage"]
     WRITE{"Answer-cache writes enabled<br/>and prediction eligible?"}
     STORE["Store generated answer and provenance<br/>Independent of its eventual grade"]
@@ -100,7 +101,7 @@ flowchart TD
     FIT -->|No| MODE
     MODE -->|Direct| OVERFLOW
     OVERFLOW -->|unsupported| UNSUPPORTED --> SAVE
-    OVERFLOW -->|middle| TRUNCATE --> GENERATE
+    OVERFLOW -->|middle, middle-marked, head| TRUNCATE --> GENERATE
     MODE -->|Hybrid| INDEX --> RANK --> PACK --> GENERATE
     GENERATE --> WRITE
     WRITE -->|Yes| STORE --> SAVE

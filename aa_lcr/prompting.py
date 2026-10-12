@@ -128,9 +128,9 @@ def prepare_direct_messages(
             f"{max_input_tokens}-token input budget"
         )
 
-    from execution.tokens import truncate_middle
+    from execution.tokens import truncate_prompt
 
-    truncated = truncate_middle(tokenizer, messages, max_input_tokens)
+    truncated = truncate_prompt(tokenizer, messages, max_input_tokens)
     rendered_tokens = chat_token_count(tokenizer, truncated)
     return truncated, {
         "prompt_truncated": True,

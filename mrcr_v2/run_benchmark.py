@@ -185,7 +185,7 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
         "max_input_tokens": args.max_input_tokens, "max_output_tokens": args.max_output_tokens,
         "context_window_tokens": args.context_window_tokens,
         "child_tokens": args.child_tokens, "child_overlap_tokens": args.child_overlap_tokens,
-        "executor_model": args.executor_model, "executor_base_url": args.executor_base_url,
+        "retrieval_query": args.retrieval_query, "executor_model": args.executor_model, "executor_base_url": args.executor_base_url,
         "temperature": 0, "enable_thinking": False, "answer_cache_enabled": config.cache_read or config.cache_write,
         "execution": config.metadata(),
         "reranker_enabled": config.rerank_top > 0, "knowledge_lookup_enabled": False,
@@ -248,7 +248,8 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
             if row["source_id"] != previous_source:
                 prefix, body = read_source(data_dir, row["source_id"])
                 previous_source = row["source_id"]
-            task = solver_task(row["case_id"], row["source_id"], prefix, body, row["question"])
+            task = solver_task(row["case_id"], row["source_id"], prefix, body, row["question"],
+                               retrieval_query=args.retrieval_query)
             record["retrieval_query"] = task.query
             result = pipeline.execute(task)
             record.update(result)
@@ -300,6 +301,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-output-tokens", type=int, default=4096)
     parser.add_argument("--child-tokens", type=int, default=7500)
     parser.add_argument("--child-overlap-tokens", type=int, default=750)
+    parser.add_argument("--retrieval-query", choices=["request", "question"], default="request",
+                        help="Rank chunks by the described request (default) or by the full final question")
     parser.add_argument("--max-rows", type=int, default=0)
     parser.add_argument("--max-rows-per-source", type=int, default=0,
                         help="At most N evenly spaced questions per source, applied before --max-rows")

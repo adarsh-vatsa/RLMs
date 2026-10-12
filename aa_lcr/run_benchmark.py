@@ -54,7 +54,7 @@ from execution.client import served_context_window
 from execution.pipeline import Pipeline
 from execution.artifacts import record_evaluation, finalize
 from execution.selection import add_source_arguments, filter_sources, selection_limit
-from execution.tokens import route as execution_route
+from execution.tokens import TRUNCATION_ROUTES, route as execution_route
 
 
 DEFAULT_EXECUTOR_MODEL = "Qwen/Qwen3.6-35B-A3B"
@@ -556,7 +556,7 @@ def run_benchmark(
         cache_provenance = result["cache_provenance"]
         selected_evidence_ranges = result["selected_evidence_ranges"]
         full_tokens, final_tokens = result["full_rendered_input_tokens"], result["final_rendered_input_tokens"]
-        prompt_truncated = route == "middle_truncated"
+        prompt_truncated = route in TRUNCATION_ROUTES.values()
         prompt_tokens_removed = full_tokens - final_tokens if prompt_truncated else 0
         ingested_chunks, ingest_ms = result["ingested_chunks"], result["ingest_ms"]
         document_embedding_ms = result["document_embedding_ms"]

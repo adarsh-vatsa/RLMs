@@ -5,8 +5,9 @@ import time
 from execution.client import call_with_retries
 from execution.contracts import Config, Task, fingerprint
 from execution.packing import pack
-from execution.retrieval import index_documents
-from execution.tokens import chat_token_count, route, truncate_middle
+from execution.retrieval import (document_floor, expand_neighbors, index_documents, lexical_index,
+                                 order_candidates, rerank_head)
+from execution.tokens import TRUNCATION_ROUTES, chat_token_count, route, truncate_prompt
 
 
 class Pipeline:
@@ -18,6 +19,7 @@ class Pipeline:
         self.scs = self.controller = None
         self.embedding_identity = None
         self.active_index = None
+        self.lexical = None
         self.tokenizer_identity = {
             "class": type(tokenizer).__name__,
             "revision": getattr(tokenizer, "init_kwargs", {}).get("_commit_hash"),
@@ -69,7 +71,8 @@ class Pipeline:
             "status": "ok", "error": "", "route": "", "prediction": "",
             "full_rendered_input_tokens": 0, "final_rendered_input_tokens": 0,
             "selected_evidence_ranges": [], "selected_child_indices": [], "candidate_count": 0,
-            "packing_stop_reason": "", "ingested_chunks": 0, "child_encoded_length_max": 0,
+            "packing_stop_reason": "", "packing_renders": 0, "packing_trimmed_chars": 0,
+            "evidence_selection": "", "ingested_chunks": 0, "child_encoded_length_max": 0,
             "faiss_candidates": [],
             "ingest_ms": 0.0, "document_embedding_ms": 0.0, "retrieval_ms": 0.0,
             "packing_ms": 0.0, "generation_ms": 0.0, "cache_verification_ms": 0.0,
@@ -118,13 +121,16 @@ class Pipeline:
                 if result["route"] == "unsupported_context":
                     result["status"] = "unsupported_context"
                 else:
-                    if result["route"] == "middle_truncated":
-                        request = truncate_middle(self.tokenizer, request, c.max_input_tokens)
+                    if result["route"] in TRUNCATION_ROUTES.values():
+                        request = truncate_prompt(self.tokenizer, request, c.max_input_tokens, c.direct_overflow)
                     elif result["route"] == "dense_child_packed":
                         controller = self.backend()
                         if self.active_index != source_key:
                             if c.exact_offsets:
-                                result.update(index_documents(self.scs, controller, task, c))
+                                result.update(index_documents(self.scs, controller, task, c,
+                                    embed=c.evidence_selection in {"dense", "fusion"}))
+                                self.lexical = (lexical_index(controller._doc_chunks)
+                                                if c.evidence_selection in {"bm25", "fusion"} else None)
                             else:
                                 if task.legacy_docs_dir is None:
                                     raise ValueError("Legacy ingestion requires a document directory")
@@ -141,17 +147,18 @@ class Pipeline:
                                     raise ValueError("A child reached the embedding input limit; reduce --child-tokens")
                             self.active_index = source_key
                         retrieve_at = time.perf_counter()
-                        kwargs = {"top_k": controller.doc_index.total, "rerank_top": c.rerank_top,
-                                  "use_reranker": c.rerank_top > 0}
-                        if c.cache_read:
-                            kwargs["query_embedding"] = getattr(controller, "_last_cache_query_embedding", None)
-                        candidates = controller.retrieve(task.query, **kwargs)
+                        candidates = self._candidates(task, controller)
                         result["faiss_candidates"] = [{"child_index": item["metadata"].get("child_index", item["metadata"].get("chunk_index")),
                                                        "score": float(item.get("score", 0))} for item in candidates]
+                        if c.neighbor_children:
+                            chunks = [{"metadata": meta} for meta in controller._doc_chunk_metadata]
+                            candidates = expand_neighbors(candidates, chunks, task.documents, c.neighbor_children)
+                        result["evidence_selection"] = c.evidence_selection
                         result["retrieval_ms"] = (time.perf_counter() - retrieve_at) * 1000
                         packed_at = time.perf_counter()
                         request, packing = pack(self.tokenizer, task.render, task.documents, candidates,
-                                                c.max_input_tokens, order=c.evidence_order, merge=c.merge_overlaps)
+                                                c.max_input_tokens, order=c.evidence_order, merge=c.merge_overlaps,
+                                                policy=c.packing)
                         result.update(packing)
                         result["packing_ms"] = (time.perf_counter() - packed_at) * 1000
                     result["final_rendered_input_tokens"] = chat_token_count(self.tokenizer, request)
@@ -183,6 +190,26 @@ class Pipeline:
             with (self.output_dir / "execution.jsonl").open("a", encoding="utf-8") as output:
                 output.write(json.dumps(result, ensure_ascii=False) + "\n")
         return result
+
+    def _candidates(self, task, controller):
+        c = self.config
+        dense = None
+        if c.evidence_selection in {"dense", "fusion"} or not c.exact_offsets:
+            kwargs = {"top_k": controller.doc_index.total, "rerank_top": 0 if c.exact_offsets else c.rerank_top,
+                      "use_reranker": c.rerank_top > 0 and not c.exact_offsets}
+            if c.cache_read:
+                kwargs["query_embedding"] = getattr(controller, "_last_cache_query_embedding", None)
+            dense = controller.retrieve(task.query, **kwargs)
+        if not c.exact_offsets:
+            return dense
+        chunks = [{"text": text, "score": 0.0, "metadata": meta}
+                  for text, meta in zip(controller._doc_chunks, controller._doc_chunk_metadata)]
+        candidates = order_candidates(c.evidence_selection, task.query, chunks, dense, self.lexical,
+                                      seed=c.selection_seed, case_id=task.case_id)
+        # The controller's own reranking keeps only its top results, which starves budget filling.
+        if c.rerank_top:
+            candidates = rerank_head(controller.reranker, task.query, candidates, c.rerank_top)
+        return document_floor(candidates) if c.document_floor else candidates
 
     @staticmethod
     def _eligible(task, prediction):

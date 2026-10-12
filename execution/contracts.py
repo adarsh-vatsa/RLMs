@@ -6,6 +6,7 @@ from typing import Callable
 
 
 PIPELINE_VERSION = "shared_direct_hybrid_v1"
+EVIDENCE_SELECTIONS = ("dense", "bm25", "fusion", "random", "position")
 
 
 def fingerprint(value) -> str:
@@ -52,6 +53,11 @@ class Config:
     cache_write: bool = False
     cache_matching: str = "semantic"
     rerank_top: int = 0
+    evidence_selection: str = "dense"
+    selection_seed: int = 0
+    neighbor_children: int = 0
+    document_floor: bool = False
+    packing: str = "stop"
     max_retries: int = 5
 
     def __post_init__(self):
@@ -63,8 +69,19 @@ class Config:
             raise ValueError("Input plus output budget must not exceed the context window")
         if self.child_tokens <= 0 or not 0 <= self.child_overlap_tokens < self.child_tokens:
             raise ValueError("Require child tokens > overlap >= 0")
-        if self.direct_overflow not in {"unsupported", "middle", "error"}:
+        if self.direct_overflow not in {"unsupported", "middle", "middle-marked", "head", "error"}:
             raise ValueError("Invalid direct overflow policy")
+        if self.evidence_selection not in EVIDENCE_SELECTIONS:
+            raise ValueError("Invalid evidence selection")
+        if self.packing not in {"stop", "skip", "fill"}:
+            raise ValueError("Invalid packing policy")
+        if self.neighbor_children < 0:
+            raise ValueError("Neighbor children must be non-negative")
+        if self.rerank_top and self.evidence_selection in {"random", "position"}:
+            raise ValueError("Reranking requires a query-ranked evidence selection")
+        if ((self.evidence_selection != "dense" or self.neighbor_children or self.document_floor
+                or self.packing != "stop") and not (self.exact_offsets and self.merge_overlaps)):
+            raise ValueError("Evidence selection, neighbors, document floor and packing require merged source order")
         if self.evidence_order not in {"source", "score"}:
             raise ValueError("Invalid evidence order")
         if self.merge_overlaps and self.evidence_order != "source":
@@ -95,8 +112,13 @@ def add_arguments(parser):
     parser.add_argument("--evidence-order", choices=("source", "score"))
     parser.add_argument("--merge-overlaps", action="store_true", default=None)
     parser.add_argument("--no-merge-overlaps", action="store_false", dest="merge_overlaps")
-    parser.add_argument("--direct-overflow", choices=("unsupported", "middle", "error"))
+    parser.add_argument("--direct-overflow", choices=("unsupported", "middle", "middle-marked", "head", "error"))
     parser.add_argument("--pipeline-rerank-top", type=int, default=0)
+    parser.add_argument("--evidence-selection", choices=EVIDENCE_SELECTIONS, default="dense")
+    parser.add_argument("--selection-seed", type=int, default=0)
+    parser.add_argument("--neighbor-children", type=int, default=0)
+    parser.add_argument("--document-floor", action="store_true")
+    parser.add_argument("--packing", choices=("stop", "skip", "fill"), default="stop")
     parser.add_argument("--cache-verifier-model")
     parser.add_argument("--cache-verifier-base-url")
     parser.add_argument("--cache-verifier-api-key-env", default="")
@@ -126,5 +148,7 @@ def resolve_config(args, *, mode, legacy_cache=False, legacy_source_order=False,
         cache_read=cache if args.answer_cache_read is None else args.answer_cache_read,
         cache_write=cache if args.answer_cache_write is None else args.answer_cache_write,
         cache_matching=args.cache_matching, rerank_top=args.pipeline_rerank_top,
+        evidence_selection=args.evidence_selection, selection_seed=args.selection_seed,
+        neighbor_children=args.neighbor_children, document_floor=args.document_floor, packing=args.packing,
         max_retries=getattr(args, "max_retries", 1), **budgets,
     )

@@ -83,6 +83,7 @@ from execution.contracts import add_arguments, resolve_config
 from execution.pipeline import Pipeline
 from execution.artifacts import record_evaluation, finalize
 from execution.selection import add_source_arguments, filter_sources, selection_limit
+from execution.tokens import TRUNCATION_ROUTES
 from long_bench_v2.adapter import solver_task
 
 
@@ -132,9 +133,9 @@ def prepare_openai_compatible_messages(
             "context_window_safety_margin_tokens": safety_margin_tokens,
         }
 
-    from execution.tokens import truncate_middle
+    from execution.tokens import truncate_prompt
 
-    truncated_messages = truncate_middle(tokenizer, messages, input_budget)
+    truncated_messages = truncate_prompt(tokenizer, messages, input_budget)
     final_prompt_tokens = _chat_token_count(tokenizer, truncated_messages)
     return truncated_messages, {
         "prompt_truncated": True,
@@ -522,7 +523,7 @@ def run_longbench_api_benchmark(
             latency_ms = result["total_ms"]
             usage = parse_api_usage({"usage": result["raw_usage"]}, args.api_model, success=result["status"] == "ok")
             before_tokens, after_tokens = result["full_rendered_input_tokens"], result["final_rendered_input_tokens"]
-            truncated = result["route"] == "middle_truncated"
+            truncated = result["route"] in TRUNCATION_ROUTES.values()
             truncation.update(prompt_truncated=truncated, prompt_tokens_before_truncation=before_tokens,
                 prompt_tokens_after_truncation=after_tokens, prompt_tokens_removed=before_tokens-after_tokens if truncated else 0,
                 context_window_tokens=args.context_window_tokens, input_token_budget=args.max_input_tokens,

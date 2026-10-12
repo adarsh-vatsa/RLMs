@@ -381,6 +381,17 @@ class MRCRTests(unittest.TestCase):
         self.assertGreater(records[0]["ingested_chunks"], 0)
         self.assertEqual(records[1]["ingested_chunks"], 0)
 
+    def test_full_question_retrieval_query(self):
+        data_dir, _ = self.prepare([example()])
+        scs = fake_scs()
+        args = self.run_args(data_dir, "hybrid", ["--max-input-tokens", "500", "--child-tokens", "100",
+                                                  "--child-overlap-tokens", "20", "--retrieval-query", "question"])
+        result, _, records, _ = self.execute(args, scs)
+        question = example()["view_ops"]
+        self.assertEqual(FakeController.instances[0].queries, [question])
+        self.assertEqual(records[0]["retrieval_query"], question)
+        self.assertEqual(json.loads((result / "manifest.json").read_text())["retrieval_query"], "question")
+
     def test_unrecognized_final_instruction_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "final instruction"):
             solver_task("case", "source", PREFIX, "User: x\n\n", f"User: Prepend {MARKER} to the first poem.\n\nAssistant:")

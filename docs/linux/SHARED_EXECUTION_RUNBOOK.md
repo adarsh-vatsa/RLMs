@@ -16,7 +16,7 @@ for the shared pipeline design.
 | Benchmark argument | `aa_lcr` or `mrcr_v2` |
 | Mode argument | `direct` sends the full prompt; `hybrid` sends it when it fits and retrieves evidence otherwise |
 | `--execution-profile` | `common` (Linux default) or `legacy` (historical per-runner policies) |
-| `--direct-overflow` | `unsupported` (common default), `middle` (truncate), or `error` (reject) |
+| `--direct-overflow` | `unsupported` (common default), `middle` (keep an equal head and tail, joined silently), `middle-marked` (the same with an omission marker), `head` (keep the start only), or `error` (reject) |
 
 The common profile uses exact tokenizer offsets, merges overlapping evidence,
 orders evidence by source position, and disables answer-cache reads/writes and
@@ -173,12 +173,27 @@ These affect oversized hybrid inputs, not fitting full-prompt requests.
 | `--pipeline-rerank-top` | `0` | Positive values enable the local reranker; zero disables it |
 | `--evidence-order` | `source` | `source` presents evidence chronologically; `score` follows retrieval ranking |
 | `--merge-overlaps` / `--no-merge-overlaps` | On with source order | Merge overlapping/adjoining ranges within each document |
+| `--evidence-selection` | `dense` | How chunks are ordered for packing: `dense` (embedding similarity), `bm25` (term matching), `fusion` (reciprocal-rank fusion of dense and BM25), `random` (seeded shuffle) or `position` (the head and tail of every document first, then deeper) |
+| `--selection-seed` | `0` | Seed for `random`, combined with each question's ID |
+| `--neighbor-children` | `0` | Widen each chosen chunk by this many neighbouring chunks on each side, within its document |
+| `--document-floor` | Off | Put each document's best-ranked chunk ahead of all others |
+| `--packing` | `stop` | `stop` ends at the first chunk that does not fit; `skip` keeps trying lower-ranked chunks; `fill` also trims the best remaining chunk into the leftover budget |
+| `--retrieval-query` | `request` | MRCR only: rank by the described request, or by the full final `question` |
 | `SEMANTIC_CACHE_EMBEDDING_DEVICE` | `cuda` in Linux hybrid mode | Embedding device; can be `cpu` or a CUDA device |
 | `SEMANTIC_CACHE_EMBEDDING_DTYPE` | `auto` | Embedding precision |
 
 Merging requires source order. For a score-order comparison, use
 `--evidence-order score` with `--no-merge-overlaps`. Packing measures the complete
-rendered request against the input budget.
+rendered request against the input budget, re-counting it only when token bounds
+cannot decide; `stop` selects exactly what counting after every chunk selects.
+
+Selection, neighbour, document-floor and packing options require merged source
+order. Only `dense` and `fusion` embed chunks; the other selections chunk with the
+same tokenizer, so all of them see identical chunk boundaries. Hybrid routes keep
+the name `dense_child_packed`; each record states its `evidence_selection`, and
+`packing_renders` and `packing_trimmed_chars` record packing work. With
+`--pipeline-rerank-top N`, the reranker reorders the first N chunks and the rest
+stay in order for packing.
 
 ## Run control and artifacts
 
