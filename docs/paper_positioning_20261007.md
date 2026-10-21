@@ -46,13 +46,13 @@ two September reports; this document does not repeat them in full.
 
 All runs use Qwen3.6-35B-A3B served by vLLM, one run per setting.
 
-| Benchmark | Setting | Truncation | Retrieval | Paired result |
-|---|---|---:|---:|---|
-| AA-LCR | 64K window, prompts of 88K–122K | 37% | 54% | +17 points, 95% interval +8.4 to +25.9 |
-| MRCR v2, 4 needles | 262K window, 533K conversation | 27% | 60% | 12 gained, 2 lost, p = 0.013 |
-| MRCR v2, 4 needles | 262K window, 1.06M conversation | 10% | 30% | 8 gained, 2 lost, p = 0.11 |
-| MRCR v2, 4 needles | All 120 questions | 38% | 51% | 20 gained, 5 lost, p = 0.004 |
-| LongBench-v2 | 240K budget, 107 over-window questions | 41.1% | 56.1% | 21 gained, 5 lost, p = 0.0025 |
+| Benchmark          | Setting                                | Truncation | Retrieval | Paired result                          |
+| ------------------ | -------------------------------------- | ---------: | --------: | -------------------------------------- |
+| AA-LCR             | 64K window, prompts of 88K–122K        |        37% |       54% | +17 points, 95% interval +8.4 to +25.9 |
+| MRCR v2, 4 needles | 262K window, 533K conversation         |        27% |       60% | 12 gained, 2 lost, p = 0.013           |
+| MRCR v2, 4 needles | 262K window, 1.06M conversation        |        10% |       30% | 8 gained, 2 lost, p = 0.11             |
+| MRCR v2, 4 needles | All 120 questions                      |        38% |       51% | 20 gained, 5 lost, p = 0.004           |
+| LongBench-v2       | 240K budget, 107 over-window questions |      41.1% |     56.1% | 21 gained, 5 lost, p = 0.0025          |
 
 Full context on AA-LCR, which fits the 262K window, scores 61%. The LongBench-v2
 figures are from the August runner, before the shared pipeline.
@@ -64,16 +64,16 @@ Sources:
 
 ## What prior work already claims
 
-| Prior work | What it shows | What we can no longer claim as new |
-|---|---|---|
-| OP-RAG [1], DOS RAG [2] | Retrieve chunks and present them in source order. This simple recipe matches or beats multi-stage pipelines such as ReadAgent and RAPTOR. | The packing method. Our retrieval route is this method. |
-| LongBench v2 [9] | Its own RAG ablation concatenates retrieved chunks in original order. Qwen2.5 with 32K of retrieved text beat its full 128K context by 4.1 points. | That a focused prompt can beat full context. |
-| Self-Route [3], Pre-Route [4], LaRA [5] | Routing each query to RAG or to long context, by model self-reflection or document metadata. | Routing. Ours is a length check, which is simpler but not newer. |
-| Distractor-Aware Truncation [11] | Naive middle truncation destroys answer-bearing content, including on MRCR v2. Removing only irrelevant content preserves or improves accuracy. | That truncation is a poor baseline. But this work uses oracle knowledge of what is relevant, closed models and no retriever. |
-| Recall Is Not Enough [12] | "Answer-in-context", whether the gold answer survives packing, predicts budgeted RAG accuracy better than retrieval recall. | The diagnostic behind our visibility analysis. We should cite it and use its term. |
-| BudgetBench [13] | Treats the per-call token budget as the independent variable for local models (including a Qwen3 30B) at 2K–32K. Results were inconclusive. | Budget as the experimental variable, at small budgets. |
-| vCache [26], Krites [28], MeanCache [27], GPTCache, Cortex | Semantic caches with a verification step: error-rate guarantees, an LLM judge, or a learned similarity model. | A verified two-stage semantic cache. |
-| Recursive Language Models [24], reproduction [25] | Recursive model calls over an external copy of the prompt handle inputs far beyond the window. The reproduction reports large increases in time and tokens. | Nothing directly, but it is the comparison reviewers will think of, and we have no current numbers for it. |
+| Prior work                                                 | What it shows                                                                                                                                               | What we can no longer claim as new                                                                                           |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| OP-RAG [1], DOS RAG [2]                                    | Retrieve chunks and present them in source order. This simple recipe matches or beats multi-stage pipelines such as ReadAgent and RAPTOR.                   | The packing method. Our retrieval route is this method.                                                                      |
+| LongBench v2 [9]                                           | Its own RAG ablation concatenates retrieved chunks in original order. Qwen2.5 with 32K of retrieved text beat its full 128K context by 4.1 points.          | That a focused prompt can beat full context.                                                                                 |
+| Self-Route [3], Pre-Route [4], LaRA [5]                    | Routing each query to RAG or to long context, by model self-reflection or document metadata.                                                                | Routing. Ours is a length check, which is simpler but not newer.                                                             |
+| Distractor-Aware Truncation [11]                           | Naive middle truncation destroys answer-bearing content, including on MRCR v2. Removing only irrelevant content preserves or improves accuracy.             | That truncation is a poor baseline. But this work uses oracle knowledge of what is relevant, closed models and no retriever. |
+| Recall Is Not Enough [12]                                  | "Answer-in-context", whether the gold answer survives packing, predicts budgeted RAG accuracy better than retrieval recall.                                 | The diagnostic behind our visibility analysis. We should cite it and use its term.                                           |
+| BudgetBench [13]                                           | Treats the per-call token budget as the independent variable for local models (including a Qwen3 30B) at 2K–32K. Results were inconclusive.                 | Budget as the experimental variable, at small budgets.                                                                       |
+| vCache [26], Krites [28], MeanCache [27], GPTCache, Cortex | Semantic caches with a verification step: error-rate guarantees, an LLM judge, or a learned similarity model.                                               | A verified two-stage semantic cache.                                                                                         |
+| Recursive Language Models [24], reproduction [25]          | Recursive model calls over an external copy of the prompt handle inputs far beyond the window. The reproduction reports large increases in time and tokens. | Nothing directly, but it is the comparison reviewers will think of, and we have no current numbers for it.                   |
 
 Broader context a related-work section should cover:
 
@@ -144,9 +144,19 @@ needs checking before we say the rendering differs.
 Two naming points for the paper:
 
 - Call the method RAG plainly, then qualify it (for example "budget-filling,
-  order-preserving RAG used as the overflow policy"). It differs from textbook
-  RAG in that the corpus is the prompt itself, it fills the window instead of
-  taking a top-k, and it runs only on overflow.
+  order-preserving RAG used as the overflow policy"). Like any RAG system it
+  ranks passages against the question; "query-aware" above is a contrast with
+  truncation, which ignores the question, not with RAG. It differs from
+  textbook RAG in four mechanical ways:
+  - **The corpus is the prompt itself.** It retrieves from the documents the
+    task supplied, not from an external knowledge base.
+  - **It fills the window.** RAG usually passes a few short passages; this
+    packs chunks until the budget is full, so the model still reads 61K–258K
+    tokens.
+  - **It only runs on overflow.** When the prompt fits, nothing is retrieved.
+  - **It keeps the original prompt's shape.** Chunks go back in source order
+    with omission markers and the original document numbers. OP-RAG and DOS RAG
+    also keep source order, so only the markers and numbering might differ.
 - Do not call it "hybrid". In the retrieval literature that means dense plus
   sparse retrieval. The shared pipeline is dense-only, with reranking off by
   default.
