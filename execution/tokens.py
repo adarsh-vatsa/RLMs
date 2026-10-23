@@ -35,16 +35,17 @@ def route(mode, full_tokens, budget, overflow="unsupported"):
     return TRUNCATION_ROUTES.get(overflow, "unsupported_context")
 
 
-def truncate_prompt(tokenizer, messages, budget, policy="middle"):
-    """Truncate the final user message, preserving other roles.
+def truncate_prompt(tokenizer, messages, budget, policy="middle", ending=""):
+    """Truncate the final user message before `ending`, which is kept whole; other roles are preserved.
 
     `middle` joins an equal head and tail silently (the LongBench protocol),
     `middle-marked` puts TRUNCATION_MARKER at the cut, and `head` keeps only the start.
     """
     result = [dict(message) for message in messages]
-    ids = token_ids(tokenizer.encode(result[-1]["content"], add_special_tokens=False))
+    content = result[-1]["content"]
+    ids = token_ids(tokenizer.encode(content[:len(content) - len(ending)], add_special_tokens=False))
     marker = TRUNCATION_MARKER if policy == "middle-marked" else ""
-    result[-1]["content"] = marker
+    result[-1]["content"] = marker + ending
     keep = max(0, min(len(ids), budget - chat_token_count(tokenizer, result)))
     while True:
         head = keep if policy == "head" else keep // 2
@@ -54,7 +55,7 @@ def truncate_prompt(tokenizer, messages, budget, policy="middle"):
                     + tokenizer.decode(tail, skip_special_tokens=True))
         else:
             text = tokenizer.decode(ids[:head] + tail, skip_special_tokens=True)
-        result[-1]["content"] = text
+        result[-1]["content"] = text + ending
         count = chat_token_count(tokenizer, result)
         if count <= budget:
             return result

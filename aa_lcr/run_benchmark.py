@@ -763,11 +763,9 @@ def run_benchmark(
             - experiment.max_input_tokens
             - args.max_output_tokens
         ),
-        "direct_truncation_policy": (
-            "middle_keep_first_last"
-            if experiment.allow_direct_truncation
-            else "disabled"
-        ),
+        "direct_truncation_policy": {
+            "middle": "middle_keep_first_last", "middle-marked": "middle_marked", "head": "head_keep_question",
+        }.get(config.direct_overflow, "disabled"),
         "executor_model": args.executor_model,
         "evaluator_model": args.evaluator_model,
         "executor_base_url": args.executor_base_url,

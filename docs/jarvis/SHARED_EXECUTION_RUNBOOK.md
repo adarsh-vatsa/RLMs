@@ -49,7 +49,7 @@ reads also need a cache verifier (`--cache-verifier-model` and
 
 | Option | Applies to | Behavior |
 |---|---|---|
-| `--direct-overflow middle` | Direct | Keep a head and tail of oversized prompts; without it they are recorded as unsupported. `middle-marked` adds an omission marker at the cut; `head` keeps only the start |
+| `--direct-overflow middle` | Direct | Keep a head and tail of oversized prompts; without it they are recorded as unsupported. `middle-marked` adds an omission marker at the cut; `head` keeps the start of the documents and the question |
 | `--min-source-tokens`, `--max-source-tokens` | Both | Select questions by full rendered prompt length; supply both |
 | `--max-rows` | Both | Limit the number of questions; with source bounds, applied after the length filter |
 | `--source-ids` | Both | Comma-separated document identifiers |

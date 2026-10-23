@@ -700,7 +700,10 @@ def run_longbench_api_benchmark(
                     - args.max_input_tokens
                     - args.max_output_tokens
                 ),
-                "truncation_policy": "longbench_v2_middle_keep_first_last",
+                "truncation_policy": {
+                    "middle": "longbench_v2_middle_keep_first_last", "middle-marked": "middle_marked",
+                    "head": "head_keep_question",
+                }.get(config.direct_overflow, "disabled"),
                 "system_prompt_style": "strict",
                 "temperature": 0,
                 "thinking_enabled": False,

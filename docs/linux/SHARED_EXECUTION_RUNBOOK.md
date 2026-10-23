@@ -16,7 +16,7 @@ for the shared pipeline design.
 | Benchmark argument | `aa_lcr` or `mrcr_v2` |
 | Mode argument | `direct` sends the full prompt; `hybrid` sends it when it fits and retrieves evidence otherwise |
 | `--execution-profile` | `common` (Linux default) or `legacy` (historical per-runner policies) |
-| `--direct-overflow` | `unsupported` (common default), `middle` (keep an equal head and tail, joined silently), `middle-marked` (the same with an omission marker), `head` (keep the start only), or `error` (reject) |
+| `--direct-overflow` | `unsupported` (common default), `middle` (keep an equal head and tail, joined silently), `middle-marked` (the same with an omission marker), `head` (keep the start of the documents, then everything after them, including the question), or `error` (reject) |
 
 The common profile uses exact tokenizer offsets, merges overlapping evidence,
 orders evidence by source position, and disables answer-cache reads/writes and

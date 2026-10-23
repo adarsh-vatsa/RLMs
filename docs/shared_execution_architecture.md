@@ -80,7 +80,7 @@ flowchart TD
     MODE{"Execution mode?"}
     OVERFLOW{"Direct overflow policy?"}
     UNSUPPORTED["Record unsupported_context<br/>No executor call"]
-    TRUNCATE["middle_truncated, middle_marked_truncated or head_truncated<br/>Head and tail, marked cut, or head only"]
+    TRUNCATE["middle_truncated, middle_marked_truncated or head_truncated<br/>Head and tail, marked cut, or head plus question"]
     INDEX["Build or reuse document index<br/>Exact chunks, embeddings and FAISS"]
     RANK["Order all children: dense (default), BM25, fusion,<br/>random or position; optional reranker over the head;<br/>optional document floor and neighbour widening"]
     PACK["Add candidates in that order<br/>Merge ranges within each document<br/>Render exact slices in source order<br/>stop at the first overflow, skip it, or fill the leftover"]

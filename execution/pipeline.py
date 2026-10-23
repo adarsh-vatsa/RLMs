@@ -122,7 +122,8 @@ class Pipeline:
                     result["status"] = "unsupported_context"
                 else:
                     if result["route"] in TRUNCATION_ROUTES.values():
-                        request = truncate_prompt(self.tokenizer, request, c.max_input_tokens, c.direct_overflow)
+                        ending = self._ending(task, request) if c.direct_overflow == "head" else ""
+                        request = truncate_prompt(self.tokenizer, request, c.max_input_tokens, c.direct_overflow, ending)
                     elif result["route"] == "dense_child_packed":
                         controller = self.backend()
                         if self.active_index != source_key:
@@ -210,6 +211,15 @@ class Pipeline:
         if c.rerank_top:
             candidates = rerank_head(controller.reranker, task.query, candidates, c.rerank_top)
         return document_floor(candidates) if c.document_floor else candidates
+
+    @staticmethod
+    def _ending(task, request):
+        """The text after the documents, such as the question: what the full and evidence-free prompts end with."""
+        full, empty = request[-1]["content"], task.render([])[-1]["content"]
+        length = 0
+        while length < min(len(full), len(empty)) and full[-1 - length] == empty[-1 - length]:
+            length += 1
+        return full[len(full) - length:]
 
     @staticmethod
     def _eligible(task, prediction):

@@ -13,6 +13,7 @@ from execution.pipeline import Pipeline
 from execution.retrieval import document_floor, expand_neighbors, order_candidates, rerank_head
 from execution.tokens import TRUNCATION_MARKER, chat_token_count, token_ids, truncate_prompt
 from aa_lcr.adapter import solver_task as aa_task
+from long_bench_v2.adapter import solver_task as lb_task
 from mrcr_v2.adapter import solver_task as mr_task
 from semantic_cache_system import _chunk_text_with_tokenizer
 from test_aa_lcr import FakeTokenizer as ReversibleTokenizer
@@ -227,8 +228,31 @@ class PipelineTests(unittest.TestCase):
                 self.assertLessEqual(result["final_rendered_input_tokens"], 500)
                 content = calls[0][0]["content"]
                 self.assertEqual(TRUNCATION_MARKER in content, policy == "middle-marked")
-                self.assertEqual(content.endswith("?"), policy != "head")
+                self.assertTrue(content.endswith("?"))
                 self.assertTrue(content.startswith("abcdef"))
+
+    def test_head_truncation_keeps_the_text_after_the_documents(self):
+        body = "".join(chr(97 + index % 26) for index in range(3000))
+        question = "Which document mentions it?"
+        solver_inputs = {
+            "aa_lcr": (aa_task("aa", "s", [("d1", body), ("d2", body)], question), "\n\nEND INPUT DOCUMENTS"),
+            "mrcr_v2": (mr_task("mr", "d", PREFIX, body, example()["view_ops"]), example()["view_ops"]),
+            "long_bench_v2": (lb_task("lb", "s", body, question), "\n\n" + question),
+        }
+        for benchmark, (solver_input, ending_start) in solver_inputs.items():
+            with self.subTest(benchmark=benchmark):
+                calls = []
+                engine = Pipeline(config(mode="direct", direct_overflow="head", max_input_tokens=1800,
+                                         context_window_tokens=2000),
+                                  ReversibleTokenizer(),
+                                  lambda request: calls.append(request) or Completion("answer", 1, 1, {}))
+                result = engine.execute(solver_input)
+                self.assertEqual((result["status"], result["route"]), ("ok", "head_truncated"))
+                self.assertLessEqual(result["final_rendered_input_tokens"], 1800)
+                full, content = solver_input.render(None)[-1]["content"], calls[0][-1]["content"]
+                ending = full[full.rindex(ending_start):]
+                self.assertEqual(content, full[:len(content) - len(ending)] + ending)
+                self.assertGreater(len(content), len(ending) + 100)
 
     def test_middle_truncation_is_unchanged(self):
         tokenizer = ReversibleTokenizer()
