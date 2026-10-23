@@ -43,7 +43,7 @@ details in the [options reference](linux/SHARED_EXECUTION_RUNBOOK.md#retrieval-a
 |---|---|---|
 | Truncation is a strawman | Head and tail of every document, rendered like retrieval; random chunks at the same budget | `--evidence-selection position`, `--evidence-selection random --selection-seed N` |
 | Truncation gets no omission marker | Middle truncation with a marker at the cut | `--direct-overflow middle-marked` |
-| Head-only truncation missing | Keep the start only | `--direct-overflow head` |
+| Head-only truncation missing | Keep the start of the documents, then the question | `--direct-overflow head` |
 | BM25 baseline missing | Okapi BM25 over the same chunks | `--evidence-selection bm25` |
 | "Hybrid" should mean dense + sparse | Reciprocal-rank fusion of dense and BM25 | `--evidence-selection fusion` |
 | The MRCR query is hand-built | Rank by the full final question instead | `--retrieval-query question` (MRCR) |
@@ -73,6 +73,26 @@ Things to know when reading results:
 The test suite has 232 tests (17 new). Two fail locally for environment
 reasons that predate this change: one needs `torch`, one needs the LongBench
 `data.json`.
+
+### Review notes to check during implementation
+
+Minor points from the merge review on 21 October. None blocks a run.
+
+- **Packing equivalence is tested, not proven.** The bounds come from one probe
+  fragment plus 16 tokens of slack. A bound that is too loose upward is caught
+  by the pipeline's final budget check, but one that is too tight downward would
+  silently reject a chunk that fits, and nothing reports it. Check
+  `packing_stop_reason` and `packing_renders` if a run's selections look short.
+- **`fill` tries one chunk.** It trims the best-ranked chunk that adds new text,
+  using only that chunk's first uncovered range. If the trim fails it does not
+  try the next chunk.
+- **Reranking now fails without a reranker.** `--pipeline-rerank-top N` calls
+  `controller.reranker` directly; before, the controller skipped reranking
+  silently. The LongBench-v2 API runner does not build a reranker, so the flag
+  raises an `AttributeError` there. Wire one in before using reranking on
+  LongBench-v2.
+- **`--retrieval-query` is MRCR only.** AA-LCR and LongBench-v2 always rank by
+  their task query, which matches the docs.
 
 ## The paper in one figure and three tables
 
