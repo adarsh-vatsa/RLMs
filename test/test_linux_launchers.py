@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,13 +14,13 @@ sys.path.insert(0, str(REPO))
 
 
 class LinuxLauncherTests(unittest.TestCase):
-    def launch(self, script, *args, env=None, cwd=None):
+    def launch(self, script, *args, env=None, cwd=None, linux=REPO / "linux"):
         environment = {key: value for key, value in os.environ.items() if not key.startswith((
-            "OPENAI_COMPAT_", "SEMANTIC_CACHE_", "AA_LCR_", "MRCR_", "EXECUTOR_", "EVALUATOR_",
+            "OPENAI_COMPAT_", "SEMANTIC_CACHE_", "AA_LCR_", "MRCR_", "EXECUTOR_", "EVALUATOR_", "ONLY",
         ))}
         environment.update(DRY_RUN="1", BENCHMARK_VENV="/tmp/client env", VLLM_VENV="/tmp/server env")
         environment.update(env or {})
-        return subprocess.run(["bash", str(REPO / "linux" / script), *args],
+        return subprocess.run(["bash", str(linux / script), *args],
             cwd=cwd or REPO, env=environment, capture_output=True, text=True)
 
     def command(self, result):
@@ -113,6 +114,69 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertEqual(self.launch(script, "invalid").returncode, 2)
         self.assertEqual(self.launch("run_benchmark.sh", "invalid", "direct").returncode, 2)
         self.assertEqual(self.launch("run_benchmark.sh", "aa_lcr", "invalid").returncode, 2)
+
+    def suite_commands(self, result):
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return [shlex.split(line.split("command:", 1)[1]) for line in result.stdout.splitlines() if "command:" in line]
+
+    def test_aa_lcr_suite_runs_and_grades_every_condition(self):
+        commands = self.suite_commands(self.launch("run_aa_lcr_suite.sh", "S", env={
+            "AA_LCR_RECIPE": "--evidence-selection fusion --packing fill"}))
+        runner = importlib.import_module("aa_lcr.run_benchmark").build_arg_parser()
+        regrader = importlib.import_module("aa_lcr.regrade").build_arg_parser()
+        runs = {args.run_id: args for args in (runner.parse_args(command[3:])
+                                                for command in commands if command[2] == "aa_lcr.run_benchmark")}
+        grades = [regrader.parse_args(command[3:]) for command in commands if command[2] == "aa_lcr.regrade"]
+        self.assertEqual((len(runs), len(grades)), (18, 18))
+        self.assertTrue(all(args.execution_only and args.fail_fast for args in runs.values()))
+        self.assertEqual({args.output_root for args in runs.values()}, {Path("benchmark_artifacts/aa_lcr/suites/S")})
+        self.assertEqual((runs["S_full"].max_input_tokens, runs["S_head"].direct_overflow), (258048, "head"))
+        self.assertEqual((runs["S_random2"].evidence_selection, runs["S_random2"].selection_seed), ("random", 2))
+        upgraded = runs["S_upgraded_32k"]
+        self.assertEqual((upgraded.evidence_selection, upgraded.packing, upgraded.max_input_tokens), ("fusion", "fill", 28672))
+        self.assertEqual((grades[0].source_run, grades[0].output_dir, grades[0].grader_api_style), (
+            Path("benchmark_artifacts/aa_lcr/suites/S/direct/S_full"),
+            Path("benchmark_artifacts/aa_lcr/suites/S/regrades/Qwen3.6-35B-A3B/direct/S_full"), "vllm"))
+        self.assertEqual(commands[-1][2:], ["aa_lcr.results_table", "benchmark_artifacts/aa_lcr/suites/S",
+                                            "--grader", "Qwen3.6-35B-A3B"])
+        self.assertEqual(self.launch("run_aa_lcr_suite.sh", "--help").returncode, 0)
+
+    def test_aa_lcr_suite_resumes_and_filters(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(REPO / "linux", root / "linux")
+            artifacts = root / "benchmark_artifacts/aa_lcr/suites/S"
+            for finished in ("direct/S_full", "regrades/Qwen3.6-35B-A3B/direct/S_full"):
+                (artifacts / finished).mkdir(parents=True)
+                (artifacts / finished / "manifest.json").write_text("{}")
+            (artifacts / "direct/S_middle").mkdir()
+            result = self.launch("run_aa_lcr_suite.sh", "S", env={"ONLY": "full,middle"}, linux=root / "linux")
+            commands = self.suite_commands(result)
+            self.assertIn("run: already finished", result.stdout)
+            self.assertIn("grade: already done", result.stdout)
+            self.assertIn("moving unfinished benchmark_artifacts/aa_lcr/suites/S/direct/S_middle", result.stdout)
+            self.assertTrue((artifacts / "direct/S_middle").is_dir())
+            self.assertEqual([command[-1] for command in commands if command[2] == "aa_lcr.run_benchmark"], ["S_middle"])
+            self.assertEqual(self.launch("run_aa_lcr_suite.sh", "S", env={"ONLY": "fulll"}).returncode, 1)
+
+    def test_aa_lcr_suite_luna_checks_one_call_then_regrades(self):
+        commands = self.suite_commands(self.launch("run_aa_lcr_suite.sh", "S", env={
+            "AA_LCR_GRADER": "luna", "ONLY": "full,position"}))
+        regrader = importlib.import_module("aa_lcr.regrade").build_arg_parser()
+        *regrades, table = commands
+        self.assertTrue(all(command[2] == "aa_lcr.regrade" for command in regrades))
+        self.assertEqual(table[2:], ["aa_lcr.results_table", "benchmark_artifacts/aa_lcr/suites/S", "--grader", "gpt-5.6-luna"])
+        check, *grades = [regrader.parse_args(command[3:]) for command in regrades]
+        self.assertEqual((check.question_ids, len(grades)), ("1", 2))
+        for args in (check, *grades):
+            self.assertEqual((args.evaluator_model, args.evaluator_base_url, args.grader_api_style,
+                              args.grader_reasoning_effort, args.evaluator_api_key_env),
+                             ("openai/gpt-5.6-luna", "https://openrouter.ai/api/v1", "openai", "medium",
+                              "OPENROUTER_API_KEY"))
+        self.assertEqual(grades[1].output_dir, Path("benchmark_artifacts/aa_lcr/suites/S/regrades/gpt-5.6-luna/hybrid/S_position"))
+        everything = self.launch("run_aa_lcr_suite.sh", "S", env={"AA_LCR_GRADER": "luna"})
+        self.assertIn("Suite S: 18 conditions", everything.stdout)
+        self.assertIn("upgraded_80k", everything.stdout)
 
 
 if __name__ == "__main__":

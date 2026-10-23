@@ -396,6 +396,9 @@ single-GPU server, vLLM's default `VLLM_GPU_MEMORY_UTILIZATION=0.90` leaves abou
 `VLLM_GPU_MEMORY_UTILIZATION=0.85`. Records keep `document_embedding_ms` for the
 cost comparison.
 
+To run every AA-LCR condition in turn with one command, use the
+[AA-LCR suite runbook](AA_LCR_SUITE_RUNBOOK.md).
+
 ## Budget and routing options
 
 MRCR defaults to context/input/output budgets of 65,536/60,000/4,096 and accepts
