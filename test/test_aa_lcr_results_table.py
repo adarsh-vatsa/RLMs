@@ -68,7 +68,7 @@ class ResultsTableTests(unittest.TestCase):
             self.assertEqual(upgraded["retrieval + packing s/question"], "0.5")
             table = (suite / "results-G.md").read_text()
             self.assertIn("| middle | truncation: middle | 65,536 | 50% | 50 |  |  | 50.0% | 1/2 (1 invalid) |", table)
-            self.assertIn("| 83% | 1 | 66.7% | 2/3 | 1 | 0 | 67% |", table)
+            self.assertIn("| 83% | 1 | 66.7% | 2/3 | 1 | 0 | 1.000 | 67% |", table)
 
 
 if __name__ == "__main__":

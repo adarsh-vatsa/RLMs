@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
+source "$LINUX_SCRIPT_DIR/suite_common.sh"
 
 usage() {
   echo 'Usage: bash linux/run_aa_lcr_suite.sh [suite-id]'
@@ -15,6 +16,7 @@ case "${1:-}" in help|-h|--help) usage; exit 0 ;; esac
 cd "$REPO_ROOT"
 
 SUITE="${1:-$(date -u +%Y%m%dT%H%M%SZ)}"
+SUITE_LABEL="AA-LCR SUITE"
 ROOT="benchmark_artifacts/aa_lcr/suites/$SUITE"
 LOG_DIR="$ROOT/logs"
 DATA_DIR="${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}"
@@ -27,8 +29,6 @@ COMMON=(--output-root "$ROOT" --execution-only --max-output-tokens 4096 --fail-f
 B64="--context-window-tokens 65536 --max-input-tokens 61440"
 B32="--context-window-tokens 32768 --max-input-tokens 28672"
 B80="--context-window-tokens 81920 --max-input-tokens 77824"
-NAMES=() MODES=() FLAGS=()
-condition() { NAMES+=("$1"); MODES+=("$2"); FLAGS+=("$3"); }
 condition full          direct "--context-window-tokens 262144 --max-input-tokens 258048"
 condition middle        direct "$B64 --direct-overflow middle"
 condition middle_marked direct "$B64 --direct-overflow middle-marked"
@@ -50,18 +50,7 @@ if [[ -n "${AA_LCR_RECIPE:-}" || "$GRADER" == luna ]]; then
   condition upgraded_32k hybrid "$B32 ${AA_LCR_RECIPE:-}"
   condition upgraded_80k hybrid "$B80 ${AA_LCR_RECIPE:-}"
 fi
-
-step() { echo "[AA-LCR SUITE] $*"; }
-fail() { echo "[AA-LCR SUITE] ERROR: $*" >&2; exit 1; }
-duration() { printf '%dh%02dm' $(($1 / 3600)) $(($1 % 3600 / 60)); }
-
-for name in ${ONLY//,/ }; do
-  [[ " ${NAMES[*]} " == *" $name "* ]] || fail "Unknown condition in ONLY: $name (known: ${NAMES[*]})"
-done
-SELECTED=()
-for i in "${!NAMES[@]}"; do
-  if [[ -z "$ONLY" || ",$ONLY," == *",${NAMES[$i]},"* ]]; then SELECTED+=("$i"); fi
-done
+select_conditions
 
 case "$GRADER" in
   executor)
@@ -77,20 +66,8 @@ case "$GRADER" in
 esac
 GRADES="$ROOT/regrades/${GRADER_MODEL##*/}"
 
-# Both the runner and aa_lcr.regrade refuse an existing output folder, and write
-# manifest.json last, so a folder without one is an interrupted attempt.
-set_aside() {
-  if [[ -d "$1" && ! -f "$1/manifest.json" ]]; then
-    local target="$1.incomplete-$(date -u +%Y%m%dT%H%M%SZ)"
-    step "  moving unfinished $1 to $target"
-    [[ "${DRY_RUN:-0}" == 1 ]] || mv "$1" "$target"
-  fi
-}
-
-logged() {
-  local log="$1"; shift
-  if [[ "${DRY_RUN:-0}" == 1 ]]; then "$@"; else "$@" > "$log" 2>&1; fi
-}
+# The runner and aa_lcr.regrade both write manifest.json last.
+finished() { [[ -f "$1/manifest.json" ]]; }
 
 regrade() {
   local run="$1" output="$2"; shift 2
@@ -102,7 +79,7 @@ regrade() {
     --evaluator-model "$GRADER_MODEL" --evaluator-base-url "$GRADER_URL" "${GRADER_FLAGS[@]}" "$@"
 }
 
-graded() { [[ -f "$GRADES/$2/${SUITE}_$1/manifest.json" ]]; }
+graded() { finished "$GRADES/$2/${SUITE}_$1"; }
 
 grade() {
   local name="$1" run="$2/${SUITE}_$1"
@@ -111,15 +88,20 @@ grade() {
   logged "$LOG_DIR/${name}.grade-${GRADER_MODEL##*/}.log" regrade "$run" "$GRADES/$run"
 }
 
-step "Suite $SUITE: ${#SELECTED[@]} conditions, grader $GRADER_MODEL"
-step "Logs: $LOG_DIR"
+after_run() {
+  if graded "$1" "$2"; then
+    step "  grade: already done"
+  elif grade "$1" "$2"; then
+    step "  grade: done"
+  else
+    step "  grade: FAILED; see $LOG_DIR/$1.grade-${GRADER_MODEL##*/}.log"
+    FAILED+=("$1 (grade)")
+  fi
+}
+
 RESUME="bash linux/run_aa_lcr_suite.sh $SUITE"
 [[ "$GRADER" == executor ]] || RESUME="AA_LCR_GRADER=$GRADER $RESUME"
-step "Resume or repeat with: $RESUME"
-if [[ "${DRY_RUN:-0}" != 1 ]]; then
-  mkdir -p "$LOG_DIR"
-fi
-FAILED=()
+start_suite "grader $GRADER_MODEL"
 
 if [[ "$GRADER" == luna ]]; then
   if [[ "${DRY_RUN:-0}" != 1 ]]; then
@@ -130,7 +112,7 @@ if [[ "$GRADER" == luna ]]; then
   fi
   FINISHED=()
   for i in "${SELECTED[@]}"; do
-    if [[ -f "$ROOT/${MODES[$i]}/${SUITE}_${NAMES[$i]}/manifest.json" || "${DRY_RUN:-0}" == 1 ]]; then
+    if finished "$ROOT/${MODES[$i]}/${SUITE}_${NAMES[$i]}" || [[ "${DRY_RUN:-0}" == 1 ]]; then
       FINISHED+=("$i")
     else
       step "${NAMES[$i]}: no finished run, skipping"
@@ -177,52 +159,11 @@ EOF
     fi
   done
 else
-  if [[ "${DRY_RUN:-0}" != 1 ]]; then
-    [[ -f "$SERVING_METADATA" ]] || fail "Serving metadata not found: $SERVING_METADATA"
-    curl -fsS "$EXECUTOR_URL/models" > /dev/null || fail "Executor not reachable at $EXECUTOR_URL"
-  fi
-  step "Embedding device for hybrid runs: ${SEMANTIC_CACHE_EMBEDDING_DEVICE:-cuda}"
-  started_suite=$SECONDS
-  n=0
-  for i in "${SELECTED[@]}"; do
-    n=$((n + 1))
-    name="${NAMES[$i]}" mode="${MODES[$i]}"
-    run_dir="$ROOT/$mode/${SUITE}_$name"
-    step "[$n/${#SELECTED[@]}] $name: $mode ${FLAGS[$i]}"
-    if [[ -f "$run_dir/manifest.json" ]]; then
-      step "  run: already finished"
-    else
-      set_aside "$run_dir"
-      step "  run: started $(date '+%H:%M') (log: $LOG_DIR/$name.log)"
-      started=$SECONDS
-      read -ra flags <<< "${FLAGS[$i]}"
-      if logged "$LOG_DIR/$name.log" bash linux/run_benchmark.sh aa_lcr "$mode" \
-          "${flags[@]}" "${COMMON[@]}" --run-id "${SUITE}_$name"; then
-        step "  run: done in $(duration $((SECONDS - started)))"
-      else
-        step "  run: FAILED after $(duration $((SECONDS - started))); see $LOG_DIR/$name.log"
-        FAILED+=("$name")
-        continue
-      fi
-    fi
-    if graded "$name" "$mode"; then
-      step "  grade: already done"
-    elif grade "$name" "$mode"; then
-      step "  grade: done"
-    else
-      step "  grade: FAILED; see $LOG_DIR/${name}.grade-${GRADER_MODEL##*/}.log"
-      FAILED+=("$name (grade)")
-    fi
-  done
-  step "Finished in $(duration $((SECONDS - started_suite)))"
+  check_executor
+  run_conditions aa_lcr "${COMMON[@]}"
 fi
 
 step "Results table:"
 run_command "$BENCHMARK_VENV/bin/python" -m aa_lcr.results_table "$ROOT" --grader "${GRADER_MODEL##*/}" \
   || step "Results table failed; the runs and grades are unaffected"
-
-if (( ${#FAILED[@]} )); then
-  step "Failed: ${FAILED[*]}. Fix the cause and rerun the same command to retry them."
-  exit 1
-fi
-step "All ${#SELECTED[@]} conditions complete"
+finish_suite

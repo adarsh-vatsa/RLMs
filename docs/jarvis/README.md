@@ -26,6 +26,7 @@ see the [Linux runbooks](../linux/README.md).
 |---|---|
 | [`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md) | First-time setup: storage, vLLM, client environment, smoke checks |
 | [`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) | LongBench-v2 direct and hybrid runs on the shared pipeline |
+| [`LONGBENCH_SUITE_RUNBOOK.md`](LONGBENCH_SUITE_RUNBOOK.md) | Every LongBench-v2 workshop condition from one command |
 | [`SHARED_EXECUTION_RUNBOOK.md`](SHARED_EXECUTION_RUNBOOK.md) | LongBench launcher variables and runner options |
 | [`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md), [`MRCR_V2_RUNBOOK.md`](MRCR_V2_RUNBOOK.md) | Pointers to the Linux runbooks |
 

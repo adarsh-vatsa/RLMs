@@ -6,6 +6,8 @@ Run benchmarks on a Linux server without Slurm:
 2. [Dataset preparation, preflight, and execution](BENCHMARK_RUNBOOK.md)
    - [AA-LCR suite](AA_LCR_SUITE_RUNBOOK.md): every AA-LCR workshop condition
      from one command, instead of launching runs by hand
+   - [MRCR v2 suite](MRCR_SUITE_RUNBOOK.md): every MRCR v2 workshop condition
+     from one command
 
 Optional reference: [runner options, defaults, and cache settings](SHARED_EXECUTION_RUNBOOK.md).
 This is not a third execution step.

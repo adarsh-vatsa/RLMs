@@ -983,7 +983,7 @@ def run_longbench_benchmark(
         return
 
     started_at = datetime.now(timezone.utc)
-    run_id = started_at.strftime("%Y%m%dT%H%M%SZ")
+    run_id = args.run_id or started_at.strftime("%Y%m%dT%H%M%SZ")
     out_dir = Path(args.output_dir) / ARTIFACT_SUBDIR / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1685,6 +1685,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--disable-reranker", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("benchmark_artifacts"))
+    parser.add_argument("--run-id", default="", help="Run folder name; default: the start time")
     parser.add_argument("--manifest-note", type=str, default="")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--serving-metadata", type=Path, help="JSON object describing the executor service")

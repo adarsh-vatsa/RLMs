@@ -179,5 +179,97 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertIn("upgraded_80k", everything.stdout)
 
 
+    def test_mrcr_suite_runs_every_condition_with_the_reference_settings(self):
+        commands = self.suite_commands(self.launch("run_mrcr_suite.sh", "S", env={
+            "MRCR_RECIPE": "--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128"}))
+        runner = importlib.import_module("mrcr_v2.run_benchmark").build_arg_parser()
+        runs = {args.run_id: args for args in (runner.parse_args(command[3:])
+                                                for command in commands if command[2] == "mrcr_v2.run_benchmark")}
+        self.assertEqual(len(runs), 24)
+        self.assertEqual({(args.output_root, args.data_dir, args.max_rows_per_source, args.fail_fast)
+                          for args in runs.values()},
+                         {(Path("benchmark_artifacts/mrcr_v2/suites/S"),
+                           Path("benchmark_data/mrcr_v2_4needle_100k_1200k"), 30, True)})
+        self.assertEqual((runs["S_dense"].child_tokens, runs["S_dense"].max_input_tokens), (3500, 258048))
+        self.assertEqual((runs["S_dense_7500"].child_tokens, runs["S_dense_question"].retrieval_query), (7500, "question"))
+        ladder = runs["S_ladder4"]
+        self.assertEqual((ladder.evidence_selection, ladder.child_tokens, ladder.neighbor_children, ladder.packing,
+                          ladder.document_floor), ("fusion", 1024, 1, "fill", True))
+        self.assertEqual((runs["S_position_128k"].max_input_tokens, runs["S_upgraded_64k"].child_tokens), (126976, 1024))
+        self.assertEqual(commands[-1][2:], ["mrcr_v2.results_table", "benchmark_artifacts/mrcr_v2/suites/S"])
+        self.assertEqual(self.launch("run_mrcr_suite.sh", "--help").returncode, 0)
+
+    def test_mrcr_suite_retries_runs_that_did_not_complete(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(REPO / "linux", root / "linux")
+            suite = root / "benchmark_artifacts/mrcr_v2/suites/S"
+            for run, status in (("direct/S_middle", "complete"), ("hybrid/S_dense", "running")):
+                (suite / run).mkdir(parents=True)
+                (suite / run / "manifest.json").write_text(json.dumps({"status": status}, indent=2))
+            result = self.launch("run_mrcr_suite.sh", "S", env={"ONLY": "middle,dense"}, linux=root / "linux")
+            commands = self.suite_commands(result)
+            self.assertIn("run: already finished", result.stdout)
+            self.assertIn("moving unfinished benchmark_artifacts/mrcr_v2/suites/S/hybrid/S_dense", result.stdout)
+            self.assertEqual([command[-1] for command in commands if command[2] == "mrcr_v2.run_benchmark"], ["S_dense"])
+
+    def test_longbench_suite_runs_every_condition_on_the_shared_question_set(self):
+        commands = self.suite_commands(self.launch("run_longbench_suite.sh", "S", linux=REPO / "jarvis", env={
+            "LONGBENCH_RECIPE": "--evidence-selection fusion --packing fill"}))
+        parsers = {module: importlib.import_module(module).build_arg_parser()
+                   for module in ("long_bench_v2.run_api_benchmark", "long_bench_v2.run_benchmark")}
+        runs = {args.run_id: (command[2], args) for command in commands if command[2] in parsers
+                for args in [parsers[command[2]].parse_args(command[3:])]}
+        self.assertEqual(len(runs), 20)
+        self.assertEqual({(args.output_dir, args.min_source_tokens, args.max_source_tokens, args.fail_fast,
+                           args.execution_profile, args.row_types) for _, args in runs.values()},
+                         {(Path("benchmark_artifacts/longbench_v2/suites/S"), 65529, 262136, True, "common", "original")})
+        module, full = runs["S_full"]
+        self.assertEqual((module, full.max_input_tokens, full.max_output_tokens), ("long_bench_v2.run_api_benchmark", 262136, 8))
+        module, middle = runs["S_middle"]
+        self.assertEqual((module, middle.max_input_tokens, middle.direct_overflow), ("long_bench_v2.run_api_benchmark", 65528, "middle"))
+        module, ladder = runs["S_ladder4"]
+        self.assertEqual((module, ladder.mode, ladder.evidence_selection, ladder.child_tokens, ladder.packing,
+                          ladder.document_floor), ("long_bench_v2.run_benchmark", "baseline", "fusion", 1024, "fill", True))
+        self.assertEqual((runs["S_position_128k"][1].max_input_tokens, runs["S_upgraded_32k"][1].packing), (131064, "fill"))
+        self.assertEqual(commands[-1][2:], ["long_bench_v2.results_table", "benchmark_artifacts/longbench_v2/suites/S"])
+        self.assertEqual(self.launch("run_longbench_suite.sh", "--help", linux=REPO / "jarvis").returncode, 0)
+
+    def test_longbench_suite_submits_one_gpu_job_from_the_login_node(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "bin").mkdir()
+            (root / "bin/sbatch").write_text("#!/usr/bin/env bash\n"
+                f"printf '%s\\n' \"$*\" \"$CLIENT_CMD\" \"$JARVIS_REQUIRED_SERVICES_SET\" > {root}/submitted\n")
+            (root / "bin/sbatch").chmod(0o755)
+            (root / "serving.json").write_text("{}")
+            env = {"DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "PROJECT_LOG_DIR": str(root / "logs"),
+                   "JARVIS_LOAD_DOTENV": "0", "LONGBENCH_SERVING_METADATA": str(root / "serving.json"), "SLURM_JOB_ID": ""}
+            missing = self.launch("run_longbench_suite.sh", "S", linux=REPO / "jarvis", env=env)
+            self.assertEqual(missing.returncode, 1)
+            self.assertIn("OPENAI_COMPAT_EXECUTOR_BASE_URL", missing.stderr)
+            result = self.launch("run_longbench_suite.sh", "S", linux=REPO / "jarvis",
+                                 env={**env, "OPENAI_COMPAT_EXECUTOR_BASE_URL": "http://g101:8000/v1"})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            arguments, client_command, required = (root / "submitted").read_text().splitlines()
+            self.assertIn("--gres=gpu:l40s:1", arguments)
+            self.assertTrue(arguments.endswith("jarvis/run_client.sh"))
+            self.assertEqual((client_command, required), ("bash jarvis/run_longbench_suite.sh S", "1"))
+
+    def test_longbench_suite_finds_runs_in_each_runners_folder(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for folder in ("linux", "jarvis"):
+                shutil.copytree(REPO / folder, root / folder)
+            suite = root / "benchmark_artifacts/longbench_v2/suites/S"
+            (suite / "longbench_v2_api/S_middle").mkdir(parents=True)
+            (suite / "longbench_v2_api/S_middle/manifest.json").write_text("{}")
+            (suite / "longbench_v2/S_dense").mkdir(parents=True)
+            result = self.launch("run_longbench_suite.sh", "S", env={"ONLY": "middle,dense"}, linux=root / "jarvis")
+            commands = self.suite_commands(result)
+            self.assertIn("run: already finished", result.stdout)
+            self.assertIn("moving unfinished benchmark_artifacts/longbench_v2/suites/S/longbench_v2/S_dense", result.stdout)
+            self.assertEqual([command[-1] for command in commands if command[2].startswith("long_bench_v2.run")], ["S_dense"])
+
 if __name__ == "__main__":
     unittest.main()

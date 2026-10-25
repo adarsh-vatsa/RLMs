@@ -3,43 +3,10 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 from pathlib import Path
 
-
-# Display formats for the markdown table; the CSV keeps the raw numbers.
-FORMATS = {"window": "{:,}", "prompt kept": "{:.0%}", "input tokens": "{:,.0f}", "documents covered": "{:.0%}",
-           "accuracy": "{:.1%}", "output tokens": "{:,.0f}", "generation s/question": "{:.1f}",
-           "retrieval + packing s/question": "{:.1f}"}
-
-
-def read_rows(path):
-    return [json.loads(line) for line in path.read_text().splitlines()]
-
-
-def mean(values):
-    values = list(values)
-    return sum(values) / len(values) if values else 0
-
-
-def policy(execution):
-    if execution["mode"] == "direct":
-        overflow = execution["direct_overflow"]
-        return "full prompt" if overflow == "unsupported" else f"truncation: {overflow}"
-    parts = [execution.get("evidence_selection", "dense")]
-    if parts[0] == "random":
-        parts[0] += f" seed {execution['selection_seed']}"
-    if execution["child_tokens"] != 7500:
-        parts.append(f"{execution['child_tokens']}-token chunks")
-    if execution.get("neighbor_children"):
-        count = execution["neighbor_children"]
-        parts.append(f"{count} neighbour{'s' if count > 1 else ''} each side")
-    if execution.get("packing", "stop") != "stop":
-        parts.append(f"{execution['packing']} packing")
-    if execution.get("document_floor"):
-        parts.append("document floor")
-    return ", ".join(parts)
+from execution.results_table import gained_lost, mean, policy, read_rows, write_table
 
 
 def verdicts(suite, grader, run):
@@ -88,9 +55,7 @@ def summarize(suite, grader):
             row["accuracy"] = correct / len(current) if current else "no valid grades"
             row["correct"] = f"{correct}/{len(current)}" + (f" ({invalid} invalid)" if invalid else "")
             if reference is not None and reference is not current:
-                shared = current.keys() & reference.keys()
-                row["gained vs middle"] = sum(current[q] and not reference[q] for q in shared)
-                row["lost vs middle"] = sum(reference[q] and not current[q] for q in shared)
+                row.update(gained_lost(current, reference))
             for other in others:
                 theirs = verdicts(suite, other, run)
                 shared = current.keys() & (theirs or {}).keys()
@@ -107,22 +72,11 @@ def summarize(suite, grader):
         })
         rows.append(row)
     columns = ["condition", "policy", "window", "prompt kept", "input tokens", "documents covered",
-               "questions missing a document", "accuracy", "correct", "gained vs middle", "lost vs middle",
+               "questions missing a document", "accuracy", "correct", "gained vs middle", "lost vs middle", "p vs middle",
                *[f"agreement with {other}" for other in others], "output tokens", "output limit hit",
                "retried requests", "generation s/question", "retrieval + packing s/question",
                "embedding minutes", "run minutes"]
     return columns, rows
-
-
-def markdown(columns, rows):
-    lines = ["| " + " | ".join(columns) + " |", "|" + "---|" * len(columns)]
-    def cell(column, value):
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return FORMATS.get(column, "{:.0%}" if column.startswith("agreement") else "{}").format(value)
-        return str(value)
-
-    lines += ["| " + " | ".join(cell(column, row.get(column, "")) for column in columns) + " |" for row in rows]
-    return "\n".join(lines) + "\n"
 
 
 def main(argv=None):
@@ -131,16 +85,8 @@ def main(argv=None):
     parser.add_argument("--grader", default="Qwen3.6-35B-A3B", help="Folder name under the suite's regrades/")
     args = parser.parse_args(argv)
     columns, rows = summarize(args.suite, args.grader)
-    table = markdown(columns, rows)
-    (args.suite / f"results-{args.grader}.md").write_text(
-        f"# AA-LCR suite {args.suite.name}, graded by {args.grader}\n\n{table}")
-    with (args.suite / f"results-{args.grader}.csv").open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=columns)
-        writer.writeheader()
-        writer.writerows({key: round(value, 4) if isinstance(value, float) else value for key, value in row.items()}
-                         for row in rows)
-    print(table, end="")
-    print(f"Saved {args.suite / f'results-{args.grader}.md'} and .csv")
+    write_table(args.suite, f"results-{args.grader}", f"AA-LCR suite {args.suite.name}, graded by {args.grader}",
+                columns, rows)
 
 
 if __name__ == "__main__":
