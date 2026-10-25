@@ -76,11 +76,18 @@ that did not help.
 - [x] AA-LCR results table per suite (`aa_lcr.results_table`), regenerated as
       runs finish. For the paper, use the Luna grades and add paired intervals
       against middle truncation from `aa_lcr.compare_conditions`
+- [x] MRCR results table per suite (`mrcr_v2.results_table`), with paired
+      gained and lost counts and an exact McNemar p-value against middle
+      truncation, and exact match per conversation length
+- [x] LongBench-v2 results table per suite (`long_bench_v2.results_table`),
+      with the same paired comparison against middle truncation
 - [ ] **Decide the lead**, after all runs and with the Luna grades for AA-LCR:
       where `position` and `random` land between truncation and dense on each
       benchmark. AA-LCR has a paired comparison (`aa_lcr.compare_conditions`,
-      random seeds as repeats). MRCR has per-run reports only; the
-      30 September paired tests were computed without committed code
+      random seeds as repeats). Both results tables give paired gained and
+      lost counts with an exact McNemar p-value, which treats questions as
+      independent; questions share documents or conversations, so prefer
+      intervals that resample them for the paper
 - [x] LongBench-v2 on the shared pipeline, with a full-context reference
 - [x] Budget sweep: the window flags cover it; see the experiment list for the
       AA-LCR budgets
@@ -137,59 +144,69 @@ Hybrid runs use the default 7,500-token chunks with 750 overlap.
 
 ### MRCR v2 (Neselab)
 
+Run with `bash linux/run_mrcr_suite.sh <suite-id>`; see the
+[MRCR v2 suite runbook](linux/MRCR_SUITE_RUNBOOK.md). The name in brackets is the
+suite's condition name, listed in the suite's order.
 `MRCR_DATA_DIR=benchmark_data/mrcr_v2_4needle_100k_1200k`, 30 questions per
 conversation (120) over conversations of 133K, 267K, 533K and 1.06M tokens.
 Base flags: `--max-output-tokens 4096 --max-rows-per-source 30 --fail-fast --serving-metadata .cache/serving_metadata.json`.
 Main budget 262K: `--context-window-tokens 262144 --max-input-tokens 258048`.
 Hybrid runs use `--child-tokens 3500 --child-overlap-tokens 350` unless
 stated. The 133K conversation fits 262K, so its rows are the full-context
-reference.
+reference. Scoring is deterministic, so there is no grading step.
 
-- [ ] Middle truncation: `direct --direct-overflow middle`
-- [ ] Marked middle truncation: `direct --direct-overflow middle-marked`
-- [ ] Head plus question: `direct --direct-overflow head`
-- [ ] Dense: `hybrid`
-- [ ] Position: `hybrid --evidence-selection position`
-- [ ] Random, seed 0: `hybrid --evidence-selection random --selection-seed 0`
-- [ ] BM25: `hybrid --evidence-selection bm25`
-- [ ] Fusion: `hybrid --evidence-selection fusion`
-- [ ] Dense with 7,500-token chunks: `hybrid --child-tokens 7500 --child-overlap-tokens 750`
-- [ ] Dense ranked by the full question: `hybrid --retrieval-query question`
-- [ ] Ladder 1: `hybrid --evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128`
-- [ ] Ladder 2: ladder 1 `+ --neighbor-children 1`
-- [ ] Ladder 3: ladder 2 `+ --packing fill`
-- [ ] Ladder 4: ladder 3 `+ --document-floor`
+- [ ] Middle truncation (`middle`): `direct --direct-overflow middle`
+- [ ] Dense (`dense`): `hybrid`
+- [ ] Position (`position`): `hybrid --evidence-selection position`
+- [ ] Random, seed 0 (`random0`): `hybrid --evidence-selection random --selection-seed 0`
+- [ ] Marked middle truncation (`middle_marked`): `direct --direct-overflow middle-marked`
+- [ ] Head plus question (`head`): `direct --direct-overflow head`
+- [ ] BM25 (`bm25`): `hybrid --evidence-selection bm25`
+- [ ] Fusion (`fusion`): `hybrid --evidence-selection fusion`
+- [ ] Dense with 7,500-token chunks (`dense_7500`): `hybrid --child-tokens 7500 --child-overlap-tokens 750`
+- [ ] Dense ranked by the full question (`dense_question`): `hybrid --retrieval-query question`
+- [ ] Ladder 1 (`ladder1`): `hybrid --evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128`
+- [ ] Ladder 2 (`ladder2`): ladder 1 `+ --neighbor-children 1`
+- [ ] Ladder 3 (`ladder3`): ladder 2 `+ --packing fill`
+- [ ] Ladder 4 (`ladder4`): ladder 3 `+ --document-floor`
 - [ ] Budget sweep at 32K (`--context-window-tokens 32768 --max-input-tokens 28672`):
-      middle truncation, position, upgraded recipe
+      middle truncation (`middle_32k`), position (`position_32k`)
 - [ ] Budget sweep at 64K (`--context-window-tokens 65536 --max-input-tokens 61440`):
-      middle truncation, position, upgraded recipe
+      middle truncation (`middle_64k`), position (`position_64k`)
 - [ ] Budget sweep at 128K (`--context-window-tokens 131072 --max-input-tokens 126976`):
-      middle truncation, position, upgraded recipe
+      middle truncation (`middle_128k`), position (`position_128k`)
+- [ ] Upgraded recipe at 262K, 32K, 64K and 128K (`upgraded`, `upgraded_32k`,
+      `upgraded_64k`, `upgraded_128k`), once the recipe is fixed: set
+      `MRCR_RECIPE`
 - [ ] Oracle run, once the oracle script exists
 
 ### LongBench-v2 (Jarvis)
 
-`bash jarvis/run_longbench_v2.sh <direct|hybrid> ...` with original rows whose
-full prompt is over the 64K budget and within 262K:
-`--min-source-tokens 65529 --max-source-tokens 262136`. Main budget 64K:
-`--context-window-tokens 65536 --max-input-tokens 65528` (8 output tokens, the
-launcher default). Hybrid runs use the default 7,500-token chunks with 750
-overlap. Set `LONGBENCH_SERVING_METADATA` for each run.
+Run with `bash adarsh-rlms/jarvis/run_longbench_suite.sh <suite-id>`; see the
+[LongBench-v2 suite runbook](jarvis/LONGBENCH_SUITE_RUNBOOK.md). The name in
+brackets is the suite's condition name, listed in the suite's order. Every run
+uses the same 221 original rows whose full prompt is over the 64K budget and
+within 262K: `--min-source-tokens 65529 --max-source-tokens 262136`. Main budget
+64K: `--context-window-tokens 65536 --max-input-tokens 65528` (8 output tokens,
+the launcher default). Hybrid runs use the default 7,500-token chunks with 750
+overlap. Scoring is by answer letter, so there is no grading step.
 
-- [ ] Full context, 262K: `direct` with the launcher's default budgets
-- [ ] Middle truncation: `direct --direct-overflow middle`
-- [ ] Marked middle truncation: `direct --direct-overflow middle-marked`
-- [ ] Head plus question: `direct --direct-overflow head`
-- [ ] Dense: `hybrid`
-- [ ] Position: `hybrid --evidence-selection position`
-- [ ] Random, seed 0: `hybrid --evidence-selection random --selection-seed 0`
-- [ ] BM25: `hybrid --evidence-selection bm25`
-- [ ] Fusion: `hybrid --evidence-selection fusion`
-- [ ] Ladder 1–4: the same four steps as MRCR
+- [ ] Full context, 262K (`full`): `direct --context-window-tokens 262144 --max-input-tokens 262136`
+- [ ] Middle truncation (`middle`): `direct --direct-overflow middle`
+- [ ] Dense (`dense`): `hybrid`
+- [ ] Position (`position`): `hybrid --evidence-selection position`
+- [ ] Random, seed 0 (`random0`): `hybrid --evidence-selection random --selection-seed 0`
+- [ ] Marked middle truncation (`middle_marked`): `direct --direct-overflow middle-marked`
+- [ ] Head plus question (`head`): `direct --direct-overflow head`
+- [ ] BM25 (`bm25`): `hybrid --evidence-selection bm25`
+- [ ] Fusion (`fusion`): `hybrid --evidence-selection fusion`
+- [ ] Ladder 1–4 (`ladder1`–`ladder4`): the same four steps as MRCR
 - [ ] Budget sweep at 32K (`--context-window-tokens 32768 --max-input-tokens 32760`):
-      middle truncation, position, upgraded recipe
+      middle truncation (`middle_32k`), position (`position_32k`)
 - [ ] Budget sweep at 128K (`--context-window-tokens 131072 --max-input-tokens 131064`):
-      middle truncation, position, upgraded recipe
+      middle truncation (`middle_128k`), position (`position_128k`)
+- [ ] Upgraded recipe at 64K, 32K and 128K (`upgraded`, `upgraded_32k`,
+      `upgraded_128k`), once the recipe is fixed: set `LONGBENCH_RECIPE`
 
 ### Second model (if time)
 
