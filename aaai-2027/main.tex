@@ -1,0 +1,138 @@
+\documentclass[letterpaper]{article} % DO NOT CHANGE THIS
+\usepackage[submission]{aaai2027}  % DO NOT CHANGE THIS
+% The serif, sans-serif, and monospaced fonts are loaded automatically by
+% aaai2027.sty (newtxtext, helvet, courier). DO NOT add \usepackage{times},
+% \usepackage{helvet}, \usepackage{courier}, or any other font package.
+\usepackage[hyphens]{url}  % DO NOT CHANGE THIS
+\usepackage{graphicx} % DO NOT CHANGE THIS
+\urlstyle{rm} % DO NOT CHANGE THIS
+\def\UrlFont{\rm}  % DO NOT CHANGE THIS
+\usepackage{natbib}  % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT
+\usepackage{caption} % DO NOT CHANGE THIS AND DO NOT ADD ANY OPTIONS TO IT
+\frenchspacing  % DO NOT CHANGE THIS
+%
+% These are recommended to typeset algorithms but not required. See the subsubsection on algorithms. Remove them if you don't have algorithms in your paper.
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+%
+% These are recommended to typeset listings but not required. See the subsubsection on listing. Remove this block if you don't have listings in your paper.
+\usepackage{newfloat}
+\usepackage{listings}
+\DeclareCaptionStyle{ruled}{labelfont=normalfont,labelsep=colon,strut=off} % DO NOT CHANGE THIS
+\lstset{%
+	basicstyle={\footnotesize\ttfamily},% footnotesize acceptable for monospace
+	numbers=left,numberstyle=\footnotesize,xleftmargin=2em,% show line numbers, remove this entire line if you don't want the numbers.
+	aboveskip=0pt,belowskip=0pt,%
+	showstringspaces=false,tabsize=2,breaklines=true}
+\floatstyle{ruled}
+\newfloat{listing}{tb}{lst}{}
+\floatname{listing}{Listing}
+
+%
+% Recommended for better-looking tables
+\usepackage{booktabs}
+
+%
+% Keep the \pdfinfo as shown here. There's no need
+% for you to add the /Title and /Author tags.
+\pdfinfo{
+/TemplateVersion (2027.2)
+}
+
+% DISALLOWED PACKAGES
+% \usepackage{authblk} -- This package is specifically forbidden
+% \usepackage{balance} -- This package is specifically forbidden
+% \usepackage{CJK} -- This package is specifically forbidden
+% \usepackage{float} -- This package is specifically forbidden
+% \usepackage{flushend} -- This package is specifically forbidden
+% \usepackage{fullpage} -- This package is specifically forbidden
+% \usepackage{geometry} -- This package is specifically forbidden
+% \usepackage{hyperref} -- This package is specifically forbidden
+% \usepackage{navigator} -- This package is specifically forbidden
+% (or any other package that embeds links such as navigator or hyperref)
+% \usepackage{indentfirst} -- This package is specifically forbidden
+% \usepackage{layout} -- This package is specifically forbidden
+% \usepackage{multicol} -- This package is specifically forbidden
+% \usepackage{nameref} -- This package is specifically forbidden
+% \usepackage{savetrees} -- This package is specifically forbidden
+% \usepackage{setspace} -- This package is specifically forbidden
+% \usepackage{stfloats} -- This package is specifically forbidden
+% \usepackage{tabu} -- This package is specifically forbidden
+% \usepackage{titlesec} -- This package is specifically forbidden
+% \usepackage{tocbibind} -- This package is specifically forbidden
+% \usepackage{ulem} -- This package is specifically forbidden
+% \usepackage{wrapfig} -- This package is specifically forbidden
+% DISALLOWED COMMANDS
+% \nocopyright -- Your paper will not be published if you use this command
+% \addtolength -- This command may not be used
+% \balance -- This command may not be used
+% \baselinestretch -- Your paper will not be published if you use this command
+% \clearpage -- No page breaks of any kind may be used for the final version of your paper
+% \columnsep -- This command may not be used
+% \newpage -- No page breaks of any kind may be used for the final version of your paper
+% \pagebreak -- No page breaks of any kind may be used for the final version of your paper
+% \pagestyle -- This command may not be used
+% \tiny -- This is not an acceptable font size.
+% \vspace{- -- No negative value may be used in proximity of a caption, figure, table, section, subsection, subsubsection, or reference
+% \vskip{- -- No negative value may be used to alter spacing above or below a caption, figure, table, section, subsection, subsubsection, or reference
+
+\setcounter{secnumdepth}{0} %May be changed to 1 or 2 if section numbers are desired.
+
+% Title must be in mixed case (see the AAAI formatting instructions).
+\title{Working Title: Query-Aware Truncation as an Overflow Policy\\for Long-Context Question Answering}
+% The submission option replaces this block with "Anonymous submission".
+\author{
+    Author Names
+}
+\affiliations{
+    Affiliations\\
+    email@example.com
+}
+
+% Page limit, excluding references: 4--7 pages for a long paper, at most 4 for a short paper.
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+When a long-context input is longer than the model's window, something must be removed. Benchmark harnesses usually cut out the middle of the prompt. We study this \emph{overflow policy} directly and treat retrieval as query-aware truncation: it re-renders the same prompt but keeps the chunks most similar to the question. On AA-LCR, MRCR v2 and LongBench-v2, served by one open-weight model at the same token budget, we compare it with naive truncation, structural and random controls, lexical retrieval and an oracle. The abstract will report how much of the accuracy lost to truncation it recovers, and how much of the oracle's gain.
+\end{abstract}
+
+% Make sure that you do not de-anonymize yourself with these links.
+% \begin{links}
+%     \link{Code}{https://aaai.org/example/code}
+% \end{links}
+
+\section{Introduction}
+The introduction will define the overflow policy, i.e.\ what a system does when the input exceeds the context window, and explain why it matters at inputs from half to four times the served window. It will state in the first paragraph that the selection method is order-preserving retrieval as in OP-RAG and DOS RAG, so the contribution is a controlled evaluation, not a new method. It will then present the three-way comparison of naive truncation, query-aware truncation and an oracle that keeps exactly the needed text, and list the contributions: the controlled comparison, per-example provenance of what the model saw, and the visibility decomposition.
+
+\section{Related Work}
+This section will cover four areas. Long context versus retrieval, including routing between them (Self-Route, LaRA) and order-preserving retrieval (OP-RAG, DOS RAG). The gap between advertised and effective context length. Truncation as a baseline, especially Distractor-Aware Truncation, which removes irrelevant content using oracle knowledge, and answer-in-context diagnostics for budgeted retrieval. Recursive approaches such as Recursive Language Models, as the alternative reviewers will expect us to compare against. Every reference will be checked in full text before it is cited.
+
+\section{Benchmarks}
+This section will describe the three benchmarks and why each one tests a different kind of task. AA-LCR tests reasoning over several documents, MRCR v2 tests exact reproduction from very long conversations, and LongBench-v2 is mixed multiple choice. For each benchmark it will give the subset used, the input lengths compared with the window, the scoring (LLM grading for AA-LCR, deterministic scoring for MRCR, exact choice for LongBench-v2) and how spread out the evidence is, from a few known needles to whole documents.
+
+\section{Architecture}
+This section will describe the shared pipeline, in which the overflow policy is the only thing that changes between conditions. It will cover the length check, after which a prompt that fits is sent unchanged, and the tokenizer- and chat-template-aware budget. It will then describe how the selected chunks are rendered back into the original prompt in source order, with omission markers and the original document numbers, and the packing step that fills the budget. Each policy is defined by how it chooses the spans to keep: by position (head and tail, head only, middle-marked truncation), at random, by BM25, by dense similarity, by fusion of dense and BM25 scores, or by an oracle.
+
+\section{Experiments}
+This section will set out the experimental protocol. All conditions within a benchmark use the same data, model, serving setup and token budget, and are paired by question. It will list the conditions in three groups: the deciding controls (position, random, marked truncation, head only), lexical retrieval and the upgrade ladder chosen on MRCR and LongBench-v2, and the held-out check on AA-LCR. It will also describe the budget sweep (32K, 64K and 128K), the independent AA-LCR grader with its hand-labelled accuracy, and how cost is measured.
+
+\section{Results}
+This section will report the main comparison of all policies at one budget per benchmark (Table~1) and accuracy as a function of the share of the input that fits the budget (Figure~1). It will give the visibility decomposition on MRCR, i.e.\ how often the target is in the input and the accuracy given that it is, against the oracle (Table~2), and the cost per question (Table~3). It will close by showing where the policy breaks down, as the budget share falls and as the evidence becomes more spread out.
+
+\section{Limitations}
+All results come from one open-weight model family and one run per setting, and some subsets are small. The visibility decomposition can be measured only on MRCR, because AA-LCR and LongBench-v2 do not release evidence locations. AA-LCR depends on an LLM grader. The selection method itself is not new, and the oracle comparison is analytic unless the oracle run is completed.
+
+\section{Conclusion}
+The conclusion will restate the main finding: how much of the accuracy lost to truncation a label-free selector recovers, and how close it comes to the oracle. It will then give practical guidance for benchmark harnesses and long-context systems on choosing an overflow policy, and name next steps, including a second model family and evidence labels for AA-LCR.
+
+% The References heading is generated by aaai2027.bst once the text cites at least one entry.
+\bibliography{references}
+
+% Include only if the workshop asks for the reproducibility checklist in the paper.
+% \input{ReproducibilityChecklist.tex}
+
+\end{document}
