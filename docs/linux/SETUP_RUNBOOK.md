@@ -59,7 +59,16 @@ uv pip install --python "$VLLM_VENV/bin/python" \
 ```
 
 Use a new directory for this repair; the original environment remains intact.
-Keep `VLLM_VENV` exported in each service terminal. A CUDA-13-capable driver can
+The repair is needed once, and only for environments created before server
+setup pinned `cu129`; a fresh `bash linux/setup.sh server` already matches. The
+scripts default to `$HOME/.venvs/adarsh-vllm`, so make the repaired environment
+the default in your shell profile instead of exporting it in each terminal:
+
+```bash
+echo 'export VLLM_VENV="$HOME/.venvs/adarsh-vllm-cu129"' >> ~/.zshrc   # or ~/.bashrc
+```
+
+A CUDA-13-capable driver can
 run CUDA 12 applications through [driver backward compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/minor-version-compatibility.html).
 The CUDA version in `nvidia-smi` describes driver support, not which runtime the
 Python environment has installed.
