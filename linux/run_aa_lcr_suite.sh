@@ -6,6 +6,7 @@ source "$LINUX_SCRIPT_DIR/suite_common.sh"
 usage() {
   echo 'Usage: bash linux/run_aa_lcr_suite.sh [suite-id]'
   echo 'Runs every AA-LCR workshop condition in turn and grades each with the executor when it finishes.'
+  echo 'On Jarvis, submit it with: bash jarvis/run_suite.sh aa_lcr [suite-id]'
   echo 'Rerun with the same suite ID to resume: finished runs and grades are skipped, and an'
   echo 'unfinished folder is moved aside before it is retried.'
   echo 'ONLY=name,... runs a subset. AA_LCR_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
@@ -22,9 +23,13 @@ LOG_DIR="$ROOT/logs"
 DATA_DIR="${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}"
 SERVING_METADATA="${AA_LCR_SERVING_METADATA:-.cache/serving_metadata.json}"
 EXECUTOR_URL="${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}"
+EXECUTOR_MODEL="${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
 GRADER="${AA_LCR_GRADER:-executor}"
 ONLY="${ONLY:-}"
-COMMON=(--output-root "$ROOT" --execution-only --max-output-tokens 4096 --fail-fast --serving-metadata "$SERVING_METADATA")
+# Runs are graded afterwards by the executor (then by Luna); naming it here keeps a
+# host's default evaluator, such as Jarvis's, out of the run manifests.
+COMMON=(--output-root "$ROOT" --execution-only --max-output-tokens 4096 --fail-fast --serving-metadata "$SERVING_METADATA"
+  --evaluator-model "$EXECUTOR_MODEL" --evaluator-base-url "$EXECUTOR_URL")
 
 B64="--context-window-tokens 65536 --max-input-tokens 61440"
 B32="--context-window-tokens 32768 --max-input-tokens 28672"
@@ -54,7 +59,7 @@ select_conditions
 
 case "$GRADER" in
   executor)
-    GRADER_MODEL="${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
+    GRADER_MODEL="$EXECUTOR_MODEL"
     GRADER_URL="$EXECUTOR_URL"
     GRADER_FLAGS=(--grader-api-style vllm) ;;
   luna)

@@ -6,8 +6,11 @@ source "$LINUX_SCRIPT_DIR/suite_common.sh"
 usage() {
   echo 'Usage: bash linux/run_mrcr_suite.sh [suite-id]'
   echo 'Runs every MRCR v2 workshop condition in turn; MRCR scores each answer as it runs.'
+  echo 'On Jarvis, submit it with: bash jarvis/run_suite.sh mrcr [suite-id]'
   echo 'Rerun with the same suite ID to resume: finished runs are skipped, and an'
   echo 'unfinished folder is moved aside before it is retried.'
+  echo 'MRCR_ROWS_PER_SOURCE=N sets the questions per conversation (default 30; 0 = all 953 questions).'
+  echo 'Use one value per suite ID: a different N selects different questions.'
   echo 'ONLY=name,... runs a subset. MRCR_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
   echo 'DRY_RUN=1 prints the commands without running them.'
 }
@@ -22,7 +25,8 @@ SERVING_METADATA="${MRCR_SERVING_METADATA:-.cache/serving_metadata.json}"
 EXECUTOR_URL="${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}"
 ONLY="${ONLY:-}"
 export MRCR_DATA_DIR="${MRCR_DATA_DIR:-benchmark_data/mrcr_v2_4needle_100k_1200k}"
-COMMON=(--output-root "$ROOT" --max-output-tokens 4096 --max-rows-per-source 30 --fail-fast
+ROWS_PER_SOURCE="${MRCR_ROWS_PER_SOURCE:-30}"
+COMMON=(--output-root "$ROOT" --max-output-tokens 4096 --max-rows-per-source "$ROWS_PER_SOURCE" --fail-fast
   --serving-metadata "$SERVING_METADATA")
 
 B262="--context-window-tokens 262144 --max-input-tokens 258048"
@@ -63,7 +67,7 @@ select_conditions
 finished() { grep -q '"status": "complete"' "$1/manifest.json" 2>/dev/null; }
 
 RESUME="bash linux/run_mrcr_suite.sh $SUITE"
-start_suite "data $MRCR_DATA_DIR"
+start_suite "data $MRCR_DATA_DIR, $ROWS_PER_SOURCE questions per conversation (0 = all)"
 check_executor
 run_conditions mrcr_v2 "${COMMON[@]}"
 

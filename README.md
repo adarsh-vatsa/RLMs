@@ -37,8 +37,8 @@ solver or the cache. See the
 
 | Benchmark | Server | Overview | Results |
 |---|---|---|---|
-| AA-LCR | Neselab (Linux) | [aa_lcr.md](docs/aa_lcr.md) | [30 Sep report](docs/reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
-| MRCR v2 | Neselab (Linux) | [mrcr_v2.md](docs/mrcr_v2.md) | [30 Sep report](docs/reports/mrcr_results_20260930/mrcr_results_20260930.md) |
+| AA-LCR | Jarvis (Slurm); 30 Sep runs on Neselab | [aa_lcr.md](docs/aa_lcr.md) | [30 Sep report](docs/reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
+| MRCR v2 | Jarvis (Slurm); 30 Sep runs on Neselab | [mrcr_v2.md](docs/mrcr_v2.md) | [30 Sep report](docs/reports/mrcr_results_20260930/mrcr_results_20260930.md) |
 | LongBench-v2 | Jarvis (Slurm) | [longbench_v2.md](long_bench_v2/docs/longbench_v2.md) | Shared-pipeline runs pending; August results in [docs/reports/archive](docs/reports/archive/) |
 
 Candidate benchmarks are compared in [docs/benchmarks.md](docs/benchmarks.md).

@@ -19,16 +19,18 @@ is the parent directory that contains the repo. If you `cd` directly into the
 repo, use `jarvis/run.sh` instead. The other scripts are role scripts that
 `run.sh` submits or delegates to inside Slurm allocations.
 
-Jarvis runs LongBench-v2. AA-LCR and MRCR v2 run on the Neselab Linux server;
-see the [Linux runbooks](../linux/README.md).
+The workshop runs of all three benchmarks (AA-LCR, MRCR v2 and LongBench-v2)
+run on Jarvis, one suite at a time; see the
+[workshop suites runbook](WORKSHOP_SUITES_RUNBOOK.md). The 30 September AA-LCR
+and MRCR runs used the Neselab Linux server ([Linux runbooks](../linux/README.md)).
 
 | Document | Use |
 |---|---|
 | [`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md) | First-time setup: storage, vLLM, client environment, smoke checks |
 | [`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) | LongBench-v2 direct and hybrid runs on the shared pipeline |
-| [`LONGBENCH_SUITE_RUNBOOK.md`](LONGBENCH_SUITE_RUNBOOK.md) | Every LongBench-v2 workshop condition from one command |
+| [`WORKSHOP_SUITES_RUNBOOK.md`](WORKSHOP_SUITES_RUNBOOK.md) | Every workshop condition of AA-LCR, MRCR v2 and LongBench-v2, one suite per job |
 | [`SHARED_EXECUTION_RUNBOOK.md`](SHARED_EXECUTION_RUNBOOK.md) | LongBench launcher variables and runner options |
-| [`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md), [`MRCR_V2_RUNBOOK.md`](MRCR_V2_RUNBOOK.md) | Pointers to the Linux runbooks |
+| [`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md), [`MRCR_V2_RUNBOOK.md`](MRCR_V2_RUNBOOK.md) | Pointers to the suites and the Linux runbooks |
 
 This page is a reference for the Slurm scripts themselves.
 

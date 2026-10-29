@@ -1,11 +1,11 @@
 # LongBench options on Jarvis
 
 An optional reference for changing LongBench-v2 run settings on Jarvis. The
-workflow is in the [LongBench runbook](HPC_RUNBOOK_EXPERIMENT.md). AA-LCR and
-MRCR v2 run on the Neselab Linux server; see the
-[Linux runbooks](../linux/README.md). Their Jarvis launchers
-(`jarvis/run_aa_lcr.sh`, `jarvis/run_mrcr_v2.sh`) still work but are not
-documented here.
+workflow is in the [LongBench runbook](HPC_RUNBOOK_EXPERIMENT.md). The
+workshop runs of all three benchmarks use the
+[workshop suites runbook](WORKSHOP_SUITES_RUNBOOK.md). The older AA-LCR and MRCR
+launchers (`jarvis/run_aa_lcr.sh`, `jarvis/run_mrcr_v2.sh`) still work but are
+not documented here.
 
 LongBench's direct and hybrid runners use the shared execution pipeline, so the
 shared options (budgets, overflow, chunking, evidence order, answer caching and

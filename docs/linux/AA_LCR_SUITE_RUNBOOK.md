@@ -6,6 +6,9 @@ and grades each run as it finishes, instead of launching runs by hand from the
 [benchmark runbook](BENCHMARK_RUNBOOK.md#overflow-policy-conditions). The same
 command, with the same suite ID, is used for all three steps below.
 
+On Jarvis, the [workshop suites runbook](../jarvis/WORKSHOP_SUITES_RUNBOOK.md)
+submits this suite as a Slurm job against an executor job.
+
 ## Before you start
 
 - Complete the [Linux setup](SETUP_RUNBOOK.md) and

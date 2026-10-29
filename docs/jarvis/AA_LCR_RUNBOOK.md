@@ -1,8 +1,10 @@
 # AA-LCR on Jarvis
 
-AA-LCR experiments run on the Neselab Linux server, not on Jarvis. Use the
-[Linux setup runbook](../linux/SETUP_RUNBOOK.md) and the AA-LCR sections of the
-[Linux benchmark runbook](../linux/BENCHMARK_RUNBOOK.md), which cover dataset
+The workshop AA-LCR runs are on Jarvis: see the
+[workshop suites runbook](WORKSHOP_SUITES_RUNBOOK.md), which submits the
+[AA-LCR suite](../linux/AA_LCR_SUITE_RUNBOOK.md) as a Jarvis job. The 30 September
+runs used the Neselab Linux server; the AA-LCR sections of the
+[Linux benchmark runbook](../linux/BENCHMARK_RUNBOOK.md) cover dataset
 preparation, the 64K and full-context runs, grading and comparison. The current
 results are in the
 [AA-LCR report](../reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md).

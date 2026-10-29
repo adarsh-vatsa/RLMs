@@ -40,7 +40,7 @@ logged() {
 start_suite() {
   step "Suite $SUITE: ${#SELECTED[@]} conditions${1:+, $1}"
   step "Logs: $LOG_DIR"
-  step "Resume or repeat with: $RESUME"
+  step "Resume or repeat with: ${SUITE_RESUME:-$RESUME}"
   if [[ "${DRY_RUN:-0}" != 1 ]]; then
     mkdir -p "$LOG_DIR"
   fi
@@ -49,7 +49,8 @@ start_suite() {
 check_executor() {
   if [[ "${DRY_RUN:-0}" != 1 ]]; then
     [[ -f "$SERVING_METADATA" ]] || fail "Serving metadata not found: $SERVING_METADATA"
-    curl -fsS "$EXECUTOR_URL/models" > /dev/null || fail "Executor not reachable at $EXECUTOR_URL"
+    "$BENCHMARK_VENV/bin/python" -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=10)' \
+      "$EXECUTOR_URL/models" 2> /dev/null || fail "Executor not reachable at $EXECUTOR_URL"
   fi
   step "Embedding device for hybrid runs: ${SEMANTIC_CACHE_EMBEDDING_DEVICE:-cuda}"
 }

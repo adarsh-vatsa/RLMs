@@ -1,10 +1,13 @@
 # MRCR v2 suite runbook
 
 `linux/run_mrcr_suite.sh` runs every MRCR v2 condition of the
-[experiment list](../workshop_paper_todo.md#mrcr-v2-neselab) one after another,
+[experiment list](../workshop_paper_todo.md#mrcr-v2-jarvis) one after another,
 instead of launching runs by hand from the
 [benchmark runbook](BENCHMARK_RUNBOOK.md#overflow-policy-conditions). MRCR scores
 each answer deterministically as it runs, so there is no grading step.
+
+On Jarvis, the [workshop suites runbook](../jarvis/WORKSHOP_SUITES_RUNBOOK.md)
+submits this suite as a Slurm job against an executor job.
 
 ## Before you start
 
@@ -15,9 +18,10 @@ each answer deterministically as it runs, so there is no grading step.
 - Start the executor with its full 262,144-token context and
   [record the serving setup](SETUP_RUNBOOK.md#record-the-serving-setup) in
   `.cache/serving_metadata.json`. The script checks both before it starts.
-- Run from the repository root, inside `tmux`. The first step takes about 14 to
-  15 hours: each run at the 262K budget takes about 55 minutes (about 31 seconds
-  per question at full budget), and the budget sweep about 1.5 hours in all.
+- Run from the repository root, inside `tmux`. At the default 30 questions per
+  conversation the first step takes about 14 to 15 hours: each run at the 262K
+  budget takes about 55 minutes (about 31 seconds per question at full budget),
+  and the budget sweep about 1.5 hours in all.
 
 Hybrid runs embed on the GPU. vLLM's default memory setting leaves about 9 GB
 for the embedding model; if embedding runs out of memory, lower
@@ -31,7 +35,11 @@ bash linux/run_mrcr_suite.sh 20261026
 ```
 
 This runs the 20 conditions on 30 questions per conversation, 120 in all, with
-3,500-token chunks unless a condition sets its own. The order puts the
+3,500-token chunks unless a condition sets its own. `MRCR_ROWS_PER_SOURCE=100`
+takes 100 per conversation instead, and `0` takes all 953 questions; the
+[run-time estimates](../run_time_estimates_20261025.md#mrcr-sample-size) give the
+time for each. Use one value per suite ID, because a different value selects
+different questions and runs could no longer be paired. The order puts the
 references and the structure-or-selection controls first (`middle`, `dense`,
 `position`, `random0`), then the other baselines, the retrieval variants, the
 upgrade ladder and the budget sweep. The 133K conversation fits the 262K

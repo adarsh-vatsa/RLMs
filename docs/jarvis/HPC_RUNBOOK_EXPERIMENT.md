@@ -1,11 +1,9 @@
 # Jarvis LongBench-v2 runbook
 
-Jarvis runs LongBench-v2 on the shared direct/hybrid execution pipeline. AA-LCR
-and MRCR v2 run on the Neselab Linux server instead; see the
-[Linux runbooks](../linux/README.md).
-
-To run every workshop condition in turn with one command, use the
-[LongBench-v2 suite runbook](LONGBENCH_SUITE_RUNBOOK.md) after steps 1–3 below.
+This runbook covers LongBench-v2 direct and hybrid runs on the shared
+direct/hybrid execution pipeline. Its steps 1–3 (data, executor, serving setup)
+also prepare the [workshop suites](WORKSHOP_SUITES_RUNBOOK.md), which run every
+workshop condition of AA-LCR, MRCR v2 and LongBench-v2 on Jarvis.
 
 Complete the [setup runbook](HPC_RUNBOOK_SETUP.md) first. Run these commands on
 the Jarvis login node from the parent directory that contains the

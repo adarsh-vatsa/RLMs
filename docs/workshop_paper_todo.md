@@ -103,16 +103,20 @@ that did not help.
 
 ## Experiment list
 
-Tick a run when it completes and record its run ID. Executor: Qwen3.6-35B-A3B
-on vLLM, temperature 0, non-thinking. Give every run its own `--run-id`
-suffix. Hybrid runs embed on the GPU. Table 3's CPU embedding times come from
-the 30 September runs; the embedding code has not changed since. Order: Stage 1, Stage 2 and
+Tick a run when it completes and record its run ID. All three benchmarks run on
+Jarvis, one suite at a time, with `bash adarsh-rlms/jarvis/run_suite.sh
+<aa_lcr|mrcr|longbench> <suite-id>`; see the
+[workshop suites runbook](jarvis/WORKSHOP_SUITES_RUNBOOK.md). Executor:
+Qwen3.6-35B-A3B on vLLM (4 L40S, `--max-num-seqs 1`), temperature 0,
+non-thinking. Hybrid runs embed on the client job's GPU. Table 3's GPU embedding
+times come from these runs and its CPU times from the 30 September Neselab runs;
+the embedding code has not changed since. Order: Stage 1, Stage 2 and
 the ladders, then the recipe-dependent runs (AA-LCR held-out check, budget
 sweeps).
 
-### AA-LCR (Neselab)
+### AA-LCR (Jarvis)
 
-Run with `bash linux/run_aa_lcr_suite.sh <suite-id>`; see the
+Suite: `run_suite.sh aa_lcr`; details in the
 [AA-LCR suite runbook](linux/AA_LCR_SUITE_RUNBOOK.md). The name in
 brackets is the suite's condition name. All 100 questions; every prompt is
 88K–122K tokens. Base flags:
@@ -142,11 +146,13 @@ Hybrid runs use the default 7,500-token chunks with 750 overlap.
       does this after each run
 - [ ] Regrade every run above with GPT-5.6 Luna (final): `AA_LCR_GRADER=luna`
 
-### MRCR v2 (Neselab)
+### MRCR v2 (Jarvis)
 
-Run with `bash linux/run_mrcr_suite.sh <suite-id>`; see the
+Suite: `run_suite.sh mrcr`; details in the
 [MRCR v2 suite runbook](linux/MRCR_SUITE_RUNBOOK.md). The name in brackets is the
-suite's condition name, listed in the suite's order.
+suite's condition name, listed in the suite's order. The first suite takes 30
+questions per conversation; a full run (`MRCR_ROWS_PER_SOURCE=0`, all 953
+questions) may follow as a separate suite.
 `MRCR_DATA_DIR=benchmark_data/mrcr_v2_4needle_100k_1200k`, 30 questions per
 conversation (120) over conversations of 133K, 267K, 533K and 1.06M tokens.
 Base flags: `--max-output-tokens 4096 --max-rows-per-source 30 --fail-fast --serving-metadata .cache/serving_metadata.json`.
@@ -182,8 +188,8 @@ reference. Scoring is deterministic, so there is no grading step.
 
 ### LongBench-v2 (Jarvis)
 
-Run with `bash adarsh-rlms/jarvis/run_longbench_suite.sh <suite-id>`; see the
-[LongBench-v2 suite runbook](jarvis/LONGBENCH_SUITE_RUNBOOK.md). The name in
+Suite: `run_suite.sh longbench`; details in the
+[workshop suites runbook](jarvis/WORKSHOP_SUITES_RUNBOOK.md). The name in
 brackets is the suite's condition name, listed in the suite's order. Every run
 uses the same 221 original rows whose full prompt is over the 64K budget and
 within 262K: `--min-source-tokens 65529 --max-source-tokens 262136`. Main budget

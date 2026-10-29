@@ -398,7 +398,8 @@ cost comparison.
 
 To run every condition of a benchmark in turn with one command, use the
 [AA-LCR suite runbook](AA_LCR_SUITE_RUNBOOK.md) or the
-[MRCR v2 suite runbook](MRCR_SUITE_RUNBOOK.md).
+[MRCR v2 suite runbook](MRCR_SUITE_RUNBOOK.md); on Jarvis, the
+[workshop suites runbook](../jarvis/WORKSHOP_SUITES_RUNBOOK.md).
 
 ## Budget and routing options
 

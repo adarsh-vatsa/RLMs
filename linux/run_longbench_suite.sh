@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
-JARVIS_SUITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$JARVIS_SUITE_DIR/../linux/common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 source "$LINUX_SCRIPT_DIR/suite_common.sh"
 
 usage() {
-  echo 'Usage: bash jarvis/run_longbench_suite.sh [suite-id]'
-  echo 'From the login node, submits one client-gpu job that runs every LongBench-v2 workshop'
-  echo 'condition in turn against the executor at OPENAI_COMPAT_EXECUTOR_BASE_URL.'
+  echo 'Usage: bash linux/run_longbench_suite.sh [suite-id]'
+  echo 'Runs every LongBench-v2 workshop condition in turn; answers are scored by letter as they run.'
+  echo 'On Jarvis, submit it with: bash jarvis/run_suite.sh longbench [suite-id]'
   echo 'Rerun with the same suite ID to resume: finished runs are skipped, and an'
   echo 'unfinished folder is moved aside before it is retried.'
   echo 'ONLY=name,... runs a subset. LONGBENCH_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
-  echo 'DRY_RUN=1 prints the commands on this node without submitting.'
+  echo 'DRY_RUN=1 prints the commands without running them.'
 }
 case "${1:-}" in help|-h|--help) usage; exit 0 ;; esac
 cd "$REPO_ROOT"
@@ -21,7 +20,7 @@ SUITE_LABEL="LONGBENCH SUITE"
 ROOT="benchmark_artifacts/longbench_v2/suites/$SUITE"
 LOG_DIR="$ROOT/logs"
 SERVING_METADATA="${LONGBENCH_SERVING_METADATA:-.cache/serving_metadata.json}"
-EXECUTOR_URL="${OPENAI_COMPAT_EXECUTOR_BASE_URL:-}"
+EXECUTOR_URL="${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}"
 ONLY="${ONLY:-}"
 
 # Original rows whose full prompt is over the 64K budget but fits the 262K window,
@@ -64,20 +63,7 @@ run_path() {
 }
 finished() { [[ -f "$1/manifest.json" ]]; }
 
-RESUME="bash jarvis/run_longbench_suite.sh $SUITE"
-if [[ -z "${SLURM_JOB_ID:-}" && "${DRY_RUN:-0}" != 1 ]]; then
-  [[ -n "$EXECUTOR_URL" ]] || fail "Set OPENAI_COMPAT_EXECUTOR_BASE_URL to the executor job's endpoint"
-  [[ -f "$SERVING_METADATA" ]] || fail "Serving metadata not found: $SERVING_METADATA"
-  source "$JARVIS_SUITE_DIR/lib/execution_services.sh"
-  jarvis_execution_services 0 0 --execution-profile common
-  export CLIENT_CMD="bash jarvis/run_longbench_suite.sh $SUITE"
-  step "Submitting suite $SUITE (${#SELECTED[@]} conditions) as one client-gpu job"
-  step "Run logs will be in $LOG_DIR; resume or repeat with: $RESUME"
-  exec bash "$JARVIS_SUITE_DIR/run.sh" submit client-gpu
-fi
-
-[[ -n "$EXECUTOR_URL" || "${DRY_RUN:-0}" == 1 ]] || fail "Set OPENAI_COMPAT_EXECUTOR_BASE_URL to the executor job's endpoint"
-EXECUTOR_URL="${EXECUTOR_URL:-http://127.0.0.1:8000/v1}"
+RESUME="bash linux/run_longbench_suite.sh $SUITE"
 start_suite "executor $EXECUTOR_URL"
 check_executor
 run_conditions longbench_v2 "${COMMON[@]}"

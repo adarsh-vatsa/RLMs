@@ -1,8 +1,9 @@
 # Jarvis scripts
 
-Model serving and benchmark submission on Jarvis using Slurm. Jarvis runs
-LongBench-v2 (`run_longbench_v2.sh`); AA-LCR and MRCR v2 run on the Neselab Linux
-server, and their launchers here are not maintained for experiments.
+Model serving and benchmark submission on Jarvis using Slurm. The workshop runs
+of all three benchmarks are submitted with `run_suite.sh`; the per-benchmark
+launchers `run_aa_lcr.sh` and `run_mrcr_v2.sh` are not maintained for
+experiments.
 
 See the [Jarvis runbooks](../docs/jarvis/README.md):
 
