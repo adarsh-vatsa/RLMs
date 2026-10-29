@@ -106,7 +106,7 @@ that did not help.
 Tick a run when it completes and record its run ID. All three benchmarks run on
 Jarvis, one suite at a time, with `bash adarsh-rlms/jarvis/run_suite.sh
 <aa_lcr|mrcr|longbench> <suite-id>`; see the
-[workshop suites runbook](jarvis/WORKSHOP_SUITES_RUNBOOK.md). Executor:
+[Jarvis suite pages](jarvis_suites/README.md). Executor:
 Qwen3.6-35B-A3B on vLLM (4 L40S, `--max-num-seqs 1`), temperature 0,
 non-thinking. Hybrid runs embed on the client job's GPU. Table 3's GPU embedding
 times come from these runs and its CPU times from the 30 September Neselab runs;
@@ -189,7 +189,7 @@ reference. Scoring is deterministic, so there is no grading step.
 ### LongBench-v2 (Jarvis)
 
 Suite: `run_suite.sh longbench`; details in the
-[workshop suites runbook](jarvis/WORKSHOP_SUITES_RUNBOOK.md). The name in
+[Jarvis LongBench-v2 suite page](jarvis_suites/LONGBENCH_V2.md). The name in
 brackets is the suite's condition name, listed in the suite's order. Every run
 uses the same 221 original rows whose full prompt is over the 64K budget and
 within 262K: `--min-source-tokens 65529 --max-source-tokens 262136`. Main budget

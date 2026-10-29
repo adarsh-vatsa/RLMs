@@ -6,8 +6,8 @@ instead of launching runs by hand from the
 [benchmark runbook](BENCHMARK_RUNBOOK.md#overflow-policy-conditions). MRCR scores
 each answer deterministically as it runs, so there is no grading step.
 
-On Jarvis, the [workshop suites runbook](../jarvis/WORKSHOP_SUITES_RUNBOOK.md)
-submits this suite as a Slurm job against an executor job.
+To run this suite on Jarvis as a Slurm job, see the
+[Jarvis MRCR suite page](../jarvis_suites/MRCR_V2.md).
 
 ## Before you start
 

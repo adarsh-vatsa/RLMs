@@ -1,7 +1,7 @@
 # MRCR v2 on Jarvis
 
 The workshop MRCR runs are on Jarvis: see the
-[workshop suites runbook](WORKSHOP_SUITES_RUNBOOK.md), which submits the
+[Jarvis MRCR suite page](../jarvis_suites/MRCR_V2.md), which submits the
 [MRCR suite](../linux/MRCR_SUITE_RUNBOOK.md) as a Jarvis job. The 30 September
 runs used the Neselab Linux server; the MRCR sections of the
 [Linux benchmark runbook](../linux/BENCHMARK_RUNBOOK.md) cover dataset

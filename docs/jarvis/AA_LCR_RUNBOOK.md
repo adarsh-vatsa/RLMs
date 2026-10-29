@@ -1,7 +1,7 @@
 # AA-LCR on Jarvis
 
 The workshop AA-LCR runs are on Jarvis: see the
-[workshop suites runbook](WORKSHOP_SUITES_RUNBOOK.md), which submits the
+[Jarvis AA-LCR suite page](../jarvis_suites/AA_LCR.md), which submits the
 [AA-LCR suite](../linux/AA_LCR_SUITE_RUNBOOK.md) as a Jarvis job. The 30 September
 runs used the Neselab Linux server; the AA-LCR sections of the
 [Linux benchmark runbook](../linux/BENCHMARK_RUNBOOK.md) cover dataset

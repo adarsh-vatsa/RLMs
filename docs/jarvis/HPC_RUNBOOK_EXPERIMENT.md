@@ -1,9 +1,8 @@
 # Jarvis LongBench-v2 runbook
 
 This runbook covers LongBench-v2 direct and hybrid runs on the shared
-direct/hybrid execution pipeline. Its steps 1–3 (data, executor, serving setup)
-also prepare the [workshop suites](WORKSHOP_SUITES_RUNBOOK.md), which run every
-workshop condition of AA-LCR, MRCR v2 and LongBench-v2 on Jarvis.
+direct/hybrid execution pipeline. The workshop runs of AA-LCR, MRCR v2 and
+LongBench-v2 have their own [Jarvis suite pages](../jarvis_suites/README.md).
 
 Complete the [setup runbook](HPC_RUNBOOK_SETUP.md) first. Run these commands on
 the Jarvis login node from the parent directory that contains the

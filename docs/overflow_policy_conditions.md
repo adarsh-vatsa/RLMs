@@ -62,5 +62,4 @@ flags (model, chunk size and overlap, output limit, temperature) identical
 across conditions, and record the budget. The experiment list and run status
 are in [workshop_paper_todo.md](workshop_paper_todo.md); per-benchmark suite
 runners are described in the [Linux runbooks](linux/), and the
-[workshop suites runbook](jarvis/WORKSHOP_SUITES_RUNBOOK.md) runs them on
-Jarvis.
+[Jarvis suite pages](jarvis_suites/README.md) cover running them on Jarvis.

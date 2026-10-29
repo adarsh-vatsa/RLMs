@@ -29,7 +29,13 @@ if [[ "${DRY_RUN:-0}" == 1 ]]; then
   exec bash "$SUITE_SCRIPT" "$SUITE"
 fi
 
-export SUITE_RESUME="bash $(basename "$REPO_ROOT")/jarvis/run_suite.sh $1 $SUITE"
+# A resumed suite must repeat the settings that shape its runs.
+SUITE_RESUME=""
+for name in AA_LCR_GRADER MRCR_ROWS_PER_SOURCE AA_LCR_RECIPE MRCR_RECIPE LONGBENCH_RECIPE; do
+  if [[ -n "${!name:-}" ]]; then SUITE_RESUME+="$name=$(printf '%q' "${!name}") "; fi
+done
+SUITE_RESUME+="bash $(basename "$REPO_ROOT")/jarvis/run_suite.sh $1 $SUITE"
+export SUITE_RESUME
 export CLIENT_CMD="bash $SUITE_SCRIPT $SUITE"
 if [[ "$1" == aa_lcr && "${AA_LCR_GRADER:-}" == luna ]]; then
   MODE=client

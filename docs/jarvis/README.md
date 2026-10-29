@@ -21,14 +21,13 @@ repo, use `jarvis/run.sh` instead. The other scripts are role scripts that
 
 The workshop runs of all three benchmarks (AA-LCR, MRCR v2 and LongBench-v2)
 run on Jarvis, one suite at a time; see the
-[workshop suites runbook](WORKSHOP_SUITES_RUNBOOK.md). The 30 September AA-LCR
+[Jarvis suite pages](../jarvis_suites/README.md). The 30 September AA-LCR
 and MRCR runs used the Neselab Linux server ([Linux runbooks](../linux/README.md)).
 
 | Document | Use |
 |---|---|
 | [`HPC_RUNBOOK_SETUP.md`](HPC_RUNBOOK_SETUP.md) | First-time setup: storage, vLLM, client environment, smoke checks |
 | [`HPC_RUNBOOK_EXPERIMENT.md`](HPC_RUNBOOK_EXPERIMENT.md) | LongBench-v2 direct and hybrid runs on the shared pipeline |
-| [`WORKSHOP_SUITES_RUNBOOK.md`](WORKSHOP_SUITES_RUNBOOK.md) | Every workshop condition of AA-LCR, MRCR v2 and LongBench-v2, one suite per job |
 | [`SHARED_EXECUTION_RUNBOOK.md`](SHARED_EXECUTION_RUNBOOK.md) | LongBench launcher variables and runner options |
 | [`AA_LCR_RUNBOOK.md`](AA_LCR_RUNBOOK.md), [`MRCR_V2_RUNBOOK.md`](MRCR_V2_RUNBOOK.md) | Pointers to the suites and the Linux runbooks |
 

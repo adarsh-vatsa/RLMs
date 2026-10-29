@@ -1,6 +1,6 @@
 **Decided on 28 October:** all three benchmarks run on Jarvis, one suite at a
 time against one executor job, as described in the
-[workshop suites runbook](jarvis/WORKSHOP_SUITES_RUNBOOK.md). MRCR starts at 30
+[Jarvis suite pages](jarvis_suites/README.md). MRCR starts at 30
 questions per conversation; a full run may follow as a separate suite.
 
 ---

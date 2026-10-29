@@ -3,7 +3,7 @@
 An optional reference for changing LongBench-v2 run settings on Jarvis. The
 workflow is in the [LongBench runbook](HPC_RUNBOOK_EXPERIMENT.md). The
 workshop runs of all three benchmarks use the
-[workshop suites runbook](WORKSHOP_SUITES_RUNBOOK.md). The older AA-LCR and MRCR
+[Jarvis suite pages](../jarvis_suites/README.md). The older AA-LCR and MRCR
 launchers (`jarvis/run_aa_lcr.sh`, `jarvis/run_mrcr_v2.sh`) still work but are
 not documented here.
 
