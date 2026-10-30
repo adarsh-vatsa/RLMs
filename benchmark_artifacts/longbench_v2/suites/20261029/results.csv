@@ -1,0 +1,18 @@
+condition,policy,window,questions,prompt kept,input tokens,accuracy,correct,gained vs middle,lost vs middle,p vs middle,invalid answers,retried requests,generation s/question,retrieval + packing s/question,embedding minutes,run minutes
+middle,truncation: middle,65536,221,0.5399,65527.9321,0.4072,90/221,,,,0,0,3.4978,,,20
+dense,dense,65536,221,0.5128,62212.7783,0.457,101/221,30,19,0.1524,0,0,3.2998,0.2322,17,32
+full,full prompt,262144,221,1.0,137164.81,0.4661,103/221,,,,0,0,8.5857,,,37
+position,position,65536,221,0.5114,62085.4751,0.4253,94/221,11,7,0.4807,0,0,3.2861,0.2118,,15
+random0,random seed 0,65536,221,0.5099,61774.5973,0.4118,91/221,24,23,1.0,0,0,3.2697,0.2138,,15
+middle_marked,truncation: middle-marked,65536,221,0.5399,65527.8914,0.4027,89/221,4,5,1.0,0,0,3.4753,,,20
+head,truncation: head,65536,221,0.5399,65527.9005,0.4027,89/221,19,20,1.0,0,0,3.4738,,,20
+bm25,bm25,65536,221,0.513,62244.5837,0.4887,108/221,30,12,0.0079,0,0,3.295,0.2179,,15
+fusion,fusion,65536,221,0.5139,62356.6063,0.4842,107/221,27,10,0.0076,0,0,3.2978,0.2321,16,32
+ladder1,"fusion, 1024-token chunks",65536,221,0.536,65062.3258,0.4977,110/221,27,7,0.0008,0,0,3.4527,0.3606,9,26
+ladder2,"fusion, 1024-token chunks, 1 neighbour each side",65536,221,0.5311,64384.9367,0.4615,102/221,25,13,0.073,0,0,3.4128,0.3232,9,25
+ladder3,"fusion, 1024-token chunks, 1 neighbour each side, fill packing",65536,221,0.5397,65500.3801,0.4706,104/221,26,12,0.0336,0,0,3.4721,1.2645,9,29
+ladder4,"fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor",65536,221,0.5397,65500.3801,0.4706,104/221,26,12,0.0336,0,0,3.4725,1.3003,9,29
+middle_32k,truncation: middle,32768,221,0.2699,32759.9774,0.3891,86/221,,,,0,0,1.6368,,,12
+position_32k,position,32768,221,0.2423,29366.6335,0.4118,91/221,13,8,0.3833,0,0,1.4699,0.107,,8
+middle_128k,truncation: middle,131072,221,0.8852,114262.3846,0.448,99/221,,,,0,0,6.6921,,,31
+position_128k,position,131072,221,0.8744,112426.7919,0.4525,100/221,2,1,1.0,0,0,6.5676,0.2132,,27
