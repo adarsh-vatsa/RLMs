@@ -34,7 +34,7 @@ DRY_RUN=1 bash linux/run_mrcr_suite.sh 20261026   # print the commands only
 bash linux/run_mrcr_suite.sh 20261026
 ```
 
-This runs the 20 conditions on 30 questions per conversation, 120 in all, with
+This runs the 23 conditions on 30 questions per conversation, 120 in all, with
 3,500-token chunks unless a condition sets its own. `MRCR_ROWS_PER_SOURCE=100`
 takes 100 per conversation instead, and `0` takes all 953 questions; the
 [run-time estimates](../run_time_estimates_20261025.md#mrcr-sample-size) give the
@@ -58,9 +58,9 @@ name lists the valid ones.
 
 Once the upgraded recipe is fixed from the MRCR and LongBench-v2 ladders, pass
 its hybrid flags, including its chunk size, to add its runs at 262K, 32K, 64K
-and 128K. The 20 finished runs are skipped. If the recipe is exactly one of the
-ladder steps, its 262K run repeats that step; skip it with
-`ONLY=upgraded_32k,upgraded_64k,upgraded_128k`.
+and 128K. Finished runs are skipped. If the recipe is exactly one of the ladder
+steps, its 262K run repeats that step; skip it with
+`ONLY=bm25_32k,bm25_64k,bm25_128k,upgraded_32k,upgraded_64k,upgraded_128k`.
 
 ```bash
 MRCR_RECIPE="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor" \

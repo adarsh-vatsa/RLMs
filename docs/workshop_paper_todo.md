@@ -140,6 +140,8 @@ Hybrid runs use the default 7,500-token chunks with 750 overlap.
 - [ ] Budget sweep at 80K (`--context-window-tokens 81920 --max-input-tokens 77824`):
       middle truncation (`middle_80k`), position (`position_80k`). 128K would
       fit every prompt; 80K keeps 74% on average with none fitting
+- [ ] BM25 across budgets (`bm25_32k`, `bm25_80k`): BM25 ties the upgraded
+      ladder at the main budget, so it needs the same sweep
 - [ ] Upgraded recipe at 64K, 32K and 80K (`upgraded`, `upgraded_32k`,
       `upgraded_80k`), once the recipe is fixed: set `AA_LCR_RECIPE`
 - [ ] Grade every run above with Qwen3.6 (for the agreement check); the suite
@@ -181,6 +183,7 @@ reference. Scoring is deterministic, so there is no grading step.
       middle truncation (`middle_64k`), position (`position_64k`)
 - [ ] Budget sweep at 128K (`--context-window-tokens 131072 --max-input-tokens 126976`):
       middle truncation (`middle_128k`), position (`position_128k`)
+- [ ] BM25 across budgets (`bm25_32k`, `bm25_64k`, `bm25_128k`)
 - [ ] Upgraded recipe at 262K, 32K, 64K and 128K (`upgraded`, `upgraded_32k`,
       `upgraded_64k`, `upgraded_128k`), once the recipe is fixed: set
       `MRCR_RECIPE`
@@ -211,6 +214,7 @@ overlap. Scoring is by answer letter, so there is no grading step.
       middle truncation (`middle_32k`), position (`position_32k`)
 - [ ] Budget sweep at 128K (`--context-window-tokens 131072 --max-input-tokens 131064`):
       middle truncation (`middle_128k`), position (`position_128k`)
+- [ ] BM25 across budgets (`bm25_32k`, `bm25_128k`)
 - [ ] Upgraded recipe at 64K, 32K and 128K (`upgraded`, `upgraded_32k`,
       `upgraded_128k`), once the recipe is fixed: set `LONGBENCH_RECIPE`
 

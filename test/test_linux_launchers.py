@@ -127,13 +127,14 @@ class LinuxLauncherTests(unittest.TestCase):
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "aa_lcr.run_benchmark")}
         grades = [regrader.parse_args(command[3:]) for command in commands if command[2] == "aa_lcr.regrade"]
-        self.assertEqual((len(runs), len(grades)), (18, 18))
+        self.assertEqual((len(runs), len(grades)), (20, 20))
         self.assertTrue(all(args.execution_only and args.fail_fast for args in runs.values()))
         self.assertEqual({args.output_root for args in runs.values()}, {Path("benchmark_artifacts/aa_lcr/suites/S")})
         self.assertEqual((runs["S_full"].max_input_tokens, runs["S_head"].direct_overflow), (258048, "head"))
         self.assertEqual((runs["S_random2"].evidence_selection, runs["S_random2"].selection_seed), ("random", 2))
         upgraded = runs["S_upgraded_32k"]
         self.assertEqual((upgraded.evidence_selection, upgraded.packing, upgraded.max_input_tokens), ("fusion", "fill", 28672))
+        self.assertEqual((runs["S_bm25_80k"].evidence_selection, runs["S_bm25_80k"].max_input_tokens), ("bm25", 77824))
         self.assertEqual((grades[0].source_run, grades[0].output_dir, grades[0].grader_api_style), (
             Path("benchmark_artifacts/aa_lcr/suites/S/direct/S_full"),
             Path("benchmark_artifacts/aa_lcr/suites/S/regrades/Qwen3.6-35B-A3B/direct/S_full"), "vllm"))
@@ -175,7 +176,7 @@ class LinuxLauncherTests(unittest.TestCase):
                               "OPENROUTER_API_KEY"))
         self.assertEqual(grades[1].output_dir, Path("benchmark_artifacts/aa_lcr/suites/S/regrades/gpt-5.6-luna/hybrid/S_position"))
         everything = self.launch("run_aa_lcr_suite.sh", "S", env={"AA_LCR_GRADER": "luna"})
-        self.assertIn("Suite S: 18 conditions", everything.stdout)
+        self.assertIn("Suite S: 20 conditions", everything.stdout)
         self.assertIn("upgraded_80k", everything.stdout)
 
 
@@ -185,7 +186,7 @@ class LinuxLauncherTests(unittest.TestCase):
         runner = importlib.import_module("mrcr_v2.run_benchmark").build_arg_parser()
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "mrcr_v2.run_benchmark")}
-        self.assertEqual(len(runs), 24)
+        self.assertEqual(len(runs), 27)
         self.assertEqual({(args.output_root, args.data_dir, args.max_rows_per_source, args.fail_fast)
                           for args in runs.values()},
                          {(Path("benchmark_artifacts/mrcr_v2/suites/S"),
@@ -196,6 +197,8 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual((ladder.evidence_selection, ladder.child_tokens, ladder.neighbor_children, ladder.packing,
                           ladder.document_floor), ("fusion", 1024, 1, "fill", True))
         self.assertEqual((runs["S_position_128k"].max_input_tokens, runs["S_upgraded_64k"].child_tokens), (126976, 1024))
+        bm25 = runs["S_bm25_64k"]
+        self.assertEqual((bm25.evidence_selection, bm25.child_tokens, bm25.max_input_tokens), ("bm25", 3500, 61440))
         self.assertEqual(commands[-1][2:], ["mrcr_v2.results_table", "benchmark_artifacts/mrcr_v2/suites/S"])
         for rows in ("100", "0"):
             sized = self.suite_commands(self.launch("run_mrcr_suite.sh", "S", env={"MRCR_ROWS_PER_SOURCE": rows}))
@@ -224,7 +227,7 @@ class LinuxLauncherTests(unittest.TestCase):
                    for module in ("long_bench_v2.run_api_benchmark", "long_bench_v2.run_benchmark")}
         runs = {args.run_id: (command[2], args) for command in commands if command[2] in parsers
                 for args in [parsers[command[2]].parse_args(command[3:])]}
-        self.assertEqual(len(runs), 20)
+        self.assertEqual(len(runs), 22)
         self.assertEqual({(args.output_dir, args.min_source_tokens, args.max_source_tokens, args.fail_fast,
                            args.execution_profile, args.row_types) for _, args in runs.values()},
                          {(Path("benchmark_artifacts/longbench_v2/suites/S"), 65529, 262136, True, "common", "original")})
@@ -236,6 +239,8 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual((module, ladder.mode, ladder.evidence_selection, ladder.child_tokens, ladder.packing,
                           ladder.document_floor), ("long_bench_v2.run_benchmark", "baseline", "fusion", 1024, "fill", True))
         self.assertEqual((runs["S_position_128k"][1].max_input_tokens, runs["S_upgraded_32k"][1].packing), (131064, "fill"))
+        module, bm25 = runs["S_bm25_128k"]
+        self.assertEqual((module, bm25.evidence_selection, bm25.max_input_tokens), ("long_bench_v2.run_benchmark", "bm25", 131064))
         self.assertEqual(commands[-1][2:], ["long_bench_v2.results_table", "benchmark_artifacts/longbench_v2/suites/S"])
         self.assertEqual(self.launch("run_longbench_suite.sh", "--help").returncode, 0)
 
@@ -283,7 +288,7 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertTrue((root / "submitted").read_text().splitlines()[-1].startswith("MRCR_ROWS_PER_SOURCE=0 bash "))
             preview = self.launch("run_suite.sh", "mrcr", "S", linux=jarvis)
             self.assertEqual(preview.returncode, 0, preview.stderr)
-            self.assertIn("[MRCR SUITE] Suite S: 20 conditions", preview.stdout)
+            self.assertIn("[MRCR SUITE] Suite S: 23 conditions", preview.stdout)
 
     def test_longbench_suite_finds_runs_in_each_runners_folder(self):
         with tempfile.TemporaryDirectory() as temporary:

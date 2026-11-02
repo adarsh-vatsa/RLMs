@@ -8,8 +8,8 @@ with 61,440 input tokens, which leaves 4,096 tokens for the answer.
 | --- | --- |
 | Name in commands | `aa_lcr` |
 | Questions per run | 100, all of AA-LCR v1.1 |
-| Runs | 15 now, plus 3 upgraded-recipe runs later |
-| Time | about 4 hours, plus about 1.25 hours for the recipe runs |
+| Runs | 17, plus 3 upgraded-recipe runs later |
+| Time | about 4.5 hours, plus about 1.25 hours for the recipe runs |
 | Grading | The executor (Qwen3.6) grades each run as soon as it finishes. At the very end, GPT-5.6 Luna regrades every run through OpenRouter. |
 | Output | `adarsh-rlms/benchmark_artifacts/aa_lcr/suites/<suite-id>/` |
 
@@ -33,6 +33,7 @@ ones, shown in document order.
 | `random0`, `random1`, `random2` | hybrid | 64K | Chunks in random order, with seeds 0, 1 and 2. |
 | `middle_32k`, `middle_80k` | direct | 32K, 80K | `middle` at other budgets. |
 | `position_32k`, `position_80k` | hybrid | 32K, 80K | `position` at other budgets. |
+| `bm25_32k`, `bm25_80k` | hybrid | 32K, 80K | `bm25` at other budgets. |
 | `upgraded`, `upgraded_32k`, `upgraded_80k` | hybrid | 64K, 32K, 80K | The upgraded recipe (later; see below). |
 
 ## Before the first suite: prepare the data
@@ -61,7 +62,7 @@ cd ~
    ```
 
    The first line should read
-   `[AA-LCR SUITE] Suite 20261029: 15 conditions, grader Qwen/Qwen3.6-35B-A3B`.
+   `[AA-LCR SUITE] Suite 20261029: 17 conditions, grader Qwen/Qwen3.6-35B-A3B`.
    Below it are a run command and a grading command for each condition.
 4. Optional first check, for a new setup. This submits two runs, one direct and
    one hybrid, and grades them, which takes under an hour:
@@ -86,7 +87,7 @@ cd ~
    ```
 
    Each condition shows a `run:` line and then a `grade:` line.
-7. When the log ends with `All 15 conditions complete`, stop the executor:
+7. When the log ends with `All 17 conditions complete`, stop the executor:
    `scancel "$EXECUTOR_JOB"`.
 
 To resume after an interruption, submit the command from step 5 again.
@@ -124,8 +125,12 @@ cd ~
 
 Once the upgraded recipe has been chosen from the LongBench-v2 and MRCR ladder
 results, add its three runs to the same suite. Start a new executor first, as
-in steps 1 to 4 of [EXECUTOR.md](EXECUTOR.md). The 15 finished runs are
-skipped.
+in steps 1 to 4 of [EXECUTOR.md](EXECUTOR.md). Finished runs are skipped.
+
+For this experiment, we are using the following recipe. Set R first. This is the same for all suites so setting it once is enough. R can change depending on suite results, so review it before running the upgraded recipe.
+```bash
+R="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor"
+```
 
 ```bash
 AA_LCR_RECIPE="<the recipe's hybrid flags>" bash adarsh-rlms/jarvis/run_suite.sh aa_lcr 20261029
@@ -137,7 +142,7 @@ Regrade once, after every AA-LCR run is finished, including the recipe runs.
 This needs no executor. It submits a CPU job that calls GPT-5.6 Luna through
 OpenRouter, using `OPENROUTER_API_KEY` from `adarsh-rlms/.env`. It first checks
 on one question that the model returns reasoning tokens. Then it regrades all
-18 runs in parallel, which takes under an hour.
+20 runs in parallel, which takes under an hour.
 
 ```bash
 AA_LCR_GRADER=luna DRY_RUN=1 bash adarsh-rlms/jarvis/run_suite.sh aa_lcr 20261029   # preview

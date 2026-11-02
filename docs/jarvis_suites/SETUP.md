@@ -43,7 +43,7 @@ source ~/.bashrc
 
 ## 3. Install uv
 
-Check: `uv --version` prints a version.
+Check: `uv --version` prints a version. If it does not, install uv:
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -59,7 +59,7 @@ Check: this prints `0.19.1`.
 "$HOME/.venvs/adarsh-vllm/bin/python" -c "import vllm; print(vllm.__version__)"
 ```
 
-Install:
+If the check fails, install vLLM:
 
 ```bash
 [ -d "$HOME/.venvs/adarsh-vllm" ] || uv venv "$HOME/.venvs/adarsh-vllm" --python 3.12 --seed
@@ -78,7 +78,7 @@ Check: this prints a version with no import error.
 adarsh-rlms/.venv/bin/python -c "import torch, transformers, faiss, dotenv, numpy; print(torch.__version__)"
 ```
 
-Install. Running the install again on an existing environment is safe.
+If the check fails, install the packages:
 
 ```bash
 cd adarsh-rlms
@@ -87,8 +87,8 @@ uv pip install --python .venv/bin/python --torch-backend=cu128 transformers torc
 cd ..
 ```
 
-Check that a GPU job can use the GPU. This submits a short job without an
-executor:
+Whether you installed or not, check that a GPU job can use the GPU. The check
+above cannot tell. This submits a short job without an executor:
 
 ```bash
 CLIENT_CMD='.venv/bin/python -c "import faiss, transformers, torch; print(torch.cuda.is_available())"' \

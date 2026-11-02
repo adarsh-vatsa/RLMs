@@ -30,7 +30,7 @@ DRY_RUN=1 bash linux/run_aa_lcr_suite.sh 20261023   # print the commands only
 bash linux/run_aa_lcr_suite.sh 20261023
 ```
 
-This runs the 15 conditions on all 100 questions and grades each run with the
+This runs the 17 conditions on all 100 questions and grades each run with the
 executor (Qwen3.6) as soon as it finishes. The argument is the suite ID.
 Everything the suite writes stays in
 `benchmark_artifacts/aa_lcr/suites/<suite-id>/`, apart from earlier results:
@@ -46,8 +46,7 @@ unknown name lists the valid ones.
 ## 2. Add the upgraded-recipe runs
 
 Once the upgraded recipe is fixed on MRCR and LongBench-v2, pass its hybrid
-flags to add its three runs at 64K, 32K and 80K. The 15 finished runs are
-skipped.
+flags to add its three runs at 64K, 32K and 80K. Finished runs are skipped.
 
 ```bash
 AA_LCR_RECIPE="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor" \

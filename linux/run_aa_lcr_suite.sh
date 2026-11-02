@@ -49,6 +49,8 @@ condition middle_32k    direct "$B32 --direct-overflow middle"
 condition position_32k  hybrid "$B32 --evidence-selection position"
 condition middle_80k    direct "$B80 --direct-overflow middle"
 condition position_80k  hybrid "$B80 --evidence-selection position"
+condition bm25_32k      hybrid "$B32 --evidence-selection bm25"
+condition bm25_80k      hybrid "$B80 --evidence-selection bm25"
 # Regrading needs only the names, so Luna mode covers the recipe runs without the flags.
 if [[ -n "${AA_LCR_RECIPE:-}" || "$GRADER" == luna ]]; then
   condition upgraded     hybrid "$B64 ${AA_LCR_RECIPE:-}"

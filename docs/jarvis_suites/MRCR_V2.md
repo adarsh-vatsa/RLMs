@@ -12,8 +12,8 @@ the answer.
 | --- | --- |
 | Name in commands | `mrcr` |
 | Questions per run | 120: 30 from each of the four conversations, which are about 133K, 267K, 534K and 1.07M tokens long. The 133K conversation fits the 262K window, so it is sent whole under every 262K condition. |
-| Runs | 20 now, plus 4 upgraded-recipe runs later |
-| Time | about 14 hours, plus about 1.6 hours for the recipe runs |
+| Runs | 23, plus 4 upgraded-recipe runs later |
+| Time | about 15 hours, plus about 1.6 hours for the recipe runs |
 | Scoring | during the run; no grader |
 | Output | `adarsh-rlms/benchmark_artifacts/mrcr_v2/suites/<suite-id>/` |
 
@@ -46,6 +46,7 @@ best-ranked ones, shown in conversation order.
 | `ladder4` | hybrid | 262K | `ladder3`, giving each document its best chunk first. Each question here has one conversation, so this matches `ladder3`. |
 | `middle_32k`, `middle_64k`, `middle_128k` | direct | 32K, 64K, 128K | `middle` at smaller budgets. |
 | `position_32k`, `position_64k`, `position_128k` | hybrid | 32K, 64K, 128K | `position` at smaller budgets. |
+| `bm25_32k`, `bm25_64k`, `bm25_128k` | hybrid | 32K, 64K, 128K | `bm25` at smaller budgets. |
 | `upgraded`, `upgraded_32k`, `upgraded_64k`, `upgraded_128k` | hybrid | 262K, 32K, 64K, 128K | The upgraded recipe (later; see below). |
 
 ## Run the suite
@@ -61,7 +62,7 @@ best-ranked ones, shown in conversation order.
    ```
 
    The first line should read
-   `[MRCR SUITE] Suite 20261029: 20 conditions, data benchmark_data/mrcr_v2_4needle_100k_1200k, 30 questions per conversation (0 = all)`.
+   `[MRCR SUITE] Suite 20261029: 23 conditions, data benchmark_data/mrcr_v2_4needle_100k_1200k, 30 questions per conversation (0 = all)`.
 4. Optional first check, for a new setup. This submits two runs, one direct and
    one hybrid, which take about 2 hours:
 
@@ -84,7 +85,7 @@ best-ranked ones, shown in conversation order.
    tail -f "$PROJECT_LOG_DIR/rlms-client-gpu-<suite job id>.out"
    ```
 
-7. When the log ends with `All 20 conditions complete`, stop the executor:
+7. When the log ends with `All 23 conditions complete`, stop the executor:
    `scancel "$EXECUTOR_JOB"`.
 
 To resume after an interruption, submit the command from step 5 again.
@@ -117,7 +118,12 @@ cd ~
 
 Once the upgraded recipe has been chosen from the ladder results, add its four
 runs to the same suite. Start a new executor first, as in steps 1 to 4 of
-[EXECUTOR.md](EXECUTOR.md). The 20 finished runs are skipped.
+[EXECUTOR.md](EXECUTOR.md). Finished runs are skipped.
+
+For this experiment, we are using the following recipe. Set R first. This is the same for all suites so setting it once is enough. R can change depending on suite results, so review it before running the upgraded recipe.
+```bash
+R="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor"
+```
 
 ```bash
 MRCR_RECIPE="<the recipe's hybrid flags>" bash adarsh-rlms/jarvis/run_suite.sh mrcr 20261029

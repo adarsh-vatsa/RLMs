@@ -49,6 +49,8 @@ condition middle_32k    direct "$B32 --direct-overflow middle"
 condition position_32k  hybrid "$B32 --evidence-selection position"
 condition middle_128k   direct "$B128 --direct-overflow middle"
 condition position_128k hybrid "$B128 --evidence-selection position"
+condition bm25_32k      hybrid "$B32 --evidence-selection bm25"
+condition bm25_128k     hybrid "$B128 --evidence-selection bm25"
 if [[ -n "${LONGBENCH_RECIPE:-}" ]]; then
   condition upgraded      hybrid "$B64 $LONGBENCH_RECIPE"
   condition upgraded_32k  hybrid "$B32 $LONGBENCH_RECIPE"

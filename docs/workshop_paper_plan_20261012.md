@@ -158,7 +158,7 @@ These are items from the positioning list, unchanged in substance:
    full prompt fits 262K, so a full-context reference exists. Multiple choice,
    so no grader is needed. Run the Table 1 policies here too.
 3. **Budget sweep for Figure 1:** 32K, 64K and 128K windows for truncation,
-   position and the upgraded recipe on all three benchmarks.
+   position, BM25 and the upgraded recipe on all three benchmarks.
 4. **GPU embedding timing** for Table 3; see the runbook for the memory setting
    on the single-GPU server.
 5. **A second model family.** The positioning ranks this as the most likely

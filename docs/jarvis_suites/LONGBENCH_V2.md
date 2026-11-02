@@ -8,8 +8,8 @@ input tokens, which leaves 8 tokens for the answer letter.
 | --- | --- |
 | Name in commands | `longbench` |
 | Questions per run | 221: every original question whose full prompt exceeds the 64K budget but fits the executor's 262K window, so each has a full-context reference |
-| Runs | 17 now, plus 3 upgraded-recipe runs later |
-| Time | about 6 hours, plus about 1.7 hours for the recipe runs |
+| Runs | 19, plus 3 upgraded-recipe runs later |
+| Time | about 7 hours, plus about 1.7 hours for the recipe runs |
 | Scoring | the answer letter (A to D) is checked against the key during the run; no grader |
 | Output | `adarsh-rlms/benchmark_artifacts/longbench_v2/suites/<suite-id>/` |
 
@@ -37,6 +37,7 @@ best-ranked ones, shown in document order.
 | `ladder4` | hybrid | 64K | `ladder3`, giving each document its best chunk first. Each question here has one document, so this matches `ladder3`. |
 | `middle_32k`, `middle_128k` | direct | 32K, 128K | `middle` at other budgets. |
 | `position_32k`, `position_128k` | hybrid | 32K, 128K | `position` at other budgets. |
+| `bm25_32k`, `bm25_128k` | hybrid | 32K, 128K | `bm25` at other budgets. |
 | `upgraded`, `upgraded_32k`, `upgraded_128k` | hybrid | 64K, 32K, 128K | The upgraded recipe (later; see below). |
 
 ## Before the first suite: get the data
@@ -66,7 +67,7 @@ cd ~
    DRY_RUN=1 bash adarsh-rlms/jarvis/run_suite.sh longbench 20261029
    ```
 
-   The first line should start with `[LONGBENCH SUITE] Suite 20261029: 17 conditions`.
+   The first line should start with `[LONGBENCH SUITE] Suite 20261029: 19 conditions`.
    Below it is one command per condition.
 4. Optional first check, for a new setup. This submits two runs, one direct and
    one hybrid, which take about 45 minutes:
@@ -90,7 +91,7 @@ cd ~
    tail -f "$PROJECT_LOG_DIR/rlms-client-gpu-<suite job id>.out"
    ```
 
-7. When the log ends with `All 17 conditions complete`, stop the executor:
+7. When the log ends with `All 19 conditions complete`, stop the executor:
    `scancel "$EXECUTOR_JOB"`.
 
 To resume after an interruption, submit the command from step 5 again.
@@ -123,7 +124,12 @@ cd ~
 
 Once the upgraded recipe has been chosen from the ladder results, add its
 three runs to the same suite. Start a new executor first, as in steps 1 to 4
-of [EXECUTOR.md](EXECUTOR.md). The 17 finished runs are skipped.
+of [EXECUTOR.md](EXECUTOR.md). Finished runs are skipped.
+
+For this experiment, we are using the following recipe. Set R first. This is the same for all suites so setting it once is enough. R can change depending on suite results, so review it before running the upgraded recipe.
+```bash
+R="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor"
+```
 
 ```bash
 LONGBENCH_RECIPE="<the recipe's hybrid flags>" bash adarsh-rlms/jarvis/run_suite.sh longbench 20261029
