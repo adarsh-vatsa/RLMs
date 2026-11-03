@@ -19,3 +19,8 @@
 | position_32k | position | 32,768 | 221 | 24% | 29,367 | 41.2% | 91/221 | 13 | 8 | 0.383 | 0 | 0 | 1.5 | 0.1 |  | 8 |
 | middle_128k | truncation: middle | 131,072 | 221 | 89% | 114,262 | 44.8% | 99/221 |  |  |  | 0 | 0 | 6.7 |  |  | 31 |
 | position_128k | position | 131,072 | 221 | 87% | 112,427 | 45.2% | 100/221 | 2 | 1 | 1.000 | 0 | 0 | 6.6 | 0.2 |  | 27 |
+| bm25_32k | bm25 | 32,768 | 221 | 25% | 29,807 | 45.2% | 100/221 | 39 | 25 | 0.103 | 0 | 0 | 1.5 | 0.1 |  | 8 |
+| bm25_128k | bm25 | 131,072 | 221 | 88% | 112,664 | 45.7% | 101/221 | 6 | 4 | 0.754 | 0 | 0 | 6.6 | 0.2 |  | 28 |
+| upgraded | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 221 | 54% | 65,500 | 48.0% | 106/221 | 27 | 11 | 0.014 | 0 | 0 | 3.5 | 1.3 | 9 | 29 |
+| upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 221 | 27% | 32,731 | 44.3% | 98/221 | 33 | 21 | 0.134 | 0 | 0 | 1.6 | 1.1 | 9 | 21 |
+| upgraded_128k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 221 | 89% | 114,250 | 48.0% | 106/221 | 9 | 2 | 0.065 | 0 | 0 | 6.7 | 0.8 | 6 | 35 |
