@@ -57,7 +57,7 @@ AA_LCR_RECIPE="--evidence-selection fusion --child-tokens 1024 --child-overlap-t
 
 After every AA-LCR run is done, regrade them all with GPT-5.6 Luna through
 OpenRouter. The script reads `OPENROUTER_API_KEY` from `.env` when it is not
-set, checks on one question that reasoning tokens come back, then regrades the
+set, grades one question to check the key and credits, then regrades the
 finished runs in parallel into the suite's `regrades/gpt-5.6-luna/`. It covers
 the upgraded-recipe runs without `AA_LCR_RECIPE`. If credits run out partway,
 top up and rerun: finished regrades are skipped.

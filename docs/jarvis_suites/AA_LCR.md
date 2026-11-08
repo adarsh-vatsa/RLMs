@@ -140,9 +140,9 @@ AA_LCR_RECIPE="<the recipe's hybrid flags>" bash adarsh-rlms/jarvis/run_suite.sh
 
 Regrade once, after every AA-LCR run is finished, including the recipe runs.
 This needs no executor. It submits a CPU job that calls GPT-5.6 Luna through
-OpenRouter, using `OPENROUTER_API_KEY` from `adarsh-rlms/.env`. It first checks
-on one question that the model returns reasoning tokens. Then it regrades all
-20 runs in parallel, which takes under an hour.
+OpenRouter, using `OPENROUTER_API_KEY` from `adarsh-rlms/.env`. It first grades
+one question to check the key and credits. Then it regrades all 20 runs in
+parallel, which takes under an hour.
 
 ```bash
 AA_LCR_GRADER=luna DRY_RUN=1 bash adarsh-rlms/jarvis/run_suite.sh aa_lcr 20261029   # preview

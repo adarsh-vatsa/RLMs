@@ -65,10 +65,13 @@ that did not help.
       `--evaluator-api-key-env OPENROUTER_API_KEY`. The key is in the
       git-ignored `.env`, which `aa_lcr.regrade` does not read; export it
       first with `set -a; source .env; set +a`
-  - [x] Send one grading call first and confirm the usage reports reasoning
-        tokens, since OpenRouter may drop parameters a provider does not
-        support. `aa_lcr.regrade` has no row limit, so make the call with
-        `aa_lcr.grading.Grader`; regrades also save each row's `grader_usage`
+  - [x] Confirm OpenRouter passes the reasoning effort through. Checked
+        2026-11-08 on a counting puzzle: `reasoning_effort` `none` gave 0
+        reasoning tokens and a wrong answer, `low`/`medium`/`high` gave 85-127
+        and the right one. Luna reasons adaptively: AA-LCR question 1's
+        grading prompt used 0 reasoning tokens even at `high`, so a grade with
+        no reasoning tokens does not mean the effort was dropped. Regrades
+        save each row's `grader_usage`
   - [x] Report agreement with the Qwen3.6 grades: the Luna results table's
         `agreement with Qwen3.6-35B-A3B` column
   - [x] Hand-label about 50 grades, mostly where the two graders disagree, and
