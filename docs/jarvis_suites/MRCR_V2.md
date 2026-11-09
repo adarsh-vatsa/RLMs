@@ -119,6 +119,17 @@ cd ~/adarsh-rlms
 cd ~
 ```
 
+For the paper, `intervals.md` and `.csv` give the paired differences in exact
+match, with 95% intervals. Four conversations are too few to resample, so the
+intervals resample questions within each conversation and hold for these four
+conversations only. Each run is compared with `middle` at its window, followed
+by the pairs listed in `execution/intervals.py`. The command reads only files in
+the suite folder, so it runs on any machine with the repository:
+
+```bash
+.venv/bin/python -m mrcr_v2.intervals benchmark_artifacts/mrcr_v2/suites/20261029
+```
+
 ## Later: upgraded-recipe runs
 
 Once the upgraded recipe has been chosen from the ladder results, add its four

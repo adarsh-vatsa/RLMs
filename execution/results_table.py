@@ -11,9 +11,10 @@ from math import comb
 FORMATS = {"window": "{:,}", "prompt kept": "{:.0%}", "input tokens": "{:,.0f}", "documents covered": "{:.0%}",
            "accuracy": "{:.1%}", "exact match": "{:.1%}", "MRCR score": "{:.3f}", "prefix compliance": "{:.0%}",
            "p vs middle": "{:.3f}", "output tokens": "{:,.0f}", "generation s/question": "{:.1f}",
-           "retrieval + packing s/question": "{:.1f}", "target visible": "{:.0%}", "all needles visible": "{:.0%}"}
+           "retrieval + packing s/question": "{:.1f}", "target visible": "{:.0%}", "all needles visible": "{:.0%}",
+           "baseline window": "{:,}", "difference": "{:+.1%}", "95% low": "{:+.1%}", "95% high": "{:+.1%}"}
 PREFIX_FORMATS = {"agreement with ": "{:.0%}", "exact match at ": "{:.0%}", "exact match given ": "{:.1%}",
-                  "target visible at ": "{:.0%}"}
+                  "target visible at ": "{:.0%}", "baseline ": "{:.1%}"}
 
 
 def read_rows(path):
@@ -49,7 +50,7 @@ def gained_lost(current, reference):
     """Paired counts against a reference run, over the questions both answered, with an exact McNemar test.
 
     The test treats questions as independent; questions share documents or conversations, so it can
-    overstate significance. Paper intervals should resample whole document sets or conversations.
+    overstate significance; `execution.intervals` gives the paper's intervals.
     """
     shared = current.keys() & reference.keys()
     gained = sum(current[q] and not reference[q] for q in shared)

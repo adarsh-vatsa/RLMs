@@ -122,6 +122,16 @@ cd ~/adarsh-rlms
 cd ~
 ```
 
+For the paper, `intervals-gpt-5.6-luna.md` and `.csv` give the paired accuracy
+differences from the Luna grades, with 95% intervals that resample whole
+document sets. Each run is compared with `middle` at its window, followed by
+the pairs listed in `execution/intervals.py`. The command reads only files in
+the suite folder, so it runs on any machine with the repository:
+
+```bash
+.venv/bin/python -m aa_lcr.intervals benchmark_artifacts/aa_lcr/suites/20261029
+```
+
 ## Later: upgraded-recipe runs
 
 Once the upgraded recipe has been chosen from the LongBench-v2 and MRCR ladder

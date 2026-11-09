@@ -120,6 +120,16 @@ cd ~/adarsh-rlms
 cd ~
 ```
 
+For the paper, `intervals.md` and `.csv` give the paired accuracy differences,
+with 95% intervals that resample whole documents (194 behind the 221
+questions). Each run is compared with `middle` at its window, followed by the
+pairs listed in `execution/intervals.py`. The command reads only files in the
+suite folder, so it runs on any machine with the repository:
+
+```bash
+.venv/bin/python -m long_bench_v2.intervals benchmark_artifacts/longbench_v2/suites/20261029
+```
+
 ## Later: upgraded-recipe runs
 
 Once the upgraded recipe has been chosen from the ladder results, add its
