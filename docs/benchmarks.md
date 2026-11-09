@@ -12,8 +12,8 @@ All three run on the shared direct/hybrid pipeline
 
 | Benchmark | Server | Scoring | Overview | Current results |
 |---|---|---|---|---|
-| AA-LCR | Neselab | LLM grader | [aa_lcr.md](aa_lcr.md) | [30 Sep report](reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
-| MRCR v2 | Neselab | Deterministic text similarity | [mrcr_v2.md](mrcr_v2.md) | [30 Sep report](reports/mrcr_results_20260930/mrcr_results_20260930.md) |
+| AA-LCR | Jarvis; 30 Sep runs on Neselab | LLM grader | [aa_lcr.md](aa_lcr.md) | [30 Sep report](reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
+| MRCR v2 | Jarvis; 30 Sep runs on Neselab | Deterministic text similarity | [mrcr_v2.md](mrcr_v2.md) | [30 Sep report](reports/mrcr_results_20260930/mrcr_results_20260930.md) |
 | LongBench-v2 | Jarvis | Multiple-choice letter | [longbench_v2.md](../long_bench_v2/docs/longbench_v2.md) | Shared-pipeline runs pending; August results in [reports/archive](reports/archive/) |
 
 LongBench-v2 also has an RLM baseline (`long_bench_v2/run_rlm_benchmark.py`)

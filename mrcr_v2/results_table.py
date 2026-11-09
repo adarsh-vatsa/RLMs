@@ -17,6 +17,14 @@ def size_label(tokens):
     return f"{tokens / 1e6:.2f}M" if tokens >= 1e6 else f"{tokens / 1e3:.0f}K"
 
 
+def label(manifest):
+    execution = manifest["execution"]
+    text = policy(execution, SUITE_CHUNK_TOKENS)
+    if execution["mode"] == "hybrid" and manifest.get("retrieval_query") == "question":
+        text += ", full-question query"
+    return f"oracle: {text}" if manifest.get("oracle") else text
+
+
 def summarize(suite):
     runs = [path.parent for mode in ("direct", "hybrid") for path in (suite / mode).glob("*/manifest.json")]
     manifests = {run: json.loads((run / "manifest.json").read_text()) for run in runs}
@@ -37,12 +45,9 @@ def summarize(suite):
     rows = []
     for run in runs:
         manifest, execution, answers = manifests[run], manifests[run]["execution"], records[run]
-        label = policy(execution, SUITE_CHUNK_TOKENS)
-        if execution["mode"] == "hybrid" and manifest.get("retrieval_query") == "question":
-            label += ", full-question query"
         row = {
             "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
-            "policy": label,
+            "policy": label(manifest),
             "window": manifest["context_window_tokens"],
             "questions": f"{len(answers)}/{len(manifest['selected_example_ids'])}",
         }

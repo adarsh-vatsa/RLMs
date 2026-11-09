@@ -6,6 +6,9 @@ and grades each run as it finishes, instead of launching runs by hand from the
 [benchmark runbook](BENCHMARK_RUNBOOK.md#overflow-policy-conditions). The same
 command, with the same suite ID, is used for all three steps below.
 
+To run this suite on Jarvis as a Slurm job, see the
+[Jarvis AA-LCR suite page](../jarvis_suites/AA_LCR.md).
+
 ## Before you start
 
 - Complete the [Linux setup](SETUP_RUNBOOK.md) and
@@ -27,7 +30,7 @@ DRY_RUN=1 bash linux/run_aa_lcr_suite.sh 20261023   # print the commands only
 bash linux/run_aa_lcr_suite.sh 20261023
 ```
 
-This runs the 15 conditions on all 100 questions and grades each run with the
+This runs the 20 conditions on all 100 questions and grades each run with the
 executor (Qwen3.6) as soon as it finishes. The argument is the suite ID.
 Everything the suite writes stays in
 `benchmark_artifacts/aa_lcr/suites/<suite-id>/`, apart from earlier results:
@@ -43,8 +46,7 @@ unknown name lists the valid ones.
 ## 2. Add the upgraded-recipe runs
 
 Once the upgraded recipe is fixed on MRCR and LongBench-v2, pass its hybrid
-flags to add its three runs at 64K, 32K and 80K. The 15 finished runs are
-skipped.
+flags to add its three runs at 64K, 32K and 80K. Finished runs are skipped.
 
 ```bash
 AA_LCR_RECIPE="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor" \
@@ -55,7 +57,7 @@ AA_LCR_RECIPE="--evidence-selection fusion --child-tokens 1024 --child-overlap-t
 
 After every AA-LCR run is done, regrade them all with GPT-5.6 Luna through
 OpenRouter. The script reads `OPENROUTER_API_KEY` from `.env` when it is not
-set, checks on one question that reasoning tokens come back, then regrades the
+set, grades one question to check the key and credits, then regrades the
 finished runs in parallel into the suite's `regrades/gpt-5.6-luna/`. It covers
 the upgraded-recipe runs without `AA_LCR_RECIPE`. If credits run out partway,
 top up and rerun: finished regrades are skipped.

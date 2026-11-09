@@ -6,9 +6,13 @@ source "$LINUX_SCRIPT_DIR/suite_common.sh"
 usage() {
   echo 'Usage: bash linux/run_mrcr_suite.sh [suite-id]'
   echo 'Runs every MRCR v2 workshop condition in turn; MRCR scores each answer as it runs.'
+  echo 'On Jarvis, submit it with: bash jarvis/run_suite.sh mrcr [suite-id]'
   echo 'Rerun with the same suite ID to resume: finished runs are skipped, and an'
   echo 'unfinished folder is moved aside before it is retried.'
+  echo 'MRCR_ROWS_PER_SOURCE=N sets the questions per conversation (default 30; 0 = all 953 questions).'
+  echo 'Use one value per suite ID: a different N selects different questions.'
   echo 'ONLY=name,... runs a subset. MRCR_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
+  echo 'The oracle conditions use the gold answer to offer the needle turns first: a ceiling, not a method.'
   echo 'DRY_RUN=1 prints the commands without running them.'
 }
 case "${1:-}" in help|-h|--help) usage; exit 0 ;; esac
@@ -22,7 +26,8 @@ SERVING_METADATA="${MRCR_SERVING_METADATA:-.cache/serving_metadata.json}"
 EXECUTOR_URL="${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}"
 ONLY="${ONLY:-}"
 export MRCR_DATA_DIR="${MRCR_DATA_DIR:-benchmark_data/mrcr_v2_4needle_100k_1200k}"
-COMMON=(--output-root "$ROOT" --max-output-tokens 4096 --max-rows-per-source 30 --fail-fast
+ROWS_PER_SOURCE="${MRCR_ROWS_PER_SOURCE:-30}"
+COMMON=(--output-root "$ROOT" --max-output-tokens 4096 --max-rows-per-source "$ROWS_PER_SOURCE" --fail-fast
   --serving-metadata "$SERVING_METADATA")
 
 B262="--context-window-tokens 262144 --max-input-tokens 258048"
@@ -51,6 +56,15 @@ condition middle_64k     direct "$B64 --direct-overflow middle"
 condition position_64k   hybrid "$B64 $CHUNKS --evidence-selection position"
 condition middle_128k    direct "$B128 --direct-overflow middle"
 condition position_128k  hybrid "$B128 $CHUNKS --evidence-selection position"
+condition bm25_32k       hybrid "$B32 $CHUNKS --evidence-selection bm25"
+condition bm25_64k       hybrid "$B64 $CHUNKS --evidence-selection bm25"
+condition bm25_128k      hybrid "$B128 $CHUNKS --evidence-selection bm25"
+# The recipe with the needle turns offered first, found with the gold answer: a ceiling, not a method.
+ORACLE="$LADDER --neighbor-children 1 --packing fill --document-floor --oracle"
+condition oracle         hybrid "$B262 $ORACLE"
+condition oracle_32k     hybrid "$B32 $ORACLE"
+condition oracle_64k     hybrid "$B64 $ORACLE"
+condition oracle_128k    hybrid "$B128 $ORACLE"
 if [[ -n "${MRCR_RECIPE:-}" ]]; then
   condition upgraded      hybrid "$B262 $MRCR_RECIPE"
   condition upgraded_32k  hybrid "$B32 $MRCR_RECIPE"
@@ -63,11 +77,14 @@ select_conditions
 finished() { grep -q '"status": "complete"' "$1/manifest.json" 2>/dev/null; }
 
 RESUME="bash linux/run_mrcr_suite.sh $SUITE"
-start_suite "data $MRCR_DATA_DIR"
+start_suite "data $MRCR_DATA_DIR, $ROWS_PER_SOURCE questions per conversation (0 = all)"
 check_executor
 run_conditions mrcr_v2 "${COMMON[@]}"
 
 step "Results table:"
 run_command "$BENCHMARK_VENV/bin/python" -m mrcr_v2.results_table "$ROOT" \
   || step "Results table failed; the runs are unaffected"
+step "Visibility table (rebuilds every truncated prompt; up to half an hour):"
+run_command "$BENCHMARK_VENV/bin/python" -m mrcr_v2.visibility "$ROOT" --data-dir "$MRCR_DATA_DIR" \
+  || step "Visibility table failed; the runs are unaffected"
 finish_suite

@@ -8,6 +8,9 @@ from mrcr_v2.prompting import PROMPT_VERSION
 
 
 DEFAULT_MODEL = "Qwen/Qwen3.6-35B-A3B"
+# The commit before Qwen's 2026-11-07 change, which altered the chat template's hash but not the
+# prompts it renders. The prepared data was built with this commit, and the runs check the hash.
+DEFAULT_REVISION = "995ad96eacd98c81ed38be0c5b274b04031597b0"
 DEFAULT_DATA_DIR = Path("benchmark_data/mrcr_v2")
 DATASET_VERSION = 1
 BASE_URL = "https://storage.googleapis.com/mrcr_v2"

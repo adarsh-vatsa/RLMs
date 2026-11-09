@@ -1,10 +1,13 @@
 # MRCR v2 suite runbook
 
 `linux/run_mrcr_suite.sh` runs every MRCR v2 condition of the
-[experiment list](../workshop_paper_todo.md#mrcr-v2-neselab) one after another,
+[experiment list](../workshop_paper_todo.md#mrcr-v2-jarvis) one after another,
 instead of launching runs by hand from the
 [benchmark runbook](BENCHMARK_RUNBOOK.md#overflow-policy-conditions). MRCR scores
 each answer deterministically as it runs, so there is no grading step.
+
+To run this suite on Jarvis as a Slurm job, see the
+[Jarvis MRCR suite page](../jarvis_suites/MRCR_V2.md).
 
 ## Before you start
 
@@ -15,9 +18,10 @@ each answer deterministically as it runs, so there is no grading step.
 - Start the executor with its full 262,144-token context and
   [record the serving setup](SETUP_RUNBOOK.md#record-the-serving-setup) in
   `.cache/serving_metadata.json`. The script checks both before it starts.
-- Run from the repository root, inside `tmux`. The first step takes about 14 to
-  15 hours: each run at the 262K budget takes about 55 minutes (about 31 seconds
-  per question at full budget), and the budget sweep about 1.5 hours in all.
+- Run from the repository root, inside `tmux`. At the default 30 questions per
+  conversation the first step takes about 14 to 15 hours: each run at the 262K
+  budget takes about 55 minutes (about 31 seconds per question at full budget),
+  and the budget sweep about 1.5 hours in all.
 
 Hybrid runs embed on the GPU. vLLM's default memory setting leaves about 9 GB
 for the embedding model; if embedding runs out of memory, lower
@@ -30,11 +34,17 @@ DRY_RUN=1 bash linux/run_mrcr_suite.sh 20261026   # print the commands only
 bash linux/run_mrcr_suite.sh 20261026
 ```
 
-This runs the 20 conditions on 30 questions per conversation, 120 in all, with
-3,500-token chunks unless a condition sets its own. The order puts the
+This runs the 27 conditions on 30 questions per conversation, 120 in all, with
+3,500-token chunks unless a condition sets its own. `MRCR_ROWS_PER_SOURCE=100`
+takes 100 per conversation instead, and `0` takes all 953 questions; the
+[run-time estimates](../run_time_estimates_20261025.md#mrcr-sample-size) give the
+time for each. Use one value per suite ID, because a different value selects
+different questions and runs could no longer be paired. The order puts the
 references and the structure-or-selection controls first (`middle`, `dense`,
 `position`, `random0`), then the other baselines, the retrieval variants, the
-upgrade ladder and the budget sweep. The 133K conversation fits the 262K
+upgrade ladder, the budget sweep and the oracle runs. The oracle offers the
+chunks holding the needle turns first, found with the gold answer; it is a
+ceiling, not a method. The 133K conversation fits the 262K
 budget, so its rows are the full-context reference.
 
 The argument is the suite ID. Everything the suite writes stays in
@@ -50,9 +60,9 @@ name lists the valid ones.
 
 Once the upgraded recipe is fixed from the MRCR and LongBench-v2 ladders, pass
 its hybrid flags, including its chunk size, to add its runs at 262K, 32K, 64K
-and 128K. The 20 finished runs are skipped. If the recipe is exactly one of the
-ladder steps, its 262K run repeats that step; skip it with
-`ONLY=upgraded_32k,upgraded_64k,upgraded_128k`.
+and 128K. Finished runs are skipped. If the recipe is exactly one of the ladder
+steps, its 262K run repeats that step; skip it with
+`ONLY=bm25_32k,bm25_64k,bm25_128k,upgraded_32k,upgraded_64k,upgraded_128k`.
 
 ```bash
 MRCR_RECIPE="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor" \
@@ -70,4 +80,14 @@ for plotting. Regenerate it at any time:
 
 ```bash
 .venv/bin/python -m mrcr_v2.results_table benchmark_artifacts/mrcr_v2/suites/20261026
+```
+
+It then writes a visibility table, `visibility.md` and `visibility.csv`: for
+each run, how often the prompt held the whole target turn and all needle turns,
+and exact match given each. It rebuilds every truncated prompt with the runs'
+tokenizer, so it takes up to half an hour and must run where the suite ran:
+
+```bash
+.venv/bin/python -m mrcr_v2.visibility benchmark_artifacts/mrcr_v2/suites/20261026 \
+  --data-dir benchmark_data/mrcr_v2_4needle_100k_1200k
 ```

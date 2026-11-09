@@ -127,13 +127,17 @@ class LinuxLauncherTests(unittest.TestCase):
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "aa_lcr.run_benchmark")}
         grades = [regrader.parse_args(command[3:]) for command in commands if command[2] == "aa_lcr.regrade"]
-        self.assertEqual((len(runs), len(grades)), (18, 18))
+        self.assertEqual((len(runs), len(grades)), (23, 23))
         self.assertTrue(all(args.execution_only and args.fail_fast for args in runs.values()))
         self.assertEqual({args.output_root for args in runs.values()}, {Path("benchmark_artifacts/aa_lcr/suites/S")})
         self.assertEqual((runs["S_full"].max_input_tokens, runs["S_head"].direct_overflow), (258048, "head"))
         self.assertEqual((runs["S_random2"].evidence_selection, runs["S_random2"].selection_seed), ("random", 2))
         upgraded = runs["S_upgraded_32k"]
         self.assertEqual((upgraded.evidence_selection, upgraded.packing, upgraded.max_input_tokens), ("fusion", "fill", 28672))
+        self.assertEqual((runs["S_bm25_80k"].evidence_selection, runs["S_bm25_80k"].max_input_tokens), ("bm25", 77824))
+        ladder3 = runs["S_ladder3_32k"]
+        self.assertEqual((ladder3.evidence_selection, ladder3.child_tokens, ladder3.neighbor_children, ladder3.packing,
+                          ladder3.document_floor, ladder3.max_input_tokens), ("fusion", 1024, 1, "fill", False, 28672))
         self.assertEqual((grades[0].source_run, grades[0].output_dir, grades[0].grader_api_style), (
             Path("benchmark_artifacts/aa_lcr/suites/S/direct/S_full"),
             Path("benchmark_artifacts/aa_lcr/suites/S/regrades/Qwen3.6-35B-A3B/direct/S_full"), "vllm"))
@@ -175,7 +179,7 @@ class LinuxLauncherTests(unittest.TestCase):
                               "OPENROUTER_API_KEY"))
         self.assertEqual(grades[1].output_dir, Path("benchmark_artifacts/aa_lcr/suites/S/regrades/gpt-5.6-luna/hybrid/S_position"))
         everything = self.launch("run_aa_lcr_suite.sh", "S", env={"AA_LCR_GRADER": "luna"})
-        self.assertIn("Suite S: 18 conditions", everything.stdout)
+        self.assertIn("Suite S: 23 conditions", everything.stdout)
         self.assertIn("upgraded_80k", everything.stdout)
 
 
@@ -185,7 +189,7 @@ class LinuxLauncherTests(unittest.TestCase):
         runner = importlib.import_module("mrcr_v2.run_benchmark").build_arg_parser()
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "mrcr_v2.run_benchmark")}
-        self.assertEqual(len(runs), 24)
+        self.assertEqual(len(runs), 31)
         self.assertEqual({(args.output_root, args.data_dir, args.max_rows_per_source, args.fail_fast)
                           for args in runs.values()},
                          {(Path("benchmark_artifacts/mrcr_v2/suites/S"),
@@ -196,7 +200,19 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual((ladder.evidence_selection, ladder.child_tokens, ladder.neighbor_children, ladder.packing,
                           ladder.document_floor), ("fusion", 1024, 1, "fill", True))
         self.assertEqual((runs["S_position_128k"].max_input_tokens, runs["S_upgraded_64k"].child_tokens), (126976, 1024))
-        self.assertEqual(commands[-1][2:], ["mrcr_v2.results_table", "benchmark_artifacts/mrcr_v2/suites/S"])
+        bm25 = runs["S_bm25_64k"]
+        self.assertEqual((bm25.evidence_selection, bm25.child_tokens, bm25.max_input_tokens), ("bm25", 3500, 61440))
+        oracle = runs["S_oracle_32k"]
+        self.assertEqual((oracle.mode, oracle.oracle, oracle.evidence_selection, oracle.child_tokens, oracle.packing,
+                          oracle.document_floor, oracle.max_input_tokens), ("hybrid", True, "fusion", 1024, "fill", True, 28672))
+        self.assertEqual(sum(args.oracle for args in runs.values()), 4)
+        self.assertEqual(commands[-2][2:], ["mrcr_v2.results_table", "benchmark_artifacts/mrcr_v2/suites/S"])
+        self.assertEqual(commands[-1][2:], ["mrcr_v2.visibility", "benchmark_artifacts/mrcr_v2/suites/S",
+                                            "--data-dir", "benchmark_data/mrcr_v2_4needle_100k_1200k"])
+        for rows in ("100", "0"):
+            sized = self.suite_commands(self.launch("run_mrcr_suite.sh", "S", env={"MRCR_ROWS_PER_SOURCE": rows}))
+            self.assertEqual({runner.parse_args(command[3:]).max_rows_per_source for command in sized
+                              if command[2] == "mrcr_v2.run_benchmark"}, {int(rows)})
         self.assertEqual(self.launch("run_mrcr_suite.sh", "--help").returncode, 0)
 
     def test_mrcr_suite_retries_runs_that_did_not_complete(self):
@@ -214,13 +230,13 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertEqual([command[-1] for command in commands if command[2] == "mrcr_v2.run_benchmark"], ["S_dense"])
 
     def test_longbench_suite_runs_every_condition_on_the_shared_question_set(self):
-        commands = self.suite_commands(self.launch("run_longbench_suite.sh", "S", linux=REPO / "jarvis", env={
+        commands = self.suite_commands(self.launch("run_longbench_suite.sh", "S", env={
             "LONGBENCH_RECIPE": "--evidence-selection fusion --packing fill"}))
         parsers = {module: importlib.import_module(module).build_arg_parser()
                    for module in ("long_bench_v2.run_api_benchmark", "long_bench_v2.run_benchmark")}
         runs = {args.run_id: (command[2], args) for command in commands if command[2] in parsers
                 for args in [parsers[command[2]].parse_args(command[3:])]}
-        self.assertEqual(len(runs), 20)
+        self.assertEqual(len(runs), 22)
         self.assertEqual({(args.output_dir, args.min_source_tokens, args.max_source_tokens, args.fail_fast,
                            args.execution_profile, args.row_types) for _, args in runs.values()},
                          {(Path("benchmark_artifacts/longbench_v2/suites/S"), 65529, 262136, True, "common", "original")})
@@ -232,44 +248,71 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual((module, ladder.mode, ladder.evidence_selection, ladder.child_tokens, ladder.packing,
                           ladder.document_floor), ("long_bench_v2.run_benchmark", "baseline", "fusion", 1024, "fill", True))
         self.assertEqual((runs["S_position_128k"][1].max_input_tokens, runs["S_upgraded_32k"][1].packing), (131064, "fill"))
+        module, bm25 = runs["S_bm25_128k"]
+        self.assertEqual((module, bm25.evidence_selection, bm25.max_input_tokens), ("long_bench_v2.run_benchmark", "bm25", 131064))
         self.assertEqual(commands[-1][2:], ["long_bench_v2.results_table", "benchmark_artifacts/longbench_v2/suites/S"])
-        self.assertEqual(self.launch("run_longbench_suite.sh", "--help", linux=REPO / "jarvis").returncode, 0)
+        self.assertEqual(self.launch("run_longbench_suite.sh", "--help").returncode, 0)
 
-    def test_longbench_suite_submits_one_gpu_job_from_the_login_node(self):
+    def test_jarvis_suite_submits_one_job_that_waits_for_the_executor(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "bin").mkdir()
             (root / "bin/sbatch").write_text("#!/usr/bin/env bash\n"
-                f"printf '%s\\n' \"$*\" \"$CLIENT_CMD\" \"$JARVIS_REQUIRED_SERVICES_SET\" > {root}/submitted\n")
+                f"printf '%s\\n' \"$*\" \"$CLIENT_CMD\" \"${{JARVIS_REQUIRED_SERVICES_SET:-}}\" "
+                f"\"${{WAIT_FOR_ENDPOINTS:-}}\" \"$SUITE_RESUME\" > {root}/submitted\n")
             (root / "bin/sbatch").chmod(0o755)
             (root / "serving.json").write_text("{}")
             env = {"DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "PROJECT_LOG_DIR": str(root / "logs"),
-                   "JARVIS_LOAD_DOTENV": "0", "LONGBENCH_SERVING_METADATA": str(root / "serving.json"), "SLURM_JOB_ID": ""}
-            missing = self.launch("run_longbench_suite.sh", "S", linux=REPO / "jarvis", env=env)
+                   "JARVIS_LOAD_DOTENV": "0", "SLURM_JOB_ID": "", "AA_LCR_SERVING_METADATA": str(root / "serving.json"),
+                   "MRCR_SERVING_METADATA": str(root / "serving.json"), "LONGBENCH_SERVING_METADATA": str(root / "serving.json")}
+            jarvis = REPO / "jarvis"
+            self.assertEqual(self.launch("run_suite.sh", "unknown", linux=jarvis, env=env).returncode, 2)
+            missing = self.launch("run_suite.sh", "longbench", "S", linux=jarvis, env=env)
             self.assertEqual(missing.returncode, 1)
             self.assertIn("OPENAI_COMPAT_EXECUTOR_BASE_URL", missing.stderr)
-            result = self.launch("run_longbench_suite.sh", "S", linux=REPO / "jarvis",
-                                 env={**env, "OPENAI_COMPAT_EXECUTOR_BASE_URL": "http://g101:8000/v1"})
-            self.assertEqual(result.returncode, 0, result.stderr)
-            arguments, client_command, required = (root / "submitted").read_text().splitlines()
-            self.assertIn("--gres=gpu:l40s:1", arguments)
-            self.assertTrue(arguments.endswith("jarvis/run_client.sh"))
-            self.assertEqual((client_command, required), ("bash jarvis/run_longbench_suite.sh S", "1"))
+            env["OPENAI_COMPAT_EXECUTOR_BASE_URL"] = "http://g101:8000/v1"
+            no_metadata = self.launch("run_suite.sh", "mrcr", "S", linux=jarvis,
+                                      env={**env, "MRCR_SERVING_METADATA": str(root / "absent.json")})
+            self.assertEqual(no_metadata.returncode, 1)
+            self.assertIn("Serving metadata not found", no_metadata.stderr)
+            for benchmark in ("aa_lcr", "mrcr", "longbench"):
+                with self.subTest(benchmark=benchmark):
+                    result = self.launch("run_suite.sh", benchmark, "S", linux=jarvis, env=env)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    arguments, command, required, wait, resume = (root / "submitted").read_text().splitlines()
+                    self.assertIn("--gres=gpu:l40s:1", arguments)
+                    self.assertTrue(arguments.endswith("jarvis/run_client.sh"))
+                    self.assertEqual((command, required, wait), (f"bash linux/run_{benchmark}_suite.sh S", "1", "1"))
+                    self.assertTrue(resume.endswith(f"jarvis/run_suite.sh {benchmark} S"))
+            luna = self.launch("run_suite.sh", "aa_lcr", "S", linux=jarvis,
+                               env={**env, "AA_LCR_GRADER": "luna", "OPENAI_COMPAT_EXECUTOR_BASE_URL": ""})
+            self.assertEqual(luna.returncode, 0, luna.stderr)
+            arguments, command, required, wait, resume = (root / "submitted").read_text().splitlines()
+            self.assertIn("--partition=compute-short", arguments)
+            self.assertNotIn("--gres", arguments)
+            self.assertEqual((command, required, wait), ("bash linux/run_aa_lcr_suite.sh S", "", ""))
+            self.assertTrue(resume.startswith("AA_LCR_GRADER=luna bash "))
+            full = self.launch("run_suite.sh", "mrcr", "S", linux=jarvis, env={**env, "MRCR_ROWS_PER_SOURCE": "0"})
+            self.assertEqual(full.returncode, 0, full.stderr)
+            self.assertTrue((root / "submitted").read_text().splitlines()[-1].startswith("MRCR_ROWS_PER_SOURCE=0 bash "))
+            preview = self.launch("run_suite.sh", "mrcr", "S", linux=jarvis)
+            self.assertEqual(preview.returncode, 0, preview.stderr)
+            self.assertIn("[MRCR SUITE] Suite S: 27 conditions", preview.stdout)
 
     def test_longbench_suite_finds_runs_in_each_runners_folder(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            for folder in ("linux", "jarvis"):
-                shutil.copytree(REPO / folder, root / folder)
+            shutil.copytree(REPO / "linux", root / "linux")
             suite = root / "benchmark_artifacts/longbench_v2/suites/S"
             (suite / "longbench_v2_api/S_middle").mkdir(parents=True)
             (suite / "longbench_v2_api/S_middle/manifest.json").write_text("{}")
             (suite / "longbench_v2/S_dense").mkdir(parents=True)
-            result = self.launch("run_longbench_suite.sh", "S", env={"ONLY": "middle,dense"}, linux=root / "jarvis")
+            result = self.launch("run_longbench_suite.sh", "S", env={"ONLY": "middle,dense"}, linux=root / "linux")
             commands = self.suite_commands(result)
             self.assertIn("run: already finished", result.stdout)
             self.assertIn("moving unfinished benchmark_artifacts/longbench_v2/suites/S/longbench_v2/S_dense", result.stdout)
             self.assertEqual([command[-1] for command in commands if command[2].startswith("long_bench_v2.run")], ["S_dense"])
+
 
 if __name__ == "__main__":
     unittest.main()

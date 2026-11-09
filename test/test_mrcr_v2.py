@@ -37,6 +37,12 @@ class FakeTokenizer:
         return {"input_ids": list(range(len(text))),
                 "offset_mapping": [(index, index + 1) for index in range(len(text))]}
 
+    def encode(self, text, add_special_tokens=False):
+        return [ord(character) for character in text]
+
+    def decode(self, token_ids, skip_special_tokens=True):
+        return "".join(map(chr, token_ids))
+
 
 def tokenizer_factory(model, revision=None):
     return FakeTokenizer()

@@ -11,7 +11,7 @@ import urllib.request
 
 from aa_lcr.prompting import chat_token_count
 from mrcr_v2.dataset import (
-    DATASET_VERSION, DEFAULT_DATA_DIR, DEFAULT_MODEL, band_urls, file_hash,
+    DATASET_VERSION, DEFAULT_DATA_DIR, DEFAULT_MODEL, DEFAULT_REVISION, band_urls, file_hash,
     load_tokenizer, text_hash, tokenizer_metadata, validate_bounds,
 )
 from mrcr_v2.prompting import messages, split_prompt
@@ -128,7 +128,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-source-tokens", type=int, required=True)
     parser.add_argument("--needles", type=int, choices=[2, 4, 8], default=8)
     parser.add_argument("--executor-model", default=DEFAULT_MODEL)
-    parser.add_argument("--tokenizer-revision", default=None)
+    parser.add_argument("--tokenizer-revision", default=DEFAULT_REVISION)
     parser.add_argument("--max-rows", type=int, default=0)
     return parser
 

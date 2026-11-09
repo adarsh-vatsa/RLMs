@@ -6,6 +6,7 @@ source "$LINUX_SCRIPT_DIR/suite_common.sh"
 usage() {
   echo 'Usage: bash linux/run_aa_lcr_suite.sh [suite-id]'
   echo 'Runs every AA-LCR workshop condition in turn and grades each with the executor when it finishes.'
+  echo 'On Jarvis, submit it with: bash jarvis/run_suite.sh aa_lcr [suite-id]'
   echo 'Rerun with the same suite ID to resume: finished runs and grades are skipped, and an'
   echo 'unfinished folder is moved aside before it is retried.'
   echo 'ONLY=name,... runs a subset. AA_LCR_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
@@ -22,9 +23,13 @@ LOG_DIR="$ROOT/logs"
 DATA_DIR="${AA_LCR_DATA_DIR:-benchmark_data/aa_lcr/v1.1}"
 SERVING_METADATA="${AA_LCR_SERVING_METADATA:-.cache/serving_metadata.json}"
 EXECUTOR_URL="${OPENAI_COMPAT_EXECUTOR_BASE_URL:-http://127.0.0.1:8000/v1}"
+EXECUTOR_MODEL="${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
 GRADER="${AA_LCR_GRADER:-executor}"
 ONLY="${ONLY:-}"
-COMMON=(--output-root "$ROOT" --execution-only --max-output-tokens 4096 --fail-fast --serving-metadata "$SERVING_METADATA")
+# Runs are graded afterwards by the executor (then by Luna); naming it here keeps a
+# host's default evaluator, such as Jarvis's, out of the run manifests.
+COMMON=(--output-root "$ROOT" --execution-only --max-output-tokens 4096 --fail-fast --serving-metadata "$SERVING_METADATA"
+  --evaluator-model "$EXECUTOR_MODEL" --evaluator-base-url "$EXECUTOR_URL")
 
 B64="--context-window-tokens 65536 --max-input-tokens 61440"
 B32="--context-window-tokens 32768 --max-input-tokens 28672"
@@ -44,6 +49,13 @@ condition middle_32k    direct "$B32 --direct-overflow middle"
 condition position_32k  hybrid "$B32 --evidence-selection position"
 condition middle_80k    direct "$B80 --direct-overflow middle"
 condition position_80k  hybrid "$B80 --evidence-selection position"
+condition bm25_32k      hybrid "$B32 --evidence-selection bm25"
+condition bm25_80k      hybrid "$B80 --evidence-selection bm25"
+# Ladder 3 is the recipe without --document-floor, so it isolates the floor on multi-document questions.
+LADDER3="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill"
+condition ladder3       hybrid "$B64 $LADDER3"
+condition ladder3_32k   hybrid "$B32 $LADDER3"
+condition ladder3_80k   hybrid "$B80 $LADDER3"
 # Regrading needs only the names, so Luna mode covers the recipe runs without the flags.
 if [[ -n "${AA_LCR_RECIPE:-}" || "$GRADER" == luna ]]; then
   condition upgraded     hybrid "$B64 ${AA_LCR_RECIPE:-}"
@@ -54,7 +66,7 @@ select_conditions
 
 case "$GRADER" in
   executor)
-    GRADER_MODEL="${OPENAI_COMPAT_EXECUTOR_MODEL:-Qwen/Qwen3.6-35B-A3B}"
+    GRADER_MODEL="$EXECUTOR_MODEL"
     GRADER_URL="$EXECUTOR_URL"
     GRADER_FLAGS=(--grader-api-style vllm) ;;
   luna)
@@ -121,22 +133,14 @@ if [[ "$GRADER" == luna ]]; then
   done
   (( ${#FINISHED[@]} )) || fail "No finished runs to regrade in suite $SUITE"
 
-  # OpenRouter may drop a parameter the provider does not support, so confirm on
-  # one question that reasoning is on before grading everything.
+  # One call first, so a bad key or empty credits stop the suite before the
+  # parallel regrades. Reasoning tokens are not checked: Luna reasons adaptively
+  # and often uses none on a grading prompt, even at high effort.
   first="${MODES[${FINISHED[0]}]}/${SUITE}_${NAMES[${FINISHED[0]}]}"
   check="$GRADES/check/${SUITE}_${NAMES[${FINISHED[0]}]}-$(date -u +%Y%m%dT%H%M%SZ)"
   step "Checking one Luna call on $first (question 1)"
   logged "$LOG_DIR/luna-check.log" regrade "$first" "$check" --question-ids 1 \
     || fail "The Luna check call failed; see $LOG_DIR/luna-check.log"
-  if [[ "${DRY_RUN:-0}" != 1 ]]; then
-    "$BENCHMARK_VENV/bin/python" - "$check/bridge_rows.jsonl" <<'EOF' || fail "Luna returned no reasoning tokens; reasoning effort was not applied"
-import json, sys
-usage = json.loads(open(sys.argv[1]).readline())["grader_usage"]
-reasoning = (usage.get("completion_tokens_details") or {}).get("reasoning_tokens") or 0
-print(f"[AA-LCR SUITE]   {usage.get('completion_tokens')} output tokens, {reasoning} of them reasoning")
-sys.exit(0 if reasoning else 1)
-EOF
-  fi
 
   step "Regrading ${#FINISHED[@]} runs in parallel"
   PIDS=()
