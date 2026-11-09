@@ -114,14 +114,55 @@ This section will cover four areas. Long context versus retrieval, including rou
 \section{Benchmarks}
 This section will describe the three benchmarks and why each one tests a different kind of task. AA-LCR tests reasoning over several documents, MRCR v2 tests exact reproduction from very long conversations, and LongBench-v2 is mixed multiple choice. For each benchmark it will give the subset used, the input lengths compared with the window, the scoring (LLM grading for AA-LCR, deterministic scoring for MRCR, exact choice for LongBench-v2) and how spread out the evidence is, from a few known needles to whole documents.
 
-\section{Architecture}
+\section{Methodology}
 This section will describe the shared pipeline, in which the overflow policy is the only thing that changes between conditions. It will cover the length check, after which a prompt that fits is sent unchanged, and the tokenizer- and chat-template-aware budget. It will then describe how the selected chunks are rendered back into the original prompt in source order, with omission markers and the original document numbers, and the packing step that fills the budget. Each policy is defined by how it chooses the spans to keep: by position (head and tail, head only, middle-marked truncation), at random, by BM25, by dense similarity, by fusion of dense and BM25 scores, or by an oracle.
 
 \section{Experiments}
 This section will set out the experimental protocol. All conditions within a benchmark use the same data, model, serving setup and token budget, and are paired by question. It will list the conditions in three groups: the deciding controls (position, random, marked truncation, head only), lexical retrieval and the upgrade ladder chosen on MRCR and LongBench-v2, and the held-out check on AA-LCR. It will also describe the budget sweep (32K, 64K and 128K), the independent AA-LCR grader with its hand-labelled accuracy, and how cost is measured.
 
 \section{Results}
-This section will report the main comparison of all policies at one budget per benchmark (Table~1) and accuracy as a function of the share of the input that fits the budget (Figure~1). It will give the visibility decomposition on MRCR, i.e.\ how often the target is in the input and the accuracy given that it is, against the oracle (Table~2), and the cost per question (Table~3). It will close by showing where the policy breaks down, as the budget share falls and as the evidence becomes more spread out.
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/figure1}
+\caption{Score against the mean share of each prompt that fits the input budget, at the context windows marked above each panel. \emph{Position} keeps the head and tail of every document and is rendered exactly like retrieval; the \emph{fusion recipe} ranks 1,024-token chunks by dense and BM25 scores (see Architecture). Full context is the 262K run, in which every prompt fits. MRCR has a full-context run only for its 133K conversation, so its reference is the oracle: the recipe with the chunks holding the needle turns offered first. AA-LCR has 100 questions graded by an LLM judge, MRCR 120 and LongBench-v2 221 four-choice questions.}
+\label{fig:policies}
+\end{figure*}
+
+\begin{table*}[t]
+\centering
+\small
+\input{tables/table1}
+\caption{Every policy at each benchmark's main window. Acc.\ and EM are percentages; $\Delta$ is the paired difference from middle truncation at the same window, in points, with a 95\% interval from 10,000 resamples of the AA-LCR document sets, the LongBench-v2 documents, and the MRCR questions within each conversation. Random chunks uses seed 0; on AA-LCR, seeds 1 and 2 score 33.0 and 32.0. Full context is the 262K run, in which every prompt fits. The MRCR oracle is the fusion recipe with the chunks holding the needle turns offered first.}
+\label{tab:main}
+\end{table*}
+
+This section will report the main comparison of all policies at one budget per benchmark (Table~\ref{tab:main}) and accuracy as a function of the share of the input that fits the budget (Figure~\ref{fig:policies}). It will show how MRCR accuracy changes with conversation length at the 262K window (Figure~\ref{fig:mrcr-length}), give the visibility decomposition on MRCR, i.e.\ how often the target is in the input and the accuracy given that it is, against the oracle (Table~\ref{tab:visibility}), and the cost per question (Table~\ref{tab:cost}).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{figures/figure2}
+\caption{MRCR exact match by conversation length at the 262K window, 30 questions per conversation. Under each length is the share of the conversation that fits the budget. Position matches middle truncation on every conversation and is not shown.}
+\label{fig:mrcr-length}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\input{tables/table2}
+\caption{MRCR visibility decomposition, 120 questions per row. Target and Needles: percentage of prompts that hold the whole target turn and all needle turns. EM $\mid$ target: exact match on the prompts that hold the target, with their number when below 30. With the target hidden, exact match is 0\% in every row, so EM is the product of Target and EM $\mid$ target.}
+\label{tab:visibility}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3.5pt}
+\input{tables/table3}
+\caption{Input tokens and time per question at each benchmark's main window; full context is the 262K run. Embedding is the time to build the document index with Qwen3-Embedding-0.6B, spread over the questions that share a document set or conversation: on one L40S GPU in these runs, and on CPU in an earlier run of the same dense configuration on another machine. Select is retrieval and packing; Generate is the model's generation time.}
+\label{tab:cost}
+\end{table}
+
+ It will close by showing where the policy breaks down, as the budget share falls and as the evidence becomes more spread out.
 
 \section{Limitations}
 All results come from one open-weight model family and one run per setting, and some subsets are small. The visibility decomposition can be measured only on MRCR, because AA-LCR and LongBench-v2 do not release evidence locations. AA-LCR depends on an LLM grader. The selection method itself is not new, and the oracle comparison is analytic unless the oracle run is completed.
@@ -133,6 +174,6 @@ The conclusion will restate the main finding: how much of the accuracy lost to t
 \bibliography{references}
 
 % Include only if the workshop asks for the reproducibility checklist in the paper.
-% \input{ReproducibilityChecklist.tex}
+% \input{author-kit/ReproducibilityChecklist.tex}
 
 \end{document}
