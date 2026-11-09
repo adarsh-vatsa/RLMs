@@ -50,7 +50,7 @@ For AA-LCR, keep the CSV, documents, and manifest from the same prepared directo
 | `--max-rows` | All | Deterministic limit after filtering; `0` means all eligible rows |
 | `--max-rows-per-source` | MRCR | At most N evenly spaced questions per source conversation, applied before `--max-rows`; `0` means no per-source limit |
 | `--question-ids`, `--document-set-ids` | AA-LCR | Comma-separated identifier filters |
-| `--tokenizer-revision` | MRCR | Tokenizer revision; defaults to the prepared revision |
+| `--tokenizer-revision` | MRCR | Tokenizer revision; defaults to the Qwen commit the prepared data was built with |
 
 AA-LCR requires both source bounds if either is supplied; otherwise
 no source-length filter is imposed. MRCR defaults to its prepared bounds and

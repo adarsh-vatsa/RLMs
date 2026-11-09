@@ -16,7 +16,9 @@ from execution.pipeline import Pipeline
 from execution.results_table import mean, read_rows, write_table
 from execution.tokens import truncate_prompt
 from mrcr_v2.adapter import solver_task
-from mrcr_v2.dataset import DEFAULT_DATA_DIR, file_hash, load_prepared, load_tokenizer, read_source, tokenizer_metadata
+from mrcr_v2.dataset import (
+    DEFAULT_DATA_DIR, DEFAULT_REVISION, file_hash, load_prepared, load_tokenizer, read_source, tokenizer_metadata,
+)
 from mrcr_v2.oracle import needle_spans
 from mrcr_v2.results_table import label, size_label
 
@@ -66,7 +68,7 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer):
                 spans[record["case_id"]] = needle_spans(body, row["question"], row["answer"], row["num_relevant"])
             needles, target = spans[record["case_id"]]
             if tokenizer is None and record["route"] not in {"direct_fit", "dense_child_packed"}:
-                tokenizer = tokenizer_factory(manifest["executor_model"], dataset["tokenizer"]["revision"])
+                tokenizer = tokenizer_factory(manifest["executor_model"], DEFAULT_REVISION)
                 if tokenizer_metadata(tokenizer, manifest["executor_model"]) != dataset["tokenizer"]:
                     raise ValueError("This tokenizer differs from the one the runs used; run where the suite ran")
             shown = visible(record, manifest, prefix, body, row["question"], needles, tokenizer)

@@ -11,7 +11,7 @@ import time
 
 from execution.client import call_chat_completion
 from mrcr_v2.dataset import (
-    DEFAULT_DATA_DIR, DEFAULT_MODEL, file_hash, load_prepared, load_tokenizer,
+    DEFAULT_DATA_DIR, DEFAULT_MODEL, DEFAULT_REVISION, file_hash, load_prepared, load_tokenizer,
     read_source, text_hash, tokenizer_metadata, validate_bounds,
 )
 from mrcr_v2.prompting import PROMPT_VERSION
@@ -115,8 +115,7 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
     data_dir = Path(args.data_dir)
     dataset_manifest, all_rows = load_prepared(data_dir)
     minimum, maximum = _validate_args(args, dataset_manifest)
-    revision = args.tokenizer_revision or dataset_manifest["tokenizer"]["revision"]
-    tokenizer = tokenizer_factory(args.executor_model, revision)
+    tokenizer = tokenizer_factory(args.executor_model, args.tokenizer_revision)
     config = resolve_config(args, mode=args.mode, legacy_source_order=True,
                             executor_model=args.executor_model, max_input_tokens=args.max_input_tokens,
                             max_output_tokens=args.max_output_tokens, context_window_tokens=args.context_window_tokens)
@@ -302,7 +301,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-source-tokens", type=int)
     parser.add_argument("--max-source-tokens", type=int)
     parser.add_argument("--executor-model", default=DEFAULT_MODEL)
-    parser.add_argument("--tokenizer-revision")
+    parser.add_argument("--tokenizer-revision", default=DEFAULT_REVISION)
     parser.add_argument("--executor-base-url", default=os.getenv("OPENAI_COMPAT_EXECUTOR_BASE_URL") or os.getenv("OPENAI_COMPAT_BASE_URL") or "http://127.0.0.1:8000/v1")
     parser.add_argument("--api-key-env", default=os.getenv("OPENAI_COMPAT_API_KEY_ENV", ""))
     parser.add_argument("--context-window-tokens", type=int, default=65536)
