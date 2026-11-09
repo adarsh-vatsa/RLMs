@@ -35,6 +35,8 @@
 
 % Draft only: notes for the authors' review; remove every use before submission.
 \newcommand{\review}[1]{\textcolor{red}{[#1]}}
+% Draft only: sections not yet drafted print in blue; remove every use before submission.
+\newenvironment{notstarted}{\color{blue}}{}
 % Working name of the main method; the figures and tables spell it in figures.py and tables.py.
 \newcommand{\recipe}{fusion recipe}
 
@@ -102,7 +104,9 @@
 \maketitle
 
 \begin{abstract}
+\begin{notstarted}
 When a long-context input is longer than the model's window, something must be removed. Benchmark harnesses usually cut out the middle of the prompt. We study this \emph{overflow policy} directly and treat retrieval as query-aware truncation: it re-renders the same prompt but keeps the chunks most similar to the question. On AA-LCR, MRCR v2 and LongBench-v2, served by one open-weight model at the same token budget, we compare it with naive truncation, structural and random controls, lexical retrieval and an oracle. The abstract will report how much of the accuracy lost to truncation it recovers, and how much of the oracle's gain.
+\end{notstarted}
 \end{abstract}
 
 % Make sure that you do not de-anonymize yourself with these links.
@@ -111,13 +115,25 @@ When a long-context input is longer than the model's window, something must be r
 % \end{links}
 
 \section{Introduction}
+\begin{notstarted}
 The introduction will define the overflow policy, i.e.\ what a system does when the input exceeds the context window, and explain why it matters at inputs from half to four times the served window. It will state in the first paragraph that the selection method is order-preserving retrieval as in OP-RAG and DOS RAG, so the contribution is a controlled evaluation, not a new method. It will then present the three-way comparison of naive truncation, query-aware truncation and an oracle that keeps exactly the needed text, and list the contributions: the controlled comparison, per-example provenance of what the model saw, and the visibility decomposition.
+\end{notstarted}
 
 \section{Related Work}
+\begin{notstarted}
 This section will cover four areas. Long context versus retrieval, including routing between them (Self-Route, LaRA) and order-preserving retrieval (OP-RAG, DOS RAG). The gap between advertised and effective context length. Truncation as a baseline, especially Distractor-Aware Truncation, which removes irrelevant content using oracle knowledge, and answer-in-context diagnostics for budgeted retrieval. Recursive approaches such as Recursive Language Models, as the alternative reviewers will expect us to compare against. Every reference will be checked in full text before it is cited.
+\end{notstarted}
 
 \section{Benchmarks}
-This section will describe the three benchmarks and why each one tests a different kind of task. AA-LCR tests reasoning over several documents, MRCR v2 tests exact reproduction from very long conversations, and LongBench-v2 is mixed multiple choice. For each benchmark it will give the subset used, the input lengths compared with the window, the scoring (LLM grading for AA-LCR, deterministic scoring for MRCR, exact choice for LongBench-v2) and how spread out the evidence is, from a few known needles to whole documents.
+The three benchmarks differ in what an answer depends on: reasoning across several documents (AA-LCR), reproducing one passage of a long conversation (MRCR v2), and choosing among four options about one long text (LongBench-v2). Each has a main window, the budget of Table~\ref{tab:main}. \review{Table? One row per benchmark (questions, prompt tokens, main window, share kept, scoring) would replace most numbers below. Worth it in a long paper.}
+
+\paragraph{AA-LCR.} Artificial Analysis Long Context Reasoning \review{cite AA-LCR} has 100 questions over 30 document sets, mostly company documents (63 questions), followed by government consultations, industry reports, legal, marketing, academic and survey documents. A question comes with 2 to 24 documents (median 6), and its full prompt is 88K to 122K tokens. Answering can require finding the relevant documents, combining facts across them and computing a result. Answers are free text, and an LLM judge decides whether each matches the reference (see Experiments). At the 64K main window every prompt overflows, and middle truncation keeps 58\% of a prompt on average.
+
+\paragraph{MRCR v2.} Multi-round coreference resolution \review{cite MRCR v2} hides several responses to one request, such as ``write a poem about the moon in a cheerful style'', in a long synthetic conversation, and asks the model to repeat one of them, named by its ordinal, after a random prefix. We use the four-needle release, which has one conversation per length band. We take the four conversations from 133K to 1.06M tokens and 30 evenly spaced questions from each, 120 in total. The evidence is known: the four needle turns, and among them the target. We score exact match against the reference, ignoring surrounding whitespace; the official similarity score is 0.8 to 3.8 points higher in every run. \review{Report the official score in an appendix, or drop it?} The main window is the served model's full 262K. The 133K conversation fits and is sent whole, which makes it the only full-context reference, and middle truncation keeps 97\%, 48\% and 24\% of the three longer ones.
+
+\paragraph{LongBench-v2.} LongBench-v2 \review{cite LongBench-v2} has 503 four-choice questions over long texts. We keep the 221 whose full prompt exceeds the 64K budget but fits the 262K window, so that every question has a full-context reference. Their prompts are 66K to 259K tokens (median 124K), over 194 distinct texts: single-document QA (82 questions), multi-document QA (46), long in-context learning (44), dialogue history (20), structured data (17) and code repositories (12); 130 are labelled hard. The model answers with a single letter and no reasoning, so scoring is exact, and chance is 25\%. At the 64K main window, middle truncation keeps 54\% of a prompt on average.
+
+Only MRCR releases where its evidence is. AA-LCR's evidence lies in an unlabelled subset of a question's documents, and LongBench-v2's ranges from one passage to the whole text, depending on the task. \review{Evidence spread no longer supports a claim (the subgroup split was dropped on 9 November). Keep this paragraph as description, or cut it?}
 
 \section{Methodology}
 A prompt holds fixed instructions, one or more source documents and a question. Its input budget $B$ is the context window minus the tokens reserved for the answer. We count tokens on the fully rendered request, with the served model's tokenizer and chat template, so $B$ bounds exactly what the model receives. A prompt that fits is sent unchanged. An \emph{overflow policy} decides what a longer prompt becomes. All policies run in one pipeline that is otherwise identical across conditions, and in every condition we report the instructions and the question reach the model intact: policies differ only in which source text they keep.
@@ -143,7 +159,9 @@ Selection rebuilds the same prompt from a subset of its source text in three ste
 \review{Figure? One AA-LCR prompt under middle truncation, position and the \recipe, side by side, would show ``same prompt, different spans'' at a glance. Worth the space in a long paper; drop it in a short one.}
 
 \section{Experiments}
+\begin{notstarted}
 This section will set out the experimental protocol. All conditions within a benchmark use the same data, model, serving setup and token budget, and are paired by question. It will list the conditions in three groups: the deciding controls (position, random, marked truncation, head only), lexical retrieval and the upgrade ladder chosen on MRCR and LongBench-v2, and the held-out check on AA-LCR. It will also describe the budget sweep (32K, 64K and 128K), the independent AA-LCR grader with its hand-labelled accuracy, and how cost is measured.
+\end{notstarted}
 
 \section{Results}
 \begin{figure*}[t]
@@ -161,7 +179,9 @@ This section will set out the experimental protocol. All conditions within a ben
 \label{tab:main}
 \end{table*}
 
+\begin{notstarted}
 This section will report the main comparison of all policies at one budget per benchmark (Table~\ref{tab:main}) and accuracy as a function of the share of the input that fits the budget (Figure~\ref{fig:policies}). It will show how MRCR accuracy changes with conversation length at the 262K window (Figure~\ref{fig:mrcr-length}), give the visibility decomposition on MRCR, i.e.\ how often the target is in the input and the accuracy given that it is, against the oracle (Table~\ref{tab:visibility}), and the cost per question (Table~\ref{tab:cost}).
+\end{notstarted}
 
 \begin{figure}[t]
 \centering
@@ -187,13 +207,19 @@ This section will report the main comparison of all policies at one budget per b
 \label{tab:cost}
 \end{table}
 
- It will close by showing where the policy breaks down, as the budget share falls and as the evidence becomes more spread out.
+\begin{notstarted}
+It will close by showing where the policy breaks down, as the budget share falls and as the evidence becomes more spread out.
+\end{notstarted}
 
 \section{Limitations}
+\begin{notstarted}
 All results come from one open-weight model family and one run per setting, and some subsets are small. The visibility decomposition can be measured only on MRCR, because AA-LCR and LongBench-v2 do not release evidence locations. AA-LCR depends on an LLM grader. The selection method itself is not new, and the oracle comparison is analytic unless the oracle run is completed.
+\end{notstarted}
 
 \section{Conclusion}
+\begin{notstarted}
 The conclusion will restate the main finding: how much of the accuracy lost to truncation a label-free selector recovers, and how close it comes to the oracle. It will then give practical guidance for benchmark harnesses and long-context systems on choosing an overflow policy, and name next steps, including a second model family and evidence labels for AA-LCR.
+\end{notstarted}
 
 % The References heading is generated by aaai2027.bst once the text cites at least one entry.
 \bibliography{references}
