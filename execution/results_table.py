@@ -11,8 +11,9 @@ from math import comb
 FORMATS = {"window": "{:,}", "prompt kept": "{:.0%}", "input tokens": "{:,.0f}", "documents covered": "{:.0%}",
            "accuracy": "{:.1%}", "exact match": "{:.1%}", "MRCR score": "{:.3f}", "prefix compliance": "{:.0%}",
            "p vs middle": "{:.3f}", "output tokens": "{:,.0f}", "generation s/question": "{:.1f}",
-           "retrieval + packing s/question": "{:.1f}"}
-PREFIX_FORMATS = {"agreement with ": "{:.0%}", "exact match at ": "{:.0%}"}
+           "retrieval + packing s/question": "{:.1f}", "target visible": "{:.0%}", "all needles visible": "{:.0%}"}
+PREFIX_FORMATS = {"agreement with ": "{:.0%}", "exact match at ": "{:.0%}", "exact match given ": "{:.1%}",
+                  "target visible at ": "{:.0%}"}
 
 
 def read_rows(path):

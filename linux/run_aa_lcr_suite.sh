@@ -51,6 +51,11 @@ condition middle_80k    direct "$B80 --direct-overflow middle"
 condition position_80k  hybrid "$B80 --evidence-selection position"
 condition bm25_32k      hybrid "$B32 --evidence-selection bm25"
 condition bm25_80k      hybrid "$B80 --evidence-selection bm25"
+# Ladder 3 is the recipe without --document-floor, so it isolates the floor on multi-document questions.
+LADDER3="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill"
+condition ladder3       hybrid "$B64 $LADDER3"
+condition ladder3_32k   hybrid "$B32 $LADDER3"
+condition ladder3_80k   hybrid "$B80 $LADDER3"
 # Regrading needs only the names, so Luna mode covers the recipe runs without the flags.
 if [[ -n "${AA_LCR_RECIPE:-}" || "$GRADER" == luna ]]; then
   condition upgraded     hybrid "$B64 ${AA_LCR_RECIPE:-}"

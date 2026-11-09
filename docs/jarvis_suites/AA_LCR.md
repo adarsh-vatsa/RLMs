@@ -8,7 +8,7 @@ with 61,440 input tokens, which leaves 4,096 tokens for the answer.
 | --- | --- |
 | Name in commands | `aa_lcr` |
 | Questions per run | 100, all of AA-LCR v1.1 |
-| Runs | 17, plus 3 upgraded-recipe runs later |
+| Runs | 20, plus 3 upgraded-recipe runs later |
 | Time | about 4.5 hours, plus about 1.25 hours for the recipe runs |
 | Grading | The executor (Qwen3.6) grades each run as soon as it finishes. At the very end, GPT-5.6 Luna regrades every run through OpenRouter. |
 | Output | `adarsh-rlms/benchmark_artifacts/aa_lcr/suites/<suite-id>/` |
@@ -34,6 +34,7 @@ ones, shown in document order.
 | `middle_32k`, `middle_80k` | direct | 32K, 80K | `middle` at other budgets. |
 | `position_32k`, `position_80k` | hybrid | 32K, 80K | `position` at other budgets. |
 | `bm25_32k`, `bm25_80k` | hybrid | 32K, 80K | `bm25` at other budgets. |
+| `ladder3`, `ladder3_32k`, `ladder3_80k` | hybrid | 64K, 32K, 80K | The upgraded recipe without `--document-floor`; see [ORACLE.md](ORACLE.md). |
 | `upgraded`, `upgraded_32k`, `upgraded_80k` | hybrid | 64K, 32K, 80K | The upgraded recipe (later; see below). |
 
 ## Before the first suite: prepare the data
@@ -62,7 +63,7 @@ cd ~
    ```
 
    The first line should read
-   `[AA-LCR SUITE] Suite 20261029: 17 conditions, grader Qwen/Qwen3.6-35B-A3B`.
+   `[AA-LCR SUITE] Suite 20261029: 20 conditions, grader Qwen/Qwen3.6-35B-A3B`.
    Below it are a run command and a grading command for each condition.
 4. Optional first check, for a new setup. This submits two runs, one direct and
    one hybrid, and grades them, which takes under an hour:
@@ -87,7 +88,7 @@ cd ~
    ```
 
    Each condition shows a `run:` line and then a `grade:` line.
-7. When the log ends with `All 17 conditions complete`, stop the executor:
+7. When the log ends with `All 20 conditions complete`, stop the executor:
    `scancel "$EXECUTOR_JOB"`.
 
 To resume after an interruption, submit the command from step 5 again.
@@ -141,7 +142,7 @@ AA_LCR_RECIPE="<the recipe's hybrid flags>" bash adarsh-rlms/jarvis/run_suite.sh
 Regrade once, after every AA-LCR run is finished, including the recipe runs.
 This needs no executor. It submits a CPU job that calls GPT-5.6 Luna through
 OpenRouter, using `OPENROUTER_API_KEY` from `adarsh-rlms/.env`. It first grades
-one question to check the key and credits. Then it regrades all 20 runs in
+one question to check the key and credits. Then it regrades all 23 runs in
 parallel, which takes under an hour.
 
 ```bash

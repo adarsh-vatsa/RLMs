@@ -45,6 +45,8 @@ def _validate_args(args, manifest: dict) -> tuple[int, int]:
         raise ValueError("Child tokens must be positive with 0 <= overlap < child tokens")
     if args.max_retries < 1 or args.request_timeout_seconds <= 0:
         raise ValueError("Retry count and request timeout must be positive")
+    if args.oracle and args.mode != "hybrid":
+        raise ValueError("--oracle requires --mode hybrid")
     return minimum, maximum
 
 
@@ -185,7 +187,8 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
         "max_input_tokens": args.max_input_tokens, "max_output_tokens": args.max_output_tokens,
         "context_window_tokens": args.context_window_tokens,
         "child_tokens": args.child_tokens, "child_overlap_tokens": args.child_overlap_tokens,
-        "retrieval_query": args.retrieval_query, "executor_model": args.executor_model, "executor_base_url": args.executor_base_url,
+        "retrieval_query": args.retrieval_query, "oracle": args.oracle,
+        "executor_model": args.executor_model, "executor_base_url": args.executor_base_url,
         "temperature": 0, "enable_thinking": False, "answer_cache_enabled": config.cache_read or config.cache_write,
         "execution": config.metadata(),
         "reranker_enabled": config.rerank_top > 0, "knowledge_lookup_enabled": False,
@@ -222,7 +225,13 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
             extra_body={"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
             api_key=api_key, timeout_seconds=args.request_timeout_seconds)
 
-    pipeline = Pipeline(config, tokenizer, complete, backend_factory=backend, output_dir=run_dir)
+    if args.oracle:
+        from mrcr_v2.oracle import OraclePipeline
+
+        pipeline = OraclePipeline(config, tokenizer, complete, backend_factory=backend, output_dir=run_dir,
+                                  gold={row["case_id"]: row for row in selected})
+    else:
+        pipeline = Pipeline(config, tokenizer, complete, backend_factory=backend, output_dir=run_dir)
     with (run_dir / "predictions.jsonl").open("w", encoding="utf-8") as output, \
             (run_dir / "bridge_rows.csv").open("w", encoding="utf-8", newline="") as bridge:
         writer = None
@@ -303,6 +312,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--child-overlap-tokens", type=int, default=750)
     parser.add_argument("--retrieval-query", choices=["request", "question"], default="request",
                         help="Rank chunks by the described request (default) or by the full final question")
+    parser.add_argument("--oracle", action="store_true",
+                        help="Offer the chunks holding the needle turns first, found with the gold answer: "
+                             "a ceiling, not a method (hybrid only)")
     parser.add_argument("--max-rows", type=int, default=0)
     parser.add_argument("--max-rows-per-source", type=int, default=0,
                         help="At most N evenly spaced questions per source, applied before --max-rows")

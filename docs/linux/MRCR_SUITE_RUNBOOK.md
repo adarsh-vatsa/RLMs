@@ -34,7 +34,7 @@ DRY_RUN=1 bash linux/run_mrcr_suite.sh 20261026   # print the commands only
 bash linux/run_mrcr_suite.sh 20261026
 ```
 
-This runs the 23 conditions on 30 questions per conversation, 120 in all, with
+This runs the 27 conditions on 30 questions per conversation, 120 in all, with
 3,500-token chunks unless a condition sets its own. `MRCR_ROWS_PER_SOURCE=100`
 takes 100 per conversation instead, and `0` takes all 953 questions; the
 [run-time estimates](../run_time_estimates_20261025.md#mrcr-sample-size) give the
@@ -42,7 +42,9 @@ time for each. Use one value per suite ID, because a different value selects
 different questions and runs could no longer be paired. The order puts the
 references and the structure-or-selection controls first (`middle`, `dense`,
 `position`, `random0`), then the other baselines, the retrieval variants, the
-upgrade ladder and the budget sweep. The 133K conversation fits the 262K
+upgrade ladder, the budget sweep and the oracle runs. The oracle offers the
+chunks holding the needle turns first, found with the gold answer; it is a
+ceiling, not a method. The 133K conversation fits the 262K
 budget, so its rows are the full-context reference.
 
 The argument is the suite ID. Everything the suite writes stays in
@@ -78,4 +80,14 @@ for plotting. Regenerate it at any time:
 
 ```bash
 .venv/bin/python -m mrcr_v2.results_table benchmark_artifacts/mrcr_v2/suites/20261026
+```
+
+It then writes a visibility table, `visibility.md` and `visibility.csv`: for
+each run, how often the prompt held the whole target turn and all needle turns,
+and exact match given each. It rebuilds every truncated prompt with the runs'
+tokenizer, so it takes up to half an hour and must run where the suite ran:
+
+```bash
+.venv/bin/python -m mrcr_v2.visibility benchmark_artifacts/mrcr_v2/suites/20261026 \
+  --data-dir benchmark_data/mrcr_v2_4needle_100k_1200k
 ```
