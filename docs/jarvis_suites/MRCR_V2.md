@@ -123,8 +123,12 @@ For the paper, `intervals.md` and `.csv` give the paired differences in exact
 match, with 95% intervals. Four conversations are too few to resample, so the
 intervals resample questions within each conversation and hold for these four
 conversations only. Each run is compared with `middle` at its window, followed
-by the pairs listed in `execution/intervals.py`. The command reads only files in
-the suite folder, so it runs on any machine with the repository:
+by the pairs listed in `execution/intervals.py`. The `gap recovered` column
+gives the share of the gap between `middle` and the oracle at the same window
+that a run closes. `intervals-full-context.md` repeats the comparisons on the
+133K conversation, which `middle` sends whole at 262K, with full context as the
+gap's upper end. The command reads only files in the suite folder, so it runs on
+any machine with the repository:
 
 ```bash
 .venv/bin/python -m mrcr_v2.intervals benchmark_artifacts/mrcr_v2/suites/20261029

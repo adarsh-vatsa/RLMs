@@ -44,32 +44,50 @@ def resample_weights(clusters, strata, replicates=REPLICATES, seed=SEED):
     return questions, weights
 
 
-def compare(conditions, clusters, strata=None, *, metric, replicates=REPLICATES, seed=SEED):
+def compare(conditions, clusters, strata=None, *, metric, references=None, replicates=REPLICATES, seed=SEED):
     """Table rows for each comparison, with a 95% percentile interval for the difference.
 
     `conditions` maps each condition name, in suite order, to its `window`, whether it is the `middle`
-    truncation reference, and its `outcomes`, question -> correct, for every question in `clusters`.
+    truncation reference, and its `outcomes`, question -> correct, covering the questions in `clusters`.
+    `references` maps a window to the condition, such as full context or an oracle, that bounds what a
+    run at that window can recover from middle truncation; each run against middle then also gets the
+    share of that gap it recovers.
     """
     for name, condition in conditions.items():
-        if condition["outcomes"].keys() != clusters.keys():
+        if not clusters.keys() <= condition["outcomes"].keys():
             raise ValueError(f"{name} does not have a valid outcome for every question of the suite")
     questions, weights = resample_weights(clusters, strata or dict.fromkeys(clusters, ""), replicates, seed)
+    total = weights.sum(axis=1)
+    outcomes = {name: np.array([condition["outcomes"][question] for question in questions], dtype=float)
+                for name, condition in conditions.items()}
     middle = {condition["window"]: name for name, condition in conditions.items() if condition["middle"]}
     pairs = [(name, middle[condition["window"]]) for name, condition in conditions.items()
              if not condition["middle"] and condition["window"] in middle]
     pairs += [pair for pair in PAIRS if set(pair) <= conditions.keys() and pair not in pairs]
     rows = []
     for candidate, baseline in pairs:
-        a, b = (np.array([conditions[name]["outcomes"][question] for question in questions], dtype=float)
-                for name in (candidate, baseline))
-        low, high = np.percentile((weights * (a - b)).sum(axis=1) / weights.sum(axis=1), [2.5, 97.5])
-        rows.append({
+        a, b = outcomes[candidate], outcomes[baseline]
+        low, high = np.percentile((weights * (a - b)).sum(axis=1) / total, [2.5, 97.5])
+        row = {
             "condition": candidate, "window": conditions[candidate]["window"],
             "baseline": baseline, "baseline window": conditions[baseline]["window"],
             metric: a.mean(), f"baseline {metric}": b.mean(), "difference": a.mean() - b.mean(),
             "95% low": low, "95% high": high,
             "gained": int(((a == 1) & (b == 0)).sum()), "lost": int(((a == 0) & (b == 1)).sum()),
-        })
+        }
+        reference = (references or {}).get(conditions[candidate]["window"])
+        if baseline == middle.get(conditions[candidate]["window"]) and reference in conditions.keys() - {candidate}:
+            gap = outcomes[reference] - b
+            row.update({"reference": reference, "gap recovered": (a - b).mean() / gap.mean()})
+            resampled_gap = (weights * gap).sum(axis=1)
+            # A resample in which the reference does no better than middle leaves the ratio undefined;
+            # the difference and its interval then carry the result.
+            if (resampled_gap > 0).all():
+                row["gap recovered 95% low"], row["gap recovered 95% high"] = np.percentile(
+                    (weights * (a - b)).sum(axis=1) / resampled_gap, [2.5, 97.5])
+        rows.append(row)
     columns = ["condition", "window", "baseline", "baseline window", metric, f"baseline {metric}", "difference",
                "95% low", "95% high", "gained", "lost"]
+    if references:
+        columns += ["reference", "gap recovered", "gap recovered 95% low", "gap recovered 95% high"]
     return columns, rows

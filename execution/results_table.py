@@ -14,7 +14,7 @@ FORMATS = {"window": "{:,}", "prompt kept": "{:.0%}", "input tokens": "{:,.0f}",
            "retrieval + packing s/question": "{:.1f}", "target visible": "{:.0%}", "all needles visible": "{:.0%}",
            "baseline window": "{:,}", "difference": "{:+.1%}", "95% low": "{:+.1%}", "95% high": "{:+.1%}"}
 PREFIX_FORMATS = {"agreement with ": "{:.0%}", "exact match at ": "{:.0%}", "exact match given ": "{:.1%}",
-                  "target visible at ": "{:.0%}", "baseline ": "{:.1%}"}
+                  "target visible at ": "{:.0%}", "baseline ": "{:.1%}", "gap recovered": "{:.0%}"}
 
 
 def read_rows(path):

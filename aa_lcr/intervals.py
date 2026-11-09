@@ -36,10 +36,12 @@ def main(argv=None):
     parser.add_argument("--grader", default="gpt-5.6-luna", help="Folder name under the suite's regrades/")
     args = parser.parse_args(argv)
     found, clusters = conditions(args.suite, args.grader)
-    columns, rows = compare(found, clusters, metric="accuracy")
+    references = dict.fromkeys({condition["window"] for condition in found.values()}, "full")
+    columns, rows = compare(found, clusters, metric="accuracy", references=references)
     write_table(args.suite, f"intervals-{args.grader}",
                 f"AA-LCR suite {args.suite.name}, graded by {args.grader}: paired differences, 95% intervals from "
-                f"{REPLICATES:,} resamples of the {len(set(clusters.values()))} document sets (seed {SEED})",
+                f"{REPLICATES:,} resamples of the {len(set(clusters.values()))} document sets (seed {SEED}). "
+                f"Gap recovered: (run − middle) / (full − middle) at the run's window",
                 columns, rows)
 
 
