@@ -14,7 +14,10 @@ BUDGETS = ("", "_32k", "_64k", "_80k", "_128k")
 # Compared besides each condition against middle truncation at its window; a pair is skipped when
 # the suite lacks either condition.
 PAIRS = [
-    ("full", "middle"), ("dense", "position"), ("bm25", "dense"), ("fusion", "dense"),
+    ("full", "middle"), ("dense", "position"),
+    *[(f"bm25{budget}", f"position{budget}") for budget in BUDGETS],
+    *[(f"upgraded{budget}", f"position{budget}") for budget in BUDGETS],
+    ("bm25", "dense"), ("fusion", "dense"),
     ("dense_7500", "dense"), ("dense_question", "dense"),
     ("ladder1", "fusion"), ("ladder2", "ladder1"), ("ladder3", "ladder2"), ("ladder4", "ladder3"),
     ("upgraded", "fusion"), ("upgraded", "ladder4"), ("upgraded", "full"), ("bm25", "full"),
