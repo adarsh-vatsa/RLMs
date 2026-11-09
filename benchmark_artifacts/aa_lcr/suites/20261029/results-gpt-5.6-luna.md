@@ -22,3 +22,6 @@
 | upgraded | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 58% | 61,406 | 100% | 0 | 58.0% | 58/100 | 23 | 5 | 0.001 | 99% | 584 | 3 | 0 | 6.8 | 0.7 | 1 | 14 |
 | upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 27% | 28,628 | 98% | 7 | 56.0% | 56/100 | 40 | 5 | 0.000 | 98% | 810 | 7 | 0 | 6.0 | 0.8 | 1 | 13 |
 | upgraded_80k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 81,920 | 74% | 77,779 | 100% | 0 | 64.0% | 64/100 | 23 | 4 | 0.000 | 98% | 525 | 3 | 0 | 7.6 | 0.8 | 1 | 16 |
+| ladder3 | fusion, 1024-token chunks, 1 neighbour each side, fill packing | 65,536 | 58% | 61,404 | 95% | 22 | 63.0% | 63/100 | 27 | 4 | 0.000 | 97% | 526 | 2 | 0 | 6.5 | 0.8 | 1 | 14 |
+| ladder3_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing | 32,768 | 27% | 28,635 | 78% | 66 | 56.0% | 56/100 | 38 | 3 | 0.000 | 97% | 778 | 7 | 0 | 5.8 | 0.8 | 1 | 13 |
+| ladder3_80k | fusion, 1024-token chunks, 1 neighbour each side, fill packing | 81,920 | 74% | 77,779 | 97% | 18 | 62.0% | 62/100 | 22 | 5 | 0.002 | 100% | 525 | 1 | 0 | 7.6 | 0.9 | 1 | 16 |
