@@ -33,6 +33,11 @@
 % Recommended for better-looking tables
 \usepackage{booktabs}
 
+% Draft only: notes for the authors' review; remove every use before submission.
+\newcommand{\review}[1]{\textcolor{red}{[#1]}}
+% Working name of the main method; the figures and tables spell it in figures.py and tables.py.
+\newcommand{\recipe}{fusion recipe}
+
 %
 % Keep the \pdfinfo as shown here. There's no need
 % for you to add the /Title and /Author tags.
@@ -115,7 +120,27 @@ This section will cover four areas. Long context versus retrieval, including rou
 This section will describe the three benchmarks and why each one tests a different kind of task. AA-LCR tests reasoning over several documents, MRCR v2 tests exact reproduction from very long conversations, and LongBench-v2 is mixed multiple choice. For each benchmark it will give the subset used, the input lengths compared with the window, the scoring (LLM grading for AA-LCR, deterministic scoring for MRCR, exact choice for LongBench-v2) and how spread out the evidence is, from a few known needles to whole documents.
 
 \section{Methodology}
-This section will describe the shared pipeline, in which the overflow policy is the only thing that changes between conditions. It will cover the length check, after which a prompt that fits is sent unchanged, and the tokenizer- and chat-template-aware budget. It will then describe how the selected chunks are rendered back into the original prompt in source order, with omission markers and the original document numbers, and the packing step that fills the budget. Each policy is defined by how it chooses the spans to keep: by position (head and tail, head only, middle-marked truncation), at random, by BM25, by dense similarity, by fusion of dense and BM25 scores, or by an oracle.
+A prompt holds fixed instructions, one or more source documents and a question. Its input budget $B$ is the context window minus the tokens reserved for the answer. We count tokens on the fully rendered request, with the served model's tokenizer and chat template, so $B$ bounds exactly what the model receives. A prompt that fits is sent unchanged. An \emph{overflow policy} decides what a longer prompt becomes. All policies run in one pipeline that is otherwise identical across conditions, and in every condition we report the instructions and the question reach the model intact: policies differ only in which source text they keep.
+
+\subsection{Truncation Policies}
+Truncation cuts the final message by token count. \emph{Middle truncation}, the LongBench protocol \review{cite LongBench}, keeps equal numbers of tokens from its start and end and silently drops the middle. \emph{Marked middle truncation} makes the same cut but inserts an omission marker, which tests whether knowing that text is missing helps the model. \emph{Head} keeps only the start of the context, followed by the question.
+
+\subsection{Selection Policies}
+Selection rebuilds the same prompt from a subset of its source text in three steps that every ranking shares, so two selection policies differ only in their ranking. \review{Terminology: the title says query-aware truncation; this section says selection, which also covers the two question-blind controls. Keep both terms?}
+
+\paragraph{Chunking.} Each document is split into overlapping chunks, measured with the embedding model's tokenizer. Every chunk keeps its exact character offsets, so every kept span is verbatim source text. Unless stated otherwise, chunks are 7,500 tokens with 750 of overlap on AA-LCR and LongBench-v2, and 3,500 with 350 on MRCR, chosen in early runs on MRCR; with 7,500-token chunks, dense exact match on MRCR falls from 55.0\% to 45.0\% ($-$10.0 points [$-$17.5, $-$2.5]).
+
+\paragraph{Ranking.} A ranking orders all chunks of a prompt, with no top-$k$ cut. Three rankings use the question: BM25 ($k_1 = 1.2$, $b = 0.75$, on lower-cased words) \review{cite BM25}; dense, by cosine similarity between Qwen3-Embedding-0.6B embeddings of each chunk and of an instruction-prefixed query \review{cite Qwen3-Embedding}; and fusion, by reciprocal-rank fusion ($k = 60$) of the two \review{cite RRF}. The query is the question on AA-LCR and the question with its four choices on LongBench-v2. On MRCR it is the description of the requested item (its format, topic and style), because the prefix the answer must start with is random and the ordinal (``the second poem'') never appears in the conversation. Two controls ignore the question. \emph{Position} orders chunks by their distance from the nearer end of their document, so every document loses its middle first. \emph{Random} shuffles the chunks with a fixed seed per question. Position builds a prompt with the same structure as a retrieval prompt (documents in order, under their headers, with omission markers) without using the question, so comparing the two separates the effect of the prompt's structure from that of selection.
+
+\paragraph{Packing and rendering.} Chunks are offered in rank order, and each is kept if the re-rendered prompt still fits $B$. Kept spans are merged where they overlap or touch, put back in source order and rendered into the original prompt template, with an omission marker wherever text was dropped, as in order-preserving retrieval \review{cite OP-RAG, DOS RAG}. On AA-LCR, documents keep their original numbers, and a document with no kept span is left out. By default packing stops at the first chunk that does not fit, so selection sends fewer tokens than truncation at the same budget: under 1\% fewer at MRCR's 262K window, 3--6\% at 64K and 7--15\% at 32K. \emph{Fill} packing instead trims the best remaining chunk to the leftover budget.
+
+\paragraph{The \recipe.} Our main method adds four steps to fusion, each a rung of an ablation ladder on MRCR and LongBench-v2 (see Experiments): 1,024-token chunks with 128 of overlap; each chunk widened by one neighbouring chunk on each side; fill packing; and a document floor, which offers the best chunk of every document before any document's second chunk.
+
+\paragraph{Oracle.} MRCR marks which turns hold the answer, so we can build an oracle from the \recipe: chunks that overlap the target turn are offered first, then those overlapping the other needle turns, then the rest in the recipe's order. Only this order uses gold data; chunking, packing and rendering are unchanged. The oracle therefore shows what the same prompt format achieves when ranking never misses the answer.
+
+\paragraph{Provenance and visibility.} Each answer records the character ranges its prompt kept, and truncated prompts can be rebuilt exactly. On MRCR we can therefore tell whether a prompt held the whole target turn and all needle turns, and split exact match into how often the target was visible and how often the model answered correctly when it was (Table~\ref{tab:visibility}). AA-LCR and LongBench-v2 do not release evidence locations, so this split is limited to MRCR.
+
+\review{Figure? One AA-LCR prompt under middle truncation, position and the \recipe, side by side, would show ``same prompt, different spans'' at a glance. Worth the space in a long paper; drop it in a short one.}
 
 \section{Experiments}
 This section will set out the experimental protocol. All conditions within a benchmark use the same data, model, serving setup and token budget, and are paired by question. It will list the conditions in three groups: the deciding controls (position, random, marked truncation, head only), lexical retrieval and the upgrade ladder chosen on MRCR and LongBench-v2, and the held-out check on AA-LCR. It will also describe the budget sweep (32K, 64K and 128K), the independent AA-LCR grader with its hand-labelled accuracy, and how cost is measured.
@@ -124,7 +149,7 @@ This section will set out the experimental protocol. All conditions within a ben
 \begin{figure*}[t]
 \centering
 \includegraphics[width=\textwidth]{figures/figure1}
-\caption{Score against the mean share of each prompt that fits the input budget, at the context windows marked above each panel. \emph{Position} keeps the head and tail of every document and is rendered exactly like retrieval; the \emph{fusion recipe} ranks 1,024-token chunks by dense and BM25 scores (see Architecture). Full context is the 262K run, in which every prompt fits. MRCR has a full-context run only for its 133K conversation, so its reference is the oracle: the recipe with the chunks holding the needle turns offered first. AA-LCR has 100 questions graded by an LLM judge, MRCR 120 and LongBench-v2 221 four-choice questions.}
+\caption{Score against the mean share of each prompt that fits the input budget, at the context windows marked above each panel. \emph{Position} keeps the head and tail of every document and is rendered exactly like retrieval; the \emph{\recipe} ranks 1,024-token chunks by dense and BM25 scores (see Methodology). Full context is the 262K run, in which every prompt fits. MRCR has a full-context run only for its 133K conversation, so its reference is the oracle: the recipe with the chunks holding the needle turns offered first. AA-LCR has 100 questions graded by an LLM judge, MRCR 120 and LongBench-v2 221 four-choice questions.}
 \label{fig:policies}
 \end{figure*}
 
@@ -132,7 +157,7 @@ This section will set out the experimental protocol. All conditions within a ben
 \centering
 \small
 \input{tables/table1}
-\caption{Every policy at each benchmark's main window. Acc.\ and EM are percentages; $\Delta$ is the paired difference from middle truncation at the same window, in points, with a 95\% interval from 10,000 resamples of the AA-LCR document sets, the LongBench-v2 documents, and the MRCR questions within each conversation. Random chunks uses seed 0; on AA-LCR, seeds 1 and 2 score 33.0 and 32.0. Full context is the 262K run, in which every prompt fits. The MRCR oracle is the fusion recipe with the chunks holding the needle turns offered first.}
+\caption{Every policy at each benchmark's main window. Acc.\ and EM are percentages; $\Delta$ is the paired difference from middle truncation at the same window, in points, with a 95\% interval from 10,000 resamples of the AA-LCR document sets, the LongBench-v2 documents, and the MRCR questions within each conversation. Random chunks uses seed 0; on AA-LCR, seeds 1 and 2 score 33.0 and 32.0. Full context is the 262K run, in which every prompt fits. The MRCR oracle is the \recipe{} with the chunks holding the needle turns offered first.}
 \label{tab:main}
 \end{table*}
 
