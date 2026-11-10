@@ -189,4 +189,4 @@ most of what truncation loses.
 | Truncated (64K) | `benchmark_artifacts/aa_lcr/direct/20260930T134555Z` | `benchmark_artifacts/aa_lcr/regrades/Qwen3.6-35B-A3B/direct/20260930T134555Z` |
 | Hybrid (64K) | `benchmark_artifacts/aa_lcr/hybrid/20260930T025706Z` | `benchmark_artifacts/aa_lcr/regrades/Qwen3.6-35B-A3B/hybrid/20260930T025706Z` |
 
-Commands are in the [Linux benchmark runbook](../../linux/BENCHMARK_RUNBOOK.md).
+Commands are in the [Linux benchmark runbook](../../../linux/BENCHMARK_RUNBOOK.md).

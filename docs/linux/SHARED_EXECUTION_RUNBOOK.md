@@ -6,7 +6,7 @@ reference for changing runner settings; it is not another execution step.
 
 Defaults below apply to `linux/run_benchmark.sh`. It forwards additional options
 to the existing benchmark runners. Python entry points used directly can have
-different defaults. See the [architecture diagrams](../shared_execution_architecture.md)
+different defaults. See the [architecture diagrams](../architecture.md)
 for the shared pipeline design.
 
 ## Benchmark, mode, and profile

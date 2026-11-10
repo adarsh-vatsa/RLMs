@@ -221,5 +221,5 @@ Runs are in `benchmark_artifacts/mrcr_v2/{hybrid,direct}/<run id>`, with the run
 IDs listed above; the earlier 8-needle runs are in
 `benchmark_artifacts/mrcr_v2/{hybrid,direct}/archive/`. The dataset is
 `benchmark_data/mrcr_v2_4needle_100k_1200k`. Commands are in the
-[Linux benchmark runbook](../../linux/BENCHMARK_RUNBOOK.md); the task and scoring
-are described in the [MRCR overview](../../mrcr_v2.md).
+[Linux benchmark runbook](../../../linux/BENCHMARK_RUNBOOK.md); the task and scoring
+are described in the [MRCR overview](../../../mrcr_v2.md).

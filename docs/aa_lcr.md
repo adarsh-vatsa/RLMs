@@ -33,8 +33,8 @@ equivalent to `Equinix, $901 million` when the company and amount are correct.
 
 This project compares three runs: the whole prompt in the full 262K window,
 and, in a 64K window, either middle truncation or retrieval with packing
-(hybrid). The current results are in the
-[AA-LCR report](reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md). It uses the official reasoning questions and reference
+(hybrid). The 30 September results are in the archived
+[AA-LCR report](reports/archive/aa_lcr_results_20260930/aa_lcr_results_20260930.md). It uses the official reasoning questions and reference
 answers, but its model choices and equality grader make the resulting scores
 internal comparison results rather than official AA-LCR leaderboard scores.
 

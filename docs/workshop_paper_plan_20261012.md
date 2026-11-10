@@ -2,7 +2,7 @@
 
 What to run, in what order, to turn the overflow-policy results into a
 defensible workshop paper. It builds on the
-[paper positioning](paper_positioning_20261007.md) of 7 October and adopts its
+[paper positioning](archive/paper_positioning_20261007.md) of 7 October and adopts its
 framing: the subject is the **overflow policy**, what a system does when the
 input is longer than the window, and retrieval is presented as
 *query-aware truncation*, one of several redaction policies over the same

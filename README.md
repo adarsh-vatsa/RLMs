@@ -10,8 +10,8 @@ The research question: compared with sending the full context to the same model,
 does this keep or improve accuracy while using fewer tokens and less time?
 Current experiments use `Qwen/Qwen3.6-35B-A3B` served locally by vLLM.
 
-For an orientation, results and open work, start with the
-[project status](docs/project_status_20261001.md).
+For the current architecture, see [docs/architecture.md](docs/architecture.md);
+for open work, the [workshop paper to-do](docs/workshop_paper_todo.md).
 
 ## How it works
 
@@ -29,16 +29,14 @@ the executor's tokenizer and picks a route:
 Retrieval uses `Qwen3-Embedding-0.6B` and a FAISS index. Answer caching (exact
 or semantic, with a verifier model) is a separate switch, off by default.
 Scoring happens after each prediction is saved; gold answers never reach the
-solver or the cache. See the
-[shared execution architecture](docs/shared_execution_architecture.md) and
-[task adapters](docs/task_adapters.md).
+solver or the cache. See the [architecture](docs/architecture.md).
 
 ## Benchmarks
 
 | Benchmark | Server | Overview | Results |
 |---|---|---|---|
-| AA-LCR | Jarvis (Slurm); 30 Sep runs on Neselab | [aa_lcr.md](docs/aa_lcr.md) | [30 Sep report](docs/reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
-| MRCR v2 | Jarvis (Slurm); 30 Sep runs on Neselab | [mrcr_v2.md](docs/mrcr_v2.md) | [30 Sep report](docs/reports/mrcr_results_20260930/mrcr_results_20260930.md) |
+| AA-LCR | Jarvis (Slurm); 30 Sep runs on Neselab | [aa_lcr.md](docs/aa_lcr.md) | [30 Sep report](docs/reports/archive/aa_lcr_results_20260930/aa_lcr_results_20260930.md) |
+| MRCR v2 | Jarvis (Slurm); 30 Sep runs on Neselab | [mrcr_v2.md](docs/mrcr_v2.md) | [30 Sep report](docs/reports/archive/mrcr_results_20260930/mrcr_results_20260930.md) |
 | LongBench-v2 | Jarvis (Slurm) | [longbench_v2.md](long_bench_v2/docs/longbench_v2.md) | Shared-pipeline runs pending; August results in [docs/reports/archive](docs/reports/archive/) |
 
 Candidate benchmarks are compared in [docs/benchmarks.md](docs/benchmarks.md).
@@ -69,7 +67,7 @@ server or the [Jarvis runbooks](docs/jarvis/README.md) on the cluster.
 | `benchmark_data/`, `benchmark_artifacts/` | Prepared inputs and run outputs; treat existing artifacts as read-only |
 
 The project began in March 2026 as a "Two-Stage Semantic Cache" on Claude models.
-That design is described in [docs/system_architecture.md](docs/system_architecture.md)
+That design is described in [docs/archive/system_architecture.md](docs/archive/system_architecture.md)
 and still lives in `semantic_cache_system.py`, which defaults to the Anthropic
 provider; the benchmark launchers switch it to the local OpenAI-compatible
 endpoint. Its five-call demo figures are not benchmark results.

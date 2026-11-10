@@ -444,5 +444,5 @@ bash linux/run_benchmark.sh aa_lcr direct --execution-only \
   --direct-overflow middle 2>&1 | tee .cache/linux-logs/aa-lcr-direct.log
 ```
 
-See the [shared execution architecture](../shared_execution_architecture.md)
+See the [architecture](../architecture.md)
 for the pipeline and [MRCR overview](../mrcr_v2.md) for task/scoring details.

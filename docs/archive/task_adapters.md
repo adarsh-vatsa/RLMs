@@ -12,7 +12,7 @@ hosted-provider paths do not use it.
 ## The contract
 
 An adapter is one `solver_task(...)` factory returning a frozen
-[`Task`](../execution/contracts.py). Each benchmark has exactly one, and all
+[`Task`](../../execution/contracts.py). Each benchmark has exactly one, and all
 three are under twenty lines:
 `aa_lcr/adapter.py`, `mrcr_v2/adapter.py`, `long_bench_v2/adapter.py`.
 
@@ -63,7 +63,7 @@ def render(evidence):
 
 The benchmark-specific knowledge is only *where the context sits in the prompt*.
 Fragment stitching is shared: `render_document_slices` in
-[`execution/packing.py`](../execution/packing.py) concatenates selected ranges
+[`execution/packing.py`](../../execution/packing.py) concatenates selected ranges
 and inserts a separator wherever it skipped source text. The default separator is
 `[... omitted source ...]`; MRCR passes `[... omitted conversation ...]` to match
 its transcript framing.

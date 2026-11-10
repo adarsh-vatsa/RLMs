@@ -7,7 +7,7 @@ See the [runbook](../jarvis/SHARED_EXECUTION_RUNBOOK.md) for commands, artifacts
 remaining persistent-cache/provider limitations. The sections below retain the
 implementation contract and migration sequence.
 
-See the [architecture diagrams](../shared_execution_architecture.md) for component
+See the [architecture diagrams](shared_execution_architecture.md) for component
 boundaries, request routing, and the separation of scoring from cache verification.
 
 ## Objective and scope

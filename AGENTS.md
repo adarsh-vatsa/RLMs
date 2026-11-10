@@ -11,7 +11,7 @@ When sources disagree, use this order:
 3. Focused documentation for the subsystem being changed.
 4. `README.md` and broad architecture documents.
 
-`README.md`, `docs/system_architecture.md`, plans, benchmark reports, and other prose may be incomplete or stale. Use them for context, not as authoritative specifications. Do not read large documents by default; inspect only the sections relevant to the task. Verify claims against the current code and tests before relying on them.
+`README.md`, `docs/architecture.md`, plans, benchmark reports, and other prose may be incomplete or stale. Use them for context, not as authoritative specifications. Do not read large documents by default; inspect only the sections relevant to the task. Verify claims against the current code and tests before relying on them.
 
 If documentation conflicts with behavior, follow the requested behavior and current executable evidence. Mention the mismatch when it matters, and update the relevant documentation only when that is in scope.
 

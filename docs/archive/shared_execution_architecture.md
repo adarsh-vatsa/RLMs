@@ -3,9 +3,9 @@
 Direct and dense hybrid execution for LongBench-v2's OpenAI-compatible path,
 AA-LCR, and MRCR v2. The runners default to `--execution-profile legacy`; the
 Linux and Jarvis launchers select `common`. See the
-[shared execution options](linux/SHARED_EXECUTION_RUNBOOK.md) and the
-[Linux](linux/README.md) and [Jarvis](jarvis/README.md) runbooks for commands.
-The original migration plan is [archived](archive/shared_execution_pipeline_plan.md).
+[shared execution options](../linux/SHARED_EXECUTION_RUNBOOK.md) and the
+[Linux](../linux/README.md) and [Jarvis](../jarvis/README.md) runbooks for commands.
+The original migration plan is [archived](shared_execution_pipeline_plan.md).
 
 ## Component boundaries
 

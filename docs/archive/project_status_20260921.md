@@ -249,8 +249,8 @@ been run yet.
      work
    - rewrite `README.md`. It still describes the March prototype (Claude models,
      plus `epstein_search.py` and `paper_draft.tex`, which are not on this
-     branch). [system_architecture.md](../system_architecture.md) and
-     [semantic_cache_concept_guide.md](../semantic_cache_concept_guide.md) also
+     branch). [system_architecture.md](system_architecture.md) and
+     [semantic_cache_concept_guide.md](semantic_cache_concept_guide.md) also
      describe that original design.
 7. **Add more benchmarks.** [benchmarks.md](../benchmarks.md) and
    the survey spreadsheet (now folded into `benchmarks.md`)
@@ -268,8 +268,8 @@ been run yet.
 2. Read these, in order:
    1. [AGENTS.md](../../AGENTS.md): short working rules for the repository
    2. this file
-   3. [shared_execution_architecture.md](../shared_execution_architecture.md)
-   4. [task_adapters.md](../task_adapters.md)
+   3. [shared_execution_architecture.md](shared_execution_architecture.md)
+   4. [task_adapters.md](task_adapters.md)
    5. the benchmark overviews, [aa_lcr.md](../aa_lcr.md) and
       [mrcr_v2.md](../mrcr_v2.md)
    6. the three result documents linked above

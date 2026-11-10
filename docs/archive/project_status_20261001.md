@@ -2,8 +2,8 @@
 
 An orientation for someone joining the project: what the system does, which
 results hold up, what is unfinished and where to start. It replaces the
-[21 September status](archive/project_status_20260921.md). When a document
-disagrees with the code, trust the code; see [AGENTS.md](../AGENTS.md).
+[21 September status](project_status_20260921.md). When a document
+disagrees with the code, trust the code; see [AGENTS.md](../../AGENTS.md).
 
 ## The project in brief
 
@@ -34,9 +34,9 @@ context budget, and all current experiments use local Qwen models.
   synthetic fixtures and check plumbing, not model quality.
 - **Servers:**
   - **Neselab** (one 96 GB RTX PRO 6000, no Slurm) runs AA-LCR and MRCR v2, with
-    the scripts in [`linux/`](../linux/) and the [Linux runbooks](linux/README.md).
+    the scripts in [`linux/`](../../linux/) and the [Linux runbooks](../linux/README.md).
   - **Jarvis** (Slurm, 4× L40S nodes) runs LongBench-v2, with the scripts in
-    [`jarvis/`](../jarvis/) and the [Jarvis runbooks](jarvis/README.md).
+    [`jarvis/`](../../jarvis/) and the [Jarvis runbooks](../jarvis/README.md).
 - **Models:**
   - executor: `Qwen/Qwen3.6-35B-A3B`, temperature 0, thinking disabled, full
     262,144-token window
@@ -48,7 +48,7 @@ context budget, and all current experiments use local Qwen models.
 
 ## How the system works
 
-The core is `execution.pipeline.Pipeline` in [`execution/`](../execution/).
+The core is `execution.pipeline.Pipeline` in [`execution/`](../../execution/).
 Each benchmark has a small adapter that turns one example into a `Task`: its
 documents, its question and a `render` function that builds the prompt. The
 pipeline never branches on benchmark names. See the
@@ -75,7 +75,7 @@ and is off by default. It was off for every current AA-LCR and MRCR run. Scoring
 happens after each prediction is saved, and gold answers never enter the
 `Task`, the cache or the verifier.
 
-Not on the shared pipeline: [`semantic_cache_system.py`](../semantic_cache_system.py),
+Not on the shared pipeline: [`semantic_cache_system.py`](../../semantic_cache_system.py),
 the original prototype, which also supplies the embeddings, FAISS and cache
 controller; and the LongBench-v2 iterative and RLM runners.
 
@@ -86,7 +86,7 @@ All runs use Qwen3.6-35B-A3B as the executor and are single runs per setting.
 ### AA-LCR (30 September, Neselab)
 
 100 free-form questions over 30 document sets, dataset release 1.1. Prompts are
-88K–122K tokens. [Report](reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md).
+88K–122K tokens. [Report](../reports/archive/aa_lcr_results_20260930/aa_lcr_results_20260930.md).
 
 | Run | Window / input budget | Accuracy |
 |---|---|---:|
@@ -106,7 +106,7 @@ All runs use Qwen3.6-35B-A3B as the executor and are single runs per setting.
 
 Synthetic conversations of 133K, 267K, 533K and 1.06M tokens, one per length,
 4-needle release, 30 questions each. The input budget is 258,048 tokens.
-Scoring is deterministic. [Report](reports/mrcr_results_20260930/mrcr_results_20260930.md).
+Scoring is deterministic. [Report](../reports/archive/mrcr_results_20260930/mrcr_results_20260930.md).
 
 | Conversation | Direct (middle truncation) | Hybrid |
 |---:|---:|---:|
@@ -131,7 +131,7 @@ Scoring is deterministic. [Report](reports/mrcr_results_20260930/mrcr_results_20
 pipeline. On the 107 questions that did not fit, hybrid scored 56.1% against
 41.1% for direct truncation (21 gained, 5 lost, p = 0.0025). The semantic cache
 answered 493 of 503 paraphrased questions and roughly halved total tokens.
-Reports are in [`reports/archive/`](reports/archive/).
+Reports are in [`reports/archive/`](../reports/archive/).
 
 ### Figures not to cite
 
@@ -141,7 +141,7 @@ Reports are in [`reports/archive/`](reports/archive/).
 - MRCR results from 21 September (8 needles, 10 questions), now in
   `benchmark_artifacts/mrcr_v2/*/archive/`.
 - LongBench 46.9% against 13.3% from the
-  [3 August note](archive/longbench_v2_baseline_comparison_20260802.md); that
+  [3 August note](longbench_v2_baseline_comparison_20260802.md); that
   baseline failed on 321 rows.
 
 ## Open work, roughly in priority order
@@ -149,7 +149,7 @@ Reports are in [`reports/archive/`](reports/archive/).
 1. **Run LongBench-v2 on the shared pipeline on Jarvis.** Direct on all 503
    questions with middle truncation, then hybrid on the 100 that exceed the
    262,136-token budget. Commands are in the
-   [Jarvis LongBench runbook](jarvis/HPC_RUNBOOK_EXPERIMENT.md). An optional
+   [Jarvis LongBench runbook](../jarvis/HPC_RUNBOOK_EXPERIMENT.md). An optional
    answer-cache experiment with repeated and reworded questions is in its §7.
 2. **Grade AA-LCR independently.** Regrade the saved answers with a model other
    than the executor (`aa_lcr.regrade`) before reporting absolute scores.
@@ -159,15 +159,15 @@ Reports are in [`reports/archive/`](reports/archive/).
 4. **Test the answer cache on the shared pipeline.** It is tested only with
    mocks; the cache results so far come from the older LongBench runner.
 5. **Merge with `main`** and decide on the memoization work.
-6. **More benchmarks:** candidates are compared in [benchmarks.md](benchmarks.md).
+6. **More benchmarks:** candidates are compared in [benchmarks.md](../benchmarks.md).
 
 ## Getting started
 
 1. Check out `shared-execution-linux-runners`.
-2. Read, in order: [AGENTS.md](../AGENTS.md), this file,
+2. Read, in order: [AGENTS.md](../../AGENTS.md), this file,
    [shared_execution_architecture.md](shared_execution_architecture.md),
    [task_adapters.md](task_adapters.md), the overviews
-   ([aa_lcr.md](aa_lcr.md), [mrcr_v2.md](mrcr_v2.md)) and the two September
+   ([aa_lcr.md](../aa_lcr.md), [mrcr_v2.md](../mrcr_v2.md)) and the two September
    reports.
 3. Set up a local environment and run the tests (needs `uv`):
 
@@ -176,8 +176,8 @@ Reports are in [`reports/archive/`](reports/archive/).
    .venv/bin/python -m unittest discover -s test
    ```
 
-4. On a GPU server, follow the [Linux runbooks](linux/README.md) or the
-   [Jarvis runbooks](jarvis/README.md). `--preflight-only` reports each
+4. On a GPU server, follow the [Linux runbooks](../linux/README.md) or the
+   [Jarvis runbooks](../jarvis/README.md). `--preflight-only` reports each
    example's route without inference, and the launchers' dry-run variables print
    the command without running it.
 

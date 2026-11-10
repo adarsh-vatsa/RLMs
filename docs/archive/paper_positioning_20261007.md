@@ -58,8 +58,8 @@ Full context on AA-LCR, which fits the 262K window, scores 61%. The LongBench-v2
 figures are from the August runner, before the shared pipeline.
 
 Sources:
-[AA-LCR report](reports/aa_lcr_results_20260930/aa_lcr_results_20260930.md),
-[MRCR report](reports/mrcr_results_20260930/mrcr_results_20260930.md),
+[AA-LCR report](../reports/archive/aa_lcr_results_20260930/aa_lcr_results_20260930.md),
+[MRCR report](../reports/archive/mrcr_results_20260930/mrcr_results_20260930.md),
 [project status](project_status_20261001.md).
 
 ## What prior work already claims
@@ -123,7 +123,7 @@ The retrieval route does not build a separate "RAG prompt". It re-renders the
 original prompt with parts of the documents removed: selected chunks are mapped
 back to character ranges, put in source order, merged where they overlap and
 shown with `[... omitted source ...]` markers and the original document numbers
-([`execution/packing.py`](../execution/packing.py)). When the prompt fits, the
+([`execution/packing.py`](../../execution/packing.py)). When the prompt fits, the
 direct and retrieval requests are identical.
 
 Truncation and retrieval can therefore be described as two *redaction policies*
@@ -221,7 +221,7 @@ would turn this into a curve.
 1. **A controlled comparison.** Only the overflow policy varies between
    conditions. Tokens are counted with the executor's chat template, a request
    over budget raises an error, and gold answers never reach the solver
-   ([`execution/pipeline.py`](../execution/pipeline.py)).
+   ([`execution/pipeline.py`](../../execution/pipeline.py)).
 2. **Per-example provenance.** Each record stores the character ranges the model
    saw and the score of every chunk. This is what makes the visibility analysis
    possible.
