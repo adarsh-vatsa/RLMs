@@ -189,11 +189,12 @@ class PipelineTests(unittest.TestCase):
         return result, calls
 
     def test_selections_without_dense_scores_skip_embedding(self):
-        for selection in ("bm25", "random", "position"):
-            with self.subTest(selection=selection):
+        steps = {"neighbor_children": 1, "packing": "fill", "document_floor": True}
+        for selection, settings in (("bm25", {}), ("random", {}), ("position", {}), ("bm25", steps), ("position", steps)):
+            with self.subTest(selection=selection, **settings):
                 scs = fake_scs()
                 controller = scs.SemanticCacheController(embedder=scs.EmbeddingEngine())
-                result, _ = self.run_task({"evidence_selection": selection}, lambda: (scs, controller))
+                result, _ = self.run_task({"evidence_selection": selection, **settings}, lambda: (scs, controller))
                 self.assertEqual(FakeEmbedder.calls, 0)
                 self.assertEqual(controller.queries, [])
                 self.assertEqual((result["route"], result["evidence_selection"]), ("dense_child_packed", selection))

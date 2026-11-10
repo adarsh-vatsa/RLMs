@@ -22,6 +22,7 @@ Common commands:
   JARVIS_STORAGE_MODE=scratch PROJECT_LOG_DIR=/home/edogu/adarsh-rlms-logs bash jarvis/run.sh submit smoke
   JARVIS_STORAGE_MODE=scratch CLEANUP_NODE=g101 bash jarvis/run.sh submit cleanup
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
+  EXECUTOR_NODE=g202 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit evaluator
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit download-all
   CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
@@ -55,8 +56,15 @@ submit_mode() {
         "$SCRIPT_DIR/serve_vllm.sh"
       ;;
     executor)
+      # Nodes do not all give the same greedy answer to the same prompt, so runs that are compared
+      # can be pinned to one node.
+      local node_args=()
+      if [[ -n "${EXECUTOR_NODE:-}" ]]; then
+        node_args+=(--nodelist="$EXECUTOR_NODE")
+      fi
       sbatch \
         --partition=gpu-l40s \
+        ${node_args[@]+"${node_args[@]}"} \
         --gres=gpu:l40s:4 \
         --cpus-per-task=32 \
         --mem=220G \

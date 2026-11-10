@@ -127,7 +127,7 @@ class LinuxLauncherTests(unittest.TestCase):
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "aa_lcr.run_benchmark")}
         grades = [regrader.parse_args(command[3:]) for command in commands if command[2] == "aa_lcr.regrade"]
-        self.assertEqual((len(runs), len(grades)), (23, 23))
+        self.assertEqual((len(runs), len(grades)), (29, 29))
         self.assertTrue(all(args.execution_only and args.fail_fast for args in runs.values()))
         self.assertEqual({args.output_root for args in runs.values()}, {Path("benchmark_artifacts/aa_lcr/suites/S")})
         self.assertEqual((runs["S_full"].max_input_tokens, runs["S_head"].direct_overflow), (258048, "head"))
@@ -138,6 +138,12 @@ class LinuxLauncherTests(unittest.TestCase):
         ladder3 = runs["S_ladder3_32k"]
         self.assertEqual((ladder3.evidence_selection, ladder3.child_tokens, ladder3.neighbor_children, ladder3.packing,
                           ladder3.document_floor, ladder3.max_input_tokens), ("fusion", 1024, 1, "fill", False, 28672))
+        for name, selection, budget in (("S_position_recipe_32k", "position", 28672), ("S_bm25_recipe", "bm25", 61440),
+                                         ("S_bm25_recipe_80k", "bm25", 77824)):
+            control = runs[name]
+            self.assertEqual((control.evidence_selection, control.child_tokens, control.child_overlap_tokens,
+                              control.neighbor_children, control.packing, control.document_floor,
+                              control.max_input_tokens), (selection, 1024, 128, 1, "fill", True, budget))
         self.assertEqual((grades[0].source_run, grades[0].output_dir, grades[0].grader_api_style), (
             Path("benchmark_artifacts/aa_lcr/suites/S/direct/S_full"),
             Path("benchmark_artifacts/aa_lcr/suites/S/regrades/Qwen3.6-35B-A3B/direct/S_full"), "vllm"))
@@ -179,7 +185,7 @@ class LinuxLauncherTests(unittest.TestCase):
                               "OPENROUTER_API_KEY"))
         self.assertEqual(grades[1].output_dir, Path("benchmark_artifacts/aa_lcr/suites/S/regrades/gpt-5.6-luna/hybrid/S_position"))
         everything = self.launch("run_aa_lcr_suite.sh", "S", env={"AA_LCR_GRADER": "luna"})
-        self.assertIn("Suite S: 23 conditions", everything.stdout)
+        self.assertIn("Suite S: 29 conditions", everything.stdout)
         self.assertIn("upgraded_80k", everything.stdout)
 
 
@@ -189,7 +195,7 @@ class LinuxLauncherTests(unittest.TestCase):
         runner = importlib.import_module("mrcr_v2.run_benchmark").build_arg_parser()
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "mrcr_v2.run_benchmark")}
-        self.assertEqual(len(runs), 31)
+        self.assertEqual(len(runs), 34)
         self.assertEqual({(args.output_root, args.data_dir, args.max_rows_per_source, args.fail_fast)
                           for args in runs.values()},
                          {(Path("benchmark_artifacts/mrcr_v2/suites/S"),
@@ -206,6 +212,11 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual((oracle.mode, oracle.oracle, oracle.evidence_selection, oracle.child_tokens, oracle.packing,
                           oracle.document_floor, oracle.max_input_tokens), ("hybrid", True, "fusion", 1024, "fill", True, 28672))
         self.assertEqual(sum(args.oracle for args in runs.values()), 4)
+        control = runs["S_bm25_recipe_64k"]
+        self.assertEqual((control.evidence_selection, control.child_tokens, control.neighbor_children, control.packing,
+                          control.document_floor, control.oracle, control.max_input_tokens),
+                         ("bm25", 1024, 1, "fill", True, False, 61440))
+        self.assertFalse(any(name.startswith("S_position_recipe") for name in runs))
         self.assertEqual(commands[-2][2:], ["mrcr_v2.results_table", "benchmark_artifacts/mrcr_v2/suites/S"])
         self.assertEqual(commands[-1][2:], ["mrcr_v2.visibility", "benchmark_artifacts/mrcr_v2/suites/S",
                                             "--data-dir", "benchmark_data/mrcr_v2_4needle_100k_1200k"])
@@ -297,7 +308,25 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertTrue((root / "submitted").read_text().splitlines()[-1].startswith("MRCR_ROWS_PER_SOURCE=0 bash "))
             preview = self.launch("run_suite.sh", "mrcr", "S", linux=jarvis)
             self.assertEqual(preview.returncode, 0, preview.stderr)
-            self.assertIn("[MRCR SUITE] Suite S: 27 conditions", preview.stdout)
+            self.assertIn("[MRCR SUITE] Suite S: 30 conditions", preview.stdout)
+
+    def test_jarvis_executor_can_be_pinned_to_a_node(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "bin").mkdir()
+            (root / "bin/sbatch").write_text(f"#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > {root}/submitted\n")
+            (root / "bin/sbatch").chmod(0o755)
+            env = {"DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "PROJECT_LOG_DIR": str(root / "logs"),
+                   "JARVIS_LOAD_DOTENV": "0", "SLURM_JOB_ID": ""}
+            for node, expected in (("", None), ("g202", "--nodelist=g202")):
+                with self.subTest(node=node):
+                    result = self.launch("run.sh", "submit", "executor", linux=REPO / "jarvis",
+                                         env={**env, "EXECUTOR_NODE": node})
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    arguments = (root / "submitted").read_text().splitlines()
+                    self.assertIn("--gres=gpu:l40s:4", arguments)
+                    self.assertEqual([argument for argument in arguments if argument.startswith("--nodelist")],
+                                     [expected] if expected else [])
 
     def test_longbench_suite_finds_runs_in_each_runners_folder(self):
         with tempfile.TemporaryDirectory() as temporary:

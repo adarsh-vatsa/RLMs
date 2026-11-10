@@ -65,6 +65,18 @@ class CompareTests(unittest.TestCase):
         self.assertEqual((rows[3]["window"], rows[3]["baseline window"]), (262144, 65536))
         self.assertNotIn("reference", columns)
 
+    def test_controls_with_the_recipe_steps_are_compared_at_their_window(self):
+        conditions = {
+            "middle_32k": condition(32768, [0, 0, 0, 0], middle=True), "position_32k": condition(32768, [0, 0, 1, 0]),
+            "bm25_32k": condition(32768, [1, 0, 0, 0]), "upgraded_32k": condition(32768, [1, 1, 1, 0]),
+            "position_recipe_32k": condition(32768, [0, 1, 0, 0]), "bm25_recipe_32k": condition(32768, [1, 1, 0, 0]),
+        }
+        _, rows = compare(conditions, dict.fromkeys("abcd", "x"), metric="accuracy", replicates=200)
+        pairs = {(row["condition"], row["baseline"]) for row in rows}
+        self.assertLessEqual({("position_recipe_32k", "position_32k"), ("bm25_recipe_32k", "bm25_32k"),
+                              ("bm25_recipe_32k", "position_recipe_32k"), ("upgraded_32k", "position_recipe_32k"),
+                              ("upgraded_32k", "bm25_recipe_32k"), ("position_recipe_32k", "middle_32k")}, pairs)
+
     def test_gap_recovered_has_an_interval_only_when_the_gap_stays_positive(self):
         conditions = {
             "middle": condition(65536, [0, 0, 1, 0], middle=True), "dense": condition(65536, [1, 1, 1, 0]),

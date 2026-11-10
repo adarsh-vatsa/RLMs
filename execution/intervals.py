@@ -25,6 +25,12 @@ PAIRS = [
     *[(f"upgraded{budget}", f"ladder3{budget}") for budget in BUDGETS],
     *[(f"oracle{budget}", f"upgraded{budget}") for budget in BUDGETS],
     ("oracle_32k", "oracle"),
+    # Controls that take the recipe's chunking, neighbours, packing and floor, so only the ranking differs.
+    *[(f"position_recipe{budget}", f"position{budget}") for budget in BUDGETS],
+    *[(f"bm25_recipe{budget}", f"bm25{budget}") for budget in BUDGETS],
+    *[(f"bm25_recipe{budget}", f"position_recipe{budget}") for budget in BUDGETS],
+    *[(f"upgraded{budget}", f"position_recipe{budget}") for budget in BUDGETS],
+    *[(f"upgraded{budget}", f"bm25_recipe{budget}") for budget in BUDGETS],
 ]
 REPLICATES = 10000
 SEED = 20261109

@@ -17,12 +17,14 @@ ends by writing a results table.
    3. [MRCR_V2.md](MRCR_V2.md)
 4. [ORACLE.md](ORACLE.md): the MRCR oracle and AA-LCR document-floor runs,
    added to finished suites.
+5. [CONTROLS.md](CONTROLS.md): position and BM25 with the upgraded recipe's
+   steps, added to finished suites on one node.
 
 | Suite        | Name in commands | Questions per run          | Runs now (+ later) | Time   | Scoring                                                  |
 | ------------ | ---------------- | -------------------------- | ------------------ | ------ | -------------------------------------------------------- |
 | LongBench-v2 | `longbench`      | 221                        | 19 (+3)            | ~7 h   | answer letter checked during the run                     |
-| AA-LCR       | `aa_lcr`         | 100                        | 20 (+3)            | ~5.5 h | graded by the executor after each run; by GPT-5.6 Luna at the end |
-| MRCR v2      | `mrcr`           | 120 (30 per conversation)  | 27 (+4)            | ~17 h  | scored during the run                                    |
+| AA-LCR       | `aa_lcr`         | 100                        | 26 (+3)            | ~5.5 h | graded by the executor after each run; by GPT-5.6 Luna at the end |
+| MRCR v2      | `mrcr`           | 120 (30 per conversation)  | 30 (+4)            | ~17 h  | scored during the run                                    |
 
 The times are estimates; the first suite of each benchmark measures them. The
 runs added later use the upgraded recipe, which is chosen from the LongBench-v2

@@ -65,6 +65,13 @@ condition oracle         hybrid "$B262 $ORACLE"
 condition oracle_32k     hybrid "$B32 $ORACLE"
 condition oracle_64k     hybrid "$B64 $ORACLE"
 condition oracle_128k    hybrid "$B128 $ORACLE"
+# The recipe's steps under BM25 ranking, so the recipe's margin over BM25 is not also a difference in
+# chunking and packing. Position needs no such control here: on one conversation it keeps the head and
+# tail, which is middle truncation with an omission marker.
+STEPS="--child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor"
+condition bm25_recipe_32k  hybrid "$B32 --evidence-selection bm25 $STEPS"
+condition bm25_recipe_64k  hybrid "$B64 --evidence-selection bm25 $STEPS"
+condition bm25_recipe_128k hybrid "$B128 --evidence-selection bm25 $STEPS"
 if [[ -n "${MRCR_RECIPE:-}" ]]; then
   condition upgraded      hybrid "$B262 $MRCR_RECIPE"
   condition upgraded_32k  hybrid "$B32 $MRCR_RECIPE"

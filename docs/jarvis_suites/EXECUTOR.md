@@ -22,6 +22,10 @@ SYNC_BACK_MODELS=1 VLLM_VENV="$HOME/.venvs/adarsh-vllm" \
   bash adarsh-rlms/jarvis/run.sh submit executor
 ```
 
+To run on a particular node, add `EXECUTOR_NODE=<node>` (for example `g202`)
+to the command. Runs that will be compared should share a node: nodes do not
+all give the same greedy answer to the same prompt.
+
 This prints `Submitted batch job <id>`. Keep the ID for the steps below:
 
 ```bash

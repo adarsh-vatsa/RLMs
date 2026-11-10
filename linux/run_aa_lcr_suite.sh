@@ -56,6 +56,15 @@ LADDER3="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 
 condition ladder3       hybrid "$B64 $LADDER3"
 condition ladder3_32k   hybrid "$B32 $LADDER3"
 condition ladder3_80k   hybrid "$B80 $LADDER3"
+# The recipe's steps under question-blind and BM25 ranking, so the recipe's margin over position and BM25
+# is not also a difference in chunking, packing and document coverage.
+STEPS="--child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor"
+condition position_recipe     hybrid "$B64 --evidence-selection position $STEPS"
+condition position_recipe_32k hybrid "$B32 --evidence-selection position $STEPS"
+condition position_recipe_80k hybrid "$B80 --evidence-selection position $STEPS"
+condition bm25_recipe         hybrid "$B64 --evidence-selection bm25 $STEPS"
+condition bm25_recipe_32k     hybrid "$B32 --evidence-selection bm25 $STEPS"
+condition bm25_recipe_80k     hybrid "$B80 --evidence-selection bm25 $STEPS"
 # Regrading needs only the names, so Luna mode covers the recipe runs without the flags.
 if [[ -n "${AA_LCR_RECIPE:-}" || "$GRADER" == luna ]]; then
   condition upgraded     hybrid "$B64 ${AA_LCR_RECIPE:-}"
