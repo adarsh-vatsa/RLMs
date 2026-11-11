@@ -378,9 +378,11 @@ class LinuxLauncherTests(unittest.TestCase):
             (root / "bin/sbatch").chmod(0o755)
             env = {"DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "PROJECT_LOG_DIR": str(root / "logs"),
                    "JARVIS_LOAD_DOTENV": "0", "SLURM_JOB_ID": ""}
-            result = self.launch("rerun_g202_runs.sh", linux=REPO / "jarvis", env=env)
+            result = self.launch("rerun_g202_runs.sh", linux=REPO / "jarvis", env={**env, "RERUN_TIME": "10:00:00"})
             self.assertEqual(result.returncode, 0, result.stderr)
             executor, client = [line.split("|") for line in (root / "submitted").read_text().splitlines()]
+            self.assertIn("--time=10:00:00", executor[0])
+            self.assertIn("--time=10:00:00", client[0])
             self.assertIn("--nodelist=g101", executor[0])
             self.assertTrue(executor[0].endswith("jarvis/serve_vllm.sh"))
             self.assertIn("--gres=gpu:l40s:1", client[0])

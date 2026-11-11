@@ -14,12 +14,15 @@ usage() {
   echo 'that waits for it. The job moves each g202 run, with its grades and logs, to a sibling suite folder'
   echo '<suite>_g202, reruns it and the controls, regrades AA-LCR with Luna, recomputes the intervals and'
   echo 'cancels the executor. Submit again to resume: finished runs and grades are skipped.'
+  echo 'RERUN_TIME (default 12:00:00) is the time limit of both jobs.'
   echo 'DRY_RUN=1 prints the moves and every suite command on this node without submitting or moving.'
 }
 
 SUITE=20261029
 OLD_NODE=g202
 NODE="${EXECUTOR_NODE:-g101}"
+# The runs take about 10 hours. A shorter limit lets Slurm start both jobs in a gap before a reserved job.
+TIME_LIMIT="${RERUN_TIME:-12:00:00}"
 METADATA=.cache/serving_metadata-rerun.json
 RECIPE="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor"
 AA_LCR_RUNS=bm25_32k,bm25_80k,upgraded,upgraded_32k,upgraded_80k
@@ -54,10 +57,10 @@ move_old_runs() {
   done
 }
 
-# Waits while the executor is queued or loading, which can include downloading the model to the node.
-# The 8-hour cap leaves the suite job's 24 hours enough for the runs.
+# Waits while the executor job is queued or loading, which can include downloading the model to the node;
+# the job's time limit bounds the wait.
 wait_for_executor() {
-  local deadline=$((SECONDS + 8 * 3600)) state
+  local state
   step "Waiting for executor job $RERUN_EXECUTOR_JOB ($RERUN_EXECUTOR_URL_FILE)"
   until [[ -s "$RERUN_EXECUTOR_URL_FILE" ]] && "$BENCHMARK_VENV/bin/python" -c \
       'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=10)' \
@@ -65,7 +68,6 @@ wait_for_executor() {
     state="$(squeue -h -j "$RERUN_EXECUTOR_JOB" -o %T 2> /dev/null || true)"
     [[ "$state" == PENDING || "$state" == CONFIGURING || "$state" == RUNNING ]] \
       || fail "Executor job $RERUN_EXECUTOR_JOB ended (${state:-no longer queued}) before it was ready"
-    (( SECONDS < deadline )) || fail "Executor job $RERUN_EXECUTOR_JOB not ready after 8 hours"
     sleep 30
   done
   OPENAI_COMPAT_EXECUTOR_BASE_URL="$(cat "$RERUN_EXECUTOR_URL_FILE")"
@@ -143,7 +145,7 @@ run_rerun() {
 submit() {
   local output executor_job
   source "$SCRIPT_DIR/lib/env.sh"
-  output="$(MODULES="cuda12.8/toolkit/12.8.1" EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B EXECUTOR_TP_SIZE=4 \
+  output="$(EXECUTOR_TIME="$TIME_LIMIT" MODULES="cuda12.8/toolkit/12.8.1" EXECUTOR_MODEL=Qwen/Qwen3.6-35B-A3B EXECUTOR_TP_SIZE=4 \
     EXECUTOR_MAX_MODEL_LEN=262144 VLLM_GPU_MEMORY_UTILIZATION=0.90 \
     VLLM_EXTRA_ARGS="--reasoning-parser qwen3 --language-model-only --max-num-seqs 1 --enable-chunked-prefill --max-num-batched-tokens 8192" \
     SYNC_BACK_MODELS=1 VLLM_VENV="$VLLM_VENV" EXECUTOR_NODE="$NODE" bash "$SCRIPT_DIR/run.sh" submit executor)"
@@ -152,7 +154,7 @@ submit() {
   [[ -n "$executor_job" ]] || fail "Could not read the executor's job ID"
   step "Executor job $executor_job on $NODE"
   RERUN_EXECUTOR_JOB="$executor_job" RERUN_EXECUTOR_URL_FILE="$PROJECT_LOG_DIR/executor-$executor_job.url" \
-    EXECUTOR_NODE="$NODE" SBATCH_DEPENDENCY="after:$executor_job" \
+    EXECUTOR_NODE="$NODE" SBATCH_DEPENDENCY="after:$executor_job" CLIENT_TIME="$TIME_LIMIT" \
     CLIENT_CMD="bash jarvis/rerun_g202_runs.sh job" bash "$SCRIPT_DIR/run.sh" submit client-gpu
   step "The suite job starts once the executor does; follow it in $PROJECT_LOG_DIR/rlms-client-gpu-<job id>.out"
 }

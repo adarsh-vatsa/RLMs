@@ -68,7 +68,7 @@ submit_mode() {
         --gres=gpu:l40s:4 \
         --cpus-per-task=32 \
         --mem=220G \
-        --time=24:00:00 \
+        --time="${EXECUTOR_TIME:-24:00:00}" \
         --job-name=rlms-executor \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=executor \
@@ -115,7 +115,7 @@ submit_mode() {
         --gres=gpu:l40s:1 \
         --cpus-per-task=8 \
         --mem="${CLIENT_MEM:-96G}" \
-        --time=24:00:00 \
+        --time="${CLIENT_TIME:-24:00:00}" \
         --job-name=rlms-client-gpu \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
         --export=ALL,JARVIS_SCRIPT_DIR="$SCRIPT_DIR",MODE=client-gpu \

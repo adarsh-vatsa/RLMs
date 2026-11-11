@@ -9,7 +9,7 @@ comparison in the paper then uses g101 or g102, which agree byte for byte.
 | --- | --- |
 | Reruns | 17 g202 runs. AA-LCR: `bm25_32k`, `bm25_80k`, `upgraded` at 64K, 32K and 80K. LongBench-v2: `bm25_32k`, `bm25_128k`, `upgraded` at 64K, 32K and 128K. MRCR: `bm25` at 32K, 64K and 128K, `upgraded` at 262K, 32K, 64K and 128K. |
 | Controls | the 9 runs of [CONTROLS.md](CONTROLS.md), which are compared with the recipe runs and so go to the same node. |
-| Jobs | one executor pinned to g101 and one suite job, submitted together. |
+| Jobs | one executor pinned to g101 and one suite job, submitted together, each with a 12-hour limit. `RERUN_TIME=HH:MM:SS` sets another; a limit that ends before a reserved job starts lets Slurm start both jobs in the gap. |
 | Time | about 10 hours after the executor starts: AA-LCR 3.5, LongBench-v2 2, MRCR 4 (with the visibility table). |
 | Output | the existing suite folders. Each g202 run moves, with its grades and logs, to a sibling folder `20261029_g202`. |
 
@@ -85,8 +85,8 @@ that starts once the executor does. That job:
    folders, as for the earlier runs.
 
 The suite job waits for the executor for as long as the executor job is queued
-or loading the model, up to 8 hours, and stops at once if the executor job ends
-first. Whenever the suite job stops, it cancels the executor.
+or loading the model, and stops at once if the executor job ends first.
+Whenever the suite job stops, it cancels the executor.
 
 To resume after an interruption, submit the same command again. It starts a new
 executor; finished runs and grades are skipped, and runs already moved are not
