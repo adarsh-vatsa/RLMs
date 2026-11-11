@@ -372,7 +372,7 @@ class LinuxLauncherTests(unittest.TestCase):
             root = Path(temporary)
             (root / "bin").mkdir()
             (root / "bin/sbatch").write_text("#!/usr/bin/env bash\n"
-                f"printf '%s|%s|%s|%s|%s\\n' \"$*\" \"${{CLIENT_CMD:-}}\" \"${{SBATCH_DEPENDENCY:-}}\" "
+                f"printf '%s|%s|%s|%s\\n' \"$*\" \"${{CLIENT_CMD:-}}\" "
                 f"\"${{RERUN_EXECUTOR_JOB:-}}\" \"${{RERUN_EXECUTOR_URL_FILE:-}}\" >> {root}/submitted\n"
                 "echo 'Submitted batch job 42'\n")
             (root / "bin/sbatch").chmod(0o755)
@@ -387,7 +387,9 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertTrue(executor[0].endswith("jarvis/serve_vllm.sh"))
             self.assertIn("--gres=gpu:l40s:1", client[0])
             self.assertTrue(client[0].endswith("jarvis/run_client.sh"))
-            self.assertEqual(client[1:], ["bash jarvis/rerun_g202_runs.sh job", "after:42", "42", f"{root}/logs/executor-42.url"])
+            self.assertIn("--dependency=after:42", client[0])
+            self.assertNotIn("--dependency", executor[0])
+            self.assertEqual(client[1:], ["bash jarvis/rerun_g202_runs.sh job", "42", f"{root}/logs/executor-42.url"])
 
     def test_g202_rerun_stops_waiting_when_the_executor_job_has_ended(self):
         with tempfile.TemporaryDirectory() as temporary:

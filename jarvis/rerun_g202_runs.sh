@@ -154,7 +154,7 @@ submit() {
   [[ -n "$executor_job" ]] || fail "Could not read the executor's job ID"
   step "Executor job $executor_job on $NODE"
   RERUN_EXECUTOR_JOB="$executor_job" RERUN_EXECUTOR_URL_FILE="$PROJECT_LOG_DIR/executor-$executor_job.url" \
-    EXECUTOR_NODE="$NODE" SBATCH_DEPENDENCY="after:$executor_job" CLIENT_TIME="$TIME_LIMIT" \
+    EXECUTOR_NODE="$NODE" CLIENT_DEPENDENCY="after:$executor_job" CLIENT_TIME="$TIME_LIMIT" \
     CLIENT_CMD="bash jarvis/rerun_g202_runs.sh job" bash "$SCRIPT_DIR/run.sh" submit client-gpu
   step "The suite job starts once the executor does; follow it in $PROJECT_LOG_DIR/rlms-client-gpu-<job id>.out"
 }

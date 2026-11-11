@@ -110,8 +110,13 @@ submit_mode() {
         "$SCRIPT_DIR/run_client.sh"
       ;;
     client-gpu)
+      local dependency_args=()
+      if [[ -n "${CLIENT_DEPENDENCY:-}" ]]; then
+        dependency_args+=(--dependency="$CLIENT_DEPENDENCY")
+      fi
       sbatch \
         --partition=gpu-l40s \
+        ${dependency_args[@]+"${dependency_args[@]}"} \
         --gres=gpu:l40s:1 \
         --cpus-per-task=8 \
         --mem="${CLIENT_MEM:-96G}" \
