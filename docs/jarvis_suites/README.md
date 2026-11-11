@@ -17,8 +17,10 @@ ends by writing a results table.
    3. [MRCR_V2.md](MRCR_V2.md)
 4. [ORACLE.md](ORACLE.md): the MRCR oracle and AA-LCR document-floor runs,
    added to finished suites.
-5. [CONTROLS.md](CONTROLS.md): position and BM25 with the upgraded recipe's
-   steps, added to finished suites on one node.
+5. [CONTROLS.md](CONTROLS.md): what the position and BM25 controls with the
+   upgraded recipe's steps are, and how to read them.
+6. [RERUN.md](RERUN.md): the g202 runs rerun on g101, with the controls, in
+   one command.
 
 | Suite        | Name in commands | Questions per run          | Runs now (+ later) | Time   | Scoring                                                  |
 | ------------ | ---------------- | -------------------------- | ------------------ | ------ | -------------------------------------------------------- |

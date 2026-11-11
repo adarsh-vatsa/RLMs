@@ -328,6 +328,80 @@ class LinuxLauncherTests(unittest.TestCase):
                     self.assertEqual([argument for argument in arguments if argument.startswith("--nodelist")],
                                      [expected] if expected else [])
 
+    def test_g202_rerun_moves_only_g202_runs_and_reruns_them_with_the_controls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(REPO / "linux", root / "linux")
+            shutil.copytree(REPO / "jarvis", root / "jarvis")
+            suite = root / "benchmark_artifacts/aa_lcr/suites/20261029"
+            for run, node in (("hybrid/20261029_upgraded", "g202"), ("regrades/gpt-5.6-luna/hybrid/20261029_upgraded", "g202"),
+                              ("hybrid/20261029_upgraded_32k", "g101")):
+                (suite / run).mkdir(parents=True)
+                (suite / run / "manifest.json").write_text(json.dumps({"executor_base_url": f"http://{node}.x:8000/v1"}, indent=2))
+            (suite / "logs").mkdir()
+            for log in ("upgraded.log", "upgraded.grade-gpt-5.6-luna.log", "upgraded_32k.log"):
+                (suite / "logs" / log).write_text("")
+
+            preview = self.launch("rerun_g202_runs.sh", linux=root / "jarvis", cwd=root)
+            commands = self.suite_commands(preview)
+            moved = {line.split()[2] for line in preview.stdout.splitlines() if line.startswith("[RERUN] moving")}
+            self.assertEqual(moved, {f"benchmark_artifacts/aa_lcr/suites/20261029/{path}" for path in (
+                "hybrid/20261029_upgraded", "regrades/gpt-5.6-luna/hybrid/20261029_upgraded",
+                "logs/upgraded.log", "logs/upgraded.grade-gpt-5.6-luna.log")})
+            self.assertTrue((suite / "hybrid/20261029_upgraded").exists())
+            runs = [command[-1] for command in commands if command[2].endswith(".run_benchmark")]
+            self.assertEqual(len(runs), 26 - 2)
+            self.assertIn("20261029_bm25_recipe_128k", runs)
+            self.assertIn("20261029_position_recipe_80k", runs)
+            self.assertEqual([command[2] for command in commands if command[2].endswith(".intervals")],
+                             ["aa_lcr.intervals", "long_bench_v2.intervals", "mrcr_v2.intervals"])
+
+            moving = subprocess.run(["bash", "-c", "source jarvis/rerun_g202_runs.sh help > /dev/null; "
+                                     "move_old_runs benchmark_artifacts/aa_lcr/suites/20261029 hybrid upgraded,upgraded_32k"],
+                                    cwd=root, env={**os.environ, "DRY_RUN": "0"}, capture_output=True, text=True)
+            self.assertEqual(moving.returncode, 0, moving.stderr)
+            old = root / "benchmark_artifacts/aa_lcr/suites/20261029_g202"
+            self.assertEqual(sorted(str(path.relative_to(old)) for path in old.rglob("*") if path.is_file()), [
+                "hybrid/20261029_upgraded/manifest.json", "logs/upgraded.grade-gpt-5.6-luna.log", "logs/upgraded.log",
+                "regrades/gpt-5.6-luna/hybrid/20261029_upgraded/manifest.json"])
+            self.assertTrue((suite / "hybrid/20261029_upgraded_32k/manifest.json").exists())
+            self.assertTrue((suite / "logs/upgraded_32k.log").exists())
+
+    def test_g202_rerun_submits_a_pinned_executor_and_a_job_that_starts_with_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "bin").mkdir()
+            (root / "bin/sbatch").write_text("#!/usr/bin/env bash\n"
+                f"printf '%s|%s|%s|%s|%s\\n' \"$*\" \"${{CLIENT_CMD:-}}\" \"${{SBATCH_DEPENDENCY:-}}\" "
+                f"\"${{RERUN_EXECUTOR_JOB:-}}\" \"${{RERUN_EXECUTOR_URL_FILE:-}}\" >> {root}/submitted\n"
+                "echo 'Submitted batch job 42'\n")
+            (root / "bin/sbatch").chmod(0o755)
+            env = {"DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "PROJECT_LOG_DIR": str(root / "logs"),
+                   "JARVIS_LOAD_DOTENV": "0", "SLURM_JOB_ID": ""}
+            result = self.launch("rerun_g202_runs.sh", linux=REPO / "jarvis", env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            executor, client = [line.split("|") for line in (root / "submitted").read_text().splitlines()]
+            self.assertIn("--nodelist=g101", executor[0])
+            self.assertTrue(executor[0].endswith("jarvis/serve_vllm.sh"))
+            self.assertIn("--gres=gpu:l40s:1", client[0])
+            self.assertTrue(client[0].endswith("jarvis/run_client.sh"))
+            self.assertEqual(client[1:], ["bash jarvis/rerun_g202_runs.sh job", "after:42", "42", f"{root}/logs/executor-42.url"])
+
+    def test_g202_rerun_stops_waiting_when_the_executor_job_has_ended(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "bin").mkdir()
+            (root / "bin/squeue").write_text("#!/usr/bin/env bash\n")
+            (root / "bin/scancel").write_text(f"#!/usr/bin/env bash\necho \"$@\" > {root}/cancelled\n")
+            for tool in ("squeue", "scancel"):
+                (root / "bin" / tool).chmod(0o755)
+            result = self.launch("rerun_g202_runs.sh", "job", linux=REPO / "jarvis", env={
+                "DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "RERUN_EXECUTOR_JOB": "42",
+                "RERUN_EXECUTOR_URL_FILE": str(root / "executor-42.url")})
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Executor job 42 ended (no longer queued) before it was ready", result.stderr)
+            self.assertEqual((root / "cancelled").read_text().strip(), "42")
+
     def test_longbench_suite_finds_runs_in_each_runners_folder(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
