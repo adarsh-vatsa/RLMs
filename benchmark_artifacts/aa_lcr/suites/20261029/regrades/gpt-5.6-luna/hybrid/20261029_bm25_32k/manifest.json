@@ -1,9 +1,9 @@
 {
   "repeat_id": 1,
   "executor_serving_metadata": {
-    "recorded_at": "2026-11-03T12:51:37.852369+00:00",
+    "recorded_at": "2026-11-12T06:45:16.314339+00:00",
     "cluster": "Jarvis",
-    "executor_base_url": "http://g202.cm.cluster:8000/v1",
+    "executor_base_url": "http://g101.eth.cluster:8000/v1",
     "gpus": "4 x NVIDIA L40S (gpu-l40s partition)",
     "tensor_parallel_size": 4,
     "vllm_version": "0.19.1",
@@ -14,7 +14,7 @@
       }
     ]
   },
-  "executor_serving_metadata_sha256": "cdc27e01197c99232298bfb9fcdf917f76ce83d4ef6a397c5132da7dcf072de9",
+  "executor_serving_metadata_sha256": "c6254c59709ec974593dc9c13a8fd9442d02e745fc9ea29e76a3e4a8af5a973d",
   "benchmark_target": "aa_lcr_reasoning",
   "experiment": "hybrid",
   "mode": "hybrid",
@@ -22,7 +22,7 @@
   "max_input_tokens": 28672,
   "max_output_tokens": 4096,
   "executor_model": "Qwen/Qwen3.6-35B-A3B",
-  "executor_base_url": "http://g202.cm.cluster:8000/v1",
+  "executor_base_url": "http://g101.eth.cluster:8000/v1",
   "temperature": 0,
   "thinking_enabled": false,
   "prompt_version": "aa_lcr_official_v1",
@@ -30,10 +30,10 @@
   "executor_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_class": "Qwen2Tokenizer",
-  "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+  "executor_chat_template_sha256": "1b8361565cc35d47551d342214cff341c0f1a9685ce529c7ce31de0ed3616248",
   "executor_finish_reason_counts": {
-    "stop": 90,
-    "length": 10
+    "stop": 91,
+    "length": 9
   },
   "executor_calls": 0,
   "child_tokens": 7500,
@@ -260,9 +260,9 @@
   ],
   "rows_selected": 100,
   "full_run": true,
-  "source_predictions_sha256": "c18473676236b6027093fa35980b46089007d3a2773f4b737053d88eb58b130d",
-  "source_bridge_sha256": "679f39dc21bf4f75ca652e02ec7fc0f24085d448d868feb8a6df5f9519bd34de",
-  "source_manifest_sha256": "cdc5e4327b7de77bc9f05c006aded80110be9222aec5337ad51316b903c9f8b8",
+  "source_predictions_sha256": "905e6b0027a39d9d2834bb295ad9d0795086de10c7979a439a41a033aaadc2f3",
+  "source_bridge_sha256": "c8501f68b3dd9a3b2b1ab8535d7b6a8aaeafedae830bc7f1a213c903fb2c8f1b",
+  "source_manifest_sha256": "03c5262fb1dd5eeac9bb94db2e52e602af293abcfb5b6aaaba680380aaff68ba",
   "source_dataset_version": "1.1",
   "source_dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
   "dataset_version": "1.1",
@@ -277,18 +277,18 @@
   "dataset_question_count": 100,
   "dataset_document_set_count": 30,
   "dataset_referenced_document_count": 229,
-  "started_at": "2026-11-08T16:23:09.409854+00:00",
-  "finished_at": "2026-11-08T16:25:08.157791+00:00",
-  "created_at": "2026-11-08T16:25:08.157791+00:00",
-  "elapsed_seconds": 118.747937,
+  "started_at": "2026-11-12T09:30:46.941947+00:00",
+  "finished_at": "2026-11-12T09:32:56.755510+00:00",
+  "created_at": "2026-11-12T09:32:56.755510+00:00",
+  "elapsed_seconds": 129.813563,
   "usage_scope": "regrading_only",
   "grader_calls": 100,
   "semantic_verifier_calls": 0,
   "timing_summary_ms": {
-    "regrading": 118744.748
+    "regrading": 129808.446
   },
-  "total_input_tokens": 129134,
-  "total_output_tokens": 2466,
+  "total_input_tokens": 137338,
+  "total_output_tokens": 2720,
   "total_api_calls": 100,
   "total_request_attempts": 100,
   "valid_grade_count": 100,
@@ -302,13 +302,13 @@
     "Academia": {
       "rows": 5,
       "valid_grades": 5,
-      "accuracy": 0.6,
+      "accuracy": 0.8,
       "cache_hit_rate": 0.0
     },
     "Company_Documents": {
       "rows": 63,
       "valid_grades": 63,
-      "accuracy": 0.365079,
+      "accuracy": 0.333333,
       "cache_hit_rate": 0.0
     },
     "Government_Consultations": {
@@ -338,7 +338,7 @@
     "Survey_Reports": {
       "rows": 1,
       "valid_grades": 1,
-      "accuracy": 0.0,
+      "accuracy": 1.0,
       "cache_hit_rate": 0.0
     }
   },
@@ -353,7 +353,7 @@
   "route_counts": {
     "dense_child_packed": 100
   },
-  "output_length_terminated_count": 10,
+  "output_length_terminated_count": 9,
   "grader_length_terminated_count": 0,
   "artifacts": {
     "predictions": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/gpt-5.6-luna/hybrid/20261029_bm25_32k/predictions.jsonl",
@@ -361,5 +361,5 @@
     "bridge_rows_csv": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/gpt-5.6-luna/hybrid/20261029_bm25_32k/bridge_rows.csv",
     "eval_report": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/gpt-5.6-luna/hybrid/20261029_bm25_32k/aa_lcr_equality_eval_report.json"
   },
-  "total_tokens": 131600
+  "total_tokens": 140058
 }

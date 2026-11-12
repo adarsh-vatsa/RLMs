@@ -1,9 +1,9 @@
 {
   "repeat_id": 1,
   "executor_serving_metadata": {
-    "recorded_at": "2026-11-03T12:51:37.852369+00:00",
+    "recorded_at": "2026-11-12T06:45:16.314339+00:00",
     "cluster": "Jarvis",
-    "executor_base_url": "http://g202.cm.cluster:8000/v1",
+    "executor_base_url": "http://g101.eth.cluster:8000/v1",
     "gpus": "4 x NVIDIA L40S (gpu-l40s partition)",
     "tensor_parallel_size": 4,
     "vllm_version": "0.19.1",
@@ -14,7 +14,7 @@
       }
     ]
   },
-  "executor_serving_metadata_sha256": "cdc27e01197c99232298bfb9fcdf917f76ce83d4ef6a397c5132da7dcf072de9",
+  "executor_serving_metadata_sha256": "c6254c59709ec974593dc9c13a8fd9442d02e745fc9ea29e76a3e4a8af5a973d",
   "benchmark_target": "aa_lcr_reasoning",
   "experiment": "hybrid",
   "mode": "hybrid",
@@ -22,7 +22,7 @@
   "max_input_tokens": 77824,
   "max_output_tokens": 4096,
   "executor_model": "Qwen/Qwen3.6-35B-A3B",
-  "executor_base_url": "http://g202.cm.cluster:8000/v1",
+  "executor_base_url": "http://g101.eth.cluster:8000/v1",
   "temperature": 0,
   "thinking_enabled": false,
   "prompt_version": "aa_lcr_official_v1",
@@ -30,7 +30,7 @@
   "executor_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_class": "Qwen2Tokenizer",
-  "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+  "executor_chat_template_sha256": "1b8361565cc35d47551d342214cff341c0f1a9685ce529c7ce31de0ed3616248",
   "executor_finish_reason_counts": {
     "stop": 97,
     "length": 3
@@ -41,14 +41,14 @@
   "grader_prompt_version": "aa_lcr_equality_v1.1",
   "grader_prompt_template_sha256": "9fd44c213081b4a10833e8f7164154dec8df2c5332079407bfaf2772c9649280",
   "evaluator_model": "Qwen/Qwen3.6-35B-A3B",
-  "evaluator_base_url": "http://g202.cm.cluster:8000/v1",
+  "evaluator_base_url": "http://g101.eth.cluster:8000/v1",
   "grader_api_style": "vllm",
   "grader_reasoning_effort": "none",
   "grader_max_output_tokens": 64,
   "grader_temperature": 0,
   "grader_context_window": 32768,
   "grader_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
-  "grader_chat_template_sha256": "5c5c2567af60e8b6a5cb02dcdcb19775bbe046ee909fca1a04beed873078be7c",
+  "grader_chat_template_sha256": "c69575af804c303f43411d84819eb799985c3ffab0203554dfca48990c553ae9",
   "artifact_schema_version": 2,
   "artifact_type": "regrade",
   "run_id": "20261029_bm25_80k",
@@ -260,9 +260,9 @@
   ],
   "rows_selected": 100,
   "full_run": true,
-  "source_predictions_sha256": "400c3f51ed67f89f15a8bce5c6bf3afa05fe2a6d5026197ef00994a3d1101caa",
-  "source_bridge_sha256": "a856b75346f397e3f3811f4d54cb482faf8ebc43cf2103e6fee8ffddb97e3ea2",
-  "source_manifest_sha256": "d8544378f74aad9e8bf676a5a06bdd4f914cf87c9151c6cebcf36df86e46b0de",
+  "source_predictions_sha256": "229ef25612c3f48a21cf79bfc529f7707ae17d3840d27ebc891b07509f0100ce",
+  "source_bridge_sha256": "79219389bc3ba9b357afa408bf9530ea3350667cb03089e8d093387e7d9282d1",
+  "source_manifest_sha256": "898445da2e88d2b9bcbc792cab4292eb725cb7ad27ca58cf367a8c0afd3a5938",
   "source_dataset_version": "1.1",
   "source_dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
   "dataset_version": "1.1",
@@ -277,26 +277,26 @@
   "dataset_question_count": 100,
   "dataset_document_set_count": 30,
   "dataset_referenced_document_count": 229,
-  "started_at": "2026-11-03T21:19:37.174520+00:00",
-  "finished_at": "2026-11-03T21:19:53.722063+00:00",
-  "created_at": "2026-11-03T21:19:53.722063+00:00",
-  "elapsed_seconds": 16.547543,
+  "started_at": "2026-11-12T07:16:20.783308+00:00",
+  "finished_at": "2026-11-12T07:16:36.747728+00:00",
+  "created_at": "2026-11-12T07:16:36.747728+00:00",
+  "elapsed_seconds": 15.96442,
   "usage_scope": "regrading_only",
   "grader_calls": 100,
   "semantic_verifier_calls": 0,
   "timing_summary_ms": {
-    "regrading": 16544.696
+    "regrading": 15961.43
   },
-  "total_input_tokens": 120848,
-  "total_output_tokens": 1449,
+  "total_input_tokens": 113020,
+  "total_output_tokens": 1451,
   "total_api_calls": 100,
   "total_request_attempts": 100,
   "valid_grade_count": 100,
   "invalid_grade_count": 0,
-  "answer_correct_count": 51,
+  "answer_correct_count": 49,
   "api_error_count": 0,
-  "answer_accuracy": 0.51,
-  "valid_grade_accuracy": 0.51,
+  "answer_accuracy": 0.49,
+  "valid_grade_accuracy": 0.49,
   "accepted_full_run": true,
   "by_document_category": {
     "Academia": {
@@ -320,7 +320,7 @@
     "Industry_Reports": {
       "rows": 8,
       "valid_grades": 8,
-      "accuracy": 0.625,
+      "accuracy": 0.5,
       "cache_hit_rate": 0.0
     },
     "Legal": {
@@ -332,7 +332,7 @@
     "Marketing": {
       "rows": 6,
       "valid_grades": 6,
-      "accuracy": 0.5,
+      "accuracy": 0.333333,
       "cache_hit_rate": 0.0
     },
     "Survey_Reports": {
@@ -346,7 +346,7 @@
     "dense_child_packed": {
       "rows": 100,
       "valid_grades": 100,
-      "accuracy": 0.51,
+      "accuracy": 0.49,
       "cache_hit_rate": 0.0
     }
   },
@@ -361,5 +361,5 @@
     "bridge_rows_csv": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/Qwen3.6-35B-A3B/hybrid/20261029_bm25_80k/bridge_rows.csv",
     "eval_report": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/Qwen3.6-35B-A3B/hybrid/20261029_bm25_80k/aa_lcr_equality_eval_report.json"
   },
-  "total_tokens": 122297
+  "total_tokens": 114471
 }

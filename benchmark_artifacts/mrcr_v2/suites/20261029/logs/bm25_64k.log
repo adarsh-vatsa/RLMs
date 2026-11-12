@@ -1,7 +1,7 @@
 [transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (266628 > 262144). Running this sequence through the model will result in indexing errors
   [EMBED] Loading Qwen3-Embedding-0.6B (batch_size=16, max_length=8192, device=cuda, dtype=bfloat16)...
 [transformers] `torch_dtype` is deprecated! Use `dtype` instead!
-Loading weights:   0%|          | 0/310 [00:00<?, ?it/s]Loading weights: 100%|██████████| 310/310 [00:00<00:00, 15672.65it/s]
+Loading weights:   0%|          | 0/310 [00:00<?, ?it/s]Loading weights: 100%|██████████| 310/310 [00:00<00:00, 18504.98it/s]
   [EMBED] ✓ Loaded on cuda (595M params)
 [INIT] Corpus: mrcr_v2_20261029_bm25_64k (domain: mrcr_v2)
 [INIT] Semantic Cache Controller ready.
@@ -58,7 +58,7 @@
 [MRCR] 49/120 dense_child_packed ok score=0.034108527131782945
 [MRCR] 50/120 dense_child_packed ok score=0.04909560723514212
 [MRCR] 51/120 dense_child_packed ok score=1.0
-[MRCR] 52/120 dense_child_packed ok score=0.1340782122905028
+[MRCR] 52/120 dense_child_packed ok score=0.024557602022390754
 [MRCR] 53/120 dense_child_packed ok score=0.027190332326283987
 [MRCR] 54/120 dense_child_packed ok score=1.0
 [MRCR] 55/120 dense_child_packed ok score=0.028037383177570093
@@ -70,7 +70,7 @@
 [MRCR] 61/120 dense_child_packed ok score=0.04196070951745184
 [MRCR] 62/120 dense_child_packed ok score=0.029190992493744787
 [MRCR] 63/120 dense_child_packed ok score=0.029093768429329665
-[MRCR] 64/120 dense_child_packed ok score=0.018615944961554026
+[MRCR] 64/120 dense_child_packed ok score=0.0436551979282279
 [MRCR] 65/120 dense_child_packed ok score=0.01686089759484255
 [MRCR] 66/120 dense_child_packed ok score=0.03639728562615669
 [MRCR] 67/120 dense_child_packed ok score=1.0
@@ -80,18 +80,18 @@
 [MRCR] 71/120 dense_child_packed ok score=0.03108348134991119
 [MRCR] 72/120 dense_child_packed ok score=0.024853801169590642
 [MRCR] 73/120 dense_child_packed ok score=0.02285111618913693
-[MRCR] 74/120 dense_child_packed ok score=0.027445255474452555
+[MRCR] 74/120 dense_child_packed ok score=0.031780231618637224
 [MRCR] 75/120 dense_child_packed ok score=0.028363357608279034
 [MRCR] 76/120 dense_child_packed ok score=1.0
 [MRCR] 77/120 dense_child_packed ok score=0.026161081716637273
 [MRCR] 78/120 dense_child_packed ok score=0.0
-[MRCR] 79/120 dense_child_packed ok score=0.003799392097264438
+[MRCR] 79/120 dense_child_packed ok score=1.0
 [MRCR] 80/120 dense_child_packed ok score=1.0
 [MRCR] 81/120 dense_child_packed ok score=0.014154870940882597
 [MRCR] 82/120 dense_child_packed ok score=0.010940919037199124
 [MRCR] 83/120 dense_child_packed ok score=0.011813349084465446
 [MRCR] 84/120 dense_child_packed ok score=0.014509068167604753
-[MRCR] 85/120 dense_child_packed ok score=0.0
+[MRCR] 85/120 dense_child_packed ok score=1.0
 [MRCR] 86/120 dense_child_packed ok score=0.04177545691906005
 [MRCR] 87/120 dense_child_packed ok score=0.05006729475100942
 [MRCR] 88/120 dense_child_packed ok score=0.016286644951140065
@@ -103,25 +103,25 @@
 [MRCR] 94/120 dense_child_packed ok score=0.941366861695506
 [MRCR] 95/120 dense_child_packed ok score=0.0165016501650165
 [MRCR] 96/120 dense_child_packed ok score=0.004888647474198805
-[MRCR] 97/120 dense_child_packed ok score=0.028687798831237826
+[MRCR] 97/120 dense_child_packed ok score=0.8895227229511314
 [MRCR] 98/120 dense_child_packed ok score=0.03224155578300921
 [MRCR] 99/120 dense_child_packed ok score=1.0
 [MRCR] 100/120 dense_child_packed ok score=0.025735294117647058
 [MRCR] 101/120 dense_child_packed ok score=0.06361708573159648
 [MRCR] 102/120 dense_child_packed ok score=0.013763440860215054
-[MRCR] 103/120 dense_child_packed ok score=0.025039123630672927
+[MRCR] 103/120 dense_child_packed ok score=0.021505376344086023
 [MRCR] 104/120 dense_child_packed ok score=1.0
 [MRCR] 105/120 dense_child_packed ok score=0.04668838219326819
 [MRCR] 106/120 dense_child_packed ok score=0.04086265607264472
 [MRCR] 107/120 dense_child_packed ok score=1.0
 [MRCR] 108/120 dense_child_packed ok score=0.02534364261168385
-[MRCR] 109/120 dense_child_packed ok score=0.013439883763167454
+[MRCR] 109/120 dense_child_packed ok score=0.030747057410521257
 [MRCR] 110/120 dense_child_packed ok score=0.04159132007233273
 [MRCR] 111/120 dense_child_packed ok score=0.014009339559706471
 [MRCR] 112/120 dense_child_packed ok score=0.06415792720542875
 [MRCR] 113/120 dense_child_packed ok score=0.04482758620689655
 [MRCR] 114/120 dense_child_packed ok score=0.018092105263157895
-[MRCR] 115/120 dense_child_packed ok score=0.031117397454031116
+[MRCR] 115/120 dense_child_packed ok score=0.031106398020501944
 [MRCR] 116/120 dense_child_packed ok score=1.0
 [MRCR] 117/120 dense_child_packed ok score=0.021662153717975422
 [MRCR] 118/120 dense_child_packed ok score=0.029470864032150032

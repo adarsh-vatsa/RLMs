@@ -1,9 +1,9 @@
 {
   "repeat_id": 1,
   "executor_serving_metadata": {
-    "recorded_at": "2026-11-03T12:51:37.852369+00:00",
+    "recorded_at": "2026-11-12T06:45:16.314339+00:00",
     "cluster": "Jarvis",
-    "executor_base_url": "http://g202.cm.cluster:8000/v1",
+    "executor_base_url": "http://g101.eth.cluster:8000/v1",
     "gpus": "4 x NVIDIA L40S (gpu-l40s partition)",
     "tensor_parallel_size": 4,
     "vllm_version": "0.19.1",
@@ -14,7 +14,7 @@
       }
     ]
   },
-  "executor_serving_metadata_sha256": "cdc27e01197c99232298bfb9fcdf917f76ce83d4ef6a397c5132da7dcf072de9",
+  "executor_serving_metadata_sha256": "c6254c59709ec974593dc9c13a8fd9442d02e745fc9ea29e76a3e4a8af5a973d",
   "benchmark_target": "aa_lcr_reasoning",
   "experiment": "hybrid",
   "mode": "hybrid",
@@ -22,7 +22,7 @@
   "max_input_tokens": 28672,
   "max_output_tokens": 4096,
   "executor_model": "Qwen/Qwen3.6-35B-A3B",
-  "executor_base_url": "http://g202.cm.cluster:8000/v1",
+  "executor_base_url": "http://g101.eth.cluster:8000/v1",
   "temperature": 0,
   "thinking_enabled": false,
   "prompt_version": "aa_lcr_official_v1",
@@ -30,10 +30,10 @@
   "executor_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_class": "Qwen2Tokenizer",
-  "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+  "executor_chat_template_sha256": "1b8361565cc35d47551d342214cff341c0f1a9685ce529c7ce31de0ed3616248",
   "executor_finish_reason_counts": {
-    "stop": 93,
-    "length": 7
+    "stop": 94,
+    "length": 6
   },
   "executor_calls": 0,
   "child_tokens": 1024,
@@ -41,14 +41,14 @@
   "grader_prompt_version": "aa_lcr_equality_v1.1",
   "grader_prompt_template_sha256": "9fd44c213081b4a10833e8f7164154dec8df2c5332079407bfaf2772c9649280",
   "evaluator_model": "Qwen/Qwen3.6-35B-A3B",
-  "evaluator_base_url": "http://g202.cm.cluster:8000/v1",
+  "evaluator_base_url": "http://g101.eth.cluster:8000/v1",
   "grader_api_style": "vllm",
   "grader_reasoning_effort": "none",
   "grader_max_output_tokens": 64,
   "grader_temperature": 0,
   "grader_context_window": 32768,
   "grader_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
-  "grader_chat_template_sha256": "5c5c2567af60e8b6a5cb02dcdcb19775bbe046ee909fca1a04beed873078be7c",
+  "grader_chat_template_sha256": "c69575af804c303f43411d84819eb799985c3ffab0203554dfca48990c553ae9",
   "artifact_schema_version": 2,
   "artifact_type": "regrade",
   "run_id": "20261029_upgraded_32k",
@@ -260,9 +260,9 @@
   ],
   "rows_selected": 100,
   "full_run": true,
-  "source_predictions_sha256": "54df50efc8db3c22363fbfc6d1c6c4c1d5bdc08e10ac59964082aaf1576ce147",
-  "source_bridge_sha256": "8ab198e1f68a6e903dfaf3e8ac87287d2d995635868e8cc2fd2f39fbeb8b0895",
-  "source_manifest_sha256": "7522797027084d65241bc77c00a98b83c27e21e813d9540e303ad32b8bff7188",
+  "source_predictions_sha256": "698f1b1bcba13d37331c7ec9f9f38fa5968f1a0ba96710629acbe8082a434f54",
+  "source_bridge_sha256": "797a6b41b28b8ff52dc77e393725be865d9864f9dcf2115c174da860652155da",
+  "source_manifest_sha256": "28b5fe3af80be9fdeb2a2df27b2e46da9db880636d25128533f272fccd2d07a4",
   "source_dataset_version": "1.1",
   "source_dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
   "dataset_version": "1.1",
@@ -277,26 +277,26 @@
   "dataset_question_count": 100,
   "dataset_document_set_count": 30,
   "dataset_referenced_document_count": 229,
-  "started_at": "2026-11-03T21:49:16.087292+00:00",
-  "finished_at": "2026-11-03T21:49:33.087041+00:00",
-  "created_at": "2026-11-03T21:49:33.087041+00:00",
-  "elapsed_seconds": 16.999749,
+  "started_at": "2026-11-12T09:14:06.536895+00:00",
+  "finished_at": "2026-11-12T09:14:23.236125+00:00",
+  "created_at": "2026-11-12T09:14:23.236125+00:00",
+  "elapsed_seconds": 16.69923,
   "usage_scope": "regrading_only",
   "grader_calls": 100,
   "semantic_verifier_calls": 0,
   "timing_summary_ms": {
-    "regrading": 16996.69
+    "regrading": 16696.297
   },
-  "total_input_tokens": 131673,
-  "total_output_tokens": 1446,
+  "total_input_tokens": 130569,
+  "total_output_tokens": 1443,
   "total_api_calls": 100,
   "total_request_attempts": 100,
   "valid_grade_count": 100,
   "invalid_grade_count": 0,
-  "answer_correct_count": 54,
+  "answer_correct_count": 57,
   "api_error_count": 0,
-  "answer_accuracy": 0.54,
-  "valid_grade_accuracy": 0.54,
+  "answer_accuracy": 0.57,
+  "valid_grade_accuracy": 0.57,
   "accepted_full_run": true,
   "by_document_category": {
     "Academia": {
@@ -308,7 +308,7 @@
     "Company_Documents": {
       "rows": 63,
       "valid_grades": 63,
-      "accuracy": 0.52381,
+      "accuracy": 0.571429,
       "cache_hit_rate": 0.0
     },
     "Government_Consultations": {
@@ -320,7 +320,7 @@
     "Industry_Reports": {
       "rows": 8,
       "valid_grades": 8,
-      "accuracy": 0.75,
+      "accuracy": 0.625,
       "cache_hit_rate": 0.0
     },
     "Legal": {
@@ -332,7 +332,7 @@
     "Marketing": {
       "rows": 6,
       "valid_grades": 6,
-      "accuracy": 0.666667,
+      "accuracy": 0.833333,
       "cache_hit_rate": 0.0
     },
     "Survey_Reports": {
@@ -346,14 +346,14 @@
     "dense_child_packed": {
       "rows": 100,
       "valid_grades": 100,
-      "accuracy": 0.54,
+      "accuracy": 0.57,
       "cache_hit_rate": 0.0
     }
   },
   "route_counts": {
     "dense_child_packed": 100
   },
-  "output_length_terminated_count": 7,
+  "output_length_terminated_count": 6,
   "grader_length_terminated_count": 0,
   "artifacts": {
     "predictions": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/Qwen3.6-35B-A3B/hybrid/20261029_upgraded_32k/predictions.jsonl",
@@ -361,5 +361,5 @@
     "bridge_rows_csv": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/Qwen3.6-35B-A3B/hybrid/20261029_upgraded_32k/bridge_rows.csv",
     "eval_report": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/Qwen3.6-35B-A3B/hybrid/20261029_upgraded_32k/aa_lcr_equality_eval_report.json"
   },
-  "total_tokens": 133119
+  "total_tokens": 132012
 }

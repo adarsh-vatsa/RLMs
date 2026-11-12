@@ -1,9 +1,9 @@
 {
   "run_id": "20261029_bm25_128k",
-  "created_at": "2026-11-03T14:12:11.886015+00:00",
-  "started_at": "2026-11-03T13:44:40.193077+00:00",
-  "finished_at": "2026-11-03T14:12:11.886015+00:00",
-  "elapsed_seconds": 1651.693,
+  "created_at": "2026-11-12T10:14:35.229573+00:00",
+  "started_at": "2026-11-12T09:47:05.785550+00:00",
+  "finished_at": "2026-11-12T10:14:35.229573+00:00",
+  "elapsed_seconds": 1649.444,
   "benchmark_target": "longbench_v2",
   "suite_csv": "benchmark_data/long_bench_v2/data.csv",
   "suite_csv_sha256": "311448c3ad3a9bff107a08b7bb7194c1232d828a9f7a013060ad2d8e17f8a9c4",
@@ -14,7 +14,7 @@
   "api_key_env": null,
   "openrouter_base_url": "https://openrouter.ai/api/v1",
   "openai_compat_base_url": "http://127.0.0.1:8000/v1",
-  "openai_compat_executor_base_url": "http://g202.cm.cluster:8000/v1",
+  "openai_compat_executor_base_url": "http://g101.eth.cluster:8000/v1",
   "openai_compat_evaluator_base_url": "http://127.0.0.1:8000/v1",
   "openai_compat_api_key_env": "",
   "openai_compat_extra_body": {
@@ -82,7 +82,7 @@
   "executor_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_class": "Qwen2Tokenizer",
-  "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+  "executor_chat_template_sha256": "1b8361565cc35d47551d342214cff341c0f1a9685ce529c7ce31de0ed3616248",
   "execution": {
     "pipeline_version": "shared_direct_hybrid_v1",
     "mode": "hybrid",
@@ -124,8 +124,8 @@
   "row_type_counts": {
     "original": 221
   },
-  "answer_correct_count": 101,
-  "answer_accuracy": 0.457014,
+  "answer_correct_count": 102,
+  "answer_accuracy": 0.461538,
   "actual_route_counts": {
     "exact": 0,
     "knowledge": 0,
@@ -136,7 +136,7 @@
   "by_row_type": {
     "original": {
       "rows": 221,
-      "answer_accuracy": 0.457014,
+      "answer_accuracy": 0.461538,
       "cache_hit_rate": 0.0
     }
   },
@@ -145,10 +145,10 @@
     "cache_final_save_ms": 0.0,
     "cache_save_count": 0,
     "context_write_ms": 0.0,
-    "ingest_ms": 37908.872,
-    "search_ms": 1649880.616,
+    "ingest_ms": 37588.543,
+    "search_ms": 1644281.131,
     "interval_save_ms": 0.0,
-    "row_wall_ms": 1650118.373
+    "row_wall_ms": 1644545.049
   },
   "artifacts": {
     "predictions": "benchmark_artifacts/longbench_v2/suites/20261029/longbench_v2/20261029_bm25_128k/predictions.jsonl",
@@ -207,7 +207,7 @@
     "embedding_normalization": "l2",
     "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
     "executor_tokenizer_class": "Qwen2Tokenizer",
-    "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259"
+    "executor_chat_template_sha256": "1b8361565cc35d47551d342214cff341c0f1a9685ce529c7ce31de0ed3616248"
   },
   "context_window_tokens": 131072,
   "max_input_tokens": 131064,
@@ -222,7 +222,7 @@
   "by_hybrid_route": {
     "dense_child_packed": {
       "rows": 106,
-      "answer_accuracy": 0.509434,
+      "answer_accuracy": 0.518868,
       "cache_hit_rate": 0.0
     },
     "direct_fit": {
@@ -247,9 +247,9 @@
     "reason": "mode is baseline"
   },
   "serving_metadata": {
-    "recorded_at": "2026-11-03T12:51:37.852369+00:00",
+    "recorded_at": "2026-11-12T06:45:16.314339+00:00",
     "cluster": "Jarvis",
-    "executor_base_url": "http://g202.cm.cluster:8000/v1",
+    "executor_base_url": "http://g101.eth.cluster:8000/v1",
     "gpus": "4 x NVIDIA L40S (gpu-l40s partition)",
     "tensor_parallel_size": 4,
     "vllm_version": "0.19.1",

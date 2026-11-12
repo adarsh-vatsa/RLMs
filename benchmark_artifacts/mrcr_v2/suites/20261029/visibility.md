@@ -22,14 +22,17 @@
 | position_64k | position | 65,536 | 120 | 13.3% | 16% | 1% | 84.2% | 0.0% | 100.0% | 33% | 23% | 7% | 0% |
 | middle_128k | truncation: middle | 131,072 | 120 | 26.7% | 42% | 22% | 64.0% | 0.0% | 59.3% | 90% | 53% | 13% | 10% |
 | position_128k | position | 131,072 | 120 | 26.7% | 42% | 22% | 62.7% | 0.0% | 65.4% | 97% | 50% | 13% | 10% |
-| bm25_32k | bm25 | 32,768 | 120 | 23.3% | 33% | 5% | 70.0% | 0.0% | 83.3% | 57% | 43% | 23% | 10% |
-| bm25_64k | bm25 | 65,536 | 120 | 35.0% | 52% | 29% | 67.7% | 0.0% | 74.3% | 90% | 63% | 33% | 20% |
-| bm25_128k | bm25 | 131,072 | 120 | 45.8% | 76% | 54% | 60.4% | 0.0% | 52.3% | 100% | 90% | 70% | 43% |
-| upgraded | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 120 | 61.7% | 100% | 99% | 61.7% |  | 61.3% | 100% | 100% | 100% | 100% |
-| upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 120 | 34.2% | 48% | 9% | 71.9% | 0.0% | 54.5% | 53% | 57% | 60% | 20% |
-| upgraded_64k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 120 | 40.8% | 71% | 41% | 57.6% | 0.0% | 55.1% | 97% | 70% | 73% | 43% |
-| upgraded_128k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 120 | 56.7% | 89% | 77% | 63.6% | 0.0% | 58.7% | 100% | 97% | 93% | 67% |
 | oracle | oracle: fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 120 | 61.7% | 100% | 100% | 61.7% |  | 61.7% | 100% | 100% | 100% | 100% |
 | oracle_32k | oracle: fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 120 | 75.0% | 100% | 100% | 75.0% |  | 75.0% | 100% | 100% | 100% | 100% |
 | oracle_64k | oracle: fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 120 | 63.3% | 100% | 100% | 63.3% |  | 63.3% | 100% | 100% | 100% | 100% |
 | oracle_128k | oracle: fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 120 | 59.2% | 100% | 100% | 59.2% |  | 59.2% | 100% | 100% | 100% | 100% |
+| bm25_32k | bm25 | 32,768 | 120 | 25.0% | 33% | 5% | 75.0% | 0.0% | 83.3% | 57% | 43% | 23% | 10% |
+| bm25_64k | bm25 | 65,536 | 120 | 36.7% | 52% | 29% | 71.0% | 0.0% | 74.3% | 90% | 63% | 33% | 20% |
+| bm25_128k | bm25 | 131,072 | 120 | 47.5% | 76% | 54% | 62.6% | 0.0% | 56.9% | 100% | 90% | 70% | 43% |
+| bm25_recipe_32k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 120 | 45.8% | 65% | 29% | 70.5% | 0.0% | 77.1% | 90% | 67% | 60% | 43% |
+| bm25_recipe_64k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 120 | 55.0% | 86% | 65% | 64.1% | 0.0% | 61.5% | 100% | 90% | 90% | 63% |
+| bm25_recipe_128k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 120 | 57.5% | 98% | 93% | 58.5% | 0.0% | 57.1% | 100% | 100% | 97% | 97% |
+| upgraded | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 120 | 61.7% | 100% | 99% | 61.7% |  | 61.3% | 100% | 100% | 100% | 100% |
+| upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 120 | 36.7% | 48% | 9% | 77.2% | 0.0% | 72.7% | 53% | 57% | 60% | 20% |
+| upgraded_64k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 120 | 43.3% | 71% | 41% | 61.2% | 0.0% | 57.1% | 97% | 70% | 73% | 43% |
+| upgraded_128k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 120 | 55.8% | 89% | 77% | 62.6% | 0.0% | 58.7% | 100% | 97% | 93% | 67% |

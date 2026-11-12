@@ -1,9 +1,9 @@
 {
   "repeat_id": 1,
   "executor_serving_metadata": {
-    "recorded_at": "2026-11-03T12:51:37.852369+00:00",
+    "recorded_at": "2026-11-12T06:45:16.314339+00:00",
     "cluster": "Jarvis",
-    "executor_base_url": "http://g202.cm.cluster:8000/v1",
+    "executor_base_url": "http://g101.eth.cluster:8000/v1",
     "gpus": "4 x NVIDIA L40S (gpu-l40s partition)",
     "tensor_parallel_size": 4,
     "vllm_version": "0.19.1",
@@ -14,7 +14,7 @@
       }
     ]
   },
-  "executor_serving_metadata_sha256": "cdc27e01197c99232298bfb9fcdf917f76ce83d4ef6a397c5132da7dcf072de9",
+  "executor_serving_metadata_sha256": "c6254c59709ec974593dc9c13a8fd9442d02e745fc9ea29e76a3e4a8af5a973d",
   "benchmark_target": "aa_lcr_reasoning",
   "experiment": "hybrid",
   "mode": "hybrid",
@@ -22,7 +22,7 @@
   "max_input_tokens": 77824,
   "max_output_tokens": 4096,
   "executor_model": "Qwen/Qwen3.6-35B-A3B",
-  "executor_base_url": "http://g202.cm.cluster:8000/v1",
+  "executor_base_url": "http://g101.eth.cluster:8000/v1",
   "temperature": 0,
   "thinking_enabled": false,
   "prompt_version": "aa_lcr_official_v1",
@@ -30,10 +30,10 @@
   "executor_tokenizer_model": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_name_or_path": "Qwen/Qwen3.6-35B-A3B",
   "executor_tokenizer_class": "Qwen2Tokenizer",
-  "executor_chat_template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+  "executor_chat_template_sha256": "1b8361565cc35d47551d342214cff341c0f1a9685ce529c7ce31de0ed3616248",
   "executor_finish_reason_counts": {
-    "stop": 97,
-    "length": 3
+    "stop": 99,
+    "length": 1
   },
   "executor_calls": 0,
   "child_tokens": 1024,
@@ -260,9 +260,9 @@
   ],
   "rows_selected": 100,
   "full_run": true,
-  "source_predictions_sha256": "16c2c60697c9ad8a742b2ea8f37148f48146dd1fdd066033652807d54cd32904",
-  "source_bridge_sha256": "09187f6b2d4e5f14496a907bfcaa61f6b9fe996e3cb0735285143c3e50f3d2ab",
-  "source_manifest_sha256": "3ac51c4d8e49853506b1af2a1e291ce4a3c7e8d7d5fc71e197a883e54d1c540c",
+  "source_predictions_sha256": "783d33685ea3b51f24c642478e86570959cbaf5a1e247ce68f884990fb18a733",
+  "source_bridge_sha256": "fa45eb323c40553a77d77777159dc710faf35d090ce528e7576f5c624165ca53",
+  "source_manifest_sha256": "7c8a0177156c13f44817825f0572b26a6a72ba82de8a5ec2f58b4d85254726e0",
   "source_dataset_version": "1.1",
   "source_dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
   "dataset_version": "1.1",
@@ -277,26 +277,26 @@
   "dataset_question_count": 100,
   "dataset_document_set_count": 30,
   "dataset_referenced_document_count": 229,
-  "started_at": "2026-11-08T16:23:09.382057+00:00",
-  "finished_at": "2026-11-08T16:25:08.701394+00:00",
-  "created_at": "2026-11-08T16:25:08.701394+00:00",
-  "elapsed_seconds": 119.319337,
+  "started_at": "2026-11-12T09:30:46.963290+00:00",
+  "finished_at": "2026-11-12T09:32:45.952005+00:00",
+  "created_at": "2026-11-12T09:32:45.952005+00:00",
+  "elapsed_seconds": 118.988715,
   "usage_scope": "regrading_only",
   "grader_calls": 100,
   "semantic_verifier_calls": 0,
   "timing_summary_ms": {
-    "regrading": 119316.187
+    "regrading": 118983.628
   },
-  "total_input_tokens": 96510,
-  "total_output_tokens": 2609,
+  "total_input_tokens": 96039,
+  "total_output_tokens": 2394,
   "total_api_calls": 100,
   "total_request_attempts": 100,
   "valid_grade_count": 100,
   "invalid_grade_count": 0,
-  "answer_correct_count": 64,
+  "answer_correct_count": 62,
   "api_error_count": 0,
-  "answer_accuracy": 0.64,
-  "valid_grade_accuracy": 0.64,
+  "answer_accuracy": 0.62,
+  "valid_grade_accuracy": 0.62,
   "accepted_full_run": true,
   "by_document_category": {
     "Academia": {
@@ -308,7 +308,7 @@
     "Company_Documents": {
       "rows": 63,
       "valid_grades": 63,
-      "accuracy": 0.619048,
+      "accuracy": 0.603175,
       "cache_hit_rate": 0.0
     },
     "Government_Consultations": {
@@ -320,7 +320,7 @@
     "Industry_Reports": {
       "rows": 8,
       "valid_grades": 8,
-      "accuracy": 0.75,
+      "accuracy": 0.625,
       "cache_hit_rate": 0.0
     },
     "Legal": {
@@ -346,14 +346,14 @@
     "dense_child_packed": {
       "rows": 100,
       "valid_grades": 100,
-      "accuracy": 0.64,
+      "accuracy": 0.62,
       "cache_hit_rate": 0.0
     }
   },
   "route_counts": {
     "dense_child_packed": 100
   },
-  "output_length_terminated_count": 3,
+  "output_length_terminated_count": 1,
   "grader_length_terminated_count": 0,
   "artifacts": {
     "predictions": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/gpt-5.6-luna/hybrid/20261029_upgraded_80k/predictions.jsonl",
@@ -361,5 +361,5 @@
     "bridge_rows_csv": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/gpt-5.6-luna/hybrid/20261029_upgraded_80k/bridge_rows.csv",
     "eval_report": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/gpt-5.6-luna/hybrid/20261029_upgraded_80k/aa_lcr_equality_eval_report.json"
   },
-  "total_tokens": 99119
+  "total_tokens": 98433
 }

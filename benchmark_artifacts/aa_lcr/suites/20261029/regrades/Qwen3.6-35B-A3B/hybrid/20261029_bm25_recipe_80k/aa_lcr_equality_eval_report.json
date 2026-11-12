@@ -1,0 +1,374 @@
+{
+  "run_dir": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261029/regrades/Qwen3.6-35B-A3B/hybrid/20261029_bm25_recipe_80k",
+  "benchmark_target": "aa_lcr_reasoning",
+  "experiment": "hybrid",
+  "dataset_version": "1.1",
+  "dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
+  "evaluator_model": "Qwen/Qwen3.6-35B-A3B",
+  "grader_prompt_version": "aa_lcr_equality_v1.1",
+  "max_output_tokens": 4096,
+  "grader_api_style": "vllm",
+  "grader_reasoning_effort": "none",
+  "output_length_terminated_count": 0,
+  "grader_length_terminated_count": 0,
+  "executor_finish_reason_counts": {
+    "stop": 100
+  },
+  "scored_rows": 100,
+  "answer_accuracy": 0.63,
+  "valid_grade_accuracy": 0.63,
+  "invalid_grade_count": 0,
+  "api_error_count": 0,
+  "by_document_category": {
+    "Academia": {
+      "rows": 5,
+      "valid_grades": 5,
+      "accuracy": 0.6,
+      "cache_hit_rate": 0.0
+    },
+    "Company_Documents": {
+      "rows": 63,
+      "valid_grades": 63,
+      "accuracy": 0.634921,
+      "cache_hit_rate": 0.0
+    },
+    "Government_Consultations": {
+      "rows": 11,
+      "valid_grades": 11,
+      "accuracy": 0.545455,
+      "cache_hit_rate": 0.0
+    },
+    "Industry_Reports": {
+      "rows": 8,
+      "valid_grades": 8,
+      "accuracy": 0.625,
+      "cache_hit_rate": 0.0
+    },
+    "Legal": {
+      "rows": 6,
+      "valid_grades": 6,
+      "accuracy": 0.666667,
+      "cache_hit_rate": 0.0
+    },
+    "Marketing": {
+      "rows": 6,
+      "valid_grades": 6,
+      "accuracy": 0.833333,
+      "cache_hit_rate": 0.0
+    },
+    "Survey_Reports": {
+      "rows": 1,
+      "valid_grades": 1,
+      "accuracy": 0.0,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "by_route": {
+    "dense_child_packed": {
+      "rows": 100,
+      "valid_grades": 100,
+      "accuracy": 0.63,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "incorrect_rows": [
+    {
+      "case_id": "aa_lcr_002",
+      "question_id": "2",
+      "document_set_id": "ac_markets",
+      "official_answer": "Apple v. Samsung, Crocs Inc. v. European Union Intellectual Property Office",
+      "candidate_answer": "Samsung v Apple, Crocs Inc v Liberty Shoes",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_005",
+      "question_id": "5",
+      "document_set_id": "ac_hack",
+      "official_answer": "Liu et al., 2023, Jailbreaking chatgpt via prompt engineering: An empirical study.",
+      "candidate_answer": "Based on the provided documents, the paper you should refer to is **\"Soft Begging: Modular and Efficient Shielding of LLMs against Prompt Injection and Jailbreaking based on Prompt Tuning\"** (Document 4).\n\nThis paper explicitly defines and discusses **\"benign injections\"** in Section 1, stating: \"Benign injections may guide the model to generate more specific or desirable outputs, while neutral injections serve to test the model\u2019s resilience, accuracy, or response to edge cases without malicious intent.\" It provides the authoritative context for distinguishing between malicious attacks and benign/neutral interactions within the scope of LLM security research presented in these documents.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_006",
+      "question_id": "6",
+      "document_set_id": "co_dc_2Q23",
+      "official_answer": "5597456",
+      "candidate_answer": "Based on the documents provided:\n\n1.  **Digital Realty Trust, Inc.** is listed on the **NYSE** (Symbol: DLR). According to the Consolidated Balance Sheets in Document 1 (and Document 2), the **Total Stockholders' Equity** as of June 30, 2023, is **$17,621,456** (in thousands).\n\n2.  **Equinix, Inc.** is listed on the **Nasdaq** (Symbol: EQIX). According to the Condensed Consolidated Balance Sheets in Document 3, the **Total Equinix stockholders\u2019 equity** as of June 30, 2023, is **$12,024,109** (in thousands).\n\nTo find the difference:\n$17,621,456 - $12,024,109 = $5,597,347\n\nThe difference in total stockholders' equity is **$5,597,347** thousand.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_007",
+      "question_id": "7",
+      "document_set_id": "co_dc_2Q23",
+      "official_answer": "Nasdaq",
+      "candidate_answer": "Based on the documents provided, the company that conducted a press release on July 27, 2023, is **Digital Realty Trust, Inc.** (as stated in Document 1 and Document 2: \"Austin, TX \u2014 July 27, 2023 \u2014 Digital Realty... announced today financial results\").\n\nThe document explicitly mentions the stock exchange on which Digital Realty trades in the \"Stock Listing Information\" section of Document 1:\n\n\"The stock of Digital Realty Trust, Inc. is traded primarily on the **New York Stock Exchange** under the following symbols: Common Stock: DLR...\"\n\n(Note: While Equinix is mentioned in Document 3 as trading on Nasdaq, its press release date is August 2, 2023, not July 27, 2023.)\n\n**New York Stock Exchange**",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_010",
+      "question_id": "10",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "8.57%, increase not decrease",
+      "candidate_answer": "Based on the **Consolidated Quarterly Statements of Operations** provided in Document 1 and Document 3, the company where the **Net income / (loss) per share - diluted** was **$0.19** is **Digital Realty** (for the quarter ended **31-Mar-23**).\n\nTo find the percentage decrease in operating revenue from the previous quarter:\n\n1.  Identify the Total Operating Revenues for the current quarter (31-Mar-23): **$1,338,724** (in thousands).\n2.  Identify the Total Operating Revenues for the previous quarter (30-Jun-23): **$1,366,267** (in thousands).\n3.  Calculate the decrease: $1,366,267 - $1,338,724 = $27,543.\n4.  Calculate the percentage decrease: ($27,543 / $1,366,267) * 100 = 2.0159...%\n\nRounding to two decimal places, the operating revenue decreased by **2.02%**.\n\nAnswer: 2.02%",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_011",
+      "question_id": "11",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "In Q1 2023, when net income per diluted share was $0.19, total operating revenue was $1,338,724, an increase of $105,616, or 8.57%, from the previous quarter.",
+      "candidate_answer": "Based on the **Consolidated Quarterly Statements of Operations** found in Document 1 (and repeated in Document 3), the quarter where **Net income / (loss) per share - diluted** was **$0.19** is the quarter ended **31-Mar-23** (First Quarter 2023).\n\nFor this quarter:\n*   **Total Operating Revenues:** $1,338,724 (in thousands)\n*   **Previous Quarter (30-Jun-23) Total Operating Revenues:** $1,366,267 (in thousands)\n\nTo calculate the change from the previous quarter:\n$$ \\text{Change} = \\frac{1,338,724 - 1,366,267}{1,366,267} \\times 100 $$\n$$ \\text{Change} = \\frac{-27,543}{1,366,267} \\times 100 \\approx -2.0159\\% $$\n\nRounded to two decimal places, the change is **-2.02%**.\n\n**Answer:**\nTotal Operating Revenue: **$1,338,724** thousand\nChange from previous quarter: **-2.02%**",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_016",
+      "question_id": "16",
+      "document_set_id": "co_dc_ann_sup_a",
+      "official_answer": "1Q23: 41%,  2Q23: 32%",
+      "candidate_answer": "No",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_017",
+      "question_id": "17",
+      "document_set_id": "co_dc_ann_sup_a",
+      "official_answer": "2Q23, Digital Realty",
+      "candidate_answer": "Based on the provided documents, the company is **Digital Realty**.\n\nThe category with the lowest power consumption is **0-1 MW**.\n\nAccording to the \"Summary of Leasing Activity - Signed\" tables:\n*   In **Document 4 (First Quarter 2023)**, the Annualized GAAP Rent for the 0-1 MW category was **$33,790** (in thousands).\n*   In **Document 1 (Second Quarter 2023)**, the Annualized GAAP Rent for the 0-1 MW category was **$36,682** (in thousands).\n\nThe growth occurred in the second quarter of 2023.\n\n**Q223 Digital Realty**",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_018",
+      "question_id": "18",
+      "document_set_id": "co_dc_ann_sup_b",
+      "official_answer": "Melbourne - 2, Sydney - 4",
+      "candidate_answer": "Based on Document 3 (NEXTDC ASX Release dated 27 February 2024), the cities where NEXTDC added additional built capacity in the half-year ended 31 December 2023 (which represents the calendar year 2023 additions reported in this release) are:\n\n1.  **S3 Sydney:** Added 4MW of built capacity.\n2.  **M2 Melbourne:** Added 3MW of built capacity.\n3.  **PH1 Port Hedland:** Added 0.5MW of built capacity.\n\n(Note: While development works continued for Adelaide, Darwin, and Newman, the release states they were \"expected to open to customers in 1H25,\" implying no built capacity was added to the operational portfolio in 2023 for these locations.)\n\nAccording to Document 1 (Digital Realty Q1 2024 Supplemental Information, page 24) and Document 2 (Digital Realty Q2 2024 Supplemental Information, page 24), the number of data centers Digital Realty has in these cities is:\n\n*   **Sydney:** 4 data centers\n*   **Melbourne:** 2 data centers\n*   **Port Hedland:** 0 data centers (Port Hedland is not listed in Digital Realty's occupancy analysis tables in either document).\n\nListing the cities and number of data centers in ascending order of the amount of built capacity added by NEXTDC (0.5MW, 3MW, 4MW):\n\n1.  **Port Hedland:** 0 data centers\n2.  **Melbourne:** 2 data centers\n3.  **Sydney:** 4 data centers",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_019",
+      "question_id": "19",
+      "document_set_id": "co_dc_press_a",
+      "official_answer": "-76%, -42%",
+      "candidate_answer": "To determine if Equinix's guidance on xScale capital expenditure for full year 2024 has changed, we compare the guidance provided in the First Quarter 2024 earnings release (Document 4) with the guidance provided in the Second Quarter 2024 earnings release (Document 1).\n\n**1. Identify Earliest Reported Guidance (Q1 2024):**\nFrom Document 4 (\"Equinix Reports First Quarter 2024 Results\"), under the \"Business Outlook\" section for the full year of 2024:\n*   \"xScale-related on-balance sheet capital expenditures are expected to range between **$12 and $52 million**...\"\n\n**2. Identify Latest Reported Guidance (Q2 2024):**\nFrom Document 1 (\"Equinix Reports Second Quarter 2024 Results\"), under the \"Business Outlook\" section for the full year of 2024:\n*   The document states: \"Non-recurring capital expenditures, including xScale-related capital expenditures, are expected to range between $2.623 and $2.853 billion...\"\n*   However, it does **not** provide a specific range for \"xScale-related on-balance sheet capital expenditures\" in the Q2 2024 outlook section, unlike the Q1 2024 report.\n*   Let's re-read carefully. In Document 1, under \"Business Outlook\", it lists:\n    *   Total capital expenditures: $2.850 - $3.100 billion.\n    *   Non-recurring capital expenditures (including xScale-related): $2.623 - $2.853 billion.\n    *   Recurring capital expenditures: $227 - $247 million.\n*   It does **not** explicitly list a separate line item for \"xScale-related on-balance sheet capital expenditures\" in the Q2 2024 guidance summary.\n*   However, looking at Document 4 (Q1 2024), the specific line item was \"xScale-related on-balance sheet capital expenditures\".\n*   Looking at Document 1 (Q2 2024), there is no such specific line item. The guidance has shifted to reporting \"Non-recurring capital expenditures, including xScale-related capital expenditures\".\n*   Wait, let's look closer at Document 1. Is there any mention of xScale capex guidance change?\n    *   Document 1 says: \"Non-recurring capital expenditures, including xScale-related capital expenditures, are expected to range between $2.623 and $2.853 billion\".\n    *   Document 4 said: \"xScale-related on-balance sheet capital expenditures are expected to range between $12 and $52 million\".\n    *   These are different metrics. One is \"on-balance sheet\" xScale capex, the other is total \"non-recurring\" capex (which includes xScale).\n    *   Did the guidance *change*? The specific metric \"xScale-related on-balance sheet capital expenditures\" was removed from the explicit guidance summary in Q2 2024, replaced by a broader \"Non-recurring capital expenditures\" metric.\n    *   However, often \"xScale-related capital expenditures\" in the context of the question might refer to the specific line item if it still exists or if the question implies comparing the *same* metric.\n    *   Let's check if the Q2 report mentions the xScale on-balance sheet capex guidance. It does not.\n    *   Let's check if the Q1 report mentioned \"Non-recurring capital expenditures\". Document 4 says: \"Non-recurring capital expenditures, including xScale-related capital expenditures, are expected to range between $2.570 and $2.800 billion\".\n    *   So, in Q1 2024 (Document 4):\n        *   Non-recurring capex (incl xScale): $2.570 - $2.800 billion.\n        *   xScale-related on-balance sheet capex: $12 - $52 million.\n    *   In Q2 2024 (Document 1):\n        *   Non-recurring capex (incl xScale): $2.623 - $2.853 billion.\n        *   xScale-related on-balance sheet capex: Not explicitly guided.\n\n    The question asks: \"For Equinix, has the guidance on **xScale capital expenditure** for full year 2024 changed?\"\n\n    If we interpret \"xScale capital expenditure\" as the specific line item \"xScale-related on-balance sheet capital expenditures\" which was present in Q1 ($12-$52M) but is absent in Q2, the guidance has effectively changed (or been discontinued/renamed).\n\n    However, if we look at the \"Non-recurring capital expenditures, including xScale-related capital expenditures\" line:\n    *   Q1 Lower Bound: $2.570 billion\n    *   Q1 Upper Bound: $2.800 billion\n    *   Q2 Lower Bound: $2.623 billion\n    *   Q2 Upper Bound: $2.853 billion\n\n    The guidance for the broader category \"Non-recurring capital expenditures, including xScale-related capital expenditures\" **has changed**.\n\n    Let's calculate the percentage change for the lower and upper bounds of this category, as it is the only comparable \"xScale-related\" capex metric provided in both reports (Q1 called it \"Non-recurring capital expenditures, including xScale-related capital expenditures\" and Q2 calls it \"Non-recurring capital expenditures, including xScale-related capital expenditures\").\n\n    **Lower Bound Change:**\n    *   Q1 Lower: $2.570 billion\n    *   Q2 Lower: $2.623 billion\n    *   Difference: $2.623 - $2.570 = $0.053 billion\n    *   Percentage: ($0.053 / $2.570) * 100 = 2.06% -> **2%**\n\n    **Upper Bound Change:**\n    *   Q1 Upper: $2.800 billion\n    *   Q2 Upper: $2.853 billion\n    *   Difference: $2.853 - $2.800 = $0.053 billion\n    *   Percentage: ($0.053 / $2.800) * 100 = 1.89% -> **2%**\n\n    If the question refers to the specific \"xScale-related on-balance sheet capital expenditures\" ($12-$52M in Q1), there is no corresponding guidance in Q2 to calculate a difference against. However, the prompt asks \"If no return 0%,0% otherwise...\". Since the specific line item is gone, one might argue the guidance changed. But usually, these questions look for a numerical comparison of the same metric. The metric \"Non-recurring capital expenditures, including xScale-related capital expenditures\" is the closest match.\n\n    Let's re-read the Q1 guidance in Document 4:\n    \"Non-recurring capital expenditures, including xScale-related capital expenditures, are expected to range between $2.570 and $2.800 billion... xScale-related on-balance sheet capital expenditures are expected to range between $12 and $52 million...\"\n\n    Let's re-read the Q2 guidance in Document 1:\n    \"Non-recurring capital expenditures, including xScale-related capital expenditures, are expected to range between $2.623 and $2.853 billion...\"\n\n    The guidance for the aggregate \"Non-recurring capital expenditures, including xScale-related capital expenditures\" has changed. The guidance for the specific subset \"xScale-related on-balance sheet capital expenditures\" is no longer provided. Given the phrasing \"guidance on xScale capital expenditure\", and the fact that the aggregate metric explicitly includes xScale, it is highly likely the question refers to the aggregate metric which is comparable across both quarters.\n\n    Calculations:\n    Lower Bound:\n    (2.623 - 2.570) / 2.570 = 0.053 / 2.570 \u2248 0.02062 -> 2%\n\n    Upper Bound:\n    (2.853 - 2.800) / 2.800 = 0.053 / 2.800 \u2248 0.01892 -> 2%\n\n    Answer: 2%,2%",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_022",
+      "question_id": "22",
+      "document_set_id": "co_dc_press_b",
+      "official_answer": "5000",
+      "candidate_answer": "To calculate the difference in implied Adjusted EBITDA per employee for Equinix between Q3 and Q1 2023, we need to extract the Adjusted EBITDA and Total Headcount for both quarters from the provided documents.\n\n**Step 1: Retrieve Data for Q1 2023**\n*   **Adjusted EBITDA:** According to Document 3 (Equinix First-Quarter 2023 Results), the Adjusted EBITDA for the quarter ended March 31, 2023, was **$944 million**.\n*   **Total Headcount:** According to the Condensed Consolidated Balance Sheets in Document 3, the total headcount as of March 31, 2023, was **12,348**.\n\n**Step 2: Calculate Q1 2023 Implied Adjusted EBITDA per Employee**\n*   Calculation: $944,000,000 / 12,348 employees\n*   Result: $76,449.63...\n*   Rounding to the nearest thousand: **$76,000**\n\n**Step 3: Retrieve Data for Q3 2023**\n*   **Adjusted EBITDA:** According to Document 2 (Equinix Third-Quarter 2023 Results), the Adjusted EBITDA for the quarter ended September 30, 2023, was **$936 million**.\n*   **Total Headcount:** According to the Condensed Consolidated Balance Sheets in Document 2, the total headcount as of September 30, 2023, was **13,046**.\n\n**Step 4: Calculate Q3 2023 Implied Adjusted EBITDA per Employee**\n*   Calculation: $936,000,000 / 13,046 employees\n*   Result: $71,746.12...\n*   Rounding to the nearest thousand: **$72,000**\n\n**Step 5: Calculate the Difference**\n*   Difference: |Q1 Value - Q3 Value|\n*   Difference: |$76,000 - $72,000| = **$4,000**\n\nThe difference between the two values is $4,000.\n\n**4000**",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_025",
+      "question_id": "25",
+      "document_set_id": "co_dc_press_b",
+      "official_answer": "Yes",
+      "candidate_answer": "Based on the provided documents, **no**, none of the FY2023 guidance metrics for Equinix stayed exactly the same between the Q1 and Q3 reports. While some ranges remained identical, others were updated or narrowed.\n\nHere is the comparison between the **Q1 2023 Guidance** (Document 3) and the **Q3 2023 Guidance** (Document 2):\n\n*   **Revenues:**\n    *   **Q1:** $8.175 - $8.275 billion\n    *   **Q3:** $8.166 - $8.206 billion\n    *   *Status:* Changed (narrowed and lowered).\n\n*   **Adjusted EBITDA:**\n    *   **Q1:** $3.635 - $3.715 billion\n    *   **Q3:** $3.680 - $3.710 billion\n    *   *Status:* Changed (raised at the lower end, narrowed at the upper end).\n\n*   **AFFO:**\n    *   **Q1:** $2.927 - $3.007 billion\n    *   **Q3:** $2.996 - $3.026 billion\n    *   *Status:* Changed (raised).\n\n*   **AFFO per Share:**\n    *   **Q1:** $31.15 - $32.00\n    *   **Q3:** $31.87 - $32.19\n    *   *Status:* Changed (raised).\n\n*   **Total Capital Expenditures:**\n    *   **Q1:** $2.708 - $2.958 billion\n    *   **Q3:** $2.675 - $2.925 billion\n    *   *Status:* Changed (lowered).\n\n*   **Non-recurring Capital Expenditures:**\n    *   **Q1:** $2.510 - $2.740 billion\n    *   **Q3:** $2.462 - $2.692 billion\n    *   *Status:* Changed (lowered).\n\n*   **Recurring Capital Expenditures:**\n    *   **Q1:** $198 - $218 million\n    *   **Q3:** $213 - $233 million\n    *   *Status:* Changed (raised).\n\n*   **xScale-related On-Balance Sheet Capital Expenditures:**\n    *   **Q1:** $131 - $181 million\n    *   **Q3:** $191 - $241 million\n    *   *Status:* Changed (raised).\n\nTherefore, every specific guidance metric provided for FY2023 was updated between the Q1 and Q3 reports.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_026",
+      "question_id": "26",
+      "document_set_id": "co_dc_press_b",
+      "official_answer": "6.2 (Q3 2023) or 6.4 (Q2 2023) - both are correct and one or both is a correct answer",
+      "candidate_answer": "Based on the documents provided, here is the step-by-step derivation of the answer:\n\n1.  **Identify the first company and quarter:**\n    *   The description states: \"Adjusted EBITDA margin was in line with FY23 guidance with over 50 major projects underway.\"\n    *   Looking at **Equinix** (Document 2, Q3 2023): The Adjusted EBITDA margin was 45%. The FY23 guidance for Adjusted EBITDA margin was 45%. The Business Highlights state: \"The company currently has **56 major projects** underway...\" This matches the description perfectly.\n    *   Therefore, the first company is **Equinix** and the quarter is **Q3 2023**.\n\n2.  **Identify the \"other company\" and the \"same quarterly\" period:**\n    *   The other company in the documents is **Digital Realty**.\n    *   The \"same quarterly\" period is **Q3 2023** (the quarter ended September 30, 2023).\n\n3.  **Find the requested metric for the other company in that quarter:**\n    *   We need Digital Realty's **total debt to adjusted EBITDA ratio** (often referred to as Net Debt to Adjusted EBITDA in these reports) for Q3 2023.\n    *   In **Document 5** (Digital Realty Reports Third Quarter 2023 Results), under the \"Balance Sheet\" section, it states: \"At the end of the third quarter of 2023, **net debt-to-Adjusted EBITDA was 6.3x**...\"\n    *   Additionally, in the \"Reconciliation of Earnings Before Interest, Taxes, Depreciation & Amortization and Financial Ratios\" table within Document 5, under the column for **30-Sep-23**, the row for **Net Debt to Adjusted EBITDA** shows **6.3x**.\n\n4.  **Round the answer:**\n    *   The value is 6.3. Rounded to 1 decimal place, it remains 6.3.\n\n**Answer:** 6.3",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_028",
+      "question_id": "28",
+      "document_set_id": "co_dc_dr_press",
+      "official_answer": "65.8%",
+      "candidate_answer": "Based on the investment activity sections of the provided documents for the trailing 12 months ending June 30, 2024 (covering Q3 2023 through Q2 2024), here is the breakdown of land acres sold and acquired:\n\n**1. Acres of Land Sold (including options):**\n\n*   **Q4 2023 (Document 4):** Digital Realty completed the sale of an option maintained on a second parcel of land in Sydney, Australia with an area of **21 acres**.\n*   **Q1 2024 (Document 1):** Digital Realty closed on the sale of **19 acres** of vacant land in Sydney, Australia.\n*   **Q2 2024 (Document 3):** No land sales are reported in the investment activity section for this quarter.\n*   **Q3 2023 (Document 2):** Digital Realty sold a non-core data center in Watford and one in Chantilly, but no specific land acreage sales are listed for these transactions.\n\n**Total Acres Sold:** 21 + 19 = **40 acres**\n\n**2. Acres of Land Acquired (including right of use agreements):**\n\n*   **Q3 2023 (Document 2):**\n    *   Signed a 50-year right of use agreement related to a **2.7-acre** site (MRS5) in Marseille, France.\n    *   Secured approximately **27 acres** (MRS6) near Marseille.\n*   **Q4 2023 (Document 4):**\n    *   Exercised option to purchase approximately **19 acres** of land in Paris, France.\n    *   Closed on the acquisition of approximately **3 acres** adjacent to its existing campus near Athens, Greece.\n*   **Q1 2024 (Document 1):**\n    *   Closed on the purchase of approximately **19 acres** of land in Paris, France.\n    *   Closed on the acquisition of five acres of land in Osaka, Japan (Note: The text says \"five acres\", which is **5 acres**).\n*   **Q2 2024 (Document 3):**\n    *   Acquired a **4.1-acre** parcel of land in Amsterdam.\n\n**Total Acres Acquired:** 2.7 + 27 + 19 + 3 + 19 + 5 + 4.1 = **80.8 acres**\n\n**3. Calculation:**\n\n*   Percentage = (Total Acres Sold / Total Acres Acquired) * 100\n*   Percentage = (40 / 80.8) * 100\n*   Percentage \u2248 49.5049...%\n\nRounding to 1 decimal place, the percentage is **49.5%**.\n\n**Answer:** 49.5%",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_036",
+      "question_id": "36",
+      "document_set_id": "co_dc_nxt_history",
+      "official_answer": "1948 (round up from 1947.4)",
+      "candidate_answer": "To estimate NEXTDC's customer count for FY24, we follow these steps based on the provided documents:\n\n**Step 1: Determine the percentage increase in interconnections from FY22 to FY23.**\n\n*   From **Document 1 (FY23 Results)**, under \"FY23 business performance\":\n    *   Interconnections at 30 June 2023 (FY23): **17,816**\n    *   Interconnections at 30 June 2022 (FY22): **16,613** (This figure is confirmed in **Document 3**, under \"Market Growth Demonstrated by NEXTDC\" table for 30 June 2022 Cross Connects).\n*   Calculate the increase: $17,816 - 16,613 = 1,203$\n*   Calculate the percentage increase: $(1,203 / 16,613) \\times 100 \\approx 7.2413\\%$\n\n**Step 2: Determine the customer count for FY23.**\n\n*   From **Document 1 (FY23 Results)**, under \"FY23 business performance\":\n    *   Customer numbers at 30 June 2023 (FY23): **1,820**\n\n**Step 3: Apply the interconnection growth percentage to the FY23 customer count to estimate FY24.**\n\n*   Estimated FY24 Customers = FY23 Customers $\\times$ $(1 + \\text{Percentage Increase})$\n*   Estimated FY24 Customers = $1,820 \\times (1 + 0.072413)$\n*   Estimated FY24 Customers = $1,820 \\times 1.072413$\n*   Estimated FY24 Customers $\\approx 1,951.79$\n\n**Step 4: Round up to the nearest whole number.**\n\n*   Rounding 1,951.79 up to the nearest whole number gives **1,952**.\n\n**Answer:** 1,952",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_040",
+      "question_id": "40",
+      "document_set_id": "co_dc_nxt_history",
+      "official_answer": "June 2024",
+      "candidate_answer": "Based on Document 3 (FY23 Annual Report), specifically in the sections titled \"Continuous innovation\" and \"Greenhouse gas and energy data reporting requirements,\" NEXTDC states that while S3 Sydney and M3 Melbourne are already operated in line with national standards, they intend to complete the ISO 14001 certification process for these facilities, along with the SC1 facility, **within the next 12 months** from the date of the report (August 2023).\n\nTherefore, the latest proposed deadline is **August 2024**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_043",
+      "question_id": "43",
+      "document_set_id": "co_pro_transcripts_2023",
+      "official_answer": "Annick Baumann, George Iwanyc, Ittai Kidron, Fred Lee, Sophie Lee,Shebly Seyrafi,Brent Thill,Allan Verkhovski, Patrick Walravens, Alex Zukin",
+      "candidate_answer": "Based on the documents provided, here is the analysis of analyst attendance for the Asana earnings calls:\n\n**Asana Q3 2023 Earnings Call (Document 6):**\n*   Andrew DeGasperi\n*   Ittai Kidron\n*   Allan Verkhovski\n*   Steven Enders\n*   Brent Thill\n*   Sophie Lee\n*   Brent A. Bracelin\n*   Jackson E. Ader\n*   Jason Celino\n*   Robert Simmons\n*   Patrick Walravens\n*   Rob Oliver\n\n**Asana Q4 2023 Earnings Call (Document 5):**\n*   Annick Baumann\n*   Jackson E. Ader\n*   Alex Zukin\n*   Andrew DeGasperi\n*   Rob Oliver\n*   Brent A. Bracelin\n*   George Iwanyc\n*   Robert Simmons\n*   Steven Enders\n*   Fred Lee\n*   Jason Celino\n*   Shebly Seyrafi\n\n**Analysts who attended only one call:**\n\n1.  **Allan Verkhovski** (Q3 only)\n2.  **Annick Baumann** (Q4 only)\n3.  **Alex Zukin** (Q4 only)\n4.  **Ittai Kidron** (Q3 only)\n5.  **Sophie Lee** (Q3 only)\n6.  **Patrick Walravens** (Q3 only)\n7.  **George Iwanyc** (Q4 only)\n8.  **Fred Lee** (Q4 only)\n9.  **Shebly Seyrafi** (Q4 only)\n\n*(Note: Jackson E. Ader, Andrew DeGasperi, Rob Oliver, Brent A. Bracelin, Robert Simmons, Steven Enders, Jason Celino, and Brent Thill attended both calls.)*\n\n**Alphabetical Order (Last Name, then First Name):**\n\n1.  Alex Zukin\n2.  Allan Verkhovski\n3.  Annick Baumann\n4.  Fred Lee\n5.  George Iwanyc\n6.  Ittai Kidron\n7.  Patrick Walravens\n8.  Shebly Seyrafi\n9.  Sophie Lee",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_047",
+      "question_id": "47",
+      "document_set_id": "co_pro_transcripts_2023",
+      "official_answer": "Berenberg Capital Markets, Piper Sandler & Co., MoffettNathanson LLC, KeyBanc Capital Markets, D. A. Davidson & Co., Robert W. Baird & Co. Inc., Citigroup Global Markets, Oppenheimer & Co. Inc., Wolfe Research LLC, Jefferies LLC",
+      "candidate_answer": "Based on the participant lists provided in **Document 5** (Asana Q4 2023 Earnings Call) and **Document 6** (Asana Q3 2023 Earnings Call), the firms with analysts present in both calls are:\n\n1.  **Berenberg Capital Markets LLC** (Andrew DeGasperi)\n2.  **Citigroup Global Markets, Inc.** (Steven Enders)\n3.  **Credit Suisse Securities (USA) LLC** (Fred Lee)\n4.  **D.A. Davidson & Co.** (Robert Simmons)\n5.  **Jefferies LLC** (Brent Thill)\n6.  **KeyBanc Capital Markets, Inc.** (Jason Celino)\n7.  **MoffettNathanson LLC** (Jackson E. Ader)\n8.  **Oppenheimer & Co., Inc.** (George Iwanyc in Q4; Ittai Kidron in Q3)\n9.  **Piper Sandler & Co.** (Brent A. Bracelin)\n10. **Robert W. Baird & Co., Inc.** (Rob Oliver)\n11. **SVB Securities** (Jackson E. Ader in Q4; Jackson E. Ader with MoffettNathanson in Q3, though listed under SVB in Q4. *Correction*: In Document 6, Jackson Ader is listed under \"MoffettNathanson LLC\". In Document 5, he is listed under \"SVB Securities\". Therefore, SVB Securities and MoffettNathanson are distinct entries in the lists, but Jackson Ader is the analyst. However, looking strictly at the *firms* listed in the \"Other Participants\" section:\n    *   **Document 5 (Q4):** Jefferies, SVB MoffettNathanson, Wolfe Research, Berenberg, Robert W. Baird, Piper Sandler, Oppenheimer, D.A. Davidson, Citigroup, Credit Suisse, KeyBanc, FBN Securities.\n    *   **Document 6 (Q3):** Berenberg, Oppenheimer, Wolfe Research, Citigroup, Jefferies, Morgan Stanley, Piper Sandler, MoffettNathanson, KeyBanc, D.A. Davidson, JMP Securities, Robert W. Baird.\n\n    Let's re-verify the specific firms present in *both* lists:\n    *   **Berenberg Capital Markets LLC**: Present in both.\n    *   **Citigroup Global Markets, Inc.**: Present in both.\n    *   **Credit Suisse Securities (USA) LLC**: Present in both.\n    *   **D.A. Davidson & Co.**: Present in both.\n    *   **Jefferies LLC**: Present in both.\n    *   **KeyBanc Capital Markets, Inc.**: Present in both.\n    *   **Oppenheimer & Co., Inc.**: Present in both.\n    *   **Piper Sandler & Co.**: Present in both.\n    *   **Robert W. Baird & Co., Inc.**: Present in both.\n    *   **Wolfe Research LLC**: Present in both.\n\n    *Note on SVB/MoffettNathanson:* In Document 5, Jackson Ader is listed under \"SVB MoffettNathanson\". In Document 6, he is listed under \"MoffettNathanson LLC\". While the analyst is the same, the firm listing differs slightly in formatting, but \"MoffettNathanson\" is the core entity. However, \"SVB Securities\" is listed as a separate firm in Document 5 for Jackson Ader, whereas in Document 6 he is with MoffettNathanson. To be precise, the firms explicitly named in the participant lists for both calls are:\n\n    *   Berenberg Capital Markets LLC\n    *   Citigroup Global Markets, Inc.\n    *   Credit Suisse Securities (USA) LLC\n    *   D.A. Davidson & Co.\n    *   Jefferies LLC\n    *   KeyBanc Capital Markets, Inc.\n    *   Oppenheimer & Co., Inc.\n    *   Piper Sandler & Co.\n    *   Robert W. Baird & Co., Inc.\n    *   Wolfe Research LLC\n\n    (Note: Morgan Stanley is in Doc 6 but not Doc 5. JMP Securities is in Doc 6 but not Doc 5. FBN Securities is in Doc 5 but not Doc 6.)\n\n    Alphabetical Order:\n\n1.  Berenberg Capital Markets LLC\n2.  Citigroup Global Markets, Inc.\n3.  Credit Suisse Securities (USA) LLC\n4.  D.A. Davidson & Co.\n5.  Jefferies LLC\n6.  KeyBanc Capital Markets, Inc.\n7.  Oppenheimer & Co., Inc.\n8.  Piper Sandler & Co.\n9.  Robert W. Baird & Co., Inc.\n10. Wolfe Research LLC",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_048",
+      "question_id": "48",
+      "document_set_id": "co_pro_transcripts_2023",
+      "official_answer": "Brent John Thill, 3 times",
+      "candidate_answer": "Based on the provided documents, here is the breakdown of the analysts who participated in both Smartsheet earnings calls (Document 2: Q3 FY2023 and Document 4: Q4 FY2023) and the number of times they spoke:\n\n**Analysts present in both calls:**\n1.  **Brent Thill** (Jefferies LLC)\n2.  **Jacob Roberge** (William Blair & Company L.L.C.)\n3.  **John Stephen DiFucci** (Guggenheim Securities, LLC)\n4.  **Michael Turrin** (Wells Fargo Securities, LLC) - *Note: In Doc 2, Michael Bird speaks for him; in Doc 4, Michael Bird speaks for him. The analyst listed is Michael Turrin.*\n5.  **Pinjalim Bora** (JPMorgan Chase & Co)\n6.  **Rishi Jaluria** (RBC Capital Markets) - *Note: In Doc 2, Richard David Poland speaks for him; in Doc 4, Rishi Jaluria speaks.*\n7.  **Alex Zukin** (Wolfe Research) - *Note: In Doc 2, Ethan Bruck speaks for him; in Doc 4, Alex Zukin speaks.*\n8.  **Steve Enders** (Citi) - *Note: In Doc 2, Unknown Analyst (George) speaks for him; in Doc 4, Unknown Analyst (George) speaks for him.*\n9.  **Jackson Ader** (SVB Securities/MoffettNathanson) - *Note: In Doc 2, Jackson Ader is listed but does not speak (Kyle Diehl speaks for Jackson Ader in Doc 4? No, in Doc 2 Jackson Ader is listed in participants but the Q&A shows Kyle Diehl speaking for Jackson Ader? Let's re-read carefully.*\n\nLet's re-verify the specific speakers in the Q&A sections for the common analysts.\n\n**Document 2 (Smartsheet Q3 FY2023):**\n*   **John Stephen DiFucci:** Asked 1 question.\n*   **Brent Thill:** Asked 1 question.\n*   **Pinjalim Bora:** Asked 1 question.\n*   **Joshua Phillip Baer:** Asked 1 question (Not in Doc 4 list? Doc 4 lists Seoyoung Lee for Josh Baer. So Baer is not in both).\n*   **Scott Randolph Berg:** Asked 1 question.\n*   **George Michael Iwanyc:** Asked 1 question.\n*   **Alex Zukin:** Did not speak (Ethan Bruck spoke for him).\n*   **Rishi Jaluria:** Did not speak (Richard David Poland spoke for him).\n*   **Steve Enders:** Did not speak (Unknown Analyst/George spoke for him).\n*   **Jackson Ader:** Did not speak (Kyle Diehl spoke for him? No, Kyle Diehl is listed as speaking for Jackson Ader in Doc 4. In Doc 2, Jackson Ader is listed in participants but no one speaks for him in the Q&A text provided? Actually, looking at Doc 2, the last question is from Fred Lee. Jackson Ader is not in the Q&A list of speakers in Doc 2. Wait, let's look at the \"Call Participants\" vs \"Q&A\".\n    *   Doc 2 Q&A Speakers: John DiFucci, DJ Hynes, Brent Thill, Pinjalim Bora, Josh Baer, Scott Berg, George Iwanyc, Alex Zukin (via Ethan Bruck), Rishi Jaluria (via Richard Poland), Terry Tillman (via Robert Dee), Steve Enders (via George), Michael Turrin (via Michael Bird), Jackson Ader (via Kyle Diehl - *Wait, Kyle Diehl is listed as speaking for Jackson Ader in Doc 4. In Doc 2, the question from Jackson Ader is asked by Kyle Diehl? No, in Doc 2, the question from Jackson Ader is not present. The questions are: DiFucci, Hynes, Thill, Bora, Baer, Berg, Iwanyc, Zukin, Jaluria, Tillman, Enders, Turrin, Ader? Let's check Doc 2 Q&A again.*\n    *   Doc 2 Q&A Order:\n        1. John DiFucci\n        2. DJ Hynes\n        3. Brent Thill\n        4. Pinjalim Bora\n        5. Josh Baer\n        6. Scott Berg\n        7. George Iwanyc\n        8. Alex Zukin (Ethan Bruck)\n        9. Rishi Jaluria (Richard Poland)\n        10. Terry Tillman (Robert Dee)\n        11. Steve Enders (Unknown Analyst/George)\n        12. Michael Turrin (Michael Bird)\n        13. Jackson Ader (Kyle Diehl) -> *Correction*: In Doc 2, the question from Jackson Ader is asked by **Kyle Diehl**? No, looking at Doc 2, the question from Jackson Ader is NOT in the transcript provided. The transcript ends after Fred Lee. Wait, let me re-read Doc 2.\n        *   Doc 2 Q&A: DiFucci, Hynes, Thill, Bora, Baer, Berg, Iwanyc, Zukin, Jaluria, Tillman, Enders, Turrin, Ader?\n        *   Actually, in Doc 2, the question from **Jackson Ader** is asked by **Kyle Diehl**? No, Kyle Diehl is listed as an analyst in Doc 2 participants. In the Q&A section of Doc 2, the question from Jackson Ader is asked by **Kyle Diehl**? Let's look at the text.\n        *   Doc 2 Text: \"Your next question comes from the line of Jackson Ader with MoffettNathanson. **Kyle Diehl**... This is Kyle Diehl on for Jackson Ader.\" -> So Kyle Diehl spoke for Jackson Ader.\n        *   So, **Jackson Ader** did not speak directly.\n\n*   **Michael Turrin:** Did not speak (Michael Bird spoke for him).\n*   **Terry Tillman:** Did not speak (Robert Dee spoke for him).\n\n**Document 4 (Smartsheet Q4 FY2023):**\n*   **John Stephen DiFucci:** Asked 1 question.\n*   **Brent Thill:** Asked 1 question.\n*   **Pinjalim Bora:** Asked 1 question.\n*   **Michael Turrin:** Asked 1 question (Michael James Turrin).\n*   **Rishi Jaluria:** Asked 1 question (Rishi Nitya Jaluria).\n*   **Steve Enders:** Did not speak (Unknown Analyst/George spoke for him).\n*   **Jackson Ader:** Did not speak (Jackson Edmund Ader is listed, but the question is asked by **Jackson Edmund Ader**? No, in Doc 4, the question from Jackson Ader is asked by **Jackson Edmund Ader**? Let's check.\n    *   Doc 4 Text: \"Your next question comes from the line of Jackson Ader with SVB Securities. **Jackson Edmund Ader**... The first one, just given that these things are happening concurrently...\" -> So Jackson Ader spoke.\n*   **Alex Zukin:** Asked 1 question (Aleksandr J. Zukin).\n*   **Terry Tillman:** Did not speak (Terrell Frederick Tillman spoke for him? No, Terrell Frederick Tillman is listed as the speaker for Terry Tillman in Doc 4? Let's check.\n    *   Doc 4 Text: \"Your next question comes from the line of Terry Tillman with Truist Securities. **Terrell Frederick Tillman**... I had to look at the press release...\" -> So Terrell Frederick Tillman spoke for Terry Tillman. Terry Tillman did not speak directly.\n\n**Let's list the analysts who are in BOTH participant lists and check their direct speech count:**\n\n1.  **John Stephen DiFucci**:\n    *   Doc 2: Spoke 1 time.\n    *   Doc 4: Spoke 1 time.\n    *   Total: 2 times.\n\n2.  **Brent Thill**:\n    *   Doc 2: Spoke 1 time.\n    *   Doc 4: Spoke 1 time.\n    *   Total: 2 times.\n\n3.  **Pinjalim Bora**:\n    *   Doc 2: Spoke 1 time.\n    *   Doc 4: Spoke 1 time.\n    *   Total: 2 times.\n\n4.  **Michael Turrin**:\n    *   Doc 2: Did not speak (Michael Bird spoke).\n    *   Doc 4: Spoke 1 time.\n    *   Total: 1 time.\n\n5.  **Rishi Jaluria**:\n    *   Doc 2: Did not speak (Richard Poland spoke).\n    *   Doc 4: Spoke 1 time.\n    *   Total: 1 time.\n\n6.  **Steve Enders**:\n    *   Doc 2: Did not speak (Unknown Analyst/George spoke).\n    *   Doc 4: Did not speak (Unknown Analyst/George spoke).\n    *   Total: 0 times.\n\n7.  **Jackson Ader**:\n    *   Doc 2: Did not speak (Kyle Diehl spoke).\n    *   Doc 4: Spoke 1 time.\n    *   Total: 1 time.\n\n8.  **Alex Zukin**:\n    *   Doc 2: Did not speak (Ethan Bruck spoke).\n    *   Doc 4: Spoke 1 time.\n    *   Total: 1 time.\n\n9.  **Terry Tillman**:\n    *   Doc 2: Did not speak (Robert Dee spoke).\n    *   Doc 4: Did not speak (Terrell Frederick Tillman spoke).\n    *   Total: 0 times.\n\n10. **Josh Baer**:\n    *   Doc 2: Spoke 1 time.\n    *   Doc 4: Did not speak (Seoyoung Lee spoke).\n    *   Total: 1 time. (But is he in both participant lists? Doc 2 lists him. Doc 4 lists Seoyoung Lee for Josh Baer. Josh Baer is not listed as a participant in Doc 4, only Seoyoung Lee. So he is not \"present\" in the same capacity or listed in the participant list of Doc 4. The question asks for analysts \"present in both\". Usually, this implies listed in the participant list. Josh Baer is not in Doc 4 participant list. So he is excluded.)\n\n11. **Scott Berg**:\n    *   Doc 2: Spoke 1 time.\n    *   Doc 4: Not in participant list. Excluded.\n\n12. **George Iwanyc**:\n    *   Doc 2: Spoke 1 time.\n    *   Doc 4: Not in participant list. Excluded.\n\n13. **DJ Hynes**:\n    *   Doc 2: Spoke 1 time.\n    *   Doc 4: Not in participant list. Excluded.\n\n14. **Terry Tillman** (Truist):\n    *   Doc 2: Listed in participants.\n    *   Doc 4: Listed in participants.\n    *   Did he speak? No. Robert Dee spoke in Doc 2. Terrell Frederick Tillman spoke in Doc 4.\n\n15. **Steve Enders** (Citi):\n    *   Doc 2: Listed in participants.\n    *   Doc 4: Listed in participants.\n    *   Did he speak? No. Unknown Analyst (George) spoke in both.\n\n**Analysts with 0 direct speeches:**\n*   Steve Enders\n*   Terry Tillman\n\n**Analysts with 1 direct speech:**\n*   Michael Turrin\n*   Rishi Jaluria\n*   Jackson Ader\n*   Alex Zukin\n\n**Analysts with 2 direct speeches:**\n*   John Stephen DiFucci\n*   Brent Thill\n*   Pinjalim Bora\n\nThe question asks for the analyst(s) who spoke the **least** number of times.\n\nThe least number of times is **0**.\n\nThe analysts are **Steve Enders** and **Terry Tillman**.\n\nAnswer: Steve Enders, 0 times; Terry Tillman, 0 times.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_049",
+      "question_id": "49",
+      "document_set_id": "co_pro_transcripts_2023",
+      "official_answer": "Wolfe Research LLC, SVB Securities, Wells Fargo Securities, D.A. Davidson & Co., Oppenheimer & Co. Inc., MoffettNathanson LLC",
+      "candidate_answer": "Based on the analyst lists provided in the Smartsheet earnings call transcripts (Document 2 for Q3 FY2023 and Document 4 for Q4 FY2023), the firms represented by analysts who appear in only one of the two calls are:\n\n**Present in Q3 FY2023 (Document 2) but NOT in Q4 FY2023 (Document 4):**\n*   **Canaccord Genuity Corp.** (David E. Hynes)\n*   **Guggenheim Securities, LLC** (John Stephen DiFucci)\n*   **MoffettNathanson LLC** (Kyle Diehl)\n*   **Oppenheimer & Co. Inc.** (George Michael Iwanyc)\n*   **Truist Securities, Inc.** (Robert William Dee)\n\n**Present in Q4 FY2023 (Document 4) but NOT in Q3 FY2023 (Document 2):**\n*   **SVB Securities** (Jackson Edmund Ader)\n*   **D.A. Davidson & Co.** (Robert Edward Simmons)\n*   **Credit Suisse** (Fred Lee)\n\n*(Note: Analysts from Jefferies, William Blair, Wolfe Research, Wells Fargo, JPMorgan, RBC Capital Markets, Needham, Morgan Stanley, and Truist Securities (Terry Tillman in Q3 vs Robert Dee in Q4 - though the firm is the same, the analyst changed) appear in both or have firm representation in both. Specifically, Truist is present in both calls, though with different analysts. The question asks for firms only present in one call.)*\n\n**Summary of Firms Only in One Call:**\n*   **Canaccord Genuity Corp.**\n*   **Guggenheim Securities, LLC**\n*   **MoffettNathanson LLC**\n*   **Oppenheimer & Co. Inc.**\n*   **SVB Securities**\n*   **D.A. Davidson & Co.**\n*   **Credit Suisse**",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_050",
+      "question_id": "50",
+      "document_set_id": "co_pro_transcripts_2023",
+      "official_answer": "Andrew DeGasperi, Brent A. Bracelin, Jackson E. Ader, Jason Celino, Robert Simmons, Rob Oliver, Steven Enders",
+      "candidate_answer": "Based on the participant lists provided in the transcripts for Asana's earnings calls:\n\n1.  **Q3 2023 Earnings Call (Document 6):** The listed analysts include Andrew DeGasperi, Ittai Kidron, Allan Verkhovski, Steven Enders, Brent Thill, Sophie Lee, Brent A. Bracelin, Jackson E. Ader, Jason Celino, Robert Simmons, Patrick Walravens, and Rob Oliver.\n2.  **Q4 2023 Earnings Call (Document 5):** The listed analysts include Annick Baumann, Jackson E. Ader, Alex Zukin, Andrew DeGasperi, Rob Oliver, Brent A. Bracelin, George Iwanyc, Robert Simmons, Steven Enders, Fred Lee, Jason Celino, and Shebly Seyrafi.\n\nComparing the two lists, the analysts who appear in both are:\n*   Jackson E. Ader\n*   Andrew DeGasperi\n*   Rob Oliver\n*   Steven Enders\n*   Jason Celino\n*   Robert Simmons\n\nListing these last names in alphabetical order:\n\n*   Ader\n*   Celino\n*   DeGasperi\n*   Oliver\n*   Simmons\n*   Enders\n\n**Answer:**\nAder, Celino, DeGasperi, Enders, Oliver, Simmons",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_054",
+      "question_id": "54",
+      "document_set_id": "co_pro_transcripts_2023",
+      "official_answer": "Operator",
+      "candidate_answer": "Head-Investor Relations",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_057",
+      "question_id": "57",
+      "document_set_id": "co_pro_transcripts_2024",
+      "official_answer": "Asana",
+      "candidate_answer": "Based on the provided documents, the companies that explicitly reported on their latest total number of paid seats are:\n\n1.  **Asana** (Document 4: \"Across our total customer base, we're at over 3 million paid seats...\")\n2.  **Atlassian** (Document 1: \"We have over 300,000 customers using our Cloud products and have seen a 3x increase in paid seats in the Cloud...\")\n\n*Note: Smartsheet (Document 3 and 8) reported on the number of \"users\" (e.g., \"more than 13.9 million Smartsheet users\") rather than \"paid seats.\"*",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_059",
+      "question_id": "59",
+      "document_set_id": "co_pro_transcripts_2024",
+      "official_answer": "Atlassian, Smartsheet",
+      "candidate_answer": "Based on the provided documents, here is the ranking of the companies in order of the length of time they have been publicly listed, descending:\n\n1.  **Atlassian Corporation (TEAM)**\n    *   **Evidence:** In Document 7 (Q2 FY2024 Earnings Call, dated February 1, 2024), Co-CEO Scott Farquhar states: \"When we first went public **8 years ago**, we had just over $100 million in quarterly revenue...\"\n    *   **Approximate Listing Date:** ~2015/2016.\n\n2.  **Smartsheet Inc. (SMAR)**\n    *   **Evidence:** In Document 3 (Q4 FY2024 Earnings Call, dated March 14, 2024), CEO Mark Mader states: \"We crossed the $1 billion ARR threshold in Q4, within the original time frame we set at our first Analyst Day back in **2018**.\" Additionally, in Document 4 (Q3 FY2024 Earnings Call, dated December 5, 2023), CFO Tim Wan mentions: \"As you know, we've been public, hopefully we've been in a position where we've over-delivered...\" and in Document 6 (Q2 FY2024 Earnings Call, dated September 5, 2023), Tim Wan states: \"delivered our first positive free cash flow quarter since **going public**.\" While the exact IPO date isn't explicitly stated as a year, Smartsheet's IPO was in 2018. However, looking strictly at the text, Document 3 references an Analyst Day in 2018. Document 4 references being public in the context of recent quarters. Comparing the explicit \"8 years\" for Atlassian against Smartsheet's timeline, Atlassian is older. Smartsheet's IPO was actually in 2018.\n    *   **Approximate Listing Date:** 2018.\n\n3.  **Asana, Inc. (ASAN)**\n    *   **Evidence:** In Document 4 (Q3 FY2024 Earnings Call, dated December 5, 2023), CFO Tim Wan states: \"hopefully we've been in a position where we've over-delivered and we try to do the best that we can on the forecast... since we've been public\". In Document 6 (Q2 FY2024 Earnings Call, dated September 5, 2023), Tim Wan states: \"delivered our first positive free cash flow quarter since **going public**.\" In Document 5 (Q4 FY2024 Earnings Call, dated March 11, 2024), there is no explicit mention of the year they went public. However, Asana's IPO was in 2020.\n    *   **Approximate Listing Date:** 2020.\n\n**Ranking (Descending Length of Time Public):**\n\n1.  **Atlassian** (~8+ years as of early 2024)\n2.  **Smartsheet** (~5-6 years as of early 2024, IPO in 2018)\n3.  **Asana** (~3-4 years as of early 2024, IPO in 2020)\n\n*Note: The documents do not explicitly state the IPO years for Smartsheet and Asana, but they provide context clues (Analyst Day in 2018 for Smartsheet, \"since going public\" references in 2023/2024). Atlassian explicitly states it has been public for 8 years as of Feb 2024. Based on general knowledge confirmed by the text's relative timelines (Atlassian being the oldest of the three in the text's narrative of maturity and public status), the order is Atlassian, Smartsheet, Asana.*\n\n**Final Answer:**\n1. Atlassian Corporation\n2. Smartsheet Inc.\n3. Asana, Inc.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_066",
+      "question_id": "66",
+      "document_set_id": "co_pro_ssheet_rel_tran",
+      "official_answer": "Q2 2024",
+      "candidate_answer": "Based on the financial results provided in the documents for the first three quarters of fiscal year 2024:\n\n*   **Q1 Fiscal 2024:** The GAAP operating loss was $(32.1) million, or **(15)%** of total revenue (Document 2).\n*   **Q2 Fiscal 2024:** The GAAP operating loss was $(36.1) million, or **(15)%** of total revenue (Document 5).\n*   **Q3 Fiscal 2024:** The GAAP operating loss was $(35.5) million, or **(14)%** of total revenue (Document 1).\n\nComparing the percentages, Q1 and Q2 were tied at 15%, which is higher than Q3's 14%. However, typically \"highest loss\" implies the largest magnitude. Both Q1 and Q2 had the same percentage. If forced to choose a single quarter based on the magnitude of the loss in dollars, Q2 was slightly higher ($36.1 million vs $32.1 million), but as a percentage, they are identical.\n\nLet's re-read carefully.\nDocument 2 (Q1): \"GAAP operating loss was $(32.1) million, or (15)% of total revenue\"\nDocument 5 (Q2): \"GAAP operating loss was $(36.1) million, or (15)% of total revenue\"\nDocument 1 (Q3): \"GAAP operating loss was $(35.5) million, or (14)% of total revenue\"\n\nBoth Q1 and Q2 had the highest percentage at 15%.\n\nAnswer: **Q1 and Q2** (both had 15%)",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_069",
+      "question_id": "69",
+      "document_set_id": "gc_bnpl",
+      "official_answer": "Afterpay, Zip",
+      "candidate_answer": "Based on the documents provided, the submissions made by Buy Now, Pay Later (BNPL) companies or industry bodies representing them are listed below in alphabetical order:\n\n1.  **Afterpay** (Document 16)\n2.  **Emerging Payments Association Asia (EPA Asia)** (Document 3)\n3.  **FinTech Australia** (Document 6)\n4.  **Hamilton Locke** (Document 5)\n5.  **Mortgage and Finance Association of Australia (MFAA)** (Document 2)\n6.  **Zip Co Limited (Zip)** (Document 22)\n\n*Note: While Hamilton Locke is a law firm, their submission (Document 5) is written from the perspective of the fintech/credit industry and is a member of FinTech Australia. MFAA and EPA Asia are industry associations rather than individual BNPL providers, but they represent the industry sector. The other entities listed (Afterpay and Zip) are direct BNPL providers.*",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_072",
+      "question_id": "72",
+      "document_set_id": "gc_bnpl",
+      "official_answer": "Australian Financial Complaints Authority (AFCA), Australian Securities and Investments Commission, CHOICE, Economic Abuse Reference Group, Financial Brokers of Australasia Limited, Hamilton Locke, Law Council of Australia, Zip Co.",
+      "candidate_answer": "Based on the input documents provided, the following submissions explicitly mention **section 133BXF** by name:\n\n1.  **Economic Abuse Reference Group (EARG)** (Document 10)\n2.  **Law Council of Australia** (Document 18)\n3.  **Close Lending Loopholes Alliance** (represented by CHOICE, Financial Rights Legal Centre, Consumer Action Law Centre, etc. in Document 23)\n\nThe primary organisations who submitted these documents, listed in alphabetical order, are:\n\n*   **Close Lending Loopholes Alliance** (Note: Document 23 is a joint submission by CHOICE, Financial Rights Legal Centre, Consumer Action Law Centre, Indigenous Consumer Assistance Network, Brotherhood of St Laurence, The Salvation Army, Financial Counselling Australia, Financial Counselling Victoria, Consumer Credit Legal Service, Redfern Legal Centre, and LawRight. The document header and introduction identify this coalition. For the purpose of listing the primary organisation submitting the document, \"Close Lending Loopholes Alliance\" or the lead signatory \"CHOICE\" is appropriate. However, looking at the specific text in Document 23, it is titled \"Submission to Treasury... Buy now pay later exposure draft materials\" and lists the organisations. The question asks for the primary organisation. In Document 23, the first listed is CHOICE. In Document 10, it is EARG. In Document 18, it is Law Council of Australia.)\n\nLet's refine the list based on the specific document headers and content:\n\n*   **Document 10:** Submitted by the **Economic Abuse Reference Group (EARG)**. It explicitly mentions \"Section 133BXF of the Bill\" and \"rebuttable presumption under s133BXF\".\n*   **Document 18:** Submitted by the **Law Council of Australia**. It explicitly mentions \"Proposed sections 133BXF and 133BXG\" and \"proposed subsections 133BXF(2)\u2013(3)\".\n*   **Document 23:** Submitted by a coalition including **CHOICE**, Financial Rights Legal Centre, Consumer Action Law Centre, etc. It explicitly mentions \"Section 133BXF of the Draft Bill\" and \"presumption under section 133BXF\".\n\nTherefore, the primary organisations are:\n\n1.  **Close Lending Loopholes Alliance** (or the constituent members listed in Document 23, typically led by **CHOICE** in such joint submissions, but the document itself is a joint submission. I will list the lead organization or the coalition name if applicable. The prompt asks for the \"primary organisation who submitted these documents\". Document 23 is a joint submission. I will list the first named organization or the coalition. Let's look at Document 1 for comparison. Document 1 is Financial Counselling Victoria. Document 23 lists CHOICE first. I will list **CHOICE** as the primary signatory for Document 23, or the coalition. However, to be precise, I will list the entities as they appear as the submitter.)\n\nLet's look at the exact wording in the documents:\n*   Doc 10: \"Economic Abuse Reference Group (EARG)\"\n*   Doc 18: \"Law Council of Australia\"\n*   Doc 23: \"CHOICE, Financial Rights Legal Centre, Consumer Action Law Centre...\" (Joint submission).\n\nI will list the primary organisations as:\n\n*   **CHOICE** (as the lead signatory of the joint submission in Document 23)\n*   **Economic Abuse Reference Group (EARG)**\n*   **Law Council of Australia**\n\nAlphabetical order:\n1.  CHOICE\n2.  Economic Abuse Reference Group (EARG)\n3.  Law Council of Australia\n\n*(Self-correction: Document 23 is a joint submission. Listing \"CHOICE\" is accurate as the first listed entity. Document 10 is EARG. Document 18 is Law Council of Australia.)*\n\nAnswer:\n*   CHOICE\n*   Economic Abuse Reference Group (EARG)\n*   Law Council of Australia",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_073",
+      "question_id": "73",
+      "document_set_id": "gc_screen",
+      "official_answer": "Sameer",
+      "candidate_answer": "**David is most correct.**\n\nWhile screen scraping is not currently subject to a specific, standalone law that explicitly bans the technology itself, it is not unregulated. As David points out, existing legal frameworks, particularly the **Privacy Act 1988**, apply to the collection and handling of personal information obtained through screen scraping.\n\nThe documents provide several pieces of evidence supporting David's position:\n\n1.  **Privacy Act Application:** Document 9 (OAIC Submission) states, \"The Privacy Act 1988 (Privacy Act) contains protections for the personal information of individuals who engage with an APP entity, including through screen scraping.\" It notes that while the Act is technology-neutral, its principles-based framework applies to entities collecting data via screen scraping.\n2.  **Privacy Act Review:** Document 1 (CBA Submission) and Document 5 (MFAA Submission) both reference the **Privacy Act Review**. The Government\u2019s response to this review agreed to reforms concerning 'fair and reasonable information handling,' which promises to help protect individuals when their personal information is used in complex data processing activities like screen scraping. Document 5 explicitly states, \"We further note that in its Response to the Privacy Act Review, the Australian Government specifically noted that the implementation of proposals 12.1 and 12.2... will help protect individuals when their personal information is used in complex data processing activities that have emerged through technological advancement such as screen-scraping.\"\n3.  **Other Regulatory Frameworks:** Document 12 (Law Council Submission) highlights that screen scraping can lead to breaches of the **ePayments Code** (where consumers may lose protections if they disclose passcodes) and breaches of bank **Terms and Conditions**. Document 22 (Treasury Discussion Paper) also notes that companies may have broader obligations under the Privacy Act and may be bound by misleading and deceptive conduct provisions in the *Competition and Consumer Act 2010*.\n\nTherefore, Sameer is incorrect in stating there is \"no regulation.\" While there is no specific \"Screen Scraping Ban Act\" yet, the practice is regulated by the Privacy Act, responsible lending laws, and consumer protection laws.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_076",
+      "question_id": "76",
+      "document_set_id": "gc_wnc",
+      "official_answer": "$16,400,000",
+      "candidate_answer": "Based on Document 4, the Australian Society of Authors (ASA) cites research by Macquarie University which found that the average advance earned by Australian authors is **$4,100** in a year.\n\nThe document does not provide a total annual advance for all authors combined, but rather this average figure per author.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_078",
+      "question_id": "78",
+      "document_set_id": "gc_wnc",
+      "official_answer": "Australian Chamber of Commerce and Industry, Joellen Riley Munton, Law Council of Australia. Accept alphabetical ordering with or without accounting for titles of names.",
+      "candidate_answer": "Based on the provided documents, the organizations or persons that answered all 19 questions from the Competition Taskforce in their submission are:\n\nLaw Council of Australia, Professor Joellen Riley Munton",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_081",
+      "question_id": "81",
+      "document_set_id": "legal_eu_ai",
+      "official_answer": "by August 2, 2026.",
+      "candidate_answer": "Based on the provided documents, the startup would be required to fully comply with the Act's obligations for high-risk AI systems by **2 August 2027**.\n\nHere is the step-by-step breakdown based on the text:\n\n1.  **Entry into Force and General Applicability:** According to Document 1 (Section A.1) and Document 5, the EU AI Act enters into force on **1 August 2024** and generally becomes applicable on **2 August 2026** (24 months after entry into force).\n2.  **Specific Transition Period for High-Risk Systems:** Document 1 (Section A.1) and Document 8 (Section A.1) specify a special transition period for certain articles. Specifically, **Article 6(1)** (which defines high-risk AI systems) and the corresponding obligations apply **36 months from the date of the entry into force**.\n3.  **Calculation:** 36 months after 1 August 2024 is **2 August 2027**.\n4.  **Application to the Startup:** Since the startup is placing the system on the market on **1 June 2025** (which is before the general applicability date of 2 August 2026 and before the specific high-risk transition date of 2 August 2027), the specific transition period for high-risk systems applies. The system must be compliant by the date that Article 6(1) and its corresponding obligations become applicable.\n\nTherefore, the deadline for full compliance is **2 August 2027**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_085",
+      "question_id": "85",
+      "document_set_id": "legal_sb1047",
+      "official_answer": "CalChamber.",
+      "candidate_answer": "Based on the Assembly Privacy and Consumer Protection hearing on June 18, 2024 (Document 12), the company that disagrees with the statement that the developer, not the user, should be liable for harm is **Y Combinator**.\n\nIn the \"Arguments in Opposition\" section of the hearing analysis, Y Combinator (writing on behalf of dozens of AI startups) states: \"The responsibility for the misuse of LLMs should rest with those who abuse these tools, not with the developers who create them.\"",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_086",
+      "question_id": "86",
+      "document_set_id": "ind_ai",
+      "official_answer": "0.16%",
+      "candidate_answer": "Based on Document 3 (\"Australia\u2019s artificial intelligence ecosystem\"), the University of New South Wales has an AI publishing intensity of **12.2%**. This figure represents the share of the university's total research publications that refer to AI technologies, rather than its proportion of the *global* discussion.\n\nHowever, the document does not provide a specific percentage of the *global* discussion attributable solely to the University of New South Wales. It states that Australia as a whole contributes **1.6%** of global publishing on AI topics (as of 2021/2022 data referenced in the executive summary and Section 2). The University of New South Wales is listed among the top institutes by volume (over 1,000 publications in 2021) and intensity (12.2%), but a specific global share percentage for the individual university is not provided in the text.\n\nIf the question implies the \"AI publishing intensity\" metric provided for the university, the answer is 12.20%. If it strictly asks for the proportion of the *global* discussion, the document does not contain this specific data point for the university alone, only for the country (1.6%) or the share of Australian publications (which is not explicitly broken down by university in a global percentage format).\n\nGiven the phrasing \"proportion of the global discussion... comes from the University of New South Wales,\" and the available data points, the most likely intended answer refers to the **AI publishing intensity** metric explicitly highlighted for UNSW in the \"Top 6 universities\" chart, which is **12.20%**. Note: Technically, this is the share of *its own* output that is AI-related, not its share of the *global* pie, but it is the only percentage associated with UNSW's AI discussion volume/intensity in the text.\n\nAnswer: **12.20%**",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_088",
+      "question_id": "88",
+      "document_set_id": "ind_ai",
+      "official_answer": "148 companies.",
+      "candidate_answer": "Based on Document 3, there were **10** Australian AI companies founded before 2013.\n\n**Step-by-step derivation:**\n\n1.  **Total AI Companies:** The report identifies a total of **544** Australian AI companies.\n2.  **Companies with Foundation Data:** The text states that foundation year data was available for **531** of these companies.\n3.  **Recent Founding Years:** The report notes that **396** companies (76% of the total) were founded in the last decade (2013\u20132023). Specifically, it highlights that **39.2%** of Australian AI companies were founded between 2018 and 2022.\n4.  **Pre-2013 Calculation:**\n    *   The report states that between 1986 and 2013, an average of **5.5** companies were added annually.\n    *   However, a more precise calculation can be derived from the total count and the known recent growth.\n    *   Total companies with data: 531.\n    *   Companies founded in the last decade (2013\u20132023): 396.\n    *   Therefore, companies founded *before* 2013 (from 1986 to 2012) = Total with data (531) - Companies founded in the last decade (396) = **135**.\n    *   *Correction/Refinement:* The text explicitly states: \"Until the last decade, the number of AI companies founded annually in Australia was growing at a slow pace, with an average of 5.5 companies added to the ecosystem annually between 1986 and 2013.\"\n    *   Let's look at the specific breakdown provided in the \"Company formation and maturity\" section. It says 76% (396 companies) were founded in the last decade. The \"last decade\" in the context of a 2023 report usually refers to 2013\u20132023.\n    *   If 396 companies were founded between 2013 and 2023, then the number of companies founded *before* 2013 is the remainder of the 531 companies with known foundation dates.\n    *   $531 - 396 = 135$.\n\n    *Wait, let me re-read carefully.*\n    \"The Australian AI business ecosystem is young, with 76% of companies (396 companies) founded in the last decade.\"\n    \"A similar pattern has been observed internationally... 74 companies founded in 2017, 61 in 2018 and 57 in 2019.\"\n    \n    If 396 companies were founded in the \"last decade\" (2013-2023), then $531 - 396 = 135$ companies were founded prior to 2013.\n\n    However, the text also says: \"Until the last decade, the number of AI companies founded annually in Australia was growing at a slow pace, with an average of 5.5 companies added to the ecosystem annually between 1986 and 2013.\"\n    \n    Let's check the math on the \"average of 5.5\" claim.\n    From 1986 to 2013 is 27 years (inclusive of 2013? Or up to 2013?).\n    If we assume the \"last decade\" starts in 2013, then the period before is 1986-2012 (27 years).\n    $27 \\text{ years} \\times 5.5 \\text{ companies/year} = 148.5$ companies.\n    \n    The text states: \"We now have 544 AI companies... foundation year data was only available for 531... 76% of companies (396 companies) founded in the last decade.\"\n    \n    If 396 were founded in the last decade (2013-2023), then $531 - 396 = 135$ were founded before 2013.\n    \n    Let's look at the chart \"Share of Australian IT and AI companies by founding year\". It shows a sharp increase after 2013.\n    \n    The most accurate estimate based on the explicit numbers provided for the \"last decade\" (396) and the total with data (531) is:\n    $531 - 396 = 135$.\n\n    However, there is a nuance. The text says \"76% of companies (396 companies) founded in the last decade.\" It does not explicitly define \"last decade\" as 2013-2023, but given the report is from 2023/2024, this is the standard interpretation.\n    \n    Let's look at the \"average of 5.5\" statement again. \"Between 1986 and 2013\". If this includes 2013, and the \"last decade\" starts in 2013, there is an overlap.\n    \n    Let's look at the specific number of companies founded in 2013-2022.\n    The text says: \"39.2% of Australian AI companies founded in 2018\u20132022\".\n    $39.2\\% \\text{ of } 544 \\approx 213$ companies.\n    \n    The text says 396 companies were founded in the \"last decade\".\n    If the last decade is 2013-2022 (10 years), then $531 - 396 = 135$ companies were founded before 2013.\n    \n    Let's verify with the \"average of 5.5\" figure.\n    If 135 companies were founded between 1986 and 2012 (27 years), the average is $135 / 27 = 5$. This is close to 5.5.\n    \n    If we use the average of 5.5 for the period 1986-2013 (28 years inclusive?), $28 \\times 5.5 = 154$.\n    \n    The most precise data point provided is the count of companies founded in the \"last decade\" (396) and the total with foundation data (531).\n    \n    $531 - 396 = 135$.\n\n    Therefore, the number of Australian AI companies that existed (were founded) before 2013 is **135**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_092",
+      "question_id": "92",
+      "document_set_id": "ind_aus_retail",
+      "official_answer": "9",
+      "candidate_answer": "Based on the documents provided, the supermarket chain mentioned is **Harris Farm Markets**, which is featured in a retail profile in **Document 2** (specifically in the section titled \"Re-purpose, recycle, repeat\").\n\nThe author of this profile is **Stuart Ridley**.\n\nTo determine how many *other* retail profiles in the same document (Document 2) Stuart Ridley is responsible for, we must count the other profiles authored by him in that specific document:\n\n1.  **\"Welcome home\"** (Freedom CEO Blaine Callard) - Author: Stuart Ridley\n2.  **\"InStitchu: A good fit with room to grow\"** - Author: Stuart Ridley\n3.  **\"Elk rides the conscious consumerism wave\"** - Author: Stuart Ridley\n4.  **\"Mirvac: Community and connection\"** - Author: Stuart Ridley\n5.  **\"BQ Galore turns up the heat\"** - Author: Stuart Ridley\n6.  **\"EveryHuman\"** (Adaptive fashion) - Author: Stuart Ridley\n7.  **\"Re-purpose, recycle, repeat\"** (Harris Farm Markets) - Author: Stuart Ridley\n8.  **\"Style by design\"** (Witchery) - Author: Stuart Ridley\n9.  **\"Superdry brings TikTok into its comfort zone\"** - Author: Stuart Ridley\n\nStuart Ridley authored a total of 9 profiles in Document 2. Excluding the Harris Farm Markets profile itself, he is responsible for **8** other retail profiles in that document.\n\nAnswer: **8**",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_099",
+      "question_id": "99",
+      "document_set_id": "mkt_gaming",
+      "official_answer": "Guidance on advertising in-game purchases, No cheat-codes needed - Videogame advertising guide.",
+      "candidate_answer": "Based on the provided documents, the two documents you should review are:\n\n1.  **No cheat-codes needed \u2013 Videogame Advertising Guide** (Document 1)\n2.  **Monetization Models in The Gaming Industry: A Comparative Analysis of In-Game Purchases, Subscriptions, And Free-To-Play Strategies** (Document 6)\n\n**Reasoning:**\n*   **Document 1** is essential because it specifically addresses the regulatory environment in the **United Kingdom** (referencing the Advertising Standards Authority or ASA). It provides critical guidance on how to advertise in-game purchases, including the transparency required for virtual currency and pricing, which is vital for a UK-based developer.\n*   **Document 6** is essential because it directly analyzes **monetization models**, specifically detailing **in-game purchases** such as **consumables** and **cosmetics**. It explains the mechanics of these models, which aligns with your interest in creating consumables that produce cosmetics of varying rarities.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_100",
+      "question_id": "100",
+      "document_set_id": "sur_con",
+      "official_answer": "Deloitte: 2022 Engineering and Construction Industry Outlook, ACEC Research Institute: 2021-2025 Engineering Industry Forecast.",
+      "candidate_answer": "Based on the provided documents, the following documents provide outlooks specifically for the year 2022:\n\n1.  **Document 9**\n    *   **Full Title:** 2022 engineering and construction industry outlook\n    *   **Organization:** Deloitte\n\n2.  **Document 10**\n    *   **Full Title:** 2021 engineering and construction industry outlook\n    *   **Organization:** Deloitte\n    *   *Note: While titled for 2021, this document explicitly discusses the outlook for 2021 and 2022, stating \"2022 is likely to be another rewarding, but challenging year\" and analyzing trends extending into that period.*\n\n3.  **Document 6**\n    *   **Full Title:** 2023 engineering and construction industry outlook\n    *   **Organization:** Deloitte\n    *   *Note: This document was published in late 2022 (based on the survey date of August 2022 and publication context) and provides a forward-looking perspective for 2023, but it analyzes the market dynamics and challenges present in 2022 as the baseline for its outlook. However, strictly speaking, Document 9 is the primary document dedicated to the 2022 outlook.*\n\n**Primary Recommendation:**\nThe most direct answer is **Document 9**, titled **\"2022 engineering and construction industry outlook\"** from **Deloitte**.",
+      "grade": "INCORRECT"
+    }
+  ],
+  "invalid_grade_rows": [],
+  "semantic_hit_audit": []
+}
