@@ -37,7 +37,9 @@ AXIS = "#c3c2b7"
 STYLE = {
     "middle": ("Middle truncation", "#52514e", "s", "-"),
     "position": ("Position", "#1baf7a", "^", "-"),
+    "position_recipe": ("Position recipe", "#1baf7a", "^", "--"),
     "bm25": ("BM25", "#eb6834", "D", "-"),
+    "bm25_recipe": ("BM25 recipe", "#eb6834", "D", "--"),
     "upgraded": ("Fusion recipe", "#2a78d6", "o", "-"),
     "oracle": ("Oracle", INK, "*", ":"),
 }
@@ -46,7 +48,10 @@ FULL_STYLE = dict(color=INK, lw=0.8, ls=(0, (4, 2)), marker="P", ms=5.5, mec="wh
 
 def line_style(base):
     _, color, marker, ls = STYLE[base]
-    return dict(color=color, ls=ls, lw=1.2, marker=marker, ms=6.5 if marker == "*" else 4.5, mec="white", mew=0.6)
+    # The controls keep their ranking's colour and marker, dashed and with open markers.
+    control = ls == "--"
+    return dict(color=color, ls=ls, lw=1.2, marker=marker, ms=6.5 if marker == "*" else 4.5,
+                mfc="white" if control else color, mec=color if control else "white", mew=0.9 if control else 0.6)
 
 
 def read_csv(path):
@@ -78,7 +83,7 @@ def load(path, metric):
 
 def figure1():
     """Score against the share of the prompt that fits the budget, one panel per benchmark."""
-    fig = Figure(figsize=(7.0, 2.35), layout="constrained")
+    fig = Figure(figsize=(7.0, 2.5), layout="constrained")
     axes = fig.subplots(1, len(PANELS), sharey=True)
     for ax, (title, path, metric) in zip(axes, PANELS):
         scores, share = load(path, metric)
@@ -105,7 +110,7 @@ def figure1():
     bases = list(reversed(STYLE))
     handles = [Line2D([], [], **line_style(base)) for base in bases] + [Line2D([], [], **FULL_STYLE)]
     labels = [STYLE[base][0] for base in bases] + ["Full context (262K)"]
-    fig.legend(handles, labels, loc="outside upper center", ncol=len(labels), frameon=False, fontsize=7.5,
+    fig.legend(handles, labels, loc="outside upper center", ncol=len(labels) // 2, frameon=False, fontsize=7.5,
                handlelength=2.6, columnspacing=1.4)
     return fig
 

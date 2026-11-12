@@ -74,8 +74,9 @@ def counts(text):
 
 TABLE1_GROUPS = [
     [("Middle truncation", "middle"), ("Middle, marked", "middle_marked"), ("Head only", "head")],
-    [("Random chunks", "random0"), ("Position", "position")],
-    [("BM25", "bm25"), ("Dense", "dense"), ("Fusion", "fusion"), ("Fusion recipe", "upgraded")],
+    [("Random chunks", "random0"), ("Position", "position"), ("Position recipe", "position_recipe")],
+    [("BM25", "bm25"), ("Dense", "dense"), ("Fusion", "fusion"), ("BM25 recipe", "bm25_recipe"),
+     ("Fusion recipe", "upgraded")],
     [("Full context (262K)", "full"), ("Oracle", "oracle")],
 ]
 
@@ -115,12 +116,15 @@ def table1():
 def table2():
     """MRCR visibility decomposition across windows."""
     rows = {row["condition"]: row for row in read_csv(MRCR / "visibility.csv")}
-    policies = [("Middle truncation", "middle"), ("BM25", "bm25"), ("Fusion recipe", "upgraded"), ("Oracle", "oracle")]
+    policies = [("Middle truncation", "middle"), ("BM25", "bm25"), ("BM25 recipe", "bm25_recipe"),
+                ("Fusion recipe", "upgraded"), ("Oracle", "oracle")]
     groups = []
     for window in (32768, 65536, 131072, 262144):
         groups.append([f"\\multicolumn{{5}}{{l}}{{\\emph{{{WINDOW_LABELS[window]} window}}}}"])
         suffix = "" if window == 262144 else f"_{WINDOW_LABELS[window].lower()}"
         for label, base in policies:
+            if base + suffix not in rows:  # the BM25 recipe did not run at 262K
+                continue
             row = rows[base + suffix]
             # The CSV rounds to 4 decimals; recover the question counts so the paper rounds exact rates.
             questions = int(row["questions"])
