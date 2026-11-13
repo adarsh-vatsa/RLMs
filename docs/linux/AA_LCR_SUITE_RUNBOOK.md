@@ -30,7 +30,7 @@ DRY_RUN=1 bash linux/run_aa_lcr_suite.sh 20261023   # print the commands only
 bash linux/run_aa_lcr_suite.sh 20261023
 ```
 
-This runs the 26 conditions on all 100 questions and grades each run with the
+This runs the 28 conditions on all 100 questions and grades each run with the
 executor (Qwen3.6) as soon as it finishes. The argument is the suite ID.
 Everything the suite writes stays in
 `benchmark_artifacts/aa_lcr/suites/<suite-id>/`, apart from earlier results:

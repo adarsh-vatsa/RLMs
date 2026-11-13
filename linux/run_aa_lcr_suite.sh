@@ -51,8 +51,13 @@ condition middle_80k    direct "$B80 --direct-overflow middle"
 condition position_80k  hybrid "$B80 --evidence-selection position"
 condition bm25_32k      hybrid "$B32 --evidence-selection bm25"
 condition bm25_80k      hybrid "$B80 --evidence-selection bm25"
-# Ladder 3 is the recipe without --document-floor, so it isolates the floor on multi-document questions.
-LADDER3="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill"
+# The ladder adds the recipe's steps to fusion one at a time. AA-LCR is held out, so its rungs ran only after
+# the recipe was fixed on MRCR and LongBench-v2. Ladder 3 is the recipe without --document-floor, so it
+# isolates the floor on multi-document questions.
+LADDER="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128"
+LADDER3="$LADDER --neighbor-children 1 --packing fill"
+condition ladder1       hybrid "$B64 $LADDER"
+condition ladder2       hybrid "$B64 $LADDER --neighbor-children 1"
 condition ladder3       hybrid "$B64 $LADDER3"
 condition ladder3_32k   hybrid "$B32 $LADDER3"
 condition ladder3_80k   hybrid "$B80 $LADDER3"

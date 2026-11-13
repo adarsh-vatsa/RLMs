@@ -34,7 +34,7 @@ DRY_RUN=1 bash linux/run_mrcr_suite.sh 20261026   # print the commands only
 bash linux/run_mrcr_suite.sh 20261026
 ```
 
-This runs the 30 conditions on 30 questions per conversation, 120 in all, with
+This runs the 33 conditions on 30 questions per conversation, 120 in all, with
 3,500-token chunks unless a condition sets its own. `MRCR_ROWS_PER_SOURCE=100`
 takes 100 per conversation instead, and `0` takes all 953 questions; the
 [run-time estimates](../archive/run_time_estimates_20261025.md#mrcr-sample-size) give the

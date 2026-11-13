@@ -4,7 +4,7 @@ Tracks the work for the [workshop paper plan](workshop_paper_plan_20261012.md). 
 
 ## Remaining work
 
-In order; tick an item when it is done. Open: item 5, reopened by the 12 November rerun (19 new grader disagreements to label), and item 6.
+In order; tick an item when it is done. Open: item 5, reopened by the 12 November rerun (19 new grader disagreements to label), item 6 and item 7.
 
 1. [x] **MRCR oracle and visibility (Tables 1 and 2), and the AA-LCR document-floor check.** Ran 2026-11-09, see [ORACLE.md](jarvis_suites/ORACLE.md). MRCR has a full-context reference only for the 133K conversation, so the oracle at each budget is its Table 1 reference.
    - Visibility (`mrcr_v2.visibility`, the last step of the MRCR suite): for each question, whether the prompt held the whole target turn and all needle turns, and exact match given each. Exact match given all needles visible is the analytic oracle. Exact match with the target hidden is 0% in every run except `dense_7500` (3.2%); with the target visible it is 56–86%, highest at the smallest budgets. So accuracy is the share of prompts showing the target times the model's rate on those. The recipe shows the target for every question at 262K and for 48%, 71% and 89% at 32K, 64K and 128K. Some cells rest on few questions (`middle_64k`, exact match given all needles visible: 1 question); show counts or leave such cells blank in the paper.
@@ -57,6 +57,22 @@ In order; tick an item when it is done. Open: item 5, reopened by the 12 Novembe
      - [x] `bm25` with the recipe's steps (`bm25_recipe`), on AA-LCR and MRCR: separates fusion from chunking and packing. At 32K `bm25` leaves 15% of the budget unused on AA-LCR and 9% on MRCR, and the recipe almost none. If the control matches the recipe, the headline is BM25 with small chunks and fill packing, and no embedding model. If the recipe stays ahead, fusion earns its place.
      - Windows: AA-LCR 32K, 64K and 80K for both controls; MRCR 32K, 64K and 128K for `bm25_recipe` (not 262K, where the recipe and `bm25` already tie). That is 9 runs: about 2 h on AA-LCR with its grades and 1 h on MRCR, plus the Luna regrade of the 6 AA-LCR runs. LongBench-v2 gets none: the recipe is not clearly better than `bm25` there at any window.
      - [x] Afterwards, 2026-11-12: the rerun recomputed the intervals; the tables and figures are regenerated; item 4 is decided. The controls are in the paper as the "position recipe" and the "BM25 recipe": rows of the main table (AA-LCR only at the main window), dashed lines in Figure 1, and BM25 recipe rows in the visibility table. The matched recipe-against-oracle counts in Results (44 against 39 of 57, 52 against 53 of 85, 67 against 63 of 107) still come from a one-off script.
+7. [ ] **Parity runs: make the conditions match across benchmarks** *(about 5 hours)*. Ten runs in suite `20261029` fill the conditions table wherever a run is possible and informative, so that no policy runs on one benchmark but not on another without a reason the paper gives. [PARITY.md](jarvis_suites/PARITY.md) runs them with one command on g101.
+   - Random chunks, seeds 1 and 2, on MRCR (262K) and LongBench-v2 (64K): seeds 0, 1 and 2 on every benchmark. Stage 1 of the [plan](workshop_paper_plan_20261012.md) put the extra seeds on AA-LCR at 64K because its `position` and `random` results were to decide the paper's lead, and its runs took about 15 minutes; MRCR got seed 0 only, at about an hour a run, and LongBench-v2 joined later with MRCR's single seed. More seeds are unlikely to change a conclusion: the AA-LCR seeds score 35, 33 and 32 against `middle`'s 40, while seed 0 against `middle` is +3.3 [−4.2, +10.8] on MRCR and +0.5 [−6.1, +6.9] on LongBench-v2.
+   - Ladder rungs 1 and 2 on AA-LCR at 64K, so that AA-LCR has every rung: `fusion`, `ladder1`, `ladder2`, `ladder3` (the existing run without the floor) and `upgraded`. AA-LCR is the only benchmark on which the steps clearly beat `fusion` (+11.0 [+1.8, +21.1]; MRCR +5.8 [−0.8, +12.5], LongBench-v2 −1.4 [−5.1, +2.3]). The floor adds 1 point of it, and the ladder splits the other 10 between chunk size, neighbours and fill packing. AA-LCR stays held out: the rungs run after the recipe was fixed, as an ablation, and the recipe stays as it is whatever they show.
+   - The BM25 recipe on LongBench-v2 at 32K, 64K and 128K, and on MRCR at 262K: the BM25 recipe at every window of every benchmark.
+   - Not run, with the reason the paper should give: full context on MRCR (three of the four conversations exceed 262K); the oracle on AA-LCR and LongBench-v2 (neither releases evidence locations); the position recipe and the recipe without the floor on MRCR and LongBench-v2 (each prompt is one text, on which position keeps the head and tail, in effect marked middle truncation, and `ladder3` already is the recipe without the floor at the main window, with the recipe's prompts and answers on all 120 and all 221 questions); the dense variants on AA-LCR and LongBench-v2 (they test MRCR's two departures from the defaults, which the other benchmarks use, and AA-LCR's `ladder1` tests chunk size there); marked middle, head, random, dense and fusion at other windows (the same on every benchmark).
+   - [x] Code, 2026-11-13: the 10 conditions in `linux/run_aa_lcr_suite.sh`, `linux/run_mrcr_suite.sh` and `linux/run_longbench_suite.sh`, and `jarvis/parity_runs.sh`, with launcher tests. A dry run on suite `20261029` lists only the 10 new runs. The interval pairs, `tables.py` and `figures.py` already pick up the new names.
+   - [ ] Run [PARITY.md](jarvis_suites/PARITY.md), check that every new run names g101, and push the three suite folders.
+   - [ ] Grader check for `ladder1` and `ladder2`: label the new disagreements between Luna and Qwen3.6 (about 3 at the current rate of 1.4%) and a few agreements without seeing either grade, as in item 5, then recompute Luna's accuracy over the 31 runs and 3,100 answers.
+   - [ ] Regenerate the figures and tables: `uv run aaai-2027/figures/figures.py` and `uv run aaai-2027/tables/tables.py`. The visibility table then gains the BM25 recipe at 262K; remove the check in `tables.py` that skips it while it is missing.
+   - [ ] `main.tex`:
+     - Conditions paragraph and table: drafted 2026-11-13 for all 93 conditions, with what depends on the pending runs highlighted (`\hl`): the count, the AA-LCR ladder sentence, the new cells and totals, and the caption's note on runs in progress. Once the runs are in, remove the highlights and that note, and correct anything a failed run changes.
+     - Main table caption: seeds 1 and 2 on every benchmark; at the main windows only the position recipe is AA-LCR-only now.
+     - Figure 1 caption: the BM25 recipe on all three benchmarks.
+     - Results, *The steps help*: the AA-LCR ladder and the BM25 recipe on every benchmark; settle the per-step ladder `\review` note.
+     - Limitations: "ran on AA-LCR and MRCR only" and "no step is clear on the ladders".
+     - Grading: 31 runs, 3,100 answers, the new disagreement counts and Luna's accuracy.
 
 ## Stage 1: structure or selection
 
@@ -135,6 +151,7 @@ Suite: `run_suite.sh aa_lcr`; details in the [AA-LCR suite runbook](linux/AA_LCR
 - [x] Recipe without the document floor at 64K, 32K and 80K (`ladder3`, `ladder3_32k`, `ladder3_80k`), graded by Qwen3.6 and then Luna
 - [x] Position with the recipe's steps at 64K, 32K and 80K (`position_recipe`, `position_recipe_32k`, `position_recipe_80k`), graded by Qwen3.6 and then Luna; see [CONTROLS.md](jarvis_suites/CONTROLS.md)
 - [x] BM25 with the recipe's steps at 64K, 32K and 80K (`bm25_recipe`, `bm25_recipe_32k`, `bm25_recipe_80k`), graded the same way
+- [ ] Ladder rungs 1 and 2 at 64K (`ladder1`, `ladder2`), after the recipe was fixed, graded by Qwen3.6 and then Luna; see [PARITY.md](jarvis_suites/PARITY.md)
 
 ### MRCR v2 (Jarvis)
 
@@ -162,6 +179,7 @@ Suite: `run_suite.sh mrcr`; details in the [MRCR v2 suite runbook](linux/MRCR_SU
 - [x] Oracle at 262K, 32K, 64K and 128K (`oracle`, `oracle_32k`, `oracle_64k`, `oracle_128k`): the recipe with `--oracle`
 - [x] Visibility table (`visibility.md`), written at the end of the suite
 - [x] BM25 with the recipe's steps at 32K, 64K and 128K (`bm25_recipe_32k`, `bm25_recipe_64k`, `bm25_recipe_128k`); see [CONTROLS.md](jarvis_suites/CONTROLS.md)
+- [ ] Random, seeds 1 and 2 (`random1`, `random2`), and BM25 with the recipe's steps at 262K (`bm25_recipe`); see [PARITY.md](jarvis_suites/PARITY.md)
 
 ### LongBench-v2 (Jarvis)
 
@@ -181,6 +199,7 @@ Suite: `run_suite.sh longbench`; details in the [Jarvis LongBench-v2 suite page]
 - [x] Budget sweep at 128K (`--context-window-tokens 131072 --max-input-tokens 131064`): middle truncation (`middle_128k`), position (`position_128k`)
 - [x] BM25 across budgets (`bm25_32k`, `bm25_128k`)
 - [x] Upgraded recipe at 64K, 32K and 128K (`upgraded`, `upgraded_32k`, `upgraded_128k`), once the recipe is fixed: set `LONGBENCH_RECIPE`
+- [ ] Random, seeds 1 and 2 (`random1`, `random2`), and BM25 with the recipe's steps at 64K, 32K and 128K (`bm25_recipe`, `bm25_recipe_32k`, `bm25_recipe_128k`); see [PARITY.md](jarvis_suites/PARITY.md)
 
 ### Second model (if time)
 

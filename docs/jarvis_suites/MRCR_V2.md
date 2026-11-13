@@ -12,7 +12,7 @@ the answer.
 | --- | --- |
 | Name in commands | `mrcr` |
 | Questions per run | 120: 30 from each of the four conversations, which are about 133K, 267K, 534K and 1.07M tokens long. The 133K conversation fits the 262K window, so it is sent whole under every 262K condition. |
-| Runs | 27, plus 4 upgraded-recipe runs later |
+| Runs | 33, plus 4 upgraded-recipe runs later |
 | Time | about 15 hours, plus about 1.6 hours for the recipe runs |
 | Scoring | during the run; no grader |
 | Output | `adarsh-rlms/benchmark_artifacts/mrcr_v2/suites/<suite-id>/` |
@@ -37,7 +37,7 @@ best-ranked ones, shown in conversation order.
 | `bm25` | hybrid | 262K | Chunks ranked by BM25 keyword score. |
 | `fusion` | hybrid | 262K | Dense and BM25 rankings combined (reciprocal-rank fusion). |
 | `position` | hybrid | 262K | Chunks nearest the conversation's start and end first; ignores the question. |
-| `random0` | hybrid | 262K | Chunks in random order (seed 0). |
+| `random0`, `random1`, `random2` | hybrid | 262K | Chunks in random order, with seeds 0, 1 and 2. |
 | `dense_7500` | hybrid | 262K | `dense` with 7,500-token chunks (750 overlapping). |
 | `dense_question` | hybrid | 262K | `dense`, ranking against the whole final instruction instead of the requested item. |
 | `ladder1` | hybrid | 262K | `fusion` with 1,024-token chunks (128 overlapping). |
@@ -48,7 +48,7 @@ best-ranked ones, shown in conversation order.
 | `position_32k`, `position_64k`, `position_128k` | hybrid | 32K, 64K, 128K | `position` at smaller budgets. |
 | `bm25_32k`, `bm25_64k`, `bm25_128k` | hybrid | 32K, 64K, 128K | `bm25` at smaller budgets. |
 | `oracle`, `oracle_32k`, `oracle_64k`, `oracle_128k` | hybrid | 262K, 32K, 64K, 128K | The upgraded recipe with the needle turns offered first, found with the gold answer: a ceiling, not a method. See [ORACLE.md](ORACLE.md). |
-| `bm25_recipe_32k`, `bm25_recipe_64k`, `bm25_recipe_128k` | hybrid | 32K, 64K, 128K | `bm25` with the upgraded recipe's chunking, neighbours, packing and floor; see [CONTROLS.md](CONTROLS.md). |
+| `bm25_recipe`, `bm25_recipe_32k`, `bm25_recipe_64k`, `bm25_recipe_128k` | hybrid | 262K, 32K, 64K, 128K | `bm25` with the upgraded recipe's chunking, neighbours, packing and floor; see [CONTROLS.md](CONTROLS.md). |
 | `upgraded`, `upgraded_32k`, `upgraded_64k`, `upgraded_128k` | hybrid | 262K, 32K, 64K, 128K | The upgraded recipe (later; see below). |
 
 ## Run the suite
@@ -64,7 +64,7 @@ best-ranked ones, shown in conversation order.
    ```
 
    The first line should read
-   `[MRCR SUITE] Suite 20261029: 30 conditions, data benchmark_data/mrcr_v2_4needle_100k_1200k, 30 questions per conversation (0 = all)`.
+   `[MRCR SUITE] Suite 20261029: 33 conditions, data benchmark_data/mrcr_v2_4needle_100k_1200k, 30 questions per conversation (0 = all)`.
 4. Optional first check, for a new setup. This submits two runs, one direct and
    one hybrid, which take about 2 hours:
 
@@ -87,7 +87,7 @@ best-ranked ones, shown in conversation order.
    tail -f "$PROJECT_LOG_DIR/rlms-client-gpu-<suite job id>.out"
    ```
 
-7. When the log ends with `All 30 conditions complete`, stop the executor:
+7. When the log ends with `All 33 conditions complete`, stop the executor:
    `scancel "$EXECUTOR_JOB"`.
 
 To resume after an interruption, submit the command from step 5 again.

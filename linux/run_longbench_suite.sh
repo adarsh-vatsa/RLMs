@@ -37,6 +37,8 @@ condition middle        direct "$B64 --direct-overflow middle"
 condition dense         hybrid "$B64"
 condition position      hybrid "$B64 --evidence-selection position"
 condition random0       hybrid "$B64 --evidence-selection random --selection-seed 0"
+condition random1       hybrid "$B64 --evidence-selection random --selection-seed 1"
+condition random2       hybrid "$B64 --evidence-selection random --selection-seed 2"
 condition middle_marked direct "$B64 --direct-overflow middle-marked"
 condition head          direct "$B64 --direct-overflow head"
 condition bm25          hybrid "$B64 --evidence-selection bm25"
@@ -51,6 +53,13 @@ condition middle_128k   direct "$B128 --direct-overflow middle"
 condition position_128k hybrid "$B128 --evidence-selection position"
 condition bm25_32k      hybrid "$B32 --evidence-selection bm25"
 condition bm25_128k     hybrid "$B128 --evidence-selection bm25"
+# The recipe's steps under BM25 ranking, so the recipe's margin over BM25 is not also a difference in
+# chunking and packing. Position needs no such control here: on one document it keeps the head and tail,
+# which is middle truncation with an omission marker.
+STEPS="--child-tokens 1024 --child-overlap-tokens 128 --neighbor-children 1 --packing fill --document-floor"
+condition bm25_recipe      hybrid "$B64 --evidence-selection bm25 $STEPS"
+condition bm25_recipe_32k  hybrid "$B32 --evidence-selection bm25 $STEPS"
+condition bm25_recipe_128k hybrid "$B128 --evidence-selection bm25 $STEPS"
 if [[ -n "${LONGBENCH_RECIPE:-}" ]]; then
   condition upgraded      hybrid "$B64 $LONGBENCH_RECIPE"
   condition upgraded_32k  hybrid "$B32 $LONGBENCH_RECIPE"

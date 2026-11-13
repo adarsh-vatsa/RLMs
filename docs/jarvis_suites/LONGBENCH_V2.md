@@ -8,7 +8,7 @@ input tokens, which leaves 8 tokens for the answer letter.
 | --- | --- |
 | Name in commands | `longbench` |
 | Questions per run | 221: every original question whose full prompt exceeds the 64K budget but fits the executor's 262K window, so each has a full-context reference |
-| Runs | 19, plus 3 upgraded-recipe runs later |
+| Runs | 24, plus 3 upgraded-recipe runs later |
 | Time | about 7 hours, plus about 1.7 hours for the recipe runs |
 | Scoring | the answer letter (A to D) is checked against the key during the run; no grader |
 | Output | `adarsh-rlms/benchmark_artifacts/longbench_v2/suites/<suite-id>/` |
@@ -30,7 +30,7 @@ best-ranked ones, shown in document order.
 | `bm25` | hybrid | 64K | Chunks ranked by BM25 keyword score. |
 | `fusion` | hybrid | 64K | Dense and BM25 rankings combined (reciprocal-rank fusion). |
 | `position` | hybrid | 64K | Chunks nearest the document's start and end first; ignores the question. |
-| `random0` | hybrid | 64K | Chunks in random order (seed 0). |
+| `random0`, `random1`, `random2` | hybrid | 64K | Chunks in random order, with seeds 0, 1 and 2. |
 | `ladder1` | hybrid | 64K | `fusion` with 1,024-token chunks (128 overlapping). |
 | `ladder2` | hybrid | 64K | `ladder1`, with each chosen chunk widened by its neighbouring chunks. |
 | `ladder3` | hybrid | 64K | `ladder2`, filling the leftover budget with lower-ranked chunks. The last one is trimmed to fit. |
@@ -38,6 +38,7 @@ best-ranked ones, shown in document order.
 | `middle_32k`, `middle_128k` | direct | 32K, 128K | `middle` at other budgets. |
 | `position_32k`, `position_128k` | hybrid | 32K, 128K | `position` at other budgets. |
 | `bm25_32k`, `bm25_128k` | hybrid | 32K, 128K | `bm25` at other budgets. |
+| `bm25_recipe`, `bm25_recipe_32k`, `bm25_recipe_128k` | hybrid | 64K, 32K, 128K | `bm25` with the upgraded recipe's chunking, neighbours, packing and floor; see [CONTROLS.md](CONTROLS.md). |
 | `upgraded`, `upgraded_32k`, `upgraded_128k` | hybrid | 64K, 32K, 128K | The upgraded recipe (later; see below). |
 
 ## Before the first suite: get the data
@@ -67,7 +68,7 @@ cd ~
    DRY_RUN=1 bash adarsh-rlms/jarvis/run_suite.sh longbench 20261029
    ```
 
-   The first line should start with `[LONGBENCH SUITE] Suite 20261029: 19 conditions`.
+   The first line should start with `[LONGBENCH SUITE] Suite 20261029: 24 conditions`.
    Below it is one command per condition.
 4. Optional first check, for a new setup. This submits two runs, one direct and
    one hybrid, which take about 45 minutes:
@@ -91,7 +92,7 @@ cd ~
    tail -f "$PROJECT_LOG_DIR/rlms-client-gpu-<suite job id>.out"
    ```
 
-7. When the log ends with `All 19 conditions complete`, stop the executor:
+7. When the log ends with `All 24 conditions complete`, stop the executor:
    `scancel "$EXECUTOR_JOB"`.
 
 To resume after an interruption, submit the command from step 5 again.

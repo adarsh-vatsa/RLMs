@@ -127,7 +127,7 @@ class LinuxLauncherTests(unittest.TestCase):
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "aa_lcr.run_benchmark")}
         grades = [regrader.parse_args(command[3:]) for command in commands if command[2] == "aa_lcr.regrade"]
-        self.assertEqual((len(runs), len(grades)), (29, 29))
+        self.assertEqual((len(runs), len(grades)), (31, 31))
         self.assertTrue(all(args.execution_only and args.fail_fast for args in runs.values()))
         self.assertEqual({args.output_root for args in runs.values()}, {Path("benchmark_artifacts/aa_lcr/suites/S")})
         self.assertEqual((runs["S_full"].max_input_tokens, runs["S_head"].direct_overflow), (258048, "head"))
@@ -138,6 +138,11 @@ class LinuxLauncherTests(unittest.TestCase):
         ladder3 = runs["S_ladder3_32k"]
         self.assertEqual((ladder3.evidence_selection, ladder3.child_tokens, ladder3.neighbor_children, ladder3.packing,
                           ladder3.document_floor, ladder3.max_input_tokens), ("fusion", 1024, 1, "fill", False, 28672))
+        for name, neighbours in (("S_ladder1", 0), ("S_ladder2", 1)):
+            rung = runs[name]
+            self.assertEqual((rung.evidence_selection, rung.child_tokens, rung.child_overlap_tokens, rung.neighbor_children,
+                              rung.packing, rung.document_floor, rung.max_input_tokens),
+                             ("fusion", 1024, 128, neighbours, "stop", False, 61440))
         for name, selection, budget in (("S_position_recipe_32k", "position", 28672), ("S_bm25_recipe", "bm25", 61440),
                                          ("S_bm25_recipe_80k", "bm25", 77824)):
             control = runs[name]
@@ -185,7 +190,7 @@ class LinuxLauncherTests(unittest.TestCase):
                               "OPENROUTER_API_KEY"))
         self.assertEqual(grades[1].output_dir, Path("benchmark_artifacts/aa_lcr/suites/S/regrades/gpt-5.6-luna/hybrid/S_position"))
         everything = self.launch("run_aa_lcr_suite.sh", "S", env={"AA_LCR_GRADER": "luna"})
-        self.assertIn("Suite S: 29 conditions", everything.stdout)
+        self.assertIn("Suite S: 31 conditions", everything.stdout)
         self.assertIn("upgraded_80k", everything.stdout)
 
 
@@ -195,7 +200,8 @@ class LinuxLauncherTests(unittest.TestCase):
         runner = importlib.import_module("mrcr_v2.run_benchmark").build_arg_parser()
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "mrcr_v2.run_benchmark")}
-        self.assertEqual(len(runs), 34)
+        self.assertEqual(len(runs), 37)
+        self.assertEqual([runs[f"S_random{seed}"].selection_seed for seed in range(3)], [0, 1, 2])
         self.assertEqual({(args.output_root, args.data_dir, args.max_rows_per_source, args.fail_fast)
                           for args in runs.values()},
                          {(Path("benchmark_artifacts/mrcr_v2/suites/S"),
@@ -212,10 +218,11 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual((oracle.mode, oracle.oracle, oracle.evidence_selection, oracle.child_tokens, oracle.packing,
                           oracle.document_floor, oracle.max_input_tokens), ("hybrid", True, "fusion", 1024, "fill", True, 28672))
         self.assertEqual(sum(args.oracle for args in runs.values()), 4)
-        control = runs["S_bm25_recipe_64k"]
-        self.assertEqual((control.evidence_selection, control.child_tokens, control.neighbor_children, control.packing,
-                          control.document_floor, control.oracle, control.max_input_tokens),
-                         ("bm25", 1024, 1, "fill", True, False, 61440))
+        for name, budget in (("S_bm25_recipe", 258048), ("S_bm25_recipe_64k", 61440)):
+            control = runs[name]
+            self.assertEqual((control.evidence_selection, control.child_tokens, control.neighbor_children, control.packing,
+                              control.document_floor, control.oracle, control.max_input_tokens),
+                             ("bm25", 1024, 1, "fill", True, False, budget))
         self.assertFalse(any(name.startswith("S_position_recipe") for name in runs))
         self.assertEqual(commands[-2][2:], ["mrcr_v2.results_table", "benchmark_artifacts/mrcr_v2/suites/S"])
         self.assertEqual(commands[-1][2:], ["mrcr_v2.visibility", "benchmark_artifacts/mrcr_v2/suites/S",
@@ -247,7 +254,8 @@ class LinuxLauncherTests(unittest.TestCase):
                    for module in ("long_bench_v2.run_api_benchmark", "long_bench_v2.run_benchmark")}
         runs = {args.run_id: (command[2], args) for command in commands if command[2] in parsers
                 for args in [parsers[command[2]].parse_args(command[3:])]}
-        self.assertEqual(len(runs), 22)
+        self.assertEqual(len(runs), 27)
+        self.assertEqual([runs[f"S_random{seed}"][1].selection_seed for seed in range(3)], [0, 1, 2])
         self.assertEqual({(args.output_dir, args.min_source_tokens, args.max_source_tokens, args.fail_fast,
                            args.execution_profile, args.row_types) for _, args in runs.values()},
                          {(Path("benchmark_artifacts/longbench_v2/suites/S"), 65529, 262136, True, "common", "original")})
@@ -261,6 +269,11 @@ class LinuxLauncherTests(unittest.TestCase):
         self.assertEqual((runs["S_position_128k"][1].max_input_tokens, runs["S_upgraded_32k"][1].packing), (131064, "fill"))
         module, bm25 = runs["S_bm25_128k"]
         self.assertEqual((module, bm25.evidence_selection, bm25.max_input_tokens), ("long_bench_v2.run_benchmark", "bm25", 131064))
+        for name, budget in (("S_bm25_recipe", 65528), ("S_bm25_recipe_32k", 32760), ("S_bm25_recipe_128k", 131064)):
+            module, control = runs[name]
+            self.assertEqual((module, control.evidence_selection, control.child_tokens, control.child_overlap_tokens,
+                              control.neighbor_children, control.packing, control.document_floor, control.max_input_tokens),
+                             ("long_bench_v2.run_benchmark", "bm25", 1024, 128, 1, "fill", True, budget))
         self.assertEqual(commands[-1][2:], ["long_bench_v2.results_table", "benchmark_artifacts/longbench_v2/suites/S"])
         self.assertEqual(self.launch("run_longbench_suite.sh", "--help").returncode, 0)
 
@@ -308,7 +321,7 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertTrue((root / "submitted").read_text().splitlines()[-1].startswith("MRCR_ROWS_PER_SOURCE=0 bash "))
             preview = self.launch("run_suite.sh", "mrcr", "S", linux=jarvis)
             self.assertEqual(preview.returncode, 0, preview.stderr)
-            self.assertIn("[MRCR SUITE] Suite S: 30 conditions", preview.stdout)
+            self.assertIn("[MRCR SUITE] Suite S: 33 conditions", preview.stdout)
 
     def test_jarvis_executor_can_be_pinned_to_a_node(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -404,6 +417,68 @@ class LinuxLauncherTests(unittest.TestCase):
                 "RERUN_EXECUTOR_URL_FILE": str(root / "executor-42.url")})
             self.assertEqual(result.returncode, 1)
             self.assertIn("Executor job 42 ended (no longer queued) before it was ready", result.stderr)
+            self.assertEqual((root / "cancelled").read_text().strip(), "42")
+
+    def test_parity_runs_preview_lists_only_the_new_runs_and_skips_finished_ones(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(REPO / "linux", root / "linux")
+            shutil.copytree(REPO / "jarvis", root / "jarvis")
+            done = root / "benchmark_artifacts/mrcr_v2/suites/20261029/hybrid/20261029_random1"
+            done.mkdir(parents=True)
+            (done / "manifest.json").write_text(json.dumps({"status": "complete"}, indent=2))
+
+            preview = self.launch("parity_runs.sh", linux=root / "jarvis", cwd=root)
+            commands = self.suite_commands(preview)
+            runs = sorted((command[2].split(".")[0], command[-1]) for command in commands
+                          if command[2].endswith(".run_benchmark"))
+            self.assertEqual(runs, sorted(
+                [("aa_lcr", "20261029_ladder1"), ("aa_lcr", "20261029_ladder2"),
+                 ("mrcr_v2", "20261029_random2"), ("mrcr_v2", "20261029_bm25_recipe")]
+                + [("long_bench_v2", f"20261029_{name}")
+                   for name in ("random1", "random2", "bm25_recipe", "bm25_recipe_32k", "bm25_recipe_128k")]))
+            self.assertIn("run: already finished", preview.stdout)
+            regrader = importlib.import_module("aa_lcr.regrade").build_arg_parser()
+            grades = [regrader.parse_args(command[3:]) for command in commands if command[2] == "aa_lcr.regrade"]
+            self.assertEqual(sorted(args.grader_api_style for args in grades), ["openai"] * 3 + ["vllm"] * 2)
+            self.assertEqual([command[2] for command in commands if command[2].endswith(".intervals")],
+                             ["aa_lcr.intervals", "long_bench_v2.intervals", "mrcr_v2.intervals"])
+
+    def test_parity_runs_submit_a_pinned_executor_and_a_job_that_waits_for_it(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "bin").mkdir()
+            (root / "bin/sbatch").write_text("#!/usr/bin/env bash\n"
+                f"printf '%s|%s|%s|%s\\n' \"$*\" \"${{CLIENT_CMD:-}}\" "
+                f"\"${{PARITY_EXECUTOR_JOB:-}}\" \"${{PARITY_EXECUTOR_URL_FILE:-}}\" >> {root}/submitted\n"
+                "echo 'Submitted batch job 42'\n")
+            (root / "bin/squeue").write_text("#!/usr/bin/env bash\n")
+            (root / "bin/scancel").write_text(f"#!/usr/bin/env bash\necho \"$@\" > {root}/cancelled\n")
+            for tool in ("sbatch", "squeue", "scancel"):
+                (root / "bin" / tool).chmod(0o755)
+            env = {"DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "PROJECT_LOG_DIR": str(root / "logs"),
+                   "JARVIS_LOAD_DOTENV": "0", "SLURM_JOB_ID": ""}
+            jarvis = REPO / "jarvis"
+            refused = self.launch("parity_runs.sh", linux=jarvis, env={**env, "EXECUTOR_NODE": "g202"})
+            self.assertEqual(refused.returncode, 1)
+            self.assertIn("EXECUTOR_NODE is g202", refused.stderr)
+            self.assertFalse((root / "submitted").exists())
+
+            result = self.launch("parity_runs.sh", linux=jarvis, env=env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            executor, client = [line.split("|") for line in (root / "submitted").read_text().splitlines()]
+            self.assertIn("--time=08:00:00", executor[0])
+            self.assertIn("--time=08:00:00", client[0])
+            self.assertIn("--nodelist=g101", executor[0])
+            self.assertTrue(executor[0].endswith("jarvis/serve_vllm.sh"))
+            self.assertIn("--dependency=after:42", client[0])
+            self.assertTrue(client[0].endswith("jarvis/run_client.sh"))
+            self.assertEqual(client[1:], ["bash jarvis/parity_runs.sh job", "42", f"{root}/logs/executor-42.url"])
+
+            waiting = self.launch("parity_runs.sh", "job", linux=jarvis, env={
+                **env, "PARITY_EXECUTOR_JOB": "42", "PARITY_EXECUTOR_URL_FILE": str(root / "executor-42.url")})
+            self.assertEqual(waiting.returncode, 1)
+            self.assertIn("Executor job 42 ended (no longer queued) before it was ready", waiting.stderr)
             self.assertEqual((root / "cancelled").read_text().strip(), "42")
 
     def test_longbench_suite_finds_runs_in_each_runners_folder(self):

@@ -21,12 +21,14 @@ ends by writing a results table.
    upgraded recipe's steps are, and how to read them.
 6. [RERUN.md](RERUN.md): the g202 runs rerun on g101, with the controls, in
    one command.
+7. [PARITY.md](PARITY.md): the runs that make the conditions match across
+   benchmarks, in one command.
 
 | Suite        | Name in commands | Questions per run          | Runs now (+ later) | Time   | Scoring                                                  |
 | ------------ | ---------------- | -------------------------- | ------------------ | ------ | -------------------------------------------------------- |
-| LongBench-v2 | `longbench`      | 221                        | 19 (+3)            | ~7 h   | answer letter checked during the run                     |
-| AA-LCR       | `aa_lcr`         | 100                        | 26 (+3)            | ~5.5 h | graded by the executor after each run; by GPT-5.6 Luna at the end |
-| MRCR v2      | `mrcr`           | 120 (30 per conversation)  | 30 (+4)            | ~17 h  | scored during the run                                    |
+| LongBench-v2 | `longbench`      | 221                        | 24 (+3)            | ~7 h   | answer letter checked during the run                     |
+| AA-LCR       | `aa_lcr`         | 100                        | 28 (+3)            | ~5.5 h | graded by the executor after each run; by GPT-5.6 Luna at the end |
+| MRCR v2      | `mrcr`           | 120 (30 per conversation)  | 33 (+4)            | ~17 h  | scored during the run                                    |
 
 The times are estimates; the first suite of each benchmark measures them. The
 runs added later use the upgraded recipe, which is chosen from the LongBench-v2
@@ -77,12 +79,12 @@ Submitting prints `Submitted batch job <id>`; that number is the job ID. The
 suite job's log shows each step:
 
 ```text
-[LONGBENCH SUITE] Suite 20261029: 19 conditions, executor http://<node>:8000/v1
-[LONGBENCH SUITE] [1/19] full: direct --context-window-tokens 262144 --max-input-tokens 262136
+[LONGBENCH SUITE] Suite 20261029: 24 conditions, executor http://<node>:8000/v1
+[LONGBENCH SUITE] [1/24] full: direct --context-window-tokens 262144 --max-input-tokens 262136
 [LONGBENCH SUITE]   run: started 14:02 (log: benchmark_artifacts/longbench_v2/suites/20261029/logs/full.log)
 [LONGBENCH SUITE]   run: done in 0h31m
 ...
-[LONGBENCH SUITE] All 19 conditions complete
+[LONGBENCH SUITE] All 24 conditions complete
 ```
 
 Each run also writes its own log to the suite folder's `logs/`.
