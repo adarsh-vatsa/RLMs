@@ -1,24 +1,39 @@
 # /// script
 # requires-python = ">=3.13"
-# dependencies = ["matplotlib"]
+# dependencies = ["matplotlib", "transformers", "jinja2"]
 # ///
-"""Draw the paper's figures from the suite results into figure1.pdf and figure2.pdf.
+"""Draw the paper's figures from the suite results into figure1.pdf, figure2.pdf and figure3.pdf.
 
 Run from anywhere: uv run aaai-2027/figures/figures.py
+Figure 3 rebuilds a truncated prompt with the served model's tokenizer, which it downloads if not cached.
 """
 
 import csv
 import json
+import os
 import re
+import sys
 from collections import defaultdict
+from itertools import accumulate
 from pathlib import Path
 
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 HERE = Path(__file__).resolve().parent
-SUITES = HERE.parents[1] / "benchmark_artifacts"
+REPO = HERE.parents[1]
+sys.path.insert(0, str(REPO))
+from aa_lcr.adapter import solver_task  # noqa: E402
+from aa_lcr.dataset import DEFAULT_DOCUMENTS_ROOT, DEFAULT_QUESTIONS_CSV, load_documents, load_questions  # noqa: E402
+from execution.tokens import chat_token_count, truncate_prompt  # noqa: E402
+
+SUITES = REPO / "benchmark_artifacts"
 MRCR = SUITES / "mrcr_v2/suites/20261029"
+AA_LCR = SUITES / "aa_lcr/suites/20261029"
+# Figure 3's question: six documents, the median, and at 64K each policy keeps the documents it usually does.
+EXAMPLE = "aa_lcr_019"
+TOKENIZER = "Qwen/Qwen3.6-35B-A3B"
+TOKENIZER_REVISION = "995ad96eacd98c81ed38be0c5b274b04031597b0"
 
 PANELS = [
     ("AA-LCR, accuracy", SUITES / "aa_lcr/suites/20261029/results-gpt-5.6-luna.csv", "accuracy"),
@@ -143,6 +158,67 @@ def figure2():
     return fig
 
 
+def kept_spans():
+    """The documents of the example question, and the (document, start, end) characters each policy keeps at 64K."""
+    from transformers import AutoTokenizer
+
+    question = next(q for q in load_questions(REPO / DEFAULT_QUESTIONS_CSV) if q.case_id == EXAMPLE)
+    documents = load_documents(question, REPO / DEFAULT_DOCUMENTS_ROOT)
+    task = solver_task(EXAMPLE, question.document_set_id, documents, question.question)
+
+    def run(mode, condition):
+        folder = AA_LCR / mode / f"20261029_{condition}"
+        record = next(row for row in map(json.loads, (folder / "execution.jsonl").open()) if row["case_id"] == EXAMPLE)
+        return json.loads((folder / "manifest.json").read_text()), record
+
+    spans = {condition: [(item["document_id"], item["char_start"], item["char_end"])
+                         for item in run("hybrid", condition)[1]["selected_evidence_ranges"]]
+             for condition in ("position", "upgraded")}
+    # Middle truncation keeps a prefix and a suffix of the prompt: rebuild it and map both onto the documents.
+    manifest, record = run("direct", "middle")
+    tokenizer = AutoTokenizer.from_pretrained(TOKENIZER, revision=TOKENIZER_REVISION)
+    request = truncate_prompt(tokenizer, task.render(None), manifest["max_input_tokens"], "middle")
+    if chat_token_count(tokenizer, request) != record["final_rendered_input_tokens"]:
+        raise ValueError("The rebuilt middle-truncated prompt differs from the run's")
+    full, kept = task.render(None)[-1]["content"], request[-1]["content"]
+    head = len(os.path.commonprefix([full, kept]))
+    tail = min(len(os.path.commonprefix([full[::-1], kept[::-1]])), len(kept) - head)
+    spans["middle"], cursor = [], 0
+    for name, text in documents:
+        start = full.index(text, cursor)
+        cursor = start + len(text)
+        for left, right in ((0, head), (len(full) - tail, len(full))):
+            low, high = max(left - start, 0), min(right - start, len(text))
+            if low < high:
+                spans["middle"].append((name, low, high))
+    return documents, spans
+
+
+def figure3():
+    """Which text of one AA-LCR prompt middle truncation, position and the recipe keep at the 64K window."""
+    documents, spans = kept_spans()
+    lengths = [len(text) for _, text in documents]
+    gap = 0.015 * sum(lengths)
+    starts = dict(zip((name for name, _ in documents), accumulate([0] + [length + gap for length in lengths[:-1]])))
+    conditions = ["upgraded", "position", "middle"]
+
+    fig = Figure(figsize=(3.3, 1.35), layout="constrained")
+    ax = fig.subplots()
+    for row, condition in enumerate(conditions):
+        ax.broken_barh([(starts[name], length) for (name, _), length in zip(documents, lengths)], (row - 0.32, 0.64),
+                       color=GRID, lw=0)
+        ax.broken_barh([(starts[name] + low, high - low) for name, low, high in spans[condition]],
+                       (row - 0.32, 0.64), color=STYLE[condition][1], lw=0)
+    ax.set_yticks(range(len(conditions)), [STYLE[condition][0] for condition in conditions])
+    ax.set_xticks([starts[name] + length / 2 for (name, _), length in zip(documents, lengths)],
+                  [str(number) for number in range(1, len(documents) + 1)])
+    ax.set_xlim(0, starts[documents[-1][0]] + lengths[-1])
+    ax.set_xlabel("Documents of one question, to scale", fontsize=8)
+    ax.spines[["top", "right", "left", "bottom"]].set_visible(False)
+    ax.tick_params(length=0, labelsize=7, labelcolor=INK)
+    return fig
+
+
 if __name__ == "__main__":
     import matplotlib
 
@@ -153,3 +229,4 @@ if __name__ == "__main__":
     })
     figure1().savefig(HERE / "figure1.pdf", metadata={"CreationDate": None})
     figure2().savefig(HERE / "figure2.pdf", metadata={"CreationDate": None})
+    figure3().savefig(HERE / "figure3.pdf", metadata={"CreationDate": None})
