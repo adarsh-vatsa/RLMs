@@ -12,7 +12,7 @@ import argparse
 import json
 from pathlib import Path
 
-from execution.intervals import REPLICATES, SEED, compare
+from execution.intervals import PERMUTATION_SEED, PERMUTATIONS, REPLICATES, SEED, compare
 from execution.results_table import read_rows, write_table
 from mrcr_v2.results_table import size_label
 
@@ -42,7 +42,9 @@ def table(suite, stem, title, found, strata, references, reference):
     columns, rows = compare(found, {question: question for question in strata}, strata, metric="exact match",
                             references=references)
     write_table(suite, stem, f"{title}: paired differences in exact match, 95% intervals from {REPLICATES:,} "
-                f"resamples of the questions within each conversation (seed {SEED}). Gap recovered: "
+                f"resamples of the questions within each conversation (seed {SEED}). p: uncorrected two-sided "
+                f"randomization test, {PERMUTATIONS:,} swaps of the two runs' outcomes by question "
+                f"(seed {PERMUTATION_SEED}). Gap recovered: "
                 f"(run − middle) / ({reference} − middle) at the run's window", columns, rows)
 
 

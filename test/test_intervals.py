@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 from aa_lcr.intervals import main as aa_lcr_main
-from execution.intervals import compare, resample_weights
+from execution.intervals import compare, randomization_p, resample_weights, swaps
 from long_bench_v2.intervals import main as long_bench_main
 from mrcr_v2.intervals import main as mrcr_main
 
@@ -43,6 +43,22 @@ class ResampleTests(unittest.TestCase):
         np.testing.assert_array_equal(weights[:, 3], 1)
 
 
+class RandomizationTests(unittest.TestCase):
+    def test_swaps_whole_clusters(self):
+        a, b = np.array([1.0, 1, 1, 1]), np.zeros(4)
+        # Four questions in one document set can only swap together, so the gap is as likely as its mirror.
+        membership, signs = swaps(dict.fromkeys("abcd", "x"), list("abcd"), permutations=2000)
+        self.assertEqual(randomization_p(a, b, membership, signs), 1.0)
+        # Four independent questions give 2 of the 16 sign patterns a gap as large: p near 1/8.
+        membership, signs = swaps({q: q for q in "abcd"}, list("abcd"), permutations=20000)
+        self.assertAlmostEqual(randomization_p(a, b, membership, signs), 0.125, delta=0.01)
+
+    def test_identical_conditions_give_p_one(self):
+        membership, signs = swaps({q: q for q in "abcd"}, list("abcd"), permutations=500)
+        outcomes = np.array([1.0, 0, 1, 0])
+        self.assertEqual(randomization_p(outcomes, outcomes, membership, signs), 1.0)
+
+
 class CompareTests(unittest.TestCase):
     def test_each_condition_against_middle_at_its_window_then_listed_pairs(self):
         conditions = {
@@ -62,6 +78,9 @@ class CompareTests(unittest.TestCase):
         self.assertLessEqual(dense["95% low"], 0.5)
         self.assertGreaterEqual(dense["95% high"], 0.5)
         self.assertEqual((rows[1]["95% low"], rows[1]["95% high"]), (0, 0))
+        self.assertEqual(rows[1]["p"], 1.0)
+        self.assertLess(0, dense["p"])
+        self.assertIn("p", columns)
         self.assertEqual((rows[3]["window"], rows[3]["baseline window"]), (262144, 65536))
         self.assertNotIn("reference", columns)
 
@@ -129,6 +148,7 @@ class SuiteTests(unittest.TestCase):
             self.assertEqual((row["reference"], row["gap recovered"]), ("full", "0.6667"))
             self.assertNotEqual(row["gap recovered 95% low"], "")
             self.assertIn("resamples of the 2 document sets", (suite / "intervals-luna.md").read_text())
+            self.assertGreater(float(row["p"]), 0)
 
     def test_mrcr_resamples_within_conversations_against_the_oracle_and_full_context(self):
         with tempfile.TemporaryDirectory() as directory:

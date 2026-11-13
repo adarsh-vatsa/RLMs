@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from execution.intervals import REPLICATES, SEED, compare
+from execution.intervals import PERMUTATION_SEED, PERMUTATIONS, REPLICATES, SEED, compare
 from execution.results_table import read_rows, write_table
 
 
@@ -39,7 +39,9 @@ def main(argv=None):
     columns, rows = compare(found, clusters, metric="accuracy")
     write_table(args.suite, "intervals",
                 f"LongBench-v2 suite {args.suite.name}: paired differences, 95% intervals from {REPLICATES:,} "
-                f"resamples of the {len(set(clusters.values()))} documents (seed {SEED})", columns, rows)
+                f"resamples of the {len(set(clusters.values()))} documents (seed {SEED}). p: uncorrected two-sided "
+                f"randomization test, {PERMUTATIONS:,} swaps of the two runs' outcomes by document "
+                f"(seed {PERMUTATION_SEED})", columns, rows)
 
 
 if __name__ == "__main__":

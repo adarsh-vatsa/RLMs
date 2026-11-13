@@ -12,7 +12,8 @@ FORMATS = {"window": "{:,}", "prompt kept": "{:.0%}", "input tokens": "{:,.0f}",
            "accuracy": "{:.1%}", "exact match": "{:.1%}", "MRCR score": "{:.3f}", "prefix compliance": "{:.0%}",
            "p vs middle": "{:.3f}", "output tokens": "{:,.0f}", "generation s/question": "{:.1f}",
            "retrieval + packing s/question": "{:.1f}", "target visible": "{:.0%}", "all needles visible": "{:.0%}",
-           "baseline window": "{:,}", "difference": "{:+.1%}", "95% low": "{:+.1%}", "95% high": "{:+.1%}"}
+           "baseline window": "{:,}", "difference": "{:+.1%}", "95% low": "{:+.1%}", "95% high": "{:+.1%}",
+           "p": "{:.2g}"}
 PREFIX_FORMATS = {"agreement with ": "{:.0%}", "exact match at ": "{:.0%}", "exact match given ": "{:.1%}",
                   "target visible at ": "{:.0%}", "baseline ": "{:.1%}", "gap recovered": "{:.0%}"}
 
@@ -77,7 +78,8 @@ def write_table(directory, stem, title, columns, rows):
     with (directory / f"{stem}.csv").open("w", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=columns)
         writer.writeheader()
-        writer.writerows({key: round(value, 4) if isinstance(value, float) else value for key, value in row.items()}
-                         for row in rows)
+        # A p-value keeps its precision: rounded to 4 decimals, the smallest would read as 0.
+        writer.writerows({key: round(value, 4) if isinstance(value, float) and key != "p" else value
+                          for key, value in row.items()} for row in rows)
     print(table, end="")
     print(f"Saved {directory / stem}.md and .csv")

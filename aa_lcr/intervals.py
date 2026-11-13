@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from aa_lcr.results_table import verdicts
-from execution.intervals import REPLICATES, SEED, compare
+from execution.intervals import PERMUTATION_SEED, PERMUTATIONS, REPLICATES, SEED, compare
 from execution.results_table import read_rows, write_table
 
 
@@ -41,6 +41,8 @@ def main(argv=None):
     write_table(args.suite, f"intervals-{args.grader}",
                 f"AA-LCR suite {args.suite.name}, graded by {args.grader}: paired differences, 95% intervals from "
                 f"{REPLICATES:,} resamples of the {len(set(clusters.values()))} document sets (seed {SEED}). "
+                f"p: uncorrected two-sided randomization test, {PERMUTATIONS:,} swaps of the two runs' outcomes "
+                f"by document set (seed {PERMUTATION_SEED}). "
                 f"Gap recovered: (run − middle) / (full − middle) at the run's window",
                 columns, rows)
 

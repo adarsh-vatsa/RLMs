@@ -1,8 +1,9 @@
-"""Paired bootstrap intervals for differences between the conditions of one suite.
+"""Paired bootstrap intervals and randomization tests for differences between the conditions of one suite.
 
 Questions that share a document are not independent, so each replicate resamples whole clusters
 (document sets or documents) and, where strata are given (MRCR conversations), resamples within each
-stratum. Every comparison in a suite uses the same replicates.
+stratum. The randomization test swaps the two conditions' outcomes cluster by cluster. Every comparison
+in a suite uses the same replicates and the same swaps.
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ PAIRS = [
 ]
 REPLICATES = 10000
 SEED = 20261109
+PERMUTATIONS = 100000
+PERMUTATION_SEED = 20261113
 
 
 def resample_weights(clusters, strata, replicates=REPLICATES, seed=SEED):
@@ -53,8 +56,27 @@ def resample_weights(clusters, strata, replicates=REPLICATES, seed=SEED):
     return questions, weights
 
 
-def compare(conditions, clusters, strata=None, *, metric, references=None, replicates=REPLICATES, seed=SEED):
-    """Table rows for each comparison, with a 95% percentile interval for the difference.
+def swaps(clusters, questions, permutations=PERMUTATIONS, seed=PERMUTATION_SEED):
+    """Each question's cluster index, and random signs that swap the two conditions of a pair per cluster."""
+    names = sorted(set(clusters.values()))
+    column = {name: index for index, name in enumerate(names)}
+    membership = np.array([column[clusters[question]] for question in questions])
+    signs = np.random.default_rng(seed).integers(0, 2, size=(permutations, len(names)), dtype=np.int8)
+    return membership, (2 * signs - 1).astype(np.int32)
+
+
+def randomization_p(a, b, membership, signs):
+    """Two-sided p-value of the mean paired difference under random swaps of the two conditions' outcomes."""
+    # Integer counts keep the comparison with the observed gap exact.
+    per_cluster = np.rint(np.bincount(membership, weights=a - b, minlength=signs.shape[1])).astype(np.int32)
+    swapped = np.abs(signs @ per_cluster)
+    return (1 + int((swapped >= abs(int(per_cluster.sum()))).sum())) / (len(signs) + 1)
+
+
+def compare(conditions, clusters, strata=None, *, metric, references=None, replicates=REPLICATES, seed=SEED,
+            permutations=PERMUTATIONS):
+    """Table rows for each comparison, with a 95% percentile interval for the difference and the
+    uncorrected p-value of a paired randomization test.
 
     `conditions` maps each condition name, in suite order, to its `window`, whether it is the `middle`
     truncation reference, and its `outcomes`, question -> correct, covering the questions in `clusters`.
@@ -66,6 +88,7 @@ def compare(conditions, clusters, strata=None, *, metric, references=None, repli
         if not clusters.keys() <= condition["outcomes"].keys():
             raise ValueError(f"{name} does not have a valid outcome for every question of the suite")
     questions, weights = resample_weights(clusters, strata or dict.fromkeys(clusters, ""), replicates, seed)
+    membership, signs = swaps(clusters, questions, permutations)
     total = weights.sum(axis=1)
     outcomes = {name: np.array([condition["outcomes"][question] for question in questions], dtype=float)
                 for name, condition in conditions.items()}
@@ -83,6 +106,7 @@ def compare(conditions, clusters, strata=None, *, metric, references=None, repli
             metric: a.mean(), f"baseline {metric}": b.mean(), "difference": a.mean() - b.mean(),
             "95% low": low, "95% high": high,
             "gained": int(((a == 1) & (b == 0)).sum()), "lost": int(((a == 0) & (b == 1)).sum()),
+            "p": randomization_p(a, b, membership, signs),
         }
         reference = (references or {}).get(conditions[candidate]["window"])
         if baseline == middle.get(conditions[candidate]["window"]) and reference in conditions.keys() - {candidate}:
@@ -96,7 +120,7 @@ def compare(conditions, clusters, strata=None, *, metric, references=None, repli
                     (weights * (a - b)).sum(axis=1) / resampled_gap, [2.5, 97.5])
         rows.append(row)
     columns = ["condition", "window", "baseline", "baseline window", metric, f"baseline {metric}", "difference",
-               "95% low", "95% high", "gained", "lost"]
+               "95% low", "95% high", "gained", "lost", "p"]
     if references:
         columns += ["reference", "gap recovered", "gap recovered 95% low", "gap recovered 95% high"]
     return columns, rows

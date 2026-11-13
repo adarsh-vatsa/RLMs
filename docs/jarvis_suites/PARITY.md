@@ -23,8 +23,9 @@ one command.
 AA-LCR is held out: no setting of the recipe was chosen on its scores. Its
 ladder rungs therefore run after the recipe was fixed, as an ablation, and the
 recipe stays as it is whatever they show. AA-LCR is also the only benchmark on
-which the recipe's steps clearly beat `fusion` at 64K (+11.0 points,
-[+1.8, +21.1]), so its ladder shows which steps that gain comes from.
+which the recipe's steps beat `fusion` at 64K with an interval that excludes
+zero (+11.0 points, [+1.8, +21.1]), though only just: the randomization test
+gives p = 0.051. Its ladder shows which steps that gain comes from.
 
 Not run, on purpose:
 
@@ -105,8 +106,9 @@ or loading the model, and stops at once if the executor job ends first.
 Whenever the suite job stops, it cancels the executor.
 
 To resume after an interruption, submit the same command again. It starts a new
-executor; finished runs and grades are skipped. Do not `git pull` until both
-jobs have ended: the runs read the code as they start.
+executor; finished runs and grades are skipped. Do not `git pull` from the
+moment the suite job starts until both jobs have ended: the runs read the code
+as they start. A pull while both jobs are still pending is safe.
 
 A resumed job moves the folder of each unfinished run or grade aside, to
 `<folder>.incomplete-<time>`, before it starts that run or grade again. Those
@@ -163,6 +165,10 @@ comparisons:
   against `ladder1` and `ladder3` against `ladder2`.
 - LongBench-v2 at each window and MRCR at 262K, in `intervals.md`:
   `bm25_recipe` against `bm25` and `upgraded` against `bm25_recipe`.
+
+Code from 13 November on also adds a `p` column to every intervals table: the
+uncorrected randomization test. If the suite job started on older code, the
+column is missing, and item 7 of the to-do recomputes the tables.
 
 Item 7 of the [workshop paper to-do](../workshop_paper_todo.md#remaining-work)
 lists what changes in the paper afterwards.

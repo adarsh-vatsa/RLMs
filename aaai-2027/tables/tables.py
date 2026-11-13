@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.13"
 # ///
-"""Write the paper's tables from the suite results into table1.tex, table2.tex and table3.tex.
+"""Write the paper's tables from the suite results into table1.tex to table4.tex.
 
 Each file holds only the tabular; captions and labels stay in main.tex.
 Run from anywhere: uv run aaai-2027/tables/tables.py
@@ -179,7 +179,60 @@ def table3():
     write("table3.tex", header, groups)
 
 
+# The paper's two central questions, tested at every window of every benchmark and corrected together:
+# does the recipe beat middle truncation, and does it beat position, which keeps the same structure
+# without the question?
+PRIMARY_BASELINES = ("middle", "position")
+
+
+def holm(p_values):
+    """Holm-adjusted p-values, in the order given."""
+    order = sorted(range(len(p_values)), key=p_values.__getitem__)
+    adjusted, running = [0.0] * len(p_values), 0.0
+    for rank, index in enumerate(order):
+        running = max(running, min(1.0, (len(p_values) - rank) * p_values[index]))
+        adjusted[index] = running
+    return adjusted
+
+
+def p_cell(p, significant=False):
+    text = "$<$0.001" if p < 0.001 else f"{p:.3f}"
+    return f"\\textbf{{{text}}}" if significant else text
+
+
+def table4():
+    """The primary comparisons, with randomization p-values and Holm's correction across all of them."""
+    comparisons = []
+    for name, (_, intervals, _, _) in BENCHMARKS.items():
+        shown = {(row["condition"], row["baseline"]): row for row in read_markdown(intervals)}
+        for row in read_csv(intervals.with_suffix(".csv")):
+            suffix = row["condition"].removeprefix("upgraded")
+            if row["condition"].startswith("upgraded") and row["baseline"] in {b + suffix for b in PRIMARY_BASELINES}:
+                comparisons.append((name, int(row["window"]), row["baseline"].removesuffix(suffix), float(row["p"]),
+                                    shown[(row["condition"], row["baseline"])]))
+    adjusted = holm([p for *_, p, _ in comparisons])
+    cells = {(name, window, baseline): (p, holm_p, d)
+             for (name, window, baseline, p, d), holm_p in zip(comparisons, adjusted)}
+    groups = []
+    for name in BENCHMARKS:
+        groups.append([f"\\multicolumn{{7}}{{l}}{{\\emph{{{name}}}}}"])
+        for window in sorted({window for benchmark, window, _ in cells if benchmark == name}):
+            row = [WINDOW_LABELS[window]]
+            for baseline in PRIMARY_BASELINES:
+                p, holm_p, d = cells[(name, window, baseline)]
+                row += [f"{signed(d['difference'])} [{signed(d['95% low'])}, {signed(d['95% high'])}]",
+                        p_cell(p), p_cell(holm_p, holm_p < 0.05)]
+            groups[-1].append(" & ".join(row))
+    header = ("\\begin{tabular}{l lrr lrr}\n\\toprule\n"
+              " & \\multicolumn{3}{c}{Against middle truncation} & \\multicolumn{3}{c}{Against position} \\\\\n"
+              "\\cmidrule(lr){2-4} \\cmidrule(lr){5-7}\n"
+              "Window & $\\Delta$ [95\\% CI] & $p$ & Holm $p$ & $\\Delta$ [95\\% CI] & $p$ & Holm $p$ \\\\\n"
+              "\\midrule\n")
+    write("table4.tex", header, groups)
+
+
 if __name__ == "__main__":
     table1()
     table2()
     table3()
+    table4()
