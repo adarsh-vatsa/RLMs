@@ -24,3 +24,8 @@
 | upgraded | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 221 | 54% | 65,500 | 47.1% | 104/221 | 26 | 12 | 0.034 | 0 | 0 | 3.5 | 1.3 | 9 | 29 |
 | upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 221 | 27% | 32,731 | 46.2% | 102/221 | 34 | 18 | 0.036 | 0 | 0 | 1.6 | 1.1 | 9 | 21 |
 | upgraded_128k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 221 | 89% | 114,250 | 46.6% | 103/221 | 6 | 2 | 0.289 | 0 | 0 | 6.7 | 0.7 | 6 | 35 |
+| random1 | random seed 1 | 65,536 | 221 | 51% | 61,813 | 39.8% | 88/221 | 24 | 26 | 0.888 | 0 | 0 | 3.3 | 0.2 |  | 15 |
+| random2 | random seed 2 | 65,536 | 221 | 51% | 61,776 | 46.6% | 103/221 | 29 | 16 | 0.072 | 0 | 0 | 3.3 | 0.2 |  | 15 |
+| bm25_recipe | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 221 | 54% | 65,503 | 49.8% | 110/221 | 28 | 8 | 0.001 | 0 | 0 | 3.5 | 1.4 |  | 21 |
+| bm25_recipe_32k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 221 | 27% | 32,732 | 48.0% | 106/221 | 35 | 15 | 0.007 | 0 | 0 | 1.6 | 1.1 |  | 12 |
+| bm25_recipe_128k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 221 | 89% | 114,250 | 47.5% | 105/221 | 8 | 2 | 0.109 | 0 | 0 | 6.7 | 0.7 |  | 30 |
