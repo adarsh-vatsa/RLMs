@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.13"
 # ///
-"""Write the paper's tables from the suite results into table1.tex to table4.tex.
+"""Write the paper's tables from the suite results into table1.tex to table5.tex.
 
 Each file holds only the tabular; captions and labels stay in main.tex.
 Run from anywhere: uv run aaai-2027/tables/tables.py
@@ -72,6 +72,16 @@ def counts(text):
     return int(correct), int(graded)
 
 
+def benchmark_header(first):
+    """Column heads: a score and its paired difference for each benchmark at its main window."""
+    return ("\\begin{tabular}{l rl rl rl}\n\\toprule\n"
+            + "".join(f" & \\multicolumn{{2}}{{c}}{{{name}, {WINDOW_LABELS[spec[2]]}}}"
+                      for name, spec in BENCHMARKS.items())
+            + " \\\\\n\\cmidrule(lr){2-3} \\cmidrule(lr){4-5} \\cmidrule(lr){6-7}\n"
+            f"{first} & Acc. & $\\Delta$ [95\\% CI] & EM & $\\Delta$ [95\\% CI] & Acc. & $\\Delta$ [95\\% CI] \\\\\n"
+            "\\midrule\n")
+
+
 TABLE1_GROUPS = [
     [("Middle truncation", "middle"), ("Middle, marked", "middle_marked"), ("Head only", "head")],
     [("Random chunks", "random0"), ("Position", "position"), ("Position recipe", "position_recipe")],
@@ -104,13 +114,7 @@ def table1():
                     d = differences[condition]
                     cells.append(f"{signed(d['difference'])} [{signed(d['95% low'])}, {signed(d['95% high'])}]")
             groups[-1].append(" & ".join(cells))
-    header = ("\\begin{tabular}{l rl rl rl}\n\\toprule\n"
-              + "".join(f" & \\multicolumn{{2}}{{c}}{{{name}, {WINDOW_LABELS[spec[2]]}}}"
-                        for name, spec in BENCHMARKS.items())
-              + " \\\\\n\\cmidrule(lr){2-3} \\cmidrule(lr){4-5} \\cmidrule(lr){6-7}\n"
-              "Policy & Acc. & $\\Delta$ [95\\% CI] & EM & $\\Delta$ [95\\% CI] & Acc. & $\\Delta$ [95\\% CI] \\\\\n"
-              "\\midrule\n")
-    write("table1.tex", header, groups)
+    write("table1.tex", benchmark_header("Policy"), groups)
 
 
 def table2():
@@ -123,8 +127,6 @@ def table2():
         groups.append([f"\\multicolumn{{5}}{{l}}{{\\emph{{{WINDOW_LABELS[window]} window}}}}"])
         suffix = "" if window == 262144 else f"_{WINDOW_LABELS[window].lower()}"
         for label, base in policies:
-            if base + suffix not in rows:  # the BM25 recipe did not run at 262K
-                continue
             row = rows[base + suffix]
             # The CSV rounds to 4 decimals; recover the question counts so the paper rounds exact rates.
             questions = int(row["questions"])
@@ -231,8 +233,33 @@ def table4():
     write("table4.tex", header, groups)
 
 
+# The ablation ladder: each rung adds one of the recipe's steps to the rung above, and the last rung is the recipe.
+LADDER = [("Fusion", "fusion"), ("+ 1,024-token chunks", "ladder1"), ("+ neighbouring chunks", "ladder2"),
+          ("+ fill packing", "ladder3"), ("+ document floor", "upgraded")]
+
+
+def table5():
+    """Each ladder rung at each benchmark's main window, with the paired difference from the rung above."""
+    columns = [(results(name), {(row["condition"], row["baseline"]): row for row in read_markdown(intervals)})
+               for name, (_, intervals, _, _) in BENCHMARKS.items()]
+    rows = []
+    for index, (label, condition) in enumerate(LADDER):
+        cells = [label]
+        for scores, differences in columns:
+            correct, graded = counts(scores[condition]["correct"])
+            cells.append(number(100 * correct / graded))
+            if index == 0:
+                cells.append("")
+            else:
+                d = differences[(condition, LADDER[index - 1][1])]
+                cells.append(f"{signed(d['difference'])} [{signed(d['95% low'])}, {signed(d['95% high'])}]")
+        rows.append(" & ".join(cells))
+    write("table5.tex", benchmark_header("Rung"), [rows])
+
+
 if __name__ == "__main__":
     table1()
     table2()
     table3()
     table4()
+    table5()
