@@ -9,7 +9,7 @@ one command.
 | --- | --- |
 | Runs | AA-LCR: `ladder1`, `ladder2`. LongBench-v2: `random1`, `random2`, `bm25_recipe`, `bm25_recipe_32k`, `bm25_recipe_128k`. MRCR: `random1`, `random2`, `bm25_recipe`. |
 | Jobs | one executor pinned to g101 and one suite job, submitted together, each with an 8-hour limit. `PARITY_TIME=HH:MM:SS` sets another limit, and `EXECUTOR_NODE=g102` uses g102. |
-| Time | about 5 hours after the executor starts: AA-LCR 0.5, LongBench-v2 1.5, MRCR 3 (with the visibility table). |
+| Time | about 5.5 hours after the executor starts: AA-LCR 0.5, LongBench-v2 2, MRCR 3 (with the visibility table). |
 | Output | the existing suite folders, next to the runs they are compared with. |
 
 ## What the runs add
@@ -97,7 +97,7 @@ that starts once the executor does. That job:
    `[PARITY] Executor ready at http://g101...`. The log ends with
    `[PARITY] All runs, grades and intervals complete`, and the executor has
    been cancelled.
-6. Check the node (below), then commit and push the three suite folders, as for
+6. Check the runs (below), then commit and push the three suite folders, as for
    the earlier runs.
 
 The suite job waits for the executor for as long as the executor job is queued
@@ -107,6 +107,27 @@ Whenever the suite job stops, it cancels the executor.
 To resume after an interruption, submit the same command again. It starts a new
 executor; finished runs and grades are skipped. Do not `git pull` until both
 jobs have ended: the runs read the code as they start.
+
+A resumed job moves the folder of each unfinished run or grade aside, to
+`<folder>.incomplete-<time>`, before it starts that run or grade again. Those
+folders should not be committed. In MRCR they also reach the tables: the
+results table lists the unfinished run and the intervals stop on it, so a
+resumed job that retried an MRCR run ends with `Failed: MRCR intervals`.
+Submitting again does not change that. Once the job has ended, list the
+folders:
+
+```bash
+cd adarsh-rlms
+find benchmark_artifacts/*/suites/20261029 -name '*.incomplete-*' -prune -print
+```
+
+Delete them, and if one was under `mrcr_v2`, rebuild MRCR's two tables:
+
+```bash
+find benchmark_artifacts/*/suites/20261029 -name '*.incomplete-*' -prune -exec rm -rf {} +
+.venv/bin/python -m mrcr_v2.results_table benchmark_artifacts/mrcr_v2/suites/20261029
+.venv/bin/python -m mrcr_v2.intervals benchmark_artifacts/mrcr_v2/suites/20261029
+```
 
 ## Check the runs
 
@@ -120,6 +141,20 @@ grep -L '"executor_base_url": "http://g101' \
   longbench_v2/suites/20261029/longbench_v2/20261029_{random1,random2,bm25_recipe,bm25_recipe_32k,bm25_recipe_128k}/manifest.json \
   mrcr_v2/suites/20261029/hybrid/20261029_{random1,random2,bm25_recipe}/manifest.json
 ```
+
+The new AA-LCR and LongBench-v2 runs should also have loaded the same chat
+template as the rerun and the `ladder3` runs. Unlike MRCR, these two benchmarks
+do not pin the tokenizer's revision, so a newer template on Hugging Face would
+be loaded instead. This should print nothing too:
+
+```bash
+grep -L '"executor_chat_template_sha256": "1b836156' \
+  aa_lcr/suites/20261029/hybrid/20261029_ladder{1,2}/manifest.json \
+  longbench_v2/suites/20261029/longbench_v2/20261029_{random1,random2,bm25_recipe,bm25_recipe_32k,bm25_recipe_128k}/manifest.json
+```
+
+A run it lists loaded another template: find out what changed before comparing
+that run with the others.
 
 The intervals tables gain a row for each new run against `middle`, and these
 comparisons:
