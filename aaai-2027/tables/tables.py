@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.13"
 # ///
-"""Write the paper's tables from the suite results into table1.tex to table5.tex.
+"""Write the paper's tables from the suite results into table1.tex to table6.tex.
 
 Each file holds only the tabular; captions and labels stay in main.tex.
 Run from anywhere: uv run aaai-2027/tables/tables.py
@@ -124,7 +124,7 @@ def table2():
                 ("Fusion recipe", "upgraded"), ("Oracle", "oracle")]
     groups = []
     for window in (32768, 65536, 131072, 262144):
-        groups.append([f"\\multicolumn{{5}}{{l}}{{\\emph{{{WINDOW_LABELS[window]} window}}}}"])
+        groups.append([f"\\multicolumn{{6}}{{l}}{{\\emph{{{WINDOW_LABELS[window]} window}}}}"])
         suffix = "" if window == 262144 else f"_{WINDOW_LABELS[window].lower()}"
         for label, base in policies:
             row = rows[base + suffix]
@@ -134,13 +134,19 @@ def table2():
             needles = round(float(row["all needles visible"]) * questions)
             correct = round(float(row["exact match"]) * questions)
             correct_visible = round(float(row["exact match given target visible"]) * visible)
-            # Conditional rates on fewer than 30 questions carry their count.
-            given = number(100 * correct_visible / visible) + (f" ({visible})" if visible < 30 else "")
+            hidden = questions - visible
+
+            def rate(right, total):
+                # Conditional rates on fewer than 30 questions carry their count.
+                return "---" if not total else number(100 * right / total) + (f" ({total})" if total < 30 else "")
+
             groups[-1].append(" & ".join([label, number(100 * visible / questions, 0),
-                                          number(100 * needles / questions, 0), given,
+                                          number(100 * needles / questions, 0), rate(correct_visible, visible),
+                                          rate(correct - correct_visible, hidden),
                                           number(100 * correct / questions)]))
-    header = ("\\begin{tabular}{lrrrr}\n\\toprule\n"
-              "Policy & Target & Needles & EM $\\mid$ target & EM \\\\\n\\midrule\n")
+    header = ("\\begin{tabular}{lrrrrr}\n\\toprule\n"
+              " & & & \\multicolumn{2}{c}{EM given target} & \\\\\n\\cmidrule(lr){4-5}\n"
+              "Policy & Target & Needles & complete & incomplete & EM \\\\\n\\midrule\n")
     write("table2.tex", header, groups)
 
 
@@ -257,9 +263,72 @@ def table5():
     write("table5.tex", benchmark_header("Rung"), [rows])
 
 
+WINDOWS = {"AA-LCR": (32768, 65536, 81920), "MRCR v2": (32768, 65536, 131072, 262144),
+           "LongBench-v2": (32768, 65536, 131072)}
+# The policies figure1.pdf plots; full context is added as one value per benchmark.
+WINDOW_SCORES = [("Middle truncation", "middle"), ("Position", "position"), ("Position recipe", "position_recipe"),
+                 ("BM25", "bm25"), ("BM25 recipe", "bm25_recipe"), ("Fusion recipe", "upgraded"),
+                 ("Oracle", "oracle")]
+# The paired differences Results cites. The floor cannot change a prompt that holds one text,
+# so it is compared on AA-LCR only.
+WINDOW_DIFFERENCES = [
+    ("Position $-$ middle truncation", "position", "middle", None),
+    ("Position recipe $-$ middle truncation", "position_recipe", "middle", None),
+    ("BM25 recipe $-$ BM25", "bm25_recipe", "bm25", None),
+    ("Fusion recipe $-$ BM25 recipe", "upgraded", "bm25_recipe", None),
+    ("Fusion recipe $-$ position recipe", "upgraded", "position_recipe", None),
+    ("Fusion recipe $-$ without the floor", "upgraded", "ladder3", "AA-LCR"),
+    ("Oracle $-$ fusion recipe", "oracle", "upgraded", None),
+    ("Dense, full-question query $-$ dense", "dense_question", "dense", None),
+    ("Dense, 7,500-token chunks $-$ dense", "dense_7500", "dense", None),
+]
+
+
+def table6():
+    """Scores and paired differences at every window, one panel per benchmark."""
+    width = max(len(windows) for windows in WINDOWS.values())
+    lines = ["\\begin{tabular}{l" + "c" * width + "}", "\\toprule"]
+    for index, (name, (_, intervals, main, _)) in enumerate(BENCHMARKS.items()):
+        windows = WINDOWS[name]
+        pad = [""] * (width - len(windows))
+        rows = results(name)
+        differences = {(row["condition"], row["baseline"]): row for row in read_markdown(intervals)}
+
+        def at(base, window):
+            return base if window == main else f"{base}_{WINDOW_LABELS[window].lower()}"
+
+        def score(condition):
+            correct, graded = counts(rows[condition]["correct"])
+            return number(100 * correct / graded)
+
+        if index:
+            lines.append("\\midrule")
+        lines += [" & ".join([f"\\emph{{{name}}}"] + [WINDOW_LABELS[w] for w in windows] + pad) + " \\\\", "\\midrule"]
+        for label, base in WINDOW_SCORES:
+            cells = [score(at(base, w)) if at(base, w) in rows else "" for w in windows]
+            if any(cells):
+                lines.append(" & ".join([label] + cells + pad) + " \\\\")
+        if "full" in rows:
+            lines.append(" & ".join(["Full context (262K)", f"\\multicolumn{{{len(windows)}}}{{c}}{{{score('full')}}}"]
+                                    + pad) + " \\\\")
+        lines.append("\\addlinespace")
+        for label, base, baseline, only in WINDOW_DIFFERENCES:
+            if only not in (None, name):
+                continue
+            cells = []
+            for w in windows:
+                d = differences.get((at(base, w), at(baseline, w)))
+                cells.append(f"{signed(d['difference'])} [{signed(d['95% low'])}, {signed(d['95% high'])}]" if d else "")
+            if any(cells):
+                lines.append(" & ".join([label] + cells + pad) + " \\\\")
+    lines += ["\\bottomrule", "\\end{tabular}"]
+    (HERE / "table6.tex").write_text(GENERATED + "\n".join(lines) + "\n")
+
+
 if __name__ == "__main__":
     table1()
     table2()
     table3()
     table4()
     table5()
+    table6()
