@@ -12,6 +12,7 @@ FORMATS = {"window": "{:,}", "prompt kept": "{:.0%}", "input tokens": "{:,.0f}",
            "accuracy": "{:.1%}", "exact match": "{:.1%}", "MRCR score": "{:.3f}", "prefix compliance": "{:.0%}",
            "p vs middle": "{:.3f}", "output tokens": "{:,.0f}", "generation s/question": "{:.1f}",
            "retrieval + packing s/question": "{:.1f}", "target visible": "{:.0%}", "all needles visible": "{:.0%}",
+           "oracle exact match where target visible": "{:.1%}",
            "baseline window": "{:,}", "difference": "{:+.1%}", "95% low": "{:+.1%}", "95% high": "{:+.1%}",
            "p": "{:.2g}"}
 PREFIX_FORMATS = {"agreement with ": "{:.0%}", "exact match at ": "{:.0%}", "exact match given ": "{:.1%}",

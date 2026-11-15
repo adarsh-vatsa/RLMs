@@ -45,13 +45,13 @@ class OracleTests(unittest.TestCase):
             "--input-csv", str(self.root / "rows.csv"), "--data-dir", str(self.data_dir), "--needles", "4",
             "--min-source-tokens", "1", "--max-source-tokens", "1000000"]), tokenizer_factory=tokenizer_factory)
 
-    def run_condition(self, name, mode, *flags):
+    def run_condition(self, name, mode, *flags, answer="response 2"):
         args = run_parser().parse_args([
             "--mode", mode, "--data-dir", str(self.data_dir), "--output-root", str(self.suite),
             "--run-id", f"S_{name}", "--max-retries", "1", "--max-input-tokens", "1400",
             "--child-tokens", "100", "--child-overlap-tokens", "20", *flags])
         return run_benchmark(args, tokenizer_factory=tokenizer_factory, scs_module=fake_scs(),
-                             completion_caller=lambda **kwargs: Completion(MARKER + "response 2", 1, 1, {}, "stop"))
+                             completion_caller=lambda **kwargs: Completion(MARKER + answer, 1, 1, {}, "stop"))
 
     def test_needle_spans_follow_the_question_and_check_the_gold_answer(self):
         _, rows = load_prepared(self.data_dir)
@@ -66,7 +66,9 @@ class OracleTests(unittest.TestCase):
 
     def test_oracle_offers_the_needle_turns_first_without_changing_the_prompt_format(self):
         position = self.run_condition("position", "hybrid", "--evidence-selection", "position")
-        oracle = self.run_condition("oracle", "hybrid", "--evidence-selection", "position", "--oracle")
+        # Position answers the "first" question right and the oracle the "third".
+        oracle = self.run_condition("oracle", "hybrid", "--evidence-selection", "position", "--oracle",
+                                    answer="response 8")
         self.assertTrue(json.loads((oracle / "manifest.json").read_text())["oracle"])
         self.assertFalse(json.loads((position / "manifest.json").read_text())["oracle"])
         with self.assertRaisesRegex(ValueError, "requires --mode hybrid"):
@@ -80,6 +82,11 @@ class OracleTests(unittest.TestCase):
         rows = {row["condition"]: row for row in rows}
         self.assertEqual((rows["oracle"]["target visible"], rows["oracle"]["all needles visible"]), (1, 1))
         self.assertLess(rows["position"]["all needles visible"], 1)
+        # Position keeps the target turn whole only for the "first" question, which the oracle gets wrong.
+        self.assertEqual(rows["position"]["target visible"], 0.5)
+        self.assertEqual((rows["position"]["exact match given target visible"],
+                          rows["position"]["oracle exact match where target visible"]), (1, 0))
+        self.assertEqual(rows["oracle"]["oracle exact match where target visible"], 0.5)
 
     def test_visibility_rebuilds_truncated_prompts_with_the_runs_tokenizer(self):
         self.run_condition("middle", "direct", "--direct-overflow", "middle")
@@ -89,6 +96,8 @@ class OracleTests(unittest.TestCase):
         self.assertEqual((middle["target visible"], middle["all needles visible"]), (0.5, 0))
         self.assertEqual((middle["exact match given target visible"], middle["exact match given target hidden"]), (1, 0))
         self.assertEqual(middle["exact match given all needles visible"], "")
+        # No oracle ran at this window.
+        self.assertEqual(middle["oracle exact match where target visible"], "")
         self.assertIn("target visible at 2K", columns)
 
         changed = FakeTokenizer()

@@ -84,7 +84,8 @@ for plotting. Regenerate it at any time:
 
 It then writes a visibility table, `visibility.md` and `visibility.csv`: for
 each run, how often the prompt held the whole target turn and all needle turns,
-and exact match given each. It rebuilds every truncated prompt with the runs'
+exact match given each, and the oracle's exact match on the questions whose
+prompt held the whole target turn. It rebuilds every truncated prompt with the runs'
 tokenizer, so it takes up to half an hour and must run where the suite ran:
 
 ```bash

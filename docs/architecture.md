@@ -265,7 +265,9 @@ ordering: chunks overlapping the needle turns, located with the gold answer,
 are offered first, target first; packing and rendering are unchanged. It is a
 ceiling, not a method. `mrcr_v2/visibility.py` reconstructs each saved prompt
 (from recorded ranges, or by re-truncating with the same tokenizer) and records
-whether the target and every needle turn were whole in it.
+whether the target and every needle turn were whole in it. Where the target was
+whole, it also gives the oracle's exact match on the same questions at the same
+window.
 
 ### Analysis
 

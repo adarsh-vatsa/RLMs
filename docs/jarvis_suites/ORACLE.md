@@ -113,6 +113,7 @@ per run:
 | `target visible` | Share of questions whose prompt held the whole target turn, request and response |
 | `all needles visible` | Share whose prompt held all four needle turns |
 | `exact match given target visible`, `exact match given target hidden` | Exact match among those questions; the second should be near 0 |
+| `oracle exact match where target visible` | The oracle's exact match at the run's window on the questions whose prompt held the whole target turn; next to `exact match given target visible`, it shows whether the run reads those questions as well as the oracle does |
 | `exact match given all needles visible` | The run's accuracy when nothing it needed was cut: an analytic oracle |
 | `target visible at <length>` | `target visible` for each conversation |
 

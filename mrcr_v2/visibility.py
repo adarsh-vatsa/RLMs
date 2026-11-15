@@ -2,8 +2,9 @@
 
 A turn is visible when all of it, request and response, is in the prompt. Exact match is
 the share with the target visible times exact match given it is visible, plus any correct
-answer without it. Truncated prompts are rebuilt with the tokenizer the runs used, so run
-this where the suite ran.
+answer without it. Where the target is visible, the oracle's exact match on the same
+questions at the same window shows whether the run reads them as well as the oracle does.
+Truncated prompts are rebuilt with the tokenizer the runs used, so run this where the suite ran.
 """
 
 from __future__ import annotations
@@ -38,8 +39,8 @@ def visible(record, manifest, prefix, body, question, spans, tokenizer):
     return [body[start:end] in content for start, end in spans]
 
 
-def given(answers, condition):
-    matches = [answer["exact"] for answer in answers if condition(answer)]
+def given(answers, condition, outcome=lambda answer: answer["exact"]):
+    matches = [outcome(answer) for answer in answers if condition(answer)]
     return mean(matches) if matches else ""
 
 
@@ -74,13 +75,16 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer):
             shown = visible(record, manifest, prefix, body, row["question"], needles, tokenizer)
             sizes[record["source_id"]] = min(sizes.get(record["source_id"], record["full_rendered_input_tokens"]),
                                              record["full_rendered_input_tokens"])
-            answers.append({"source": record["source_id"], "exact": bool(record["exact_match"]),
-                            "target": shown[target], "all": all(shown)})
+            answers.append({"case": record["case_id"], "source": record["source_id"],
+                            "exact": bool(record["exact_match"]), "target": shown[target], "all": all(shown)})
         results[run] = answers
+    oracles = {manifests[run]["context_window_tokens"]: {answer["case"]: answer["exact"] for answer in answers}
+               for run, answers in results.items() if manifests[run].get("oracle")}
     ordered = sorted(sizes, key=sizes.get)
     rows = []
     for run, answers in results.items():
         manifest = manifests[run]
+        oracle = oracles.get(manifest["context_window_tokens"])
         rows.append({
             "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
             "policy": label(manifest),
@@ -90,13 +94,16 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer):
             "target visible": mean(answer["target"] for answer in answers),
             "all needles visible": mean(answer["all"] for answer in answers),
             "exact match given target visible": given(answers, lambda answer: answer["target"]),
+            "oracle exact match where target visible":
+                given(answers, lambda answer: answer["target"], lambda answer: oracle[answer["case"]]) if oracle else "",
             "exact match given target hidden": given(answers, lambda answer: not answer["target"]),
             "exact match given all needles visible": given(answers, lambda answer: answer["all"]),
             **{f"target visible at {size_label(sizes[source])}":
                mean(answer["target"] for answer in answers if answer["source"] == source) for source in ordered},
         })
     columns = ["condition", "policy", "window", "questions", "exact match", "target visible", "all needles visible",
-               "exact match given target visible", "exact match given target hidden",
+               "exact match given target visible", "oracle exact match where target visible",
+               "exact match given target hidden",
                "exact match given all needles visible",
                *[f"target visible at {size_label(sizes[source])}" for source in ordered]]
     return columns, rows
