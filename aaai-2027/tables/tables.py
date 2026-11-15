@@ -157,12 +157,12 @@ def embedding_seconds(path):
 
 
 def table3():
-    """Time and input tokens per question at each benchmark's main window."""
+    """Tokens and time per question at each benchmark's main window."""
     policies = [("Full context", "full"), ("Middle truncation", "middle"), ("BM25", "bm25"),
-                ("Dense", "dense"), ("Fusion recipe", "upgraded")]
+                ("Dense", "dense"), ("BM25 recipe", "bm25_recipe"), ("Fusion recipe", "upgraded")]
     groups = []
     for name, (_, _, window, answers) in BENCHMARKS.items():
-        body = [f"\\multicolumn{{6}}{{l}}{{\\emph{{{name}, {WINDOW_LABELS[window]} window}}}}"]
+        body = [f"\\multicolumn{{7}}{{l}}{{\\emph{{{name}, {WINDOW_LABELS[window]} window}}}}"]
         groups.append(body)
         rows = results(name)
         for label, condition in policies:
@@ -175,15 +175,17 @@ def table3():
             body.append(" & ".join([
                 label,
                 number(float(row["input tokens"]) / 1000),
+                # LongBench-v2 records no output tokens: its answers are one letter.
+                number(float(row["output tokens"]), 0) if row.get("output tokens") else "---",
                 number(gpu, 2) if gpu else "---",
                 number(embedding_seconds(cpu), 1) if cpu else "---",
                 number(float(row["retrieval + packing s/question"]), 2) if hybrid else "---",
                 number(float(row["generation s/question"])),
             ]))
-    header = ("\\begin{tabular}{lrrrrr}\n\\toprule\n"
-              " & Input & \\multicolumn{2}{c}{Embedding (s)} & Select & Generate \\\\\n"
-              "\\cmidrule(lr){3-4}\n"
-              "Policy & (K tok.) & GPU & CPU & (s) & (s) \\\\\n\\midrule\n")
+    header = ("\\begin{tabular}{lrrrrrr}\n\\toprule\n"
+              " & Input & Output & \\multicolumn{2}{c}{Embedding (s)} & Select & Generate \\\\\n"
+              "\\cmidrule(lr){4-5}\n"
+              "Policy & (K tok.) & (tok.) & GPU & CPU & (s) & (s) \\\\\n\\midrule\n")
     write("table3.tex", header, groups)
 
 
@@ -274,6 +276,9 @@ WINDOW_SCORES = [("Middle truncation", "middle"), ("Position", "position"), ("Po
 WINDOW_DIFFERENCES = [
     ("Position $-$ middle truncation", "position", "middle", None),
     ("Position recipe $-$ middle truncation", "position_recipe", "middle", None),
+    ("Middle truncation $-$ full context", "middle", "full", None),
+    ("BM25 recipe $-$ full context", "bm25_recipe", "full", None),
+    ("Fusion recipe $-$ full context", "upgraded", "full", None),
     ("BM25 recipe $-$ BM25", "bm25_recipe", "bm25", None),
     ("Fusion recipe $-$ BM25 recipe", "upgraded", "bm25_recipe", None),
     ("Fusion recipe $-$ position recipe", "upgraded", "position_recipe", None),
@@ -295,7 +300,8 @@ def table6():
         differences = {(row["condition"], row["baseline"]): row for row in read_markdown(intervals)}
 
         def at(base, window):
-            return base if window == main else f"{base}_{WINDOW_LABELS[window].lower()}"
+            # Full context is one run at 262K, compared with every window.
+            return base if window == main or base == "full" else f"{base}_{WINDOW_LABELS[window].lower()}"
 
         def score(condition):
             correct, graded = counts(rows[condition]["correct"])
