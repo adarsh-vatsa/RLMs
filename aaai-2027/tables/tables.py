@@ -56,8 +56,11 @@ def number(value, digits=1):
 
 
 def signed(text):
-    """A signed percentage from a markdown cell such as '-5.1%', with a typeset minus."""
-    return text.removesuffix("%").replace("-", "$-$")
+    """A signed percentage from a markdown cell such as '-5.1%', with a typeset minus.
+
+    Zero carries no sign, so that an interval ending at zero does not read as excluding it."""
+    text = text.removesuffix("%")
+    return "0.0" if text == "+0.0" else text.replace("-", "$-$")
 
 
 def write(name, header, groups):
@@ -282,6 +285,7 @@ WINDOW_DIFFERENCES = [
     ("BM25 recipe $-$ BM25", "bm25_recipe", "bm25", None),
     ("Fusion recipe $-$ BM25 recipe", "upgraded", "bm25_recipe", None),
     ("Fusion recipe $-$ position recipe", "upgraded", "position_recipe", None),
+    ("BM25 recipe $-$ position recipe", "bm25_recipe", "position_recipe", None),
     ("Fusion recipe $-$ without the floor", "upgraded", "ladder3", "AA-LCR"),
     ("Oracle $-$ fusion recipe", "oracle", "upgraded", None),
     ("Dense, full-question query $-$ dense", "dense_question", "dense", None),
