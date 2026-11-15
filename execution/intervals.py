@@ -32,6 +32,10 @@ PAIRS = [
     *[(f"bm25_recipe{budget}", f"position_recipe{budget}") for budget in BUDGETS],
     *[(f"upgraded{budget}", f"position_recipe{budget}") for budget in BUDGETS],
     *[(f"upgraded{budget}", f"bm25_recipe{budget}") for budget in BUDGETS],
+    # Against full context at every window, where the window acts as an input-token budget; the recipe
+    # at its main window is compared with full context above.
+    *[(f"{base}{budget}", "full") for base in ("middle", "bm25_recipe") for budget in BUDGETS],
+    *[(f"upgraded{budget}", "full") for budget in BUDGETS[1:]],
 ]
 REPLICATES = 10000
 SEED = 20261109

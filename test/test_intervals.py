@@ -71,7 +71,8 @@ class CompareTests(unittest.TestCase):
         self.assertIn("baseline accuracy", columns)
         self.assertEqual([(row["condition"], row["baseline"]) for row in rows],
                          [("dense", "middle"), ("position", "middle"), ("bm25_32k", "middle_32k"),
-                          ("full", "middle"), ("dense", "position")])
+                          ("full", "middle"), ("dense", "position"), ("middle", "full"), ("middle_32k", "full")])
+        self.assertEqual((rows[-1]["window"], rows[-1]["baseline window"]), (32768, 262144))
         dense = rows[0]
         self.assertEqual((dense["accuracy"], dense["baseline accuracy"], dense["difference"]), (0.75, 0.25, 0.5))
         self.assertEqual((dense["gained"], dense["lost"]), (2, 0))
