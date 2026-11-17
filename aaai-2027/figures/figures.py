@@ -2,7 +2,7 @@
 # requires-python = ">=3.13"
 # dependencies = ["matplotlib", "transformers", "jinja2"]
 # ///
-"""Draw the paper's figures from the suite results into figure1.pdf, figure2.pdf and figure3.pdf.
+"""Draw the paper's figures into figure1.pdf to figure4.pdf: three from the suite results, and a diagram.
 
 Run from anywhere: uv run aaai-2027/figures/figures.py
 Figure 3 rebuilds a truncated prompt with the served model's tokenizer, which it downloads if not cached.
@@ -19,6 +19,7 @@ from pathlib import Path
 
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
+from matplotlib.patches import Rectangle
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
@@ -113,7 +114,7 @@ def figure1():
                         **line_style(base))
         budgets = ax.secondary_xaxis("top")
         budgets.set_xticks([share[w] for w in sorted(share)], [WINDOW_LABELS[w] for w in sorted(share)])
-        budgets.tick_params(length=0, pad=1.5, labelsize=6.5, labelcolor=MUTED)
+        budgets.tick_params(length=0, pad=1.5, labelsize=7.5, labelcolor=INK)
         budgets.spines["top"].set_visible(False)
         ax.set_title(title, fontsize=8.5, pad=3)
         ax.set_xlim(0, 1.04)
@@ -219,6 +220,61 @@ def figure3():
     return fig
 
 
+def figure4():
+    """How selection builds a prompt: chunk the documents, rank and pack the chunks, render what is kept."""
+    fig = Figure(figsize=(3.3, 1.6))
+    ax = fig.add_axes((0, 0, 1, 1))
+    ax.set(xlim=(0, 3.3), ylim=(0, 1.6))
+    ax.axis("off")
+    kept, cell, height = STYLE["upgraded"][1], 0.22, 0.17
+
+    def box(x, y, width, text, face, ink, edge="white"):
+        ax.add_patch(Rectangle((x, y), width, height, facecolor=face, edgecolor=edge, lw=0.7))
+        ax.text(x + width / 2, y + height / 2, text, ha="center", va="center", fontsize=7, color=ink)
+        return x + width
+
+    def whole(x, y, text):
+        # The instructions and the question, which every policy keeps whole.
+        return box(x, y, 0.45 if text == "instr." else 0.55, text, "white", INK, edge=INK)
+
+    def heading(y, text):
+        ax.text(0.05, y, text, fontsize=7.5, color=INK)
+
+    heading(1.47, "1  Chunk each document")
+    y = 1.16
+    x = whole(0.05, y, "instr.") + 0.05
+    for name, chunks in (("document 1", range(1, 6)), ("document 2", range(6, 10))):
+        start = x
+        for chunk in chunks:
+            x = box(x, y, cell, str(chunk), GRID, INK)
+        ax.text((start + x) / 2, y - 0.09, name, ha="center", va="center", fontsize=7, color=MUTED)
+        x += 0.05
+    whole(x, y, "question")
+
+    heading(0.87, "2  Rank, then pack in rank order up to the budget")
+    y, x = 0.55, 0.55
+    for rank, chunk in enumerate((7, 2, 8, 3, 1, 9, 4, 6, 5)):
+        if rank == 5:
+            ax.plot([x + 0.05] * 2, [y - 0.05, y + height + 0.05], color=INK, lw=0.8, ls=(0, (3, 2)))
+            ax.text(x + 0.12, y + height + 0.03, "budget", ha="left", va="center", fontsize=7, color=MUTED)
+            x += 0.1
+        x = box(x, y, cell, str(chunk), kept if rank < 5 else GRID, "white" if rank < 5 else MUTED)
+
+    heading(0.31, "3  Render the kept text in its original order")
+    y = 0.03
+    x = whole(0.05, y, "instr.") + 0.05
+    # None separates the documents; "[…]" is the omission marker left where text was dropped.
+    for item in ("1", "2", "3", "[…]", None, "[…]", "7", "8", "[…]"):
+        if item is None:
+            x += 0.05
+        elif item == "[…]":
+            x = box(x, y, 0.2, item, "white", MUTED, edge=AXIS)
+        else:
+            x = box(x, y, cell, item, kept, "white")
+    whole(x + 0.05, y, "question")
+    return fig
+
+
 if __name__ == "__main__":
     import matplotlib
 
@@ -230,3 +286,4 @@ if __name__ == "__main__":
     figure1().savefig(HERE / "figure1.pdf", metadata={"CreationDate": None})
     figure2().savefig(HERE / "figure2.pdf", metadata={"CreationDate": None})
     figure3().savefig(HERE / "figure3.pdf", metadata={"CreationDate": None})
+    figure4().savefig(HERE / "figure4.pdf", metadata={"CreationDate": None})

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.13"
 # ///
-"""Write the paper's tables from the suite results into table1.tex to table6.tex.
+"""Write the paper's tables from the suite results into table1.tex to table10.tex.
 
 Each file holds only the tabular; captions and labels stay in main.tex.
 Run from anywhere: uv run aaai-2027/tables/tables.py
@@ -85,23 +85,29 @@ def benchmark_header(first):
             "\\midrule\n")
 
 
+# The policies the main text reports; table7.tex gives the others at the same windows.
 TABLE1_GROUPS = [
-    [("Middle truncation", "middle"), ("Middle, marked", "middle_marked"), ("Head only", "head")],
-    [("Random chunks", "random0"), ("Position", "position"), ("Position recipe", "position_recipe")],
-    [("BM25", "bm25"), ("Dense", "dense"), ("Fusion", "fusion"), ("BM25 recipe", "bm25_recipe"),
-     ("Fusion recipe", "upgraded")],
+    [("Middle truncation", "middle")],
+    [("Random chunks", "random0"), ("Position", "position"), ("BM25", "bm25")],
+    [("Position recipe", "position_recipe"), ("BM25 recipe", "bm25_recipe"), ("Fusion recipe", "upgraded")],
     [("Full context (262K)", "full"), ("Oracle", "oracle")],
+]
+TABLE7_GROUPS = [
+    [("Middle truncation", "middle")],
+    [("Marked middle truncation", "middle_marked"), ("Head only", "head")],
+    [("Random chunks, seed 0", "random0"), ("Random chunks, seed 1", "random1"), ("Random chunks, seed 2", "random2")],
+    [("Dense", "dense"), ("Fusion", "fusion")],
 ]
 
 
-def table1():
-    """Every policy at each benchmark's main window, with the paired difference from middle truncation."""
+def policy_table(name, row_groups):
+    """Policies at each benchmark's main window, with the paired difference from middle truncation."""
     columns = []
-    for name, (_, intervals, _, _) in BENCHMARKS.items():
+    for benchmark, (_, intervals, _, _) in BENCHMARKS.items():
         differences = {row["condition"]: row for row in read_markdown(intervals) if row["baseline"] == "middle"}
-        columns.append((results(name), differences))
+        columns.append((results(benchmark), differences))
     groups = []
-    for group in TABLE1_GROUPS:
+    for group in row_groups:
         groups.append([])
         for label, condition in group:
             cells = [label]
@@ -117,7 +123,7 @@ def table1():
                     d = differences[condition]
                     cells.append(f"{signed(d['difference'])} [{signed(d['95% low'])}, {signed(d['95% high'])}]")
             groups[-1].append(" & ".join(cells))
-    write("table1.tex", benchmark_header("Policy"), groups)
+    write(name, benchmark_header("Policy"), groups)
 
 
 def table2():
@@ -148,8 +154,9 @@ def table2():
                                           rate(correct - correct_visible, hidden),
                                           number(100 * correct / questions)]))
     header = ("\\begin{tabular}{lrrrrr}\n\\toprule\n"
-              " & & & \\multicolumn{2}{c}{EM given target} & \\\\\n\\cmidrule(lr){4-5}\n"
-              "Policy & Target & Needles & complete & incomplete & EM \\\\\n\\midrule\n")
+              " & \\multicolumn{2}{c}{Recall} & \\multicolumn{2}{c}{EM given target} & \\\\\n"
+              "\\cmidrule(lr){2-3} \\cmidrule(lr){4-5}\n"
+              "Policy & target & needles & complete & incomplete & EM \\\\\n\\midrule\n")
     write("table2.tex", header, groups)
 
 
@@ -165,7 +172,7 @@ def table3():
                 ("Dense", "dense"), ("BM25 recipe", "bm25_recipe"), ("Fusion recipe", "upgraded")]
     groups = []
     for name, (_, _, window, answers) in BENCHMARKS.items():
-        body = [f"\\multicolumn{{7}}{{l}}{{\\emph{{{name}, {WINDOW_LABELS[window]} window}}}}"]
+        body = [f"\\multicolumn{{8}}{{l}}{{\\emph{{{name}, {WINDOW_LABELS[window]} window}}}}"]
         groups.append(body)
         rows = results(name)
         for label, condition in policies:
@@ -180,15 +187,16 @@ def table3():
                 number(float(row["input tokens"]) / 1000),
                 # LongBench-v2 records no output tokens: its answers are one letter.
                 number(float(row["output tokens"]), 0) if row.get("output tokens") else "---",
+                str(int(float(row["output limit hit"]))) if row.get("output limit hit") else "---",
                 number(gpu, 2) if gpu else "---",
                 number(embedding_seconds(cpu), 1) if cpu else "---",
                 number(float(row["retrieval + packing s/question"]), 2) if hybrid else "---",
                 number(float(row["generation s/question"])),
             ]))
-    header = ("\\begin{tabular}{lrrrrrr}\n\\toprule\n"
-              " & Input & Output & \\multicolumn{2}{c}{Embedding (s)} & Select & Generate \\\\\n"
-              "\\cmidrule(lr){4-5}\n"
-              "Policy & (K tok.) & (tok.) & GPU & CPU & (s) & (s) \\\\\n\\midrule\n")
+    header = ("\\begin{tabular}{lrrrrrrr}\n\\toprule\n"
+              " & Input & Output & & \\multicolumn{2}{c}{Embedding (s)} & Select & Generate \\\\\n"
+              "\\cmidrule(lr){5-6}\n"
+              "Policy & (K tok.) & (tok.) & Capped & GPU & CPU & (s) & (s) \\\\\n\\midrule\n")
     write("table3.tex", header, groups)
 
 
@@ -245,7 +253,7 @@ def table4():
 
 
 # The ablation ladder: each rung adds one of the recipe's steps to the rung above, and the last rung is the recipe.
-LADDER = [("Fusion", "fusion"), ("+ 1,024-token chunks", "ladder1"), ("+ neighbouring chunks", "ladder2"),
+LADDER = [("Fusion", "fusion"), ("+ 1,024-token chunks", "ladder1"), ("+ neighboring chunks", "ladder2"),
           ("+ fill packing", "ladder3"), ("+ document floor", "upgraded")]
 
 
@@ -335,10 +343,68 @@ def table6():
     (HERE / "table6.tex").write_text(GENERATED + "\n".join(lines) + "\n")
 
 
+def mrcr_condition(base, window):
+    return base if window == BENCHMARKS["MRCR v2"][2] else f"{base}_{WINDOW_LABELS[window].lower()}"
+
+
+def table8():
+    """MRCR's own score, which gives partial credit by string similarity, for table6's MRCR policies."""
+    rows = results("MRCR v2")
+    windows = WINDOWS["MRCR v2"]
+    body = []
+    for label, base in WINDOW_SCORES:
+        conditions = [mrcr_condition(base, window) for window in windows]
+        if all(condition in rows for condition in conditions):
+            body.append(" & ".join([label] + [number(100 * float(rows[c]["MRCR score"])) for c in conditions]))
+    header = ("\\begin{tabular}{l" + "r" * len(windows) + "}\n\\toprule\n"
+              "Policy & " + " & ".join(WINDOW_LABELS[window] for window in windows) + " \\\\\n\\midrule\n")
+    write("table8.tex", header, [body])
+
+
+def table9():
+    """Where the recipe keeps the MRCR target whole: exact matches by needle turns kept, beside the oracle's."""
+    rows = read_csv(MRCR / "visibility-needles.csv")
+    counts = range(1, 5)
+    groups = []
+    # At the main window nearly every prompt keeps all four needle turns.
+    for window in WINDOWS["MRCR v2"][:-1]:
+        cells = {int(row["needle turns visible"]): row for row in rows
+                 if row["condition"] == mrcr_condition("upgraded", window)}
+        groups.append([f"\\multicolumn{{5}}{{l}}{{\\emph{{{WINDOW_LABELS[window]} window}}}}"] + [
+            " & ".join([label] + [cells[count][column] if count in cells else "---" for count in counts])
+            for label, column in (("Questions", "questions"), ("Fusion recipe", "exact matches"),
+                                  ("Oracle", "oracle exact matches"))])
+    header = ("\\begin{tabular}{lrrrr}\n\\toprule\n"
+              " & \\multicolumn{4}{c}{Needle turns complete} \\\\\n\\cmidrule(lr){2-5}\n"
+              " & 1 & 2 & 3 & 4 \\\\\n\\midrule\n")
+    write("table9.tex", header, groups)
+
+
+def table10():
+    """LongBench-v2 accuracy by category at its main window, largest category first."""
+    rows = read_csv(LONGBENCH / "categories.csv")
+    policies = [("Middle truncation", "middle"), ("Position", "position"), ("BM25 recipe", "bm25_recipe"),
+                ("Fusion recipe", "upgraded"), ("Full context", "full")]
+    cells = {(row["condition"], row["category"]): row for row in rows}
+    sizes = {row["category"]: int(row["questions"]) for row in rows if row["condition"] == "middle"}
+    body = [" & ".join([category, str(sizes[category])]
+                       # The CSV rounds accuracy to 4 decimals; the counts give the exact rate.
+                       + [number(100 * int(cells[(condition, category)]["correct"]) / sizes[category])
+                          for _, condition in policies])
+            for category in sorted(sizes, key=lambda category: -sizes[category])]
+    header = ("\\begin{tabular}{lr" + "r" * len(policies) + "}\n\\toprule\n"
+              "Category & Questions & " + " & ".join(label for label, _ in policies) + " \\\\\n\\midrule\n")
+    write("table10.tex", header, [body])
+
+
 if __name__ == "__main__":
-    table1()
+    policy_table("table1.tex", TABLE1_GROUPS)
     table2()
     table3()
     table4()
     table5()
     table6()
+    policy_table("table7.tex", TABLE7_GROUPS)
+    table8()
+    table9()
+    table10()
