@@ -85,10 +85,16 @@ for plotting. Regenerate it at any time:
 It then writes a visibility table, `visibility.md` and `visibility.csv`: for
 each run, how often the prompt held the whole target turn and all needle turns,
 exact match given each, and the oracle's exact match on the questions whose
-prompt held the whole target turn. It rebuilds every truncated prompt with the runs'
-tokenizer, so it takes up to half an hour and must run where the suite ran:
+prompt held the whole target turn. It also writes `visibility-needles.md` and
+`.csv`: for each selection run, those questions split by how many needle turns the
+prompt held whole, with the run's and the oracle's exact matches. It rebuilds every
+truncated prompt with the runs' tokenizer, so it takes up to half an hour and must
+run where the suite ran:
 
 ```bash
 .venv/bin/python -m mrcr_v2.visibility benchmark_artifacts/mrcr_v2/suites/20261026 \
   --data-dir benchmark_data/mrcr_v2_4needle_100k_1200k
 ```
+
+Add `--selection-only` to read only the selection runs and write only the needle
+table. That needs no tokenizer, so it runs anywhere the prepared data is.

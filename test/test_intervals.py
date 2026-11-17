@@ -133,8 +133,12 @@ class SuiteTests(unittest.TestCase):
                     ("direct", "middle", 65536, "middle", [False, False, True, False]),
                     ("hybrid", "dense", 65536, "unsupported", [True, True, True, None])):
                 path = suite / mode / f"S_{name}"
-                write_rows(path / "bridge_rows.jsonl", [{"question_id": str(index), "document_set_id": f"set{index // 2}"}
-                                                        for index in range(4)])
+                write_rows(path / "bridge_rows.jsonl", [{"case_id": f"q{index}", "question_id": str(index),
+                                                         "document_set_id": f"set{index // 2}"} for index in range(4)])
+                # Middle truncation's first answer reaches the output cap.
+                write_rows(path / "execution.jsonl", [
+                    {"case_id": f"q{index}", "finish_reason": "length" if name == "middle" and index == 0 else "stop"}
+                    for index in range(4)])
                 (path / "manifest.json").write_text(json.dumps({
                     "run_id": f"S_{name}", "started_at": name, "context_window_tokens": window,
                     "execution": {"mode": mode, "direct_overflow": overflow}}))
@@ -150,6 +154,11 @@ class SuiteTests(unittest.TestCase):
             self.assertNotEqual(row["gap recovered 95% low"], "")
             self.assertIn("resamples of the 2 document sets", (suite / "intervals-luna.md").read_text())
             self.assertGreater(float(row["p"]), 0)
+            # Without the capped question, dense is right on 2 of 3 and middle truncation on 1.
+            uncapped = read_csv(suite / "intervals-luna-uncapped.csv")
+            self.assertEqual(list(uncapped), [("dense", "middle")])
+            row = uncapped[("dense", "middle")]
+            self.assertEqual((row["questions"], row["difference"], row["gained"], row["lost"]), ("3", "0.3333", "1", "0"))
 
     def test_mrcr_resamples_within_conversations_against_the_oracle_and_full_context(self):
         with tempfile.TemporaryDirectory() as directory:

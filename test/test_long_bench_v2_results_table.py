@@ -11,7 +11,8 @@ def run(suite, folder, name, started, config, records, correct):
     path = suite / folder / f"S_{name}"
     path.mkdir(parents=True)
     (path / "manifest.json").write_text(json.dumps({"run_id": f"S_{name}", "started_at": started,
-                                                     "elapsed_seconds": 1200}))
+                                                     "elapsed_seconds": 1200,
+                                                     "suite_csv": str(suite.parent / "data.csv")}))
     (path / "execution_manifest.json").write_text(json.dumps({
         "mode": "direct", "direct_overflow": "unsupported", "child_tokens": 7500, "context_window_tokens": 65536,
         **config}))
@@ -28,6 +29,10 @@ class ResultsTableTests(unittest.TestCase):
     def test_direct_and_hybrid_runs_share_one_table(self):
         with tempfile.TemporaryDirectory() as temporary:
             suite = Path(temporary) / "S"
+            with (Path(temporary) / "data.csv").open("w", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["case_id", "domain"])
+                writer.writerows([["0", "Code"], ["1", "Code"], ["2", "Single-Document QA"], ["3", "Code"]])
             run(suite, "longbench_v2_api", "middle", "2026-10-26T00:00:00", {"direct_overflow": "middle"},
                 [{}, {"prediction": "X"}, {"attempts": 2}, {}], [True, False, False, False])
             run(suite, "longbench_v2", "ladder3", "2026-10-26T01:00:00", {
@@ -51,6 +56,13 @@ class ResultsTableTests(unittest.TestCase):
             self.assertEqual((ladder["embedding minutes"], ladder["retrieval + packing s/question"],
                               ladder["run minutes"]), ("2", "0.5", "20"))
             self.assertIn("| ladder3 |", (suite / "results.md").read_text())
+
+            categories = {(row["condition"], row["category"]): row
+                          for row in csv.DictReader((suite / "categories.csv").open())}
+            self.assertEqual(len(categories), 6)
+            self.assertEqual((categories[("ladder3", "Code")]["questions"], categories[("ladder3", "Code")]["correct"],
+                              categories[("ladder3", "Code")]["accuracy"]), ("3", "2", "0.6667"))
+            self.assertEqual(categories[("middle", "Single-Document QA")]["correct"], "0")
 
 
 if __name__ == "__main__":

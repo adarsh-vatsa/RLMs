@@ -4,7 +4,11 @@ A turn is visible when all of it, request and response, is in the prompt. Exact 
 the share with the target visible times exact match given it is visible, plus any correct
 answer without it. Where the target is visible, the oracle's exact match on the same
 questions at the same window shows whether the run reads them as well as the oracle does.
-Truncated prompts are rebuilt with the tokenizer the runs used, so run this where the suite ran.
+A second table splits those questions by how many needle turns are visible, for the selection
+runs, since a prompt that drops the other needle turns leaves the model fewer candidates.
+Truncated prompts are rebuilt with the tokenizer the runs used, so run this where the suite ran;
+with --selection-only it reads only the selection runs, needs no tokenizer and writes only the
+second table.
 """
 
 from __future__ import annotations
@@ -44,11 +48,11 @@ def given(answers, condition, outcome=lambda answer: answer["exact"]):
     return mean(matches) if matches else ""
 
 
-def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer):
+def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer, modes=("direct", "hybrid")):
     dataset, prepared = load_prepared(data_dir)
     dataset_sha256 = file_hash(data_dir / "dataset_manifest.json")
     questions = {row["case_id"]: row for row in prepared}
-    runs = [path.parent for mode in ("direct", "hybrid") for path in (suite / mode).glob("*/manifest.json")]
+    runs = [path.parent for mode in modes for path in (suite / mode).glob("*/manifest.json")]
     manifests = {run: json.loads((run / "manifest.json").read_text()) for run in runs}
     runs = sorted((run for run in runs if manifests[run]["status"] == "complete"),
                   key=lambda run: manifests[run]["created_at"])
@@ -76,7 +80,8 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer):
             sizes[record["source_id"]] = min(sizes.get(record["source_id"], record["full_rendered_input_tokens"]),
                                              record["full_rendered_input_tokens"])
             answers.append({"case": record["case_id"], "source": record["source_id"],
-                            "exact": bool(record["exact_match"]), "target": shown[target], "all": all(shown)})
+                            "exact": bool(record["exact_match"]), "target": shown[target], "all": all(shown),
+                            "needles": sum(shown)})
         results[run] = answers
     oracles = {manifests[run]["context_window_tokens"]: {answer["case"]: answer["exact"] for answer in answers}
                for run, answers in results.items() if manifests[run].get("oracle")}
@@ -106,16 +111,42 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer):
                "exact match given target hidden",
                "exact match given all needles visible",
                *[f"target visible at {size_label(sizes[source])}" for source in ordered]]
-    return columns, rows
+    needle_rows = []
+    for run, answers in results.items():
+        manifest = manifests[run]
+        oracle = oracles.get(manifest["context_window_tokens"])
+        if oracle is None or manifest.get("oracle") or manifest["mode"] != "hybrid":
+            continue
+        for count in sorted({answer["needles"] for answer in answers if answer["target"]}):
+            group = [answer for answer in answers if answer["target"] and answer["needles"] == count]
+            needle_rows.append({
+                "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
+                "policy": label(manifest),
+                "window": manifest["context_window_tokens"],
+                "needle turns visible": count,
+                "questions": len(group),
+                "exact matches": sum(answer["exact"] for answer in group),
+                "oracle exact matches": sum(oracle[answer["case"]] for answer in group),
+            })
+    needle_columns = ["condition", "policy", "window", "needle turns visible", "questions", "exact matches",
+                      "oracle exact matches"]
+    return columns, rows, needle_columns, needle_rows
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("suite", type=Path, help="benchmark_artifacts/mrcr_v2/suites/<suite-id>")
     parser.add_argument("--data-dir", type=Path, default=DEFAULT_DATA_DIR)
+    parser.add_argument("--selection-only", action="store_true",
+                        help="Read only the selection runs and write only the needle table; they need no tokenizer")
     args = parser.parse_args(argv)
-    columns, rows = summarize(args.suite, args.data_dir)
-    write_table(args.suite, "visibility", f"MRCR v2 suite {args.suite.name}: visibility", columns, rows)
+    columns, rows, needle_columns, needle_rows = summarize(
+        args.suite, args.data_dir, modes=("hybrid",) if args.selection_only else ("direct", "hybrid"))
+    if not args.selection_only:
+        write_table(args.suite, "visibility", f"MRCR v2 suite {args.suite.name}: visibility", columns, rows)
+    write_table(args.suite, "visibility-needles",
+                f"MRCR v2 suite {args.suite.name}: exact matches where the target is visible, by needle turns visible",
+                needle_columns, needle_rows)
 
 
 if __name__ == "__main__":

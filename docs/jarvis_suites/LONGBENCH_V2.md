@@ -107,6 +107,7 @@ longbench_v2_api/20261029_<condition>/   direct runs
 longbench_v2/20261029_<condition>/       hybrid runs
 logs/<condition>.log                     one log per run
 results.md, results.csv                  the results table
+categories.md, categories.csv            each run's accuracy by LongBench-v2 category
 ```
 
 The table has one row per run. It gives the accuracy, and the questions gained

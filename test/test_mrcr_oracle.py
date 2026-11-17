@@ -74,13 +74,22 @@ class OracleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "requires --mode hybrid"):
             self.run_condition("direct_oracle", "direct", "--oracle")
 
+        # Middle truncation at the oracle's window also keeps the "first" target, but it is not a selection run.
+        self.run_condition("middle", "direct", "--direct-overflow", "middle")
         results_table([str(self.suite)])
         policies = {row["condition"]: row["policy"] for row in csv.DictReader((self.suite / "results.csv").open())}
         self.assertEqual(policies["oracle"], "oracle: position, 100-token chunks")
 
-        columns, rows = summarize(self.suite, self.data_dir, tokenizer_factory=tokenizer_factory)
+        columns, rows, _, needles = summarize(self.suite, self.data_dir, tokenizer_factory=tokenizer_factory)
         rows = {row["condition"]: row for row in rows}
         self.assertEqual((rows["oracle"]["target visible"], rows["oracle"]["all needles visible"]), (1, 1))
+        # Only position's "first" question keeps its target turn; it drops other needle turns, and the oracle
+        # gets that question wrong. Neither the oracle nor middle truncation has a row.
+        self.assertEqual([(row["condition"], row["questions"], row["exact matches"], row["oracle exact matches"])
+                          for row in needles], [("position", 1, 1, 0)])
+        self.assertLess(needles[0]["needle turns visible"], 4)
+        # Reading only the selection runs gives the same needle table without loading a tokenizer.
+        self.assertEqual(summarize(self.suite, self.data_dir, tokenizer_factory=None, modes=("hybrid",))[3], needles)
         self.assertLess(rows["position"]["all needles visible"], 1)
         # Position keeps the target turn whole only for the "first" question, which the oracle gets wrong.
         self.assertEqual(rows["position"]["target visible"], 0.5)
@@ -90,14 +99,15 @@ class OracleTests(unittest.TestCase):
 
     def test_visibility_rebuilds_truncated_prompts_with_the_runs_tokenizer(self):
         self.run_condition("middle", "direct", "--direct-overflow", "middle")
-        columns, rows = summarize(self.suite, self.data_dir, tokenizer_factory=tokenizer_factory)
+        columns, rows, _, needles = summarize(self.suite, self.data_dir, tokenizer_factory=tokenizer_factory)
         middle = rows[0]
         # Middle truncation keeps the first and last needle turns: the "first" target, not the "third".
         self.assertEqual((middle["target visible"], middle["all needles visible"]), (0.5, 0))
         self.assertEqual((middle["exact match given target visible"], middle["exact match given target hidden"]), (1, 0))
         self.assertEqual(middle["exact match given all needles visible"], "")
-        # No oracle ran at this window.
+        # No oracle ran at this window, so there is nothing to split by needle turns.
         self.assertEqual(middle["oracle exact match where target visible"], "")
+        self.assertEqual(needles, [])
         self.assertIn("target visible at 2K", columns)
 
         changed = FakeTokenizer()

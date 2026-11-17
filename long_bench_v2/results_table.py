@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 
@@ -54,12 +55,44 @@ def summarize(suite):
     return columns, rows
 
 
+def categories(suite):
+    """Accuracy of every run in each LongBench-v2 category, taken from the suite CSV the run names."""
+    runs = [path.parent for folder in ("longbench_v2_api", "longbench_v2")
+            for path in (suite / folder).glob("*/manifest.json")]
+    manifests = {run: json.loads((run / "manifest.json").read_text()) for run in runs}
+    runs.sort(key=lambda run: manifests[run]["started_at"])
+    domains = {}
+    rows = []
+    for run in runs:
+        manifest = manifests[run]
+        if manifest["suite_csv"] not in domains:
+            with open(manifest["suite_csv"], newline="") as handle:
+                domains[manifest["suite_csv"]] = {row["case_id"]: row["domain"] for row in csv.DictReader(handle)}
+        domain = domains[manifest["suite_csv"]]
+        config = json.loads((run / "execution_manifest.json").read_text())
+        correct = {row["case_id"]: bool(row["scores"].get("accuracy")) for row in read_rows(run / "evaluation.jsonl")}
+        for category in sorted({domain[case] for case in correct}):
+            answers = [value for case, value in correct.items() if domain[case] == category]
+            rows.append({
+                "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
+                "policy": policy(config),
+                "window": config["context_window_tokens"],
+                "category": category,
+                "questions": len(answers),
+                "accuracy": mean(answers),
+                "correct": sum(answers),
+            })
+    return ["condition", "policy", "window", "category", "questions", "accuracy", "correct"], rows
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("suite", type=Path, help="benchmark_artifacts/longbench_v2/suites/<suite-id>")
     args = parser.parse_args(argv)
     columns, rows = summarize(args.suite)
     write_table(args.suite, "results", f"LongBench-v2 suite {args.suite.name}", columns, rows)
+    write_table(args.suite, "categories", f"LongBench-v2 suite {args.suite.name}: accuracy by category",
+                *categories(args.suite))
 
 
 if __name__ == "__main__":

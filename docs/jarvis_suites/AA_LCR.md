@@ -129,7 +129,9 @@ For the paper, `intervals-gpt-5.6-luna.md` and `.csv` give the paired accuracy
 differences from the Luna grades, with 95% intervals that resample whole
 document sets. Each run is compared with `middle` at its window, followed by
 the pairs listed in `execution/intervals.py`. The `gap recovered` column gives
-the share of the gap between `middle` and `full` that a run closes. The command
+the share of the gap between `middle` and `full` that a run closes.
+`intervals-gpt-5.6-luna-uncapped` compares each run with `middle` again, leaving
+out the questions on which either answer reached the output cap. The command
 reads only files in the suite folder, so it runs on any machine with the
 repository:
 

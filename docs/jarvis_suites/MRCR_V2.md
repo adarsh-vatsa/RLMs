@@ -103,6 +103,7 @@ hybrid/20261029_<condition>/   hybrid runs
 logs/<condition>.log           one log per run
 results.md, results.csv        the results table
 visibility.md, visibility.csv  whether each prompt held the needle turns
+visibility-needles.md, .csv    exact matches by needle turns held, where the target was
 ```
 
 The visibility table is described in [ORACLE.md](ORACLE.md#results). The suite

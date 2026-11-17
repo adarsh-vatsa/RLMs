@@ -1,0 +1,92 @@
+# MRCR v2 suite 20261029: exact matches where the target is visible, by needle turns visible
+
+| condition | policy | window | needle turns visible | questions | exact matches | oracle exact matches |
+|---|---|---|---|---|---|---|
+| dense | dense | 262,144 | 2 | 8 | 6 | 5 |
+| dense | dense | 262,144 | 3 | 19 | 16 | 14 |
+| dense | dense | 262,144 | 4 | 70 | 44 | 40 |
+| position | position | 262,144 | 1 | 2 | 2 | 0 |
+| position | position | 262,144 | 2 | 10 | 8 | 8 |
+| position | position | 262,144 | 3 | 3 | 1 | 1 |
+| position | position | 262,144 | 4 | 59 | 35 | 34 |
+| random0 | random seed 0 | 262,144 | 1 | 4 | 4 | 3 |
+| random0 | random seed 0 | 262,144 | 2 | 7 | 7 | 5 |
+| random0 | random seed 0 | 262,144 | 3 | 8 | 5 | 5 |
+| random0 | random seed 0 | 262,144 | 4 | 57 | 34 | 34 |
+| bm25 | bm25 | 262,144 | 2 | 1 | 1 | 1 |
+| bm25 | bm25 | 262,144 | 3 | 10 | 8 | 8 |
+| bm25 | bm25 | 262,144 | 4 | 101 | 63 | 61 |
+| fusion | fusion | 262,144 | 2 | 3 | 3 | 1 |
+| fusion | fusion | 262,144 | 3 | 18 | 13 | 16 |
+| fusion | fusion | 262,144 | 4 | 86 | 51 | 51 |
+| dense_7500 | dense, 7500-token chunks | 262,144 | 1 | 5 | 5 | 3 |
+| dense_7500 | dense, 7500-token chunks | 262,144 | 2 | 7 | 5 | 6 |
+| dense_7500 | dense, 7500-token chunks | 262,144 | 3 | 16 | 9 | 9 |
+| dense_7500 | dense, 7500-token chunks | 262,144 | 4 | 61 | 34 | 35 |
+| dense_question | dense, full-question query | 262,144 | 2 | 11 | 8 | 7 |
+| dense_question | dense, full-question query | 262,144 | 3 | 13 | 7 | 9 |
+| dense_question | dense, full-question query | 262,144 | 4 | 70 | 40 | 42 |
+| ladder1 | fusion, 1024-token chunks | 262,144 | 1 | 1 | 0 | 0 |
+| ladder1 | fusion, 1024-token chunks | 262,144 | 3 | 11 | 8 | 8 |
+| ladder1 | fusion, 1024-token chunks | 262,144 | 4 | 105 | 60 | 65 |
+| ladder2 | fusion, 1024-token chunks, 1 neighbour each side | 262,144 | 3 | 1 | 1 | 1 |
+| ladder2 | fusion, 1024-token chunks, 1 neighbour each side | 262,144 | 4 | 119 | 73 | 73 |
+| ladder3 | fusion, 1024-token chunks, 1 neighbour each side, fill packing | 262,144 | 3 | 1 | 1 | 1 |
+| ladder3 | fusion, 1024-token chunks, 1 neighbour each side, fill packing | 262,144 | 4 | 119 | 73 | 73 |
+| ladder4 | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 3 | 1 | 1 | 1 |
+| ladder4 | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 4 | 119 | 73 | 73 |
+| position_32k | position | 32,768 | 1 | 7 | 7 | 6 |
+| position_32k | position | 32,768 | 2 | 4 | 2 | 1 |
+| position_64k | position | 65,536 | 1 | 4 | 4 | 3 |
+| position_64k | position | 65,536 | 2 | 9 | 9 | 6 |
+| position_64k | position | 65,536 | 3 | 5 | 2 | 3 |
+| position_64k | position | 65,536 | 4 | 1 | 1 | 0 |
+| position_128k | position | 131,072 | 1 | 8 | 8 | 6 |
+| position_128k | position | 131,072 | 2 | 4 | 4 | 4 |
+| position_128k | position | 131,072 | 3 | 13 | 3 | 4 |
+| position_128k | position | 131,072 | 4 | 26 | 17 | 17 |
+| bm25_32k | bm25 | 32,768 | 1 | 5 | 5 | 4 |
+| bm25_32k | bm25 | 32,768 | 2 | 14 | 8 | 11 |
+| bm25_32k | bm25 | 32,768 | 3 | 15 | 12 | 13 |
+| bm25_32k | bm25 | 32,768 | 4 | 6 | 5 | 5 |
+| bm25_64k | bm25 | 65,536 | 1 | 4 | 3 | 2 |
+| bm25_64k | bm25 | 65,536 | 2 | 8 | 4 | 5 |
+| bm25_64k | bm25 | 65,536 | 3 | 15 | 11 | 8 |
+| bm25_64k | bm25 | 65,536 | 4 | 35 | 26 | 24 |
+| bm25_128k | bm25 | 131,072 | 1 | 3 | 2 | 3 |
+| bm25_128k | bm25 | 131,072 | 2 | 5 | 5 | 5 |
+| bm25_128k | bm25 | 131,072 | 3 | 18 | 13 | 11 |
+| bm25_128k | bm25 | 131,072 | 4 | 65 | 37 | 34 |
+| bm25_recipe_32k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 1 | 2 | 2 | 2 |
+| bm25_recipe_32k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 2 | 12 | 6 | 10 |
+| bm25_recipe_32k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 3 | 29 | 20 | 18 |
+| bm25_recipe_32k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 4 | 35 | 27 | 27 |
+| bm25_recipe_64k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 1 | 1 | 1 | 1 |
+| bm25_recipe_64k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 2 | 4 | 3 | 3 |
+| bm25_recipe_64k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 3 | 20 | 14 | 14 |
+| bm25_recipe_64k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 4 | 78 | 48 | 50 |
+| bm25_recipe_128k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 2 | 1 | 1 | 1 |
+| bm25_recipe_128k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 3 | 5 | 4 | 3 |
+| bm25_recipe_128k | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 4 | 112 | 64 | 65 |
+| upgraded | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 3 | 1 | 1 | 1 |
+| upgraded | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 4 | 119 | 73 | 73 |
+| upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 1 | 9 | 7 | 6 |
+| upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 2 | 9 | 8 | 7 |
+| upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 3 | 28 | 21 | 18 |
+| upgraded_32k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 32,768 | 4 | 11 | 8 | 8 |
+| upgraded_64k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 1 | 2 | 2 | 1 |
+| upgraded_64k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 2 | 13 | 9 | 9 |
+| upgraded_64k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 3 | 21 | 13 | 16 |
+| upgraded_64k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 65,536 | 4 | 49 | 28 | 27 |
+| upgraded_128k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 2 | 1 | 1 | 0 |
+| upgraded_128k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 3 | 14 | 12 | 11 |
+| upgraded_128k | fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 131,072 | 4 | 92 | 54 | 52 |
+| random1 | random seed 1 | 262,144 | 1 | 3 | 3 | 1 |
+| random1 | random seed 1 | 262,144 | 2 | 12 | 8 | 9 |
+| random1 | random seed 1 | 262,144 | 3 | 7 | 3 | 3 |
+| random1 | random seed 1 | 262,144 | 4 | 56 | 31 | 32 |
+| random2 | random seed 2 | 262,144 | 1 | 2 | 2 | 2 |
+| random2 | random seed 2 | 262,144 | 2 | 6 | 4 | 6 |
+| random2 | random seed 2 | 262,144 | 3 | 10 | 6 | 5 |
+| random2 | random seed 2 | 262,144 | 4 | 55 | 33 | 32 |
+| bm25_recipe | bm25, 1024-token chunks, 1 neighbour each side, fill packing, document floor | 262,144 | 4 | 120 | 69 | 74 |

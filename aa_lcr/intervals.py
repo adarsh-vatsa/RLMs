@@ -21,13 +21,34 @@ def conditions(suite, grader):
         outcomes = verdicts(suite, grader, run)
         if outcomes is None:
             raise ValueError(f"{run.name} has no {grader} grades")
+        questions = {}
         for answer in read_rows(run / "bridge_rows.jsonl"):
             clusters[answer["question_id"]] = answer["document_set_id"]
+            questions[answer["case_id"]] = answer["question_id"]
         found[manifest["run_id"].removeprefix(f"{suite.name}_")] = {
             "window": manifest["context_window_tokens"], "outcomes": outcomes,
             "middle": execution["mode"] == "direct" and execution["direct_overflow"] == "middle",
+            "capped": {questions[record["case_id"]] for record in read_rows(run / "execution.jsonl")
+                       if record["finish_reason"] == "length"},
         }
     return found, clusters
+
+
+def uncapped(found, clusters):
+    """Each run against middle truncation at its window, on the questions where neither answer reached the cap."""
+    rows = []
+    for name, condition in found.items():
+        middle = next((other for other, candidate in found.items()
+                       if candidate["middle"] and candidate["window"] == condition["window"]), None)
+        if condition["middle"] or middle is None:
+            continue
+        kept = {question: cluster for question, cluster in clusters.items()
+                if question not in condition["capped"] | found[middle]["capped"]}
+        _, pair = compare({name: condition, middle: found[middle]}, kept, metric="accuracy")
+        rows += [{**row, "questions": len(kept)} for row in pair if row["baseline"] == middle]
+    columns = ["condition", "window", "baseline", "baseline window", "questions", "accuracy", "baseline accuracy",
+               "difference", "95% low", "95% high", "gained", "lost", "p"]
+    return columns, rows
 
 
 def main(argv=None):
@@ -45,6 +66,10 @@ def main(argv=None):
                 f"by document set (seed {PERMUTATION_SEED}). "
                 f"Gap recovered: (run − middle) / (full − middle) at the run's window",
                 columns, rows)
+    write_table(args.suite, f"intervals-{args.grader}-uncapped",
+                f"AA-LCR suite {args.suite.name}, graded by {args.grader}: each run against middle truncation at "
+                f"its window, leaving out the questions on which either answer reached the output cap; intervals "
+                f"and p as in intervals-{args.grader}", *uncapped(found, clusters))
 
 
 if __name__ == "__main__":
