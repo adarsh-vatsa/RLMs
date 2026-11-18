@@ -583,6 +583,71 @@ The list is ordered by priority. Each item names who raised it and what fixing i
   - removing one step at a time;
   - a chunk-size sweep.
 
+## Second review: 17 November
+
+A second read of `d3c6641`, again as a reviewer. Verdict: **accept** for a workshop
+(confidence 4/5). The remaining weaknesses (one model with thinking off, the LongBench-v2
+null result, the MRCR query) are stated in Limitations. Items 18–27 are this round's
+findings, all **Done** in the working tree. In a Tectonic build, the References heading
+now sits 3 pt higher on page 7 than before these edits; recheck with pdfTeX.
+
+18. **Serving-node variance.** Statistics said greedy decoding is repeatable, but a third
+    node scored the recipe 58% on AA-LCR at 64K, against the 64% reported. With every
+    third-node run swapped in, the paper's own tests (`execution.intervals.compare`) give:
+    - recipe vs position at 64K: Holm p 0.010 → 0.38, so 12 rather than 13 of the 20
+      primary comparisons are significant;
+    - fusion vs BM25 recipe at 64K: +11.0 [+5.0, +17.8] → +5.0 [−3.8, +14.6];
+    - fusion vs position recipe at 64K: +12.0 [+2.9, +23.0] → +6.0 [−4.0, +16.5];
+    - recipe vs full context at 64K: −1.0 → −7.0 [−14.3, +1.0].
+
+    No MRCR or LongBench-v2 comparison changes significance. **Done:** Statistics says the
+    intervals do not cover the serving stack, Results hedges the primary 64K result and
+    the 11-point lead, "fusion ranking adds 9 to 16 points" now excludes zero "at two of
+    the three windows" (true with either node), and Serving Nodes gives the numbers above.
+19. **"Fixed on MRCR and LongBench-v2, held-out AA-LCR"** contradicted Methodology, where
+    the 12 Oct plan fixed the recipe and its rule kept every step. **Done:** the abstract
+    and Introduction say "specified before any reported run"; Methodology, Limitations
+    and two appendix passages no longer say "held out".
+20. **MRCR's four-needle release** followed an eight-needle pilot on which dense retrieval
+    tied truncation. **Done:** Limitations says MRCR's release, query and default chunk
+    size changed after that pilot. The run log gives the reason from
+    `docs/linux/BENCHMARK_RUNBOOK.md`: four identical requests to tell apart, not eight.
+21. **Factual errors.** **Done:**
+    - Qwen3-Embedding-0.6B accepts 32,768 tokens; 8,192 is the pipeline's
+      `EMBEDDING_MAX_LENGTH`. Chunking now says "our 8,192-token cap on embedding input".
+    - ATLAS uses OpenAI's 8-needle MRCR, not MRCR v2. Related Work now says "AA-LCR,
+      LongBench-v2 and another version of MRCR".
+22. **LongBench-v2 significance.** Results called the recipe's gain significant at no
+    window there, then counted its +6.3 [+0.9, +12.0] among intervals that exclude zero.
+    **Done:** "uncorrected interval".
+23. **Abstract oracle sentence.** "Evidence that did not fit the budget" suggested the
+    evidence was too large, but the oracle fits it at every window. **Done:** "prompts
+    that lacked part of the passage to be reproduced".
+24. **Arjmandi also runs MRCR.** Checked against the full text: closed models (Claude
+    Haiku 4.5, Sonnet 4.6, Opus 4.7 and GPT-5.5), BABILong, GraphWalks, MRCR v2 and
+    Oolong, 30K–180K tokens, matched retention fractions. P8 and the Introduction are
+    accurate. **Done:** the Introduction adds that their truncation on MRCR resembles our
+    oracle.
+25. **MRCR query.** `mrcr_v2/adapter.py` extracts it with a regular expression.
+    **Done:** Ranking says a fixed pattern extracts it.
+26. **"On multi-document inputs"** (abstract) was shown on AA-LCR only. **Done:** "on
+    AA-LCR".
+27. **Space.** **Done:** the Conclusion's token-savings sentence, the third copy of it, is
+    cut.
+
+- **Minor, done:**
+  - "Most policies of Table 2 run at every window".
+  - The stage list that disagreed with Figure 1 is cut.
+  - "Needle requests" before needles are defined became "matching requests in the
+    conversation".
+  - Table 8 gains the oracle's 32K-vs-262K row (`tables.py`), which Results now cites.
+  - "Degrades performance" replaces "degrades reasoning".
+  - "In total" on the token shares, which differ from Table 1's mean per-prompt share.
+  - "Light gray" in Figure 2's caption.
+  - The grader's accuracy has "a 95% lower bound of 84.9%".
+- **Checked, no change:** Bala's budgets are 96–224 tokens; Belcak et al. read inputs with
+  Bash tools; HELMET truncates from the end; ATLAS uses middle truncation.
+
 ## Full review
 
 Written as a FrontierIR reviewer seeing the anonymous submission for the first time.

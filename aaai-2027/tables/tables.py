@@ -296,6 +296,7 @@ WINDOW_DIFFERENCES = [
     ("BM25 recipe $-$ position recipe", "bm25_recipe", "position_recipe", None),
     ("Fusion recipe $-$ without the floor", "upgraded", "ladder3", "AA-LCR"),
     ("Oracle $-$ fusion recipe", "oracle", "upgraded", None),
+    ("Oracle $-$ oracle at 262K", "oracle", "oracle@main", "MRCR v2"),
     ("Dense, full-question query $-$ dense", "dense_question", "dense", None),
     ("Dense, 7,500-token chunks $-$ dense", "dense_7500", "dense", None),
 ]
@@ -312,8 +313,10 @@ def table6():
         differences = {(row["condition"], row["baseline"]): row for row in read_markdown(intervals)}
 
         def at(base, window):
-            # Full context is one run at 262K, compared with every window.
-            return base if window == main or base == "full" else f"{base}_{WINDOW_LABELS[window].lower()}"
+            # Full context is one run at 262K, compared with every window; "@main" pins a run to the main window.
+            if base == "full" or base.endswith("@main"):
+                return base.removesuffix("@main")
+            return base if window == main else f"{base}_{WINDOW_LABELS[window].lower()}"
 
         def score(condition):
             correct, graded = counts(rows[condition]["correct"])
