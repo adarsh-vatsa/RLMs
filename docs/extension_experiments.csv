@@ -1,6 +1,6 @@
 benchmark,group,policy,window,condition,priority,Qwen3.6 thinking off,Qwen3.6 thinking on,DeepSeek-V4-Flash thinking off,DeepSeek-V4-Flash thinking on,notes
 AA-LCR,References,Full context,262K,full,P1,X,X,X,X,The whole prompt; every AA-LCR prompt fits.
-AA-LCR,References,No context,none,no_context,P2,X,X,X,X,The same prompt with the document section left empty: what the model answers from prior knowledge. Not run yet for any model; needs a new policy.
+AA-LCR,References,No context,none,no_context,P2,X,X,X,X,The prompt with no source text (--no-context): what the model answers from what it already knows. Not run yet for any model.
 AA-LCR,Baseline,Middle truncation,32K,middle_32k,P3,X,X,X,X,
 AA-LCR,Baseline,Middle truncation,64K,middle,P1,X,X,X,X,
 AA-LCR,Baseline,Middle truncation,80K,middle_80k,P3,X,X,X,X,
@@ -71,8 +71,8 @@ MRCR v2,Same steps with other ranking,BM25 recipe,32K,bm25_recipe_32k,,X,,,,
 MRCR v2,Same steps with other ranking,BM25 recipe,64K,bm25_recipe_64k,,X,,,,
 MRCR v2,Same steps with other ranking,BM25 recipe,128K,bm25_recipe_128k,P2,X,X,X,X,
 MRCR v2,Same steps with other ranking,BM25 recipe,262K,bm25_recipe,,X,,,,
-LongBench-v2,References,Full context,262K,full,P1,X,X,X,X,"The whole prompt. Qwen with thinking: 13 of the 221 prompts leave less than 32,768 tokens to think; capped and flagged."
-LongBench-v2,References,No context,none,no_context,P2,X,X,X,X,The same prompt with the document section left empty: what the model answers from prior knowledge. Not run yet for any model; needs a new policy. The four options stay in the question.
+LongBench-v2,References,Full context,262K,full,P1,X,X,X,X,"The whole prompt. With thinking the longest prompts leave less than the allowance (13 of 221 at 32,768 and 46 at 81,920); their output is capped at what the window leaves."
+LongBench-v2,References,No context,none,no_context,P2,X,X,X,X,The prompt with no source text (--no-context): what the model answers from what it already knows. The omission marker stands in for the text and the four options stay in the question. Not run yet for any model.
 LongBench-v2,Baseline,Middle truncation,32K,middle_32k,P3,X,X,X,X,
 LongBench-v2,Baseline,Middle truncation,64K,middle,P1,X,X,X,X,
 LongBench-v2,Baseline,Middle truncation,128K,middle_128k,P3,X,X,X,X,

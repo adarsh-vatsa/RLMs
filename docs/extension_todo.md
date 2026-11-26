@@ -26,7 +26,7 @@ The new configurations do not rerun all 93 conditions, and the paper need not re
 - [x] Per-user limits, 2026-11-25: the `normal` QOS sets none (no cap on wall time, GPUs, jobs or submissions per user), so two L40S executors, one H200 executor and three one-GPU client jobs can run at once, as the nodes allow.
 - [x] Qwen with thinking: code and tests, 2026-11-25 (see [Code](#code-for-qwen-with-thinking-done-2026-11-25)); how to run the pilot and the runs: [THINKING.md](jarvis_suites/THINKING.md).
 - [ ] Qwen with thinking: pilot at an 81,920-token allowance, then the runs; the two no-context runs without thinking.
-- [ ] DeepSeek: environment and smoke test on one gpu-h200 node, then pilot and runs. Cut-off for a working server: 29 November; after that, the fallback model.
+- [ ] DeepSeek: environment and smoke test on one gpu-h200 node, then pilot and runs. Cut-off for a working server: 29 November; after that, the fallback model. The vLLM environment is queued; the commands are under [Smoke-test commands](#smoke-test-commands).
 - [ ] Plan: the comparisons each configuration tests, written and dated before the first reported run, as the [12 October plan](workshop_paper_plan_20261012.md) was.
 - [ ] Luna grading of the new AA-LCR runs, intervals, tables and the paper text.
 
@@ -171,6 +171,51 @@ Not done: speculative decoding (MTP). The thinking runs use the executor of the 
 4. Smoke test: start the server at 1M. vLLM refuses to start unless its KV cache holds one request of the full served length; if 1M does not fit, serve the largest input budget plus the allowance: 655,360 for the card's 384K, 294,912 for 32,768. Then thinking on and off, one prompt of about 250K tokens, and prefill and decode speed.
 5. A token-counting adapter for DeepSeek's `encoding` module, checked against the server's `usage.prompt_tokens`.
 6. MRCR re-prepared with DeepSeek's tokenizer (`mrcr_v2.prepare_dataset --executor-model`), checking that the same 120 questions come out. LongBench-v2 keeps the same 221.
+
+### Smoke-test commands
+
+Run on the Jarvis login node, from the directory that holds `adarsh-rlms`.
+
+- [ ] **vLLM environment**, about 15 minutes; submitted 2026-11-25 and queued. Installed on a GPU node, so that `--torch-backend=auto` picks the build that matches the driver:
+  ```bash
+  srun --partition=gpu-h200 --gres=gpu:h200:1 --cpus-per-task=8 --mem=32G --time=01:00:00 --pty bash
+  uv venv "$HOME/.venvs/adarsh-vllm-v4" --python 3.12 --seed
+  uv pip install --python "$HOME/.venvs/adarsh-vllm-v4/bin/python" "vllm==0.26.0" --torch-backend=auto
+  "$HOME/.venvs/adarsh-vllm-v4/bin/python" -c "import vllm, torch; print(vllm.__version__, torch.__version__, torch.version.cuda)"
+  exit
+  ```
+- [ ] **Server on g213**, at the full 1M window (step 4). Follow its log as in [EXECUTOR.md](jarvis_suites/EXECUTOR.md) and set `EXECUTOR_JOB` to its job ID; the first start also downloads the 167 GB of weights. If the log says the KV cache cannot hold one request of the served length, cancel the job and submit again with `EXECUTOR_MAX_MODEL_LEN=655360`. Once the weights are cached, later starts take `EXECUTOR_MIN_LOCAL_FREE_GB=20`.
+  ```bash
+  EXECUTOR_PARTITION=gpu-h200 EXECUTOR_GRES=gpu:h200:4 EXECUTOR_MEM=400G EXECUTOR_NODE=g213 \
+  EXECUTOR_MODEL=deepseek-ai/DeepSeek-V4-Flash-0731 EXECUTOR_TP_SIZE=4 EXECUTOR_MAX_MODEL_LEN=1048576 \
+  EXECUTOR_MIN_LOCAL_FREE_GB=200 VLLM_GPU_MEMORY_UTILIZATION=0.90 \
+  VLLM_EXTRA_ARGS="--trust-remote-code --kv-cache-dtype fp8 --block-size 256 --enable-expert-parallel --tokenizer-mode deepseek_v4 --reasoning-parser deepseek_v4 --max-num-seqs 1" \
+  VLLM_VENV="$HOME/.venvs/adarsh-vllm-v4" \
+    bash adarsh-rlms/jarvis/run.sh submit executor
+  ```
+  If the log complains about `nvcc` or `CUDA_HOME`, add the newest toolkit from `module avail cuda` as `MODULES=...`.
+- [ ] **Checks once it is up**: thinking off; thinking on, twice, where the same seed should give the same answer and the reasoning should come back in its own field; and how the four GPUs are linked.
+  ```bash
+  URL=$(cat "$PROJECT_LOG_DIR/executor-$EXECUTOR_JOB.url"); M=deepseek-ai/DeepSeek-V4-Flash-0731
+  curl -s "$URL/chat/completions" -H 'Content-Type: application/json' -d "{\"model\":\"$M\",\"messages\":[{\"role\":\"user\",\"content\":\"What is the capital of Australia? One word.\"}],\"max_tokens\":64,\"temperature\":0}" | python3 -m json.tool
+  time curl -s "$URL/chat/completions" -H 'Content-Type: application/json' -d "{\"model\":\"$M\",\"messages\":[{\"role\":\"user\",\"content\":\"A train leaves at 9:40 and arrives at 13:15. How long is the trip?\"}],\"max_tokens\":8192,\"temperature\":1.0,\"top_p\":1.0,\"seed\":1,\"chat_template_kwargs\":{\"thinking\":true,\"reasoning_effort\":\"high\"}}" | python3 -m json.tool
+  srun --jobid "$EXECUTOR_JOB" --overlap nvidia-smi topo -m
+  ```
+- [ ] **A prompt of about 250K tokens**, for prefill speed at length. It should answer 17999:
+  ```bash
+  python3 - "$URL" "$M" <<'EOF'
+  import json, sys, time, urllib.request
+  url, model = sys.argv[1], sys.argv[2]
+  text = "\n".join(f"Line {i}: the quick brown fox jumps over the lazy dog." for i in range(18000))
+  body = {"model": model, "max_tokens": 64, "temperature": 0, "messages": [{"role": "user",
+          "content": text + "\n\nWhat number does the last line have? Answer with the number only."}]}
+  request = urllib.request.Request(url + "/chat/completions", json.dumps(body).encode(), {"Content-Type": "application/json"})
+  start = time.time()
+  reply = json.load(urllib.request.urlopen(request, timeout=1800))
+  print(f"{time.time() - start:.1f} s", reply["usage"], reply["choices"][0]["message"]["content"])
+  EOF
+  ```
+- [ ] Cancel the server when done: `scancel "$EXECUTOR_JOB"`.
 
 ## Timeline
 
