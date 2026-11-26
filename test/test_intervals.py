@@ -191,6 +191,24 @@ class SuiteTests(unittest.TestCase):
             self.assertIn("the 2 questions on the 133K conversation that `middle` sends whole",
                           (suite / "intervals-full-context.md").read_text())
 
+    def test_mrcr_thinking_suite_sends_no_conversation_whole(self):
+        with tempfile.TemporaryDirectory() as directory:
+            suite = Path(directory) / "S"
+            for mode, name, overflow, matches in (("direct", "middle_128k", "middle", [1, 0, 0, 0]),
+                                                  ("hybrid", "upgraded_128k", "unsupported", [1, 1, 1, 0])):
+                path = suite / mode / f"S_{name}"
+                write_rows(path / "predictions.jsonl", [{
+                    "case_id": str(index), "source_id": f"c{index % 2}", "exact_match": bool(value),
+                    "full_rendered_input_tokens": 133000, "route": "truncated"}
+                    for index, value in enumerate(matches)])
+                (path / "manifest.json").write_text(json.dumps({
+                    "run_id": f"S_{name}", "status": "complete", "created_at": name, "context_window_tokens": 262144,
+                    "oracle": False, "execution": {"mode": mode, "direct_overflow": overflow, "thinking": True,
+                                                   "max_input_tokens": 126976}}))
+            mrcr_main([str(suite)])
+            self.assertEqual(read_csv(suite / "intervals.csv")[("upgraded_128k", "middle_128k")]["gained"], "2")
+            self.assertFalse((suite / "intervals-full-context.csv").exists())
+
     def test_long_bench_resamples_documents(self):
         with tempfile.TemporaryDirectory() as directory:
             suite = Path(directory) / "S"

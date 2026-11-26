@@ -4,6 +4,7 @@ Four conversations are too few to resample, so each replicate resamples question
 conversation; the intervals hold for these conversations, not for conversations in general. The
 oracle at each window bounds what a run can recover. Full context exists only for the conversation
 that middle truncation at the largest window sends whole, so a second table covers its questions alone.
+Thinking suites stop at 128K, which sends no conversation whole, so they have no second table.
 """
 
 from __future__ import annotations
@@ -59,7 +60,10 @@ def main(argv=None):
     middles = [name for name, condition in found.items() if condition["middle"]]
     full = max(middles, key=lambda name: found[name]["window"])
     whole = found[full]["sent whole"]
-    sizes = ", ".join(sorted({size_label(tokens) for tokens in whole.values()}))
+    if not whole:
+        print(f"No full-context table: `{full}` sends no conversation whole")
+        return
+    sizes =", ".join(sorted({size_label(tokens) for tokens in whole.values()}))
     table(args.suite, "intervals-full-context",
           f"MRCR v2 suite {args.suite.name}, the {len(whole)} questions on the {sizes} conversation that `{full}` "
           f"sends whole", found, {question: strata[question] for question in whole},

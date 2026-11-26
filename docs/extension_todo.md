@@ -25,8 +25,9 @@ The new configurations do not rerun all 93 conditions, and the paper need not re
   - g013 (gpu-h100sxm): 4 × H100 80GB HBM3, 515 GB RAM, 1.3 TB free on `/local`.
 - [x] Per-user limits, 2026-11-25: the `normal` QOS sets none (no cap on wall time, GPUs, jobs or submissions per user), so two L40S executors, one H200 executor and three one-GPU client jobs can run at once, as the nodes allow.
 - [x] Qwen with thinking: code and tests, 2026-11-25 (see [Code](#code-for-qwen-with-thinking-done-2026-11-25)); how to run the pilot and the runs: [THINKING.md](jarvis_suites/THINKING.md).
-- [ ] Qwen with thinking: pilot at an 81,920-token allowance, then the runs; the two no-context runs without thinking.
-- [ ] DeepSeek: environment and smoke test on one gpu-h200 node, then pilot and runs. Cut-off for a working server: 29 November; after that, the fallback model. The vLLM environment is queued; the commands are under [Smoke-test commands](#smoke-test-commands).
+- [x] Qwen with thinking: pilot, 2026-11-26, on g101 (suite `20261128_think_pilot`); it set the allowance at 81,920 (see [Thinking budget](#thinking-budget-decided-2026-11-25)).
+- [ ] Qwen with thinking: the runs (suite `20261130_think`), then the two no-context runs without thinking.
+- [ ] DeepSeek: environment and smoke test on one gpu-h200 node, then pilot and runs. Cut-off for a working server: 29 November; after that, the fallback model. The vLLM environment is not installed yet; the commands are under [Smoke-test commands](#smoke-test-commands).
 - [ ] Plan: the comparisons each configuration tests, written and dated before the first reported run, as the [12 October plan](workshop_paper_plan_20261012.md) was.
 - [ ] Luna grading of the new AA-LCR runs, intervals, tables and the paper text.
 
@@ -37,6 +38,8 @@ The new configurations do not rerun all 93 conditions, and the paper need not re
 Each condition keeps the input budget it had with thinking off, and the output allowance comes on top of it instead of out of it. The allowance is separate from the input budget, not from the window: the model writes its reasoning and then its answer in the same sequence as the prompt, so the served window must hold all three, and one `max_tokens` caps the reasoning and the answer together. Each request gets the allowance or what the window leaves after its prompt, whichever is smaller, and an answer uses only the tokens it needs. The Qwen executor serves 262,144 tokens. Token counting stays at `enable_thinking=False`, so Qwen's prompts with thinking are byte for byte those of the `20261029` runs. Thinking on and off are then compared on identical inputs, and MRCR evidence recall cannot change, so any effect of thinking shows in exact match given the target. Check the identity per question from `selected_evidence_ranges` and `final_rendered_input_tokens`.
 
 Qwen's allowance is 32,768 or 81,920 tokens, set from the pilot, which runs at 81,920. The Qwen3.6 card recommends 32,768 "for most queries" and 81,920 "for benchmarking on highly complex problems, such as those found in math and programming competitions", and its thinking-mode examples use 81,920. The pilot counts, per policy, the answers that finish between 32,768 and 81,920, which the smaller cap would cut off, and the traces that reach 81,920, probably loops that no cap saves. If the first group is more than a few percent of answers, or concentrated in one policy, the runs use 81,920; otherwise 32,768, which limits a loop to about 4 minutes. Cap hits must stay rare: reasoning cut off at the cap leaves no answer, which scores zero, and with thinking off middle-truncated prompts drew 55% longer answers than full ones, so a tight cap would likely hit middle truncation hardest. Loops are a real risk, because the card's remedy for endless repetition, the presence penalty, is 0 here (see [Decoding with thinking](#decoding-with-thinking-decided-2026-11-25)).
+
+Decided after the pilot (2026-11-26): 81,920. No answer of the pilot's 132 reached it, so it cuts nothing off, and it costs time only on the answers that need it; the pilot had no loops. It also gives the full runs the pilot's requests, so the pilot's questions show whether a seeded run repeats itself without a separate rerun. This sets aside the rule above, which would have picked 32,768 if almost no answer passed it, to stop a loop sooner; the pilot's tables do not show how many passed 32,768, and the full runs count them.
 
 - Windows: with thinking, a condition's window names its input budget. At 64K the prompts stay 61,440 tokens (65,528 on LongBench-v2), and a request can reach 61,440 plus the allowance, 143,360 at 81,920. Every windowed condition fits 81,920 in full (LongBench-v2 at 128K, the tightest, leaves 131,080), and so does AA-LCR full context (its longest prompt leaves 140,032).
 - MRCR at 262K: the input budget, 258,048, leaves 4,096 tokens for the reasoning and the answer together on the 90 questions from the three conversations longer than it; the 133K conversation fits whole. Answers there ran up to 950 tokens with thinking off, which would leave about 3,100–3,700 to think. So Qwen's largest MRCR window with thinking is 128K. To keep the models comparable, 128K is MRCR's main window for every new model; the thinking-off runs at 128K exist.
@@ -96,6 +99,7 @@ Qwen with thinking runs on g101 and g102, the hardware of the thinking-off runs,
 
 - The 95 suite runs behind the 93 conditions took about 38 executor-hours: AA-LCR 7.5, MRCR 20 and LongBench-v2 10, from the run minutes in the suites' results tables.
 - Qwen3.6 on 4 × L40S, one request at a time, fitted on the 13,507 requests of those suites: prefill takes 1.6 s at 32K, 3.4 s at 64K, 7.6 s at 128K and 16 s at 226K; decoding runs at 174, 161, 141 and 118 tokens/s. A 5K-token reasoning trace adds 30–40 s to questions that take 2–20 s now.
+- Qwen with thinking, pilot of 2026-11-26: mean reasoning ran from 2,337 to 5,499 tokens per question and generation took 20–40 s per question. At those rates and the conditions' prompt lengths, the runs take about 17 hours for LongBench-v2 and about 20 for AA-LCR and MRCR together, with grading: one job per node.
 - DeepSeek on 4 × H200: not measured. Expect the same order as Qwen on the L40S nodes: about 4 times the active parameters, on much faster GPUs.
 - Job limits: 24 hours on gpu-l40s (executors and every suite's one-GPU client job), gpu-h200 and compute-short (Luna grading), and 72 hours on gpu-h100sxm. No single run comes near 24 hours; the longest, LongBench-v2 with thinking, takes about 2–3.5 hours at 5K reasoning tokens and about 5 at 10K. So the limit means resubmitting, about once a day per node. A resubmitted suite keeps its finished runs and restarts the unfinished one from the beginning. `jarvis/thinking_runs.sh` submits an executor pinned to a node with a suite job that waits for it, records its setup and cancels it at the end, as `jarvis/rerun_g202_runs.sh` did, so each day's resubmission is one command.
 
@@ -176,13 +180,13 @@ Not done: speculative decoding (MTP). The thinking runs use the executor of the 
 
 Run on the Jarvis login node, from the directory that holds `adarsh-rlms`.
 
-- [ ] **vLLM environment**, about 15 minutes; submitted 2026-11-25 and queued. Installed on a GPU node, so that `--torch-backend=auto` picks the build that matches the driver:
+- [ ] **vLLM environment**, about 15 minutes. Installed on a GPU node, so that `--torch-backend=auto` picks the build that matches the driver. The first attempt, on 2026-11-25, was an interactive `srun --pty` job: it left no log, and a queued interactive job ends with the login session. A batch job keeps its place in the queue after logout and logs to `$HOME/adarsh-rlms-logs/rlms-vllm-install-<job id>.out`, whose last line gives the vLLM, torch and CUDA versions:
   ```bash
-  srun --partition=gpu-h200 --gres=gpu:h200:1 --cpus-per-task=8 --mem=32G --time=01:00:00 --pty bash
+  sbatch --partition=gpu-h200 --gres=gpu:h200:1 --cpus-per-task=8 --mem=32G --time=01:00:00 \
+    --job-name=rlms-vllm-install --output="$HOME/adarsh-rlms-logs/%x-%j.out" --wrap 'set -e
   uv venv "$HOME/.venvs/adarsh-vllm-v4" --python 3.12 --seed
   uv pip install --python "$HOME/.venvs/adarsh-vllm-v4/bin/python" "vllm==0.26.0" --torch-backend=auto
-  "$HOME/.venvs/adarsh-vllm-v4/bin/python" -c "import vllm, torch; print(vllm.__version__, torch.__version__, torch.version.cuda)"
-  exit
+  "$HOME/.venvs/adarsh-vllm-v4/bin/python" -c "import vllm, torch; print(vllm.__version__, torch.__version__, torch.version.cuda)"'
   ```
 - [ ] **Server on g213**, at the full 1M window (step 4). Follow its log as in [EXECUTOR.md](jarvis_suites/EXECUTOR.md) and set `EXECUTOR_JOB` to its job ID; the first start also downloads the 167 GB of weights. If the log says the KV cache cannot hold one request of the served length, cancel the job and submit again with `EXECUTOR_MAX_MODEL_LEN=655360`. Once the weights are cached, later starts take `EXECUTOR_MIN_LOCAL_FREE_GB=20`.
   ```bash
@@ -230,7 +234,7 @@ Run on the Jarvis login node, from the directory that holds `adarsh-rlms`.
 ## Open questions
 
 1. Whether to report the model-specific runs (MRCR at 262K, and MRCR in DeepSeek's 1M window) apart from the comparison.
-2. Each model's allowance, from its pilot: Qwen 32,768 or 81,920; DeepSeek Qwen's figure or its card's 384K (see [Thinking budget](#thinking-budget-decided-2026-11-25)).
+2. DeepSeek's allowance, from its pilot: Qwen's 81,920 or its card's 384K (see [Thinking budget](#thinking-budget-decided-2026-11-25)).
 
 ## References
 
