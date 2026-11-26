@@ -1,4 +1,5 @@
 from dataclasses import replace
+import io
 import json
 import csv
 import os
@@ -65,7 +66,7 @@ class SharedExecutionTests(unittest.TestCase):
         for label in ("LongBench", "AA-LCR", "MRCR", "new-benchmark"):
             calls = []
             pipeline = Pipeline(config(), FakeTokenizer(),
-                lambda request: calls.append(request) or Completion("answer", 10, 1, {}), backend_factory=backend)
+                lambda request, **_: calls.append(request) or Completion("answer", 10, 1, {}), backend_factory=backend)
             result = pipeline.execute(task(label, "abcdefghij" * 200))
             self.assertEqual(result["status"], "ok", result["error"])
             requests.append(calls)
@@ -84,7 +85,7 @@ class SharedExecutionTests(unittest.TestCase):
                 with self.subTest(task=solver_input.case_id, mode=mode):
                     calls = []
                     engine = Pipeline(config(mode=mode, max_input_tokens=1800, context_window_tokens=2000),
-                        FakeTokenizer(), lambda request: calls.append(request) or Completion("answer", 10, 1, {}),
+                        FakeTokenizer(), lambda request, **_: calls.append(request) or Completion("answer", 10, 1, {}),
                         backend_factory=backend)
                     expected = engine.preflight(solver_input)["route"]
                     result = engine.execute(solver_input)
@@ -97,7 +98,7 @@ class SharedExecutionTests(unittest.TestCase):
         solver_input = mr_task("mr", "s", PREFIX, "conversation", example()["view_ops"])
         calls = []
         engine = Pipeline(config(max_input_tokens=900), FakeTokenizer(),
-            lambda request: calls.append(request) or Completion("answer", 1, 1, {}),
+            lambda request, **_: calls.append(request) or Completion("answer", 1, 1, {}),
             backend_factory=lambda: self.fail("fitting prompt must not embed"))
         result = engine.execute(solver_input)
         self.assertEqual(result["route"], "direct_fit")
@@ -114,7 +115,7 @@ class SharedExecutionTests(unittest.TestCase):
     def test_index_reuse_and_source_invalidation(self):
         scs, controller = backend()
         calls = []
-        engine = Pipeline(config(), FakeTokenizer(), lambda request: Completion("answer", 1, 1, {}),
+        engine = Pipeline(config(), FakeTokenizer(), lambda request, **_: Completion("answer", 1, 1, {}),
                           backend_factory=lambda: (scs, controller))
         for solver_input in (task("a", "abcd" * 500), task("b", "abcd" * 500, "another"), task("c", "efgh" * 500)):
             result = engine.execute(solver_input)
@@ -140,7 +141,7 @@ class SharedExecutionTests(unittest.TestCase):
         calls = []
         def engine(settings):
             return Pipeline(settings, FakeTokenizer(),
-                lambda request: calls.append(request) or Completion("answer", 1, 1, {}),
+                lambda request, **_: calls.append(request) or Completion("answer", 1, 1, {}),
                 backend_factory=lambda: (types.SimpleNamespace(), cache))
         write = config(cache_write=True, cache_matching="exact")
         self.assertTrue(engine(write).execute(task())["cache_written"])
@@ -167,13 +168,13 @@ class SharedExecutionTests(unittest.TestCase):
     def test_failure_saved_before_scoring_and_report_denominators(self):
         with tempfile.TemporaryDirectory() as temporary:
             engine = Pipeline(config(mode="direct"), FakeTokenizer(),
-                lambda request: (_ for _ in ()).throw(RuntimeError("failed executor")), output_dir=temporary)
+                lambda request, **_: (_ for _ in ()).throw(RuntimeError("failed executor")), output_dir=temporary)
             result = engine.execute(task("failed"))
             self.assertEqual(result["status"], "error")
             self.assertEqual(result["attempts"], 1)
             unsupported = engine.execute(task("too-long", "x" * 2000))
             self.assertEqual(unsupported["status"], "unsupported_context")
-            engine.complete = lambda request: Completion("answer", 1, 1, {})
+            engine.complete = lambda request, **_: Completion("answer", 1, 1, {})
             engine.execute(task("good"))
             finalize(temporary)
             report = json.loads((Path(temporary) / "execution_report.json").read_text())
@@ -185,6 +186,77 @@ class SharedExecutionTests(unittest.TestCase):
             self.assertEqual(report["quality"]["accuracy"], 0.5)
             self.assertEqual(len((Path(temporary) / "execution.jsonl").read_text().splitlines()), 3)
 
+    def test_thinking_seeds_each_question_and_leaves_other_requests_unchanged(self):
+        from execution.client import with_thinking
+        body = {"chat_template_kwargs": {"enable_thinking": False}, "structured_outputs": {"choice": ["A", "B"]}}
+        self.assertIs(with_thinking(body, config(), "q1"), body)
+        thinking = with_thinking(body, config(thinking=True), "q1")
+        self.assertEqual(thinking["chat_template_kwargs"], {"enable_thinking": True})
+        self.assertEqual(thinking["structured_outputs"], body["structured_outputs"])
+        self.assertEqual((thinking["temperature"], thinking["top_k"], thinking["presence_penalty"]), (0.6, 20, 0.0))
+
+        def seed(case_id, sampling_seed=1):
+            return with_thinking(body, config(thinking=True, sampling_seed=sampling_seed), case_id)["seed"]
+        self.assertEqual(seed("q1"), thinking["seed"])
+        self.assertNotEqual(seed("q2"), seed("q1"))
+        self.assertNotEqual(seed("q1", sampling_seed=2), seed("q1"))
+
+    def test_output_is_capped_at_what_the_prompt_leaves_and_reasoning_is_kept(self):
+        calls = []
+
+        def complete(request, **options):
+            calls.append(options)
+            return Completion("answer", 1, 9, {}, "stop", "think it over")
+        with tempfile.TemporaryDirectory() as temporary:
+            engine = Pipeline(config(mode="direct", max_input_tokens=900, max_output_tokens=500, thinking=True),
+                              FakeTokenizer(), complete, output_dir=temporary)
+            short, long = task("short", "x" * 100), task("long", "x" * 800)
+            results = [engine.execute(item) for item in (short, long)]
+            room = 1000 - chat_token_count(FakeTokenizer(), long.render(None))
+            self.assertEqual([call["max_tokens"] for call in calls], [500, room])
+            self.assertEqual([result["max_tokens"] for result in results], [500, room])
+            self.assertEqual([call["case_id"] for call in calls], ["short", "long"])
+            self.assertEqual(results[0]["reasoning_tokens"], len("think it over"))
+            saved = [json.loads(line) for line in (Path(temporary) / "reasoning.jsonl").read_text().splitlines()]
+            self.assertEqual(saved[0], {"case_id": "short", "reasoning": "think it over"})
+            manifest = json.loads((Path(temporary) / "execution_manifest.json").read_text())
+            self.assertEqual((manifest["enable_thinking"], manifest["temperature"]), (True, 0.6))
+        with self.assertRaisesRegex(ValueError, "leave room for output"):
+            config(max_input_tokens=1000)
+
+    def test_no_context_sends_the_prompt_without_source_text(self):
+        calls = []
+        engine = Pipeline(config(mode="direct", no_context=True), FakeTokenizer(),
+                          lambda request, **_: calls.append(request) or Completion("answer", 1, 1, {}))
+        item = task("q", "source text")
+        result = engine.execute(item)
+        self.assertEqual(calls, [item.render([])])
+        self.assertEqual((result["route"], engine.preflight(item)["route"]), ("no_context", "no_context"))
+        self.assertLess(result["final_rendered_input_tokens"], result["full_rendered_input_tokens"])
+        with self.assertRaisesRegex(ValueError, "direct mode"):
+            config(no_context=True)
+
+    def test_thinking_runs_take_the_window_of_their_input_budget(self):
+        from execution.results_table import is_middle_reference, policy, window
+        middle = {"mode": "direct", "direct_overflow": "middle"}
+        self.assertEqual(window(middle, 65536), 65536)
+        thinking = {**middle, "thinking": True}
+        budgets = (28672, 61440, 65528, 77824, 126976, 229376, 258048, 262136)
+        self.assertEqual([window({**thinking, "max_input_tokens": budget}, 262144) for budget in budgets],
+                         [32768, 65536, 65536, 81920, 131072, 262144, 262144, 262144])
+        self.assertTrue(is_middle_reference(thinking))
+        self.assertFalse(is_middle_reference({**thinking, "sampling_seed": 2}))
+        self.assertEqual(policy({"mode": "direct", "direct_overflow": "unsupported", "no_context": True}), "no context")
+
+    def test_client_returns_reasoning_under_either_field_name(self):
+        from execution.client import call_chat_completion
+        for field in ("reasoning", "reasoning_content"):
+            payload = {"choices": [{"message": {"content": "A", field: " B fails "}, "finish_reason": "stop"}],
+                       "usage": {"prompt_tokens": 3, "completion_tokens": 2}}
+            completion = call_chat_completion(base_url="http://executor/v1", model="m", messages=[], max_tokens=4,
+                opener=lambda request, timeout: io.BytesIO(json.dumps(payload).encode()))
+            self.assertEqual((completion.text, completion.reasoning), ("A", "B fails"))
+
     def test_task_contract_has_no_gold_fields(self):
         self.assertNotIn("answer", Task.__dataclass_fields__)
         self.assertNotIn("reference", Task.__dataclass_fields__)
@@ -192,16 +264,20 @@ class SharedExecutionTests(unittest.TestCase):
 
     def test_longbench_transport_preserves_finish_reason_and_raw_usage(self):
         from long_bench_v2.run_benchmark import _call_hybrid_executor
-        raw = {"choices": [{"finish_reason": "length"}], "usage": {"prompt_tokens": 10, "completion_tokens": 8}}
+        raw = {"choices": [{"finish_reason": "length", "message": {"content": "A", "reasoning": "B fails"}}],
+               "usage": {"prompt_tokens": 10, "completion_tokens": 8}}
         response = types.SimpleNamespace(raw=raw, content=[types.SimpleNamespace(text="A")],
                                          usage=types.SimpleNamespace(input_tokens=10, output_tokens=8))
-        scs = types.SimpleNamespace(create_llm_message=lambda **kwargs: response)
+        calls = []
+        scs = types.SimpleNamespace(create_llm_message=lambda **kwargs: calls.append(kwargs) or response)
         controller = types.SimpleNamespace(metrics=types.SimpleNamespace(record_call=lambda *args: None))
-        args = types.SimpleNamespace(executor_model="fixture", max_output_tokens=8)
-        result = _call_hybrid_executor(scs, controller, args, [{"role": "system", "content": "choose"},
-                                                            {"role": "user", "content": "question"}])
+        args = types.SimpleNamespace(executor_model="fixture", request_timeout_seconds=1800)
+        result = _call_hybrid_executor(scs, controller, args, config(), [{"role": "system", "content": "choose"},
+                                       {"role": "user", "content": "question"}], max_tokens=8, case_id="q")
         self.assertEqual(result.finish_reason, "length")
         self.assertEqual(result.raw_usage, raw["usage"])
+        self.assertEqual(result.reasoning, "B fails")
+        self.assertEqual((calls[0]["max_tokens"], calls[0]["timeout_seconds"]), (8, 1800))
 
     def test_source_selection_bounds_precede_row_limit(self):
         from execution.selection import filter_sources

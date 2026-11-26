@@ -7,7 +7,7 @@ import csv
 import json
 from pathlib import Path
 
-from execution.results_table import gained_lost, mean, policy, read_rows, write_table
+from execution.results_table import gained_lost, is_middle_reference, mean, policy, read_rows, window, write_table
 
 
 CHOICES = {"A", "B", "C", "D"}
@@ -23,18 +23,19 @@ def summarize(suite):
     runs.sort(key=lambda run: manifests[run]["started_at"])
     correct = {run: {row["case_id"]: bool(row["scores"].get("accuracy"))
                      for row in read_rows(run / "evaluation.jsonl")} for run in runs}
-    middle = {configs[run]["context_window_tokens"]: correct[run] for run in runs
-              if configs[run]["mode"] == "direct" and configs[run]["direct_overflow"] == "middle"}
+    middle = {window(configs[run], configs[run]["context_window_tokens"]): correct[run] for run in runs
+              if is_middle_reference(configs[run])}
+    thinking = any(configs[run].get("thinking") for run in runs)
     rows = []
     for run in runs:
         config, records, current = configs[run], read_rows(run / "execution.jsonl"), correct[run]
         hybrid = config["mode"] == "hybrid"
-        reference = middle.get(config["context_window_tokens"])
+        reference = middle.get(window(config, config["context_window_tokens"]))
         embedding_ms = sum(record["document_embedding_ms"] for record in records)
         rows.append({
             "condition": manifests[run]["run_id"].removeprefix(f"{suite.name}_"),
             "policy": policy(config),
-            "window": config["context_window_tokens"],
+            "window": window(config, config["context_window_tokens"]),
             "questions": len(records),
             "prompt kept": mean(r["final_rendered_input_tokens"] / r["full_rendered_input_tokens"] for r in records),
             "input tokens": mean(r["final_rendered_input_tokens"] for r in records),
@@ -42,6 +43,8 @@ def summarize(suite):
             "correct": f"{sum(current.values())}/{len(current)}",
             **(gained_lost(current, reference) if reference is not None and reference is not current else {}),
             "invalid answers": sum(r["prediction"].strip() not in CHOICES for r in records),
+            **({"reasoning tokens": mean(r["reasoning_tokens"] for r in records),
+                "output limit hit": sum(r["finish_reason"] == "length" for r in records)} if thinking else {}),
             "retried requests": sum((r.get("attempts") or 1) > 1 for r in records),
             "generation s/question": mean(r["generation_ms"] for r in records) / 1000,
             "retrieval + packing s/question": mean((r["retrieval_ms"] + r["packing_ms"]) / 1000 for r in records)
@@ -50,7 +53,8 @@ def summarize(suite):
             "run minutes": round(manifests[run]["elapsed_seconds"] / 60),
         })
     columns = ["condition", "policy", "window", "questions", "prompt kept", "input tokens", "accuracy", "correct",
-               "gained vs middle", "lost vs middle", "p vs middle", "invalid answers", "retried requests",
+               "gained vs middle", "lost vs middle", "p vs middle", "invalid answers",
+               *(["reasoning tokens", "output limit hit"] if thinking else []), "retried requests",
                "generation s/question", "retrieval + packing s/question", "embedding minutes", "run minutes"]
     return columns, rows
 
@@ -76,7 +80,7 @@ def categories(suite):
             rows.append({
                 "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
                 "policy": policy(config),
-                "window": config["context_window_tokens"],
+                "window": window(config, config["context_window_tokens"]),
                 "category": category,
                 "questions": len(answers),
                 "accuracy": mean(answers),

@@ -499,6 +499,49 @@ class LongBenchV2ApiBenchmarkTests(unittest.TestCase):
         self.assertEqual(bridge_row["delta_output_tokens"], 25)
         self.assertEqual(prediction_row["prediction"], "C")
 
+    def test_thinking_run_keeps_the_choice_constraint_and_saves_the_reasoning(self):
+        calls = []
+
+        class ThinkingOpener(FakeOpenAICompatibleOpener):
+            def __call__(self, request, timeout=120):
+                super().__call__(request, timeout)
+                return FakeOpenRouterHTTPResponse({
+                    "choices": [{"message": {"content": "C", "reasoning": "A and B fail"}, "finish_reason": "stop"}],
+                    "usage": {"prompt_tokens": 500, "completion_tokens": 9, "total_tokens": 509}})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source_path, suite_path = root / "data.json", root / "suite.csv"
+            source_path.write_text(json.dumps([_source_row("row_1")]), encoding="utf-8")
+            with suite_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=list(_suite_row("row_1").keys()))
+                writer.writeheader()
+                writer.writerow(_suite_row("row_1", "original"))
+            args = types.SimpleNamespace(
+                suite_csv=suite_path, source_json_path=source_path, row_types="original", max_rows=0,
+                api_provider="openai_compatible", api_model="Qwen/Qwen3.6-35B-A3B",
+                api_base_url="http://executor.example:8000/v1", api_key_env="", max_output_tokens=3500,
+                context_window_tokens=4096, max_input_tokens=4000, max_retries=1, fail_fast=True,
+                output_dir=root / "artifacts", manifest_note="", source_ids="row_1", thinking=True)
+            run_longbench_api_benchmark(args, client_factory=lambda: {
+                "api_key": "", "url": "http://executor.example:8000/v1/chat/completions",
+                "opener": ThinkingOpener(calls)}, tokenizer_factory=lambda _: FakeTokenizer())
+            run_dir = next((root / "artifacts" / ARTIFACT_SUBDIR).iterdir())
+            manifest = json.loads((run_dir / "manifest.json").read_text())
+            record = json.loads((run_dir / "execution.jsonl").read_text().splitlines()[0])
+            saved = json.loads((run_dir / "reasoning.jsonl").read_text().splitlines()[0])
+
+        payload = calls[0]["body"]
+        self.assertEqual(payload["chat_template_kwargs"], {"enable_thinking": True})
+        self.assertEqual(payload["structured_outputs"], {"choice": ["A", "B", "C", "D"]})
+        self.assertEqual((payload["temperature"], calls[0]["timeout"]), (0.6, 1800))
+        self.assertIsInstance(payload["seed"], int)
+        self.assertEqual(payload["max_tokens"], 4096 - record["final_rendered_input_tokens"])
+        self.assertLess(payload["max_tokens"], 3500)
+        self.assertEqual((record["prediction"], saved["reasoning"]), ("C", "A and B fail"))
+        self.assertGreater(record["reasoning_tokens"], 0)
+        self.assertEqual((manifest["thinking_enabled"], manifest["temperature"]), (True, 0.6))
+
     def test_fake_openai_compatible_run_uses_qwen_direct_payload(self):
         calls = []
 

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import time
 
-from execution.client import call_chat_completion
+from execution.client import THINKING_SAMPLING, call_chat_completion, with_thinking
 from mrcr_v2.dataset import (
     DEFAULT_DATA_DIR, DEFAULT_MODEL, DEFAULT_REVISION, file_hash, load_prepared, load_tokenizer,
     read_source, text_hash, tokenizer_metadata, validate_bounds,
@@ -188,7 +188,8 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
         "child_tokens": args.child_tokens, "child_overlap_tokens": args.child_overlap_tokens,
         "retrieval_query": args.retrieval_query, "oracle": args.oracle,
         "executor_model": args.executor_model, "executor_base_url": args.executor_base_url,
-        "temperature": 0, "enable_thinking": False, "answer_cache_enabled": config.cache_read or config.cache_write,
+        "temperature": THINKING_SAMPLING["temperature"] if config.thinking else 0, "enable_thinking": config.thinking,
+        "answer_cache_enabled": config.cache_read or config.cache_write,
         "execution": config.metadata(),
         "reranker_enabled": config.rerank_top > 0, "knowledge_lookup_enabled": False,
         "retrieval_assisted": args.mode == "hybrid", "serving_metadata": serving_metadata,
@@ -218,10 +219,11 @@ def run_benchmark(args, *, tokenizer_factory=load_tokenizer,
         }
         return scs, controller
 
-    def complete(request):
+    def complete(request, *, max_tokens, case_id):
         return completion_caller(base_url=args.executor_base_url, model=args.executor_model,
-            messages=request, max_tokens=args.max_output_tokens,
-            extra_body={"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
+            messages=request, max_tokens=max_tokens,
+            extra_body=with_thinking({"temperature": 0, "chat_template_kwargs": {"enable_thinking": False}},
+                                     config, case_id),
             api_key=api_key, timeout_seconds=args.request_timeout_seconds)
 
     if args.oracle:

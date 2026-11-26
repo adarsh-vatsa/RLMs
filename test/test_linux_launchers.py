@@ -127,7 +127,8 @@ class LinuxLauncherTests(unittest.TestCase):
         runs = {args.run_id: args for args in (runner.parse_args(command[3:])
                                                 for command in commands if command[2] == "aa_lcr.run_benchmark")}
         grades = [regrader.parse_args(command[3:]) for command in commands if command[2] == "aa_lcr.regrade"]
-        self.assertEqual((len(runs), len(grades)), (31, 31))
+        self.assertEqual((len(runs), len(grades)), (32, 32))
+        self.assertTrue(runs["S_no_context"].no_context)
         self.assertTrue(all(args.execution_only and args.fail_fast for args in runs.values()))
         self.assertEqual({args.output_root for args in runs.values()}, {Path("benchmark_artifacts/aa_lcr/suites/S")})
         self.assertEqual((runs["S_full"].max_input_tokens, runs["S_head"].direct_overflow), (258048, "head"))
@@ -190,7 +191,7 @@ class LinuxLauncherTests(unittest.TestCase):
                               "OPENROUTER_API_KEY"))
         self.assertEqual(grades[1].output_dir, Path("benchmark_artifacts/aa_lcr/suites/S/regrades/gpt-5.6-luna/hybrid/S_position"))
         everything = self.launch("run_aa_lcr_suite.sh", "S", env={"AA_LCR_GRADER": "luna"})
-        self.assertIn("Suite S: 31 conditions", everything.stdout)
+        self.assertIn("Suite S: 32 conditions", everything.stdout)
         self.assertIn("upgraded_80k", everything.stdout)
 
 
@@ -247,6 +248,37 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertIn("moving unfinished benchmark_artifacts/mrcr_v2/suites/S/hybrid/S_dense", result.stdout)
             self.assertEqual([command[-1] for command in commands if command[2] == "mrcr_v2.run_benchmark"], ["S_dense"])
 
+    def test_thinking_suites_run_the_planned_conditions_with_an_allowance_on_top_of_each_budget(self):
+        recipe = "--evidence-selection fusion --packing fill"
+        parsers = {module: importlib.import_module(module).build_arg_parser() for module in (
+            "aa_lcr.run_benchmark", "mrcr_v2.run_benchmark", "long_bench_v2.run_api_benchmark",
+            "long_bench_v2.run_benchmark")}
+        planned = {
+            "aa_lcr": ["full", "middle", "upgraded", "position", "position_recipe", "bm25_recipe", "no_context",
+                       "middle_repeat2", "middle_repeat3", "upgraded_repeat2", "upgraded_repeat3",
+                       "middle_32k", "upgraded_32k", "middle_80k", "upgraded_80k"],
+            "mrcr": ["middle_128k", "upgraded_128k", "oracle_128k", "bm25_recipe_128k", "middle_64k", "upgraded_64k",
+                     "oracle_64k", "middle_32k", "upgraded_32k"],
+            "longbench": ["full", "middle", "upgraded", "bm25_recipe", "no_context", "middle_32k", "upgraded_32k",
+                          "middle_128k", "upgraded_128k"],
+        }
+        for benchmark, names in planned.items():
+            with self.subTest(benchmark=benchmark):
+                env = {"THINKING": "1", "AA_LCR_RECIPE": recipe, "MRCR_RECIPE": recipe, "LONGBENCH_RECIPE": recipe}
+                self.assertNotEqual(self.launch(f"run_{benchmark}_suite.sh", "S", env=env).returncode, 0)
+                result = self.launch(f"run_{benchmark}_suite.sh", "S", env={**env, "THINKING_ALLOWANCE": "81920"})
+                runs = [parsers[command[2]].parse_args(command[3:]) for command in self.suite_commands(result)
+                        if command[2] in parsers]
+                self.assertEqual([args.run_id for args in runs], [f"S_{name}" for name in names])
+                self.assertEqual({(args.thinking, args.context_window_tokens, args.max_output_tokens) for args in runs},
+                                 {(True, 262144, 81920)})
+                self.assertIn("Resume or repeat with: THINKING=1 THINKING_ALLOWANCE=81920 ", result.stdout)
+                if benchmark == "aa_lcr":
+                    by_name = {args.run_id: args for args in runs}
+                    self.assertEqual(by_name["S_full"].max_input_tokens, 262144 - 81920)
+                    self.assertEqual([by_name[f"S_{name}"].sampling_seed for name in ("middle", "middle_repeat2",
+                                      "upgraded_repeat3")], [1, 2, 3])
+
     def test_longbench_suite_runs_every_condition_on_the_shared_question_set(self):
         commands = self.suite_commands(self.launch("run_longbench_suite.sh", "S", env={
             "LONGBENCH_RECIPE": "--evidence-selection fusion --packing fill"}))
@@ -254,7 +286,8 @@ class LinuxLauncherTests(unittest.TestCase):
                    for module in ("long_bench_v2.run_api_benchmark", "long_bench_v2.run_benchmark")}
         runs = {args.run_id: (command[2], args) for command in commands if command[2] in parsers
                 for args in [parsers[command[2]].parse_args(command[3:])]}
-        self.assertEqual(len(runs), 27)
+        self.assertEqual(len(runs), 28)
+        self.assertTrue(runs["S_no_context"][1].no_context)
         self.assertEqual([runs[f"S_random{seed}"][1].selection_seed for seed in range(3)], [0, 1, 2])
         self.assertEqual({(args.output_dir, args.min_source_tokens, args.max_source_tokens, args.fail_fast,
                            args.execution_profile, args.row_types) for _, args in runs.values()},
@@ -424,6 +457,45 @@ class LinuxLauncherTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1)
             self.assertIn("Executor job 42 ended (no longer queued) before it was ready", result.stderr)
             self.assertEqual((root / "cancelled").read_text().strip(), "42")
+
+    def test_thinking_runs_preview_the_planned_runs_and_submit_an_l40s_executor(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(REPO / "linux", root / "linux")
+            shutil.copytree(REPO / "jarvis", root / "jarvis")
+            preview = self.launch("thinking_runs.sh", "T", "aa_lcr,mrcr", linux=root / "jarvis", cwd=root,
+                                  env={"THINKING_ALLOWANCE": "32768"})
+            commands = [command for command in self.suite_commands(preview) if command[2].endswith(".run_benchmark")]
+            names = {module: [command[-1] for command in commands if command[2] == f"{module}.run_benchmark"]
+                     for module in ("aa_lcr", "mrcr_v2")}
+            self.assertEqual((len(names["aa_lcr"]), len(names["mrcr_v2"])), (15, 9))
+            self.assertEqual(names["aa_lcr"][:3], ["T_full", "T_middle", "T_upgraded"])
+            self.assertTrue(all("--thinking" in command for command in commands))
+            self.assertEqual([command[2] for command in self.suite_commands(preview) if command[2].endswith(".intervals")],
+                             ["aa_lcr.intervals", "mrcr_v2.intervals"])
+            for arguments, env in ((["T"], {}), (["T", "gsm8k"], {}), (["T", "mrcr"], {"EXECUTOR_NODE": "g202"}),
+                                   (["T", "mrcr"], {"THINKING_ALLOWANCE": ""})):
+                with self.subTest(arguments=arguments, env=env):
+                    refused = self.launch("thinking_runs.sh", *arguments, linux=root / "jarvis", cwd=root,
+                                          env={"THINKING_ALLOWANCE": "32768", **env})
+                    self.assertNotEqual(refused.returncode, 0)
+
+            (root / "bin").mkdir()
+            (root / "bin/sbatch").write_text("#!/usr/bin/env bash\n"
+                f"printf '%s|%s\\n' \"$*\" \"${{CLIENT_CMD:-}}\" >> {root}/submitted\n"
+                "echo 'Submitted batch job 42'\n")
+            (root / "bin/sbatch").chmod(0o755)
+            # A partition left in the shell for another executor must not move this one.
+            result = self.launch("thinking_runs.sh", "T", "mrcr", linux=REPO / "jarvis", env={
+                "DRY_RUN": "0", "PATH": f"{root / 'bin'}:{os.environ['PATH']}", "PROJECT_LOG_DIR": str(root / "logs"),
+                "JARVIS_LOAD_DOTENV": "0", "SLURM_JOB_ID": "", "EXECUTOR_PARTITION": "gpu-h200",
+                "THINKING_ALLOWANCE": "32768"})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            executor, client = [line.split("|") for line in (root / "submitted").read_text().splitlines()]
+            for expected in ("--partition=gpu-l40s", "--gres=gpu:l40s:4", "--nodelist=g101", "--time=24:00:00"):
+                self.assertIn(expected, executor[0])
+            self.assertIn("--dependency=after:42", client[0])
+            self.assertEqual(client[1], "bash jarvis/thinking_runs.sh job T mrcr")
 
     def test_parity_runs_preview_lists_only_the_new_runs_and_skips_finished_ones(self):
         with tempfile.TemporaryDirectory() as temporary:

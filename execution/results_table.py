@@ -11,7 +11,8 @@ from math import comb
 FORMATS = {"window": "{:,}", "prompt kept": "{:.0%}", "input tokens": "{:,.0f}", "documents covered": "{:.0%}",
            "accuracy": "{:.1%}", "exact match": "{:.1%}", "MRCR score": "{:.3f}", "prefix compliance": "{:.0%}",
            "p vs middle": "{:.3f}", "output tokens": "{:,.0f}", "generation s/question": "{:.1f}",
-           "retrieval + packing s/question": "{:.1f}", "target visible": "{:.0%}", "all needles visible": "{:.0%}",
+           "retrieval + packing s/question": "{:.1f}", "reasoning tokens": "{:,.0f}",
+           "target visible": "{:.0%}", "all needles visible": "{:.0%}",
            "oracle exact match where target visible": "{:.1%}",
            "baseline window": "{:,}", "difference": "{:+.1%}", "95% low": "{:+.1%}", "95% high": "{:+.1%}",
            "p": "{:.2g}"}
@@ -28,8 +29,28 @@ def mean(values):
     return sum(values) / len(values) if values else 0
 
 
+# Thinking runs are served the whole 262,144-token window but keep the input budget that a thinking-off
+# run has at each window, so they are labelled with that window.
+WINDOWS = (32_768, 65_536, 81_920, 131_072, 262_144)
+
+
+def window(execution, served):
+    """A run's window: `served`, the window it was served, unless it thinks."""
+    if not execution.get("thinking"):
+        return served
+    return min(size for size in WINDOWS if size > execution["max_input_tokens"])
+
+
+def is_middle_reference(execution):
+    """Middle truncation is each window's reference; a repeat with another sampling seed is not."""
+    return (execution["mode"] == "direct" and execution["direct_overflow"] == "middle"
+            and not execution.get("no_context") and execution.get("sampling_seed", 1) == 1)
+
+
 def policy(execution, chunk_tokens=7500):
     """Label a run's overflow policy; `chunk_tokens` is the suite's usual chunk size, left unlabelled."""
+    if execution.get("no_context"):
+        return "no context"
     if execution["mode"] == "direct":
         overflow = execution["direct_overflow"]
         return "full prompt" if overflow == "unsupported" else f"truncation: {overflow}"

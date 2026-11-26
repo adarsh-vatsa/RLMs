@@ -10,6 +10,8 @@ usage() {
   echo 'Rerun with the same suite ID to resume: finished runs are skipped, and an'
   echo 'unfinished folder is moved aside before it is retried.'
   echo 'ONLY=name,... runs a subset. LONGBENCH_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
+  echo 'THINKING=1 runs the planned thinking conditions (docs/jarvis_suites/THINKING.md); MAX_ROWS=N takes'
+  echo 'the first N questions, for a pilot.'
   echo 'DRY_RUN=1 prints the commands without running them.'
 }
 case "${1:-}" in help|-h|--help) usage; exit 0 ;; esac
@@ -27,12 +29,21 @@ ONLY="${ONLY:-}"
 # so each has a full-context reference; every condition uses the same 221 questions.
 COMMON=(--output-dir "$ROOT" --min-source-tokens 65529 --max-source-tokens 262136 --fail-fast
   --serving-metadata "$SERVING_METADATA")
+THINKING="${THINKING:-0}"
+if [[ "$THINKING" == 1 ]]; then
+  ALLOWANCE="${THINKING_ALLOWANCE:?THINKING=1 needs THINKING_ALLOWANCE, the output allowance in tokens}"
+  # Each condition keeps its input budget; the allowance comes on top, in the whole window. The longest
+  # full prompts leave less, and the pipeline caps those requests' output at what remains.
+  COMMON+=(--thinking --context-window-tokens 262144 --max-output-tokens "$ALLOWANCE")
+fi
+if [[ -n "${MAX_ROWS:-}" ]]; then COMMON+=(--max-rows "$MAX_ROWS"); fi
 B262="--context-window-tokens 262144 --max-input-tokens 262136"
 B64="--context-window-tokens 65536 --max-input-tokens 65528"
 B32="--context-window-tokens 32768 --max-input-tokens 32760"
 B128="--context-window-tokens 131072 --max-input-tokens 131064"
 LADDER="--evidence-selection fusion --child-tokens 1024 --child-overlap-tokens 128"
 condition full          direct "$B262"
+condition no_context    direct "$B64 --no-context"
 condition middle        direct "$B64 --direct-overflow middle"
 condition dense         hybrid "$B64"
 condition position      hybrid "$B64 --evidence-selection position"
@@ -65,6 +76,10 @@ if [[ -n "${LONGBENCH_RECIPE:-}" ]]; then
   condition upgraded_32k  hybrid "$B32 $LONGBENCH_RECIPE"
   condition upgraded_128k hybrid "$B128 $LONGBENCH_RECIPE"
 fi
+if [[ "$THINKING" == 1 ]]; then
+  # The runs planned for every new model (docs/extension_experiments.csv), headline runs first.
+  ONLY="${ONLY:-full,middle,upgraded,bm25_recipe,no_context,middle_32k,upgraded_32k,middle_128k,upgraded_128k}"
+fi
 select_conditions
 
 # The direct and hybrid runners write to differently named folders, each with
@@ -75,6 +90,8 @@ run_path() {
 finished() { [[ -f "$1/manifest.json" ]]; }
 
 RESUME="bash linux/run_longbench_suite.sh $SUITE"
+if [[ -n "${MAX_ROWS:-}" ]]; then RESUME="MAX_ROWS=$MAX_ROWS $RESUME"; fi
+if [[ "$THINKING" == 1 ]]; then RESUME="THINKING=1 THINKING_ALLOWANCE=$ALLOWANCE $RESUME"; fi
 start_suite "executor $EXECUTOR_URL"
 check_executor
 run_conditions longbench_v2 "${COMMON[@]}"

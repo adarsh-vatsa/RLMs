@@ -181,7 +181,7 @@ class PipelineTests(unittest.TestCase):
     def run_task(self, settings, scs_controller=None, solver_input=None):
         calls = []
         engine = Pipeline(config(**settings), FakeTokenizer(),
-                          lambda request: calls.append(request) or Completion("answer", 1, 1, {}),
+                          lambda request, **_: calls.append(request) or Completion("answer", 1, 1, {}),
                           backend_factory=scs_controller or backend)
         result = engine.execute(solver_input or task("q", "abcdefghij" * 200))
         self.assertEqual(result["status"], "ok", result["error"])
@@ -223,7 +223,7 @@ class PipelineTests(unittest.TestCase):
             with self.subTest(policy=policy):
                 calls = []
                 engine = Pipeline(config(mode="direct", direct_overflow=policy), ReversibleTokenizer(),
-                                  lambda request: calls.append(request) or Completion("answer", 1, 1, {}))
+                                  lambda request, **_: calls.append(request) or Completion("answer", 1, 1, {}))
                 result = engine.execute(solver_input)
                 self.assertEqual((result["status"], result["route"]), ("ok", route))
                 self.assertLessEqual(result["final_rendered_input_tokens"], 500)
@@ -246,7 +246,7 @@ class PipelineTests(unittest.TestCase):
                 engine = Pipeline(config(mode="direct", direct_overflow="head", max_input_tokens=1800,
                                          context_window_tokens=2000),
                                   ReversibleTokenizer(),
-                                  lambda request: calls.append(request) or Completion("answer", 1, 1, {}))
+                                  lambda request, **_: calls.append(request) or Completion("answer", 1, 1, {}))
                 result = engine.execute(solver_input)
                 self.assertEqual((result["status"], result["route"]), ("ok", "head_truncated"))
                 self.assertLessEqual(result["final_rendered_input_tokens"], 1800)

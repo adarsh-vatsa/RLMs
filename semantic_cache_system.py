@@ -405,6 +405,7 @@ def _openai_compatible_messages_create(
     system: str | None = None,
     response_format: dict | None = None,
     extra_body: dict | None = None,
+    timeout_seconds: int = 120,
 ):
     payload_messages = []
     if system:
@@ -434,7 +435,7 @@ def _openai_compatible_messages_create(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")

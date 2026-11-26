@@ -13,6 +13,7 @@ usage() {
   echo 'Use one value per suite ID: a different N selects different questions.'
   echo 'ONLY=name,... runs a subset. MRCR_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
   echo 'The oracle conditions use the gold answer to offer the needle turns first: a ceiling, not a method.'
+  echo 'THINKING=1 runs the planned thinking conditions (docs/jarvis_suites/THINKING.md).'
   echo 'DRY_RUN=1 prints the commands without running them.'
 }
 case "${1:-}" in help|-h|--help) usage; exit 0 ;; esac
@@ -29,6 +30,12 @@ export MRCR_DATA_DIR="${MRCR_DATA_DIR:-benchmark_data/mrcr_v2_4needle_100k_1200k
 ROWS_PER_SOURCE="${MRCR_ROWS_PER_SOURCE:-30}"
 COMMON=(--output-root "$ROOT" --max-output-tokens 4096 --max-rows-per-source "$ROWS_PER_SOURCE" --fail-fast
   --serving-metadata "$SERVING_METADATA")
+THINKING="${THINKING:-0}"
+if [[ "$THINKING" == 1 ]]; then
+  ALLOWANCE="${THINKING_ALLOWANCE:?THINKING=1 needs THINKING_ALLOWANCE, the output allowance in tokens}"
+  # Each condition keeps its input budget; the allowance comes on top, in the whole window.
+  COMMON+=(--thinking --context-window-tokens 262144 --max-output-tokens "$ALLOWANCE")
+fi
 
 B262="--context-window-tokens 262144 --max-input-tokens 258048"
 B32="--context-window-tokens 32768 --max-input-tokens 28672"
@@ -81,12 +88,18 @@ if [[ -n "${MRCR_RECIPE:-}" ]]; then
   condition upgraded_64k  hybrid "$B64 $MRCR_RECIPE"
   condition upgraded_128k hybrid "$B128 $MRCR_RECIPE"
 fi
+if [[ "$THINKING" == 1 ]]; then
+  # The runs planned for every new model (docs/extension_experiments.csv), headline runs first. 262K
+  # would leave 4,096 tokens to think and answer.
+  ONLY="${ONLY:-middle_128k,upgraded_128k,oracle_128k,bm25_recipe_128k,middle_64k,upgraded_64k,oracle_64k,middle_32k,upgraded_32k}"
+fi
 select_conditions
 
 # The runner writes manifest.json at the start and marks it complete at the end.
 finished() { grep -q '"status": "complete"' "$1/manifest.json" 2>/dev/null; }
 
 RESUME="bash linux/run_mrcr_suite.sh $SUITE"
+if [[ "$THINKING" == 1 ]]; then RESUME="THINKING=1 THINKING_ALLOWANCE=$ALLOWANCE $RESUME"; fi
 start_suite "data $MRCR_DATA_DIR, $ROWS_PER_SOURCE questions per conversation (0 = all)"
 check_executor
 run_conditions mrcr_v2 "${COMMON[@]}"

@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from execution.intervals import PERMUTATION_SEED, PERMUTATIONS, REPLICATES, SEED, compare
-from execution.results_table import read_rows, write_table
+from execution.results_table import is_middle_reference, read_rows, window, write_table
 from mrcr_v2.results_table import size_label
 
 
@@ -29,9 +29,9 @@ def conditions(suite):
         records = read_rows(run / "predictions.jsonl")
         strata.update((record["case_id"], record["source_id"]) for record in records)
         found[manifest["run_id"].removeprefix(f"{suite.name}_")] = {
-            "window": manifest["context_window_tokens"], "oracle": bool(manifest.get("oracle")),
+            "window": window(execution, manifest["context_window_tokens"]), "oracle": bool(manifest.get("oracle")),
             "outcomes": {record["case_id"]: bool(record["exact_match"]) for record in records},
-            "middle": execution["mode"] == "direct" and execution["direct_overflow"] == "middle",
+            "middle": is_middle_reference(execution),
             "sent whole": {record["case_id"]: record["full_rendered_input_tokens"]
                            for record in records if record["route"] == "direct_fit"},
         }

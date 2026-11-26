@@ -288,6 +288,21 @@ class MRCRTests(unittest.TestCase):
             self.assertEqual(report["input_tokens"], 42)
             self.assertTrue((directory / "bridge_rows.csv").exists())
 
+    def test_thinking_keeps_the_prompt_and_samples_with_a_seed(self):
+        row = example()
+        data_dir, _ = self.prepare([row])
+        directory, calls, records, _ = self.execute(self.run_args(data_dir, extra=[
+            "--thinking", "--context-window-tokens", "262144", "--max-input-tokens", "126976",
+            "--max-output-tokens", "32768"]))
+        self.assertEqual(calls[0]["messages"], messages(row["queries"]))
+        self.assertEqual(calls[0]["max_tokens"], 32768)
+        body = calls[0]["extra_body"]
+        self.assertEqual(body["chat_template_kwargs"], {"enable_thinking": True})
+        self.assertEqual((body["temperature"], body["top_p"]), (0.6, 0.95))
+        self.assertIsInstance(body["seed"], int)
+        manifest = json.loads((directory / "manifest.json").read_text())
+        self.assertEqual((manifest["enable_thinking"], manifest["execution"]["thinking"]), (True, True))
+
     def test_direct_overflow_has_no_call_or_quality_denominator(self):
         data_dir, _ = self.prepare()
         _, calls, records, report = self.execute(self.run_args(data_dir, extra=["--max-input-tokens", "10"]))

@@ -50,8 +50,9 @@ from aa_lcr.prompting import (  # noqa: E402
 
 from aa_lcr.adapter import solver_task
 from execution.contracts import add_arguments, resolve_config
-from execution.client import served_context_window
+from execution.client import THINKING_SAMPLING, served_context_window, with_thinking
 from execution.pipeline import Pipeline
+from execution.results_table import window
 from execution.artifacts import record_evaluation, finalize
 from execution.selection import add_source_arguments, filter_sources, selection_limit
 from execution.tokens import TRUNCATION_ROUTES, route as execution_route
@@ -530,9 +531,9 @@ def run_benchmark(
                                default_url=verifier_url, default_key_env=args.api_key_env)
         return scs, controller
 
-    def complete(request):
+    def complete(request, *, max_tokens, case_id):
         return completion_caller(base_url=args.executor_base_url, model=args.executor_model,
-            messages=request, max_tokens=args.max_output_tokens, extra_body=non_thinking_extra_body(),
+            messages=request, max_tokens=max_tokens, extra_body=with_thinking(non_thinking_extra_body(), config, case_id),
             api_key=api_key, timeout_seconds=args.request_timeout_seconds)
 
     pipeline = Pipeline(config, tokenizer, complete, backend_factory=backend, output_dir=run_dir)
@@ -723,7 +724,7 @@ def run_benchmark(
         and api_error_count == 0
         and invalid_grade_count == 0
         and over_budget_final_count == 0
-        and (experiment.context_window_tokens != 262144 or over_budget_count == 0)
+        and (window(config.metadata(), experiment.context_window_tokens) != 262144 or over_budget_count == 0)
     )
     archive_sha = dataset_info["archive_sha256"]
     signature = dataset_signature(
@@ -770,8 +771,8 @@ def run_benchmark(
         "evaluator_model": args.evaluator_model,
         "executor_base_url": args.executor_base_url,
         "evaluator_base_url": args.evaluator_base_url,
-        "temperature": 0,
-        "thinking_enabled": False,
+        "temperature": THINKING_SAMPLING["temperature"] if config.thinking else 0,
+        "thinking_enabled": config.thinking,
         "grader_method": "llm_equality_checker",
         "benchmark_label_field": "answer",
         "benchmark_label_type": "open_answer_string",

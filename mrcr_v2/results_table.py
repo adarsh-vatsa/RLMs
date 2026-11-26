@@ -7,7 +7,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 
-from execution.results_table import gained_lost, mean, policy, read_rows, write_table
+from execution.results_table import gained_lost, is_middle_reference, mean, policy, read_rows, window, write_table
 
 
 SUITE_CHUNK_TOKENS = 3500
@@ -39,16 +39,16 @@ def summarize(suite):
                                              record["full_rendered_input_tokens"])
     sources = sorted(sizes, key=sizes.get)
     matches = {run: {record["case_id"]: bool(record["exact_match"]) for record in records[run]} for run in complete}
-    middle = {manifests[run]["context_window_tokens"]: matches[run] for run in complete
-              if manifests[run]["execution"]["mode"] == "direct"
-              and manifests[run]["execution"]["direct_overflow"] == "middle"}
+    middle = {window(manifests[run]["execution"], manifests[run]["context_window_tokens"]): matches[run]
+              for run in complete if is_middle_reference(manifests[run]["execution"])}
+    thinking = any(manifests[run]["execution"].get("thinking") for run in runs)
     rows = []
     for run in runs:
         manifest, execution, answers = manifests[run], manifests[run]["execution"], records[run]
         row = {
             "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
             "policy": label(manifest),
-            "window": manifest["context_window_tokens"],
+            "window": window(execution, manifest["context_window_tokens"]),
             "questions": f"{len(answers)}/{len(manifest['selected_example_ids'])}",
         }
         if run not in complete:
@@ -56,7 +56,7 @@ def summarize(suite):
             continue
         hybrid = execution["mode"] == "hybrid"
         current = matches[run]
-        reference = middle.get(manifest["context_window_tokens"])
+        reference = middle.get(row["window"])
         row.update({
             "prompt kept": mean(a["final_rendered_input_tokens"] / a["full_rendered_input_tokens"] for a in answers),
             "input tokens": mean(a["final_rendered_input_tokens"] for a in answers),
@@ -68,6 +68,7 @@ def summarize(suite):
                mean(bool(a["exact_match"]) for a in answers if a["source_id"] == source) for source in sources},
             "prefix compliance": mean(bool(a["prefix_compliant"]) for a in answers),
             "output tokens": mean(a["output_tokens"] for a in answers),
+            **({"reasoning tokens": mean(a["reasoning_tokens"] for a in answers)} if thinking else {}),
             "output limit hit": sum(a.get("finish_reason") == "length" for a in answers),
             "retried requests": sum((a.get("attempts") or 1) > 1 for a in answers),
             "generation s/question": mean(a["generation_ms"] for a in answers) / 1000,
@@ -81,7 +82,8 @@ def summarize(suite):
     columns = ["condition", "policy", "window", "questions", "prompt kept", "input tokens", "exact match",
                "MRCR score", "correct", "gained vs middle", "lost vs middle", "p vs middle",
                *[f"exact match at {size_label(sizes[source])}" for source in sources], "prefix compliance",
-               "output tokens", "output limit hit", "retried requests", "generation s/question",
+               "output tokens", *(["reasoning tokens"] if thinking else []), "output limit hit",
+               "retried requests", "generation s/question",
                "retrieval + packing s/question", "embedding minutes", "run minutes"]
     return columns, rows
 

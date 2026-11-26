@@ -8,7 +8,7 @@ from pathlib import Path
 
 from aa_lcr.results_table import verdicts
 from execution.intervals import PERMUTATION_SEED, PERMUTATIONS, REPLICATES, SEED, compare
-from execution.results_table import read_rows, write_table
+from execution.results_table import is_middle_reference, read_rows, window, write_table
 
 
 def conditions(suite, grader):
@@ -26,8 +26,8 @@ def conditions(suite, grader):
             clusters[answer["question_id"]] = answer["document_set_id"]
             questions[answer["case_id"]] = answer["question_id"]
         found[manifest["run_id"].removeprefix(f"{suite.name}_")] = {
-            "window": manifest["context_window_tokens"], "outcomes": outcomes,
-            "middle": execution["mode"] == "direct" and execution["direct_overflow"] == "middle",
+            "window": window(execution, manifest["context_window_tokens"]), "outcomes": outcomes,
+            "middle": is_middle_reference(execution),
             "capped": {questions[record["case_id"]] for record in read_rows(run / "execution.jsonl")
                        if record["finish_reason"] == "length"},
         }

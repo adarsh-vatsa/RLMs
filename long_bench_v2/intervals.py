@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 
 from execution.intervals import PERMUTATION_SEED, PERMUTATIONS, REPLICATES, SEED, compare
-from execution.results_table import read_rows, write_table
+from execution.results_table import is_middle_reference, read_rows, window, write_table
 
 
 def conditions(suite):
@@ -23,10 +23,10 @@ def conditions(suite):
         clusters.update((record["case_id"], record["source_content_sha256"])
                         for record in read_rows(run / "execution.jsonl"))
         found[manifests[run]["run_id"].removeprefix(f"{suite.name}_")] = {
-            "window": config["context_window_tokens"],
+            "window": window(config, config["context_window_tokens"]),
             "outcomes": {row["case_id"]: bool(row["scores"].get("accuracy"))
                          for row in read_rows(run / "evaluation.jsonl")},
-            "middle": config["mode"] == "direct" and config["direct_overflow"] == "middle",
+            "middle": is_middle_reference(config),
         }
     return found, clusters
 

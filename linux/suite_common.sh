@@ -12,13 +12,20 @@ step() { echo "[$SUITE_LABEL] $*"; }
 fail() { echo "[$SUITE_LABEL] ERROR: $*" >&2; exit 1; }
 duration() { printf '%dh%02dm' $(($1 / 3600)) $(($1 % 3600 / 60)); }
 
+# ONLY also sets the order in which the conditions run.
 select_conditions() {
   local name i
   for name in ${ONLY//,/ }; do
     [[ " ${NAMES[*]} " == *" $name "* ]] || fail "Unknown condition in ONLY: $name (known: ${NAMES[*]})"
   done
-  for i in "${!NAMES[@]}"; do
-    if [[ -z "$ONLY" || ",$ONLY," == *",${NAMES[$i]},"* ]]; then SELECTED+=("$i"); fi
+  if [[ -z "$ONLY" ]]; then
+    SELECTED=("${!NAMES[@]}")
+    return
+  fi
+  for name in ${ONLY//,/ }; do
+    for i in "${!NAMES[@]}"; do
+      if [[ "${NAMES[$i]}" == "$name" ]]; then SELECTED+=("$i"); fi
+    done
   done
 }
 
@@ -39,6 +46,10 @@ logged() {
 
 start_suite() {
   step "Suite $SUITE: ${#SELECTED[@]} conditions${1:+, $1}"
+  if [[ "${THINKING:-0}" == 1 ]]; then
+    step "Thinking: every run keeps its condition's input budget and is served the whole 262,144-token window,"
+    step "with a $THINKING_ALLOWANCE-token output allowance; the flags after each condition's own override its window."
+  fi
   step "Logs: $LOG_DIR"
   step "Resume or repeat with: ${SUITE_RESUME:-$RESUME}"
   if [[ "${DRY_RUN:-0}" != 1 ]]; then

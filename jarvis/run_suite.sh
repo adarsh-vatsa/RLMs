@@ -10,7 +10,8 @@ usage() {
   echo 'From the login node, submits one job that runs that benchmark'"'"'s workshop suite against'
   echo 'the executor at OPENAI_COMPAT_EXECUTOR_BASE_URL; the job waits for the executor to come up.'
   echo 'Submit again with the same suite ID to resume. The suite'"'"'s own variables pass through:'
-  echo 'ONLY, AA_LCR_RECIPE, MRCR_RECIPE, LONGBENCH_RECIPE, MRCR_ROWS_PER_SOURCE, AA_LCR_GRADER.'
+  echo 'ONLY, AA_LCR_RECIPE, MRCR_RECIPE, LONGBENCH_RECIPE, MRCR_ROWS_PER_SOURCE, AA_LCR_GRADER, THINKING,'
+  echo 'THINKING_ALLOWANCE, MAX_ROWS.'
   echo 'AA_LCR_GRADER=luna submits a CPU job that regrades through OpenRouter and needs no executor.'
   echo 'DRY_RUN=1 prints the suite'"'"'s commands on this node without submitting.'
 }
@@ -31,7 +32,7 @@ fi
 
 # A resumed suite must repeat the settings that shape its runs.
 SUITE_RESUME=""
-for name in AA_LCR_GRADER MRCR_ROWS_PER_SOURCE AA_LCR_RECIPE MRCR_RECIPE LONGBENCH_RECIPE; do
+for name in AA_LCR_GRADER MRCR_ROWS_PER_SOURCE AA_LCR_RECIPE MRCR_RECIPE LONGBENCH_RECIPE THINKING THINKING_ALLOWANCE MAX_ROWS; do
   if [[ -n "${!name:-}" ]]; then SUITE_RESUME+="$name=$(printf '%q' "${!name}") "; fi
 done
 SUITE_RESUME+="bash $(basename "$REPO_ROOT")/jarvis/run_suite.sh $1 $SUITE"

@@ -24,7 +24,8 @@ The new configurations do not rerun all 93 conditions, and the paper need not re
   - g213 (gpu-h200): 4 × H200 NVL (141 GB each), 1.5 TB RAM, 254 GB free on `/local`.
   - g013 (gpu-h100sxm): 4 × H100 80GB HBM3, 515 GB RAM, 1.3 TB free on `/local`.
 - [x] Per-user limits, 2026-11-25: the `normal` QOS sets none (no cap on wall time, GPUs, jobs or submissions per user), so two L40S executors, one H200 executor and three one-GPU client jobs can run at once, as the nodes allow.
-- [ ] Qwen with thinking: code and tests (next), pilot, runs.
+- [x] Qwen with thinking: code and tests, 2026-11-25 (see [Code](#code-for-qwen-with-thinking-done-2026-11-25)); how to run the pilot and the runs: [THINKING.md](jarvis_suites/THINKING.md).
+- [ ] Qwen with thinking: pilot at an 81,920-token allowance, then the runs; the two no-context runs without thinking.
 - [ ] DeepSeek: environment and smoke test on one gpu-h200 node, then pilot and runs. Cut-off for a working server: 29 November; after that, the fallback model.
 - [ ] Plan: the comparisons each configuration tests, written and dated before the first reported run, as the [12 October plan](workshop_paper_plan_20261012.md) was.
 - [ ] Luna grading of the new AA-LCR runs, intervals, tables and the paper text.
@@ -96,7 +97,7 @@ Qwen with thinking runs on g101 and g102, the hardware of the thinking-off runs,
 - The 95 suite runs behind the 93 conditions took about 38 executor-hours: AA-LCR 7.5, MRCR 20 and LongBench-v2 10, from the run minutes in the suites' results tables.
 - Qwen3.6 on 4 × L40S, one request at a time, fitted on the 13,507 requests of those suites: prefill takes 1.6 s at 32K, 3.4 s at 64K, 7.6 s at 128K and 16 s at 226K; decoding runs at 174, 161, 141 and 118 tokens/s. A 5K-token reasoning trace adds 30–40 s to questions that take 2–20 s now.
 - DeepSeek on 4 × H200: not measured. Expect the same order as Qwen on the L40S nodes: about 4 times the active parameters, on much faster GPUs.
-- Job limits: 24 hours on gpu-l40s (executors and every suite's one-GPU client job), gpu-h200 and compute-short (Luna grading), and 72 hours on gpu-h100sxm. No single run comes near 24 hours; the longest, LongBench-v2 with thinking, takes about 2–3.5 hours at 5K reasoning tokens and about 5 at 10K. So the limit means resubmitting, about once a day per node. A resubmitted suite keeps its finished runs and restarts the unfinished one from the beginning. `jarvis/rerun_g202_runs.sh` already submits an executor pinned to a node with a suite job that waits for it, records its setup and cancels it at the end; the thinking suites should reuse that, so each day's resubmission is one command.
+- Job limits: 24 hours on gpu-l40s (executors and every suite's one-GPU client job), gpu-h200 and compute-short (Luna grading), and 72 hours on gpu-h100sxm. No single run comes near 24 hours; the longest, LongBench-v2 with thinking, takes about 2–3.5 hours at 5K reasoning tokens and about 5 at 10K. So the limit means resubmitting, about once a day per node. A resubmitted suite keeps its finished runs and restarts the unfinished one from the beginning. `jarvis/thinking_runs.sh` submits an executor pinned to a node with a suite job that waits for it, records its setup and cancels it at the end, as `jarvis/rerun_g202_runs.sh` did, so each day's resubmission is one command.
 
 ## Experiments (proposal)
 
@@ -114,7 +115,7 @@ The same questions as the `20261029` suites: AA-LCR 100, MRCR 120 (30 per conver
   The runners take `--question-ids` or `--max-rows` (AA-LCR), `--max-rows-per-source` (MRCR) and `--max-rows` (LongBench-v2).
 - **P1, headline** (9 runs): AA-LCR `full`, `middle` and `upgraded`; MRCR `middle_128k`, `upgraded_128k` and `oracle_128k`; LongBench-v2 `full`, `middle` and `upgraded`. It asks whether middle truncation costs and the recipe recovers for this configuration, and how close the recipe gets to full context.
 - **P2, controls and noise** (11 runs with thinking, 7 without): AA-LCR `position` and `position_recipe`, structure without the question; `bm25_recipe` at each main window; `no_context` on AA-LCR and LongBench-v2; and, with thinking, AA-LCR `middle` and `upgraded` with two more seeds each (`middle_repeat2`, `middle_repeat3`, `upgraded_repeat2`, `upgraded_repeat3`).
-  - `no_context` sends the benchmark's prompt with its document section empty: the instructions and the question, with the four options on LongBench-v2. It does not depend on the window, so it is one run per model and benchmark. It measures what the model answers from prior knowledge, and on multiple choice by ruling options out: the floor every policy should beat. The 17 November review asked for it, and Limitations says LongBench-v2 cannot be read without it. With thinking it matters more, since reasoning can improve guessing. MRCR needs none, because its answers begin with a random string and reproduce a passage, which cannot be guessed.
+  - `no_context` sends the prompt with no source text, as a prompt that keeps nothing would: the instructions and the question, with the four options on LongBench-v2, where the omission marker stands in for the text. It does not depend on the window, so it is one run per model and benchmark. It measures what the model answers from prior knowledge, and on multiple choice by ruling options out: the floor every policy should beat. The 17 November review asked for it, and Limitations says LongBench-v2 cannot be read without it. With thinking it matters more, since reasoning can improve guessing. MRCR needs none, because its answers begin with a random string and reproduce a passage, which cannot be guessed.
 - **P3, other windows** (13 runs): `middle` and `upgraded` on AA-LCR at 32K and 80K, MRCR at 32K and 64K and LongBench-v2 at 32K and 128K, plus MRCR `oracle_64k`. It completes the primary comparisons at every window, and gives MRCR's 64K and 128K windows their reference; 32K has none for the new models.
 - **Not planned, model-specific**: MRCR at 262K, and MRCR full context in DeepSeek's 1M window (the 1.06M-token conversation may not fit). Qwen with thinking can run neither, so they would sit outside the comparison; decide later whether to report them apart.
 - **Analyses, no extra runs**:
@@ -137,23 +138,21 @@ LongBench-v2's share of P3 is about 9 hours at 5K tokens.
 
 Primary comparisons, to fix in the plan: the recipe against middle truncation at every window run, and against position on AA-LCR, Holm-corrected within each configuration. The thinking-on-against-off comparisons are exploratory.
 
-## Code for Qwen with thinking (plan)
+## Code for Qwen with thinking (done 2026-11-25)
 
-1. One thinking switch through the four runners that call the executor:
-   - `aa_lcr/run_benchmark.py` (request at line 535);
-   - `mrcr_v2/run_benchmark.py` (line 224);
-   - `long_bench_v2/run_api_benchmark.py` (line 384, LongBench-v2's direct runs);
-   - `long_bench_v2/run_benchmark.py` (line 796, its hybrid runs).
+How to run it: [THINKING.md](jarvis_suites/THINKING.md). All 273 tests pass.
 
-   It sends `chat_template_kwargs: {"enable_thinking": true}`, the sampling settings and the question's seed. The AA-LCR grader (`aa_lcr/grading.py`) and the cache verifier (`execution/cache.py`) stay non-thinking.
+1. `--thinking` and `--sampling-seed` are shared execution options (`execution/contracts.py`), so the four runners take them and record them in their manifests. `execution.client.with_thinking` turns thinking on in the request (`chat_template_kwargs: {"enable_thinking": true}`) and adds the sampling settings and the question's seed; without thinking, requests are unchanged. The AA-LCR grader and the cache verifier stay non-thinking.
 2. Token counting stays at `enable_thinking=False` (`execution/tokens.py`), so prompts stay identical.
-3. The output allowance is separate from the input budget. The suites pass the served window as `--context-window-tokens` (262,144 for Qwen) and the allowance as `--max-output-tokens`, and keep each condition's `--max-input-tokens`. The budget check in `execution/contracts.py` (input plus output within the window) becomes a per-request cap: the allowance or what the window leaves after the prompt, whichever is smaller. Only LongBench-v2's longest full-context prompts get less than the allowance.
-4. The answer stays the response's `content` (`execution/client.py`). Record the reasoning tokens and finish reason per question, and the reasoning text in a separate file per run. The pilot checks vLLM's field name, `reasoning_content` or `reasoning`.
-5. LongBench-v2: the A–D constraint (`long_bench_v2/qwen_prompt.py`) must apply only after the reasoning. The pilot checks this; otherwise, parse the letter.
-6. Manifests record thinking, sampling, seed and allowance, in place of the hard-coded `enable_thinking: False` and `thinking_enabled: False`.
-7. Suites: one switch adds the thinking flags to every run, under a new suite ID. Every run then records the served window as `context_window_tokens`, so everything that labels or pairs runs by it keys by `max_input_tokens` instead: the results tables and intervals of all three benchmarks, MRCR's visibility analysis, and AA-LCR's acceptance check in `aa_lcr/run_benchmark.py`, which treats a window of exactly 262,144 as the full-context run. The results tables add columns for reasoning tokens and allowance hits.
-8. A `no_context` policy in the AA-LCR and LongBench-v2 runners and suites, for every model: the prompt with an empty document section. On LongBench-v2, pass an empty context explicitly, because rendering with no evidence inserts the omission marker.
-9. Tests with fake tokenizers and clients: the request body, identical prompts, reasoning capture, the per-request cap and the no-context prompt.
+3. The shared config check now requires only that the input budget leave room in the window, and the pipeline caps each request's output at the allowance or what the window leaves after its prompt, whichever is smaller (`max_tokens` in `execution.jsonl`). AA-LCR keeps its own stricter check, so its thinking full-context run uses an input budget of 262,144 minus the allowance, which still sends every prompt whole.
+4. The answer stays the response's `content`. The client reads the reasoning from `reasoning` or `reasoning_content`, and the pipeline records `reasoning_tokens` per question and writes the text to each run's `reasoning.jsonl`.
+5. LongBench-v2 keeps the A–D constraint in the request; the pilot checks that it applies after the reasoning (invalid answers). Both LongBench-v2 runners now wait up to 1,800 s for a request, like the AA-LCR and MRCR runners; the hybrid runner's client had a fixed 120 s.
+6. Manifests record thinking, temperature and the sampling seed in place of the hard-coded `enable_thinking: False` and `thinking_enabled: False`.
+7. Suites: `THINKING=1` with `THINKING_ALLOWANCE` (required) runs the planned conditions, headline runs first (`ONLY` now also sets the order), adds AA-LCR's repeats and serves every run the whole window. Everything that labels or pairs runs by window uses the window that a run's input budget belongs to (`execution.results_table.window`), which pairs runs as keying by `max_input_tokens` would: the results tables and intervals of all three benchmarks, MRCR's visibility analysis and AA-LCR's acceptance check. The tables add a reasoning-tokens column, and on LongBench-v2 output limit hits. `jarvis/thinking_runs.sh` submits the executor and a suite job in one command per node.
+8. `--no-context` (shared, direct mode) sends the prompt rendered with no evidence, for every benchmark and model, and the AA-LCR and LongBench-v2 suites have a `no_context` condition. On LongBench-v2 that rendering shows the omission marker where the text was, as a prompt that keeps nothing would, rather than the empty context first planned.
+9. Tests with fake tokenizers and clients cover the request body and seeds, identical prompts, reasoning capture, the per-request cap, the no-context prompt, the window labels and the thinking suites.
+
+Not done: speculative decoding (MTP). The thinking runs use the executor of the thinking-off runs; add MTP only if the pilot's hours are too long, and then check seeded reruns again.
 
 ## DeepSeek setup (after the probe)
 

@@ -32,7 +32,7 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 
 ARTIFACT_SUBDIR = "longbench_v2"
 REPORT_FILENAME = "official_longbench_v2_eval_report.json"
-from execution.client import Completion
+from execution.client import THINKING_SAMPLING, Completion, response_reasoning, with_thinking
 from execution.contracts import add_arguments, resolve_config
 from execution.pipeline import Pipeline
 from execution.artifacts import record_evaluation, finalize
@@ -671,8 +671,8 @@ def build_effective_config(scs, args: argparse.Namespace) -> dict:
             "system_prompt_sha256": hashlib.sha256(
                 build_strict_mcq_messages("", "")[0]["content"].encode("utf-8")
             ).hexdigest(),
-            "temperature": 0,
-            "thinking_enabled": False,
+            "temperature": THINKING_SAMPLING["temperature"] if args.thinking else 0,
+            "thinking_enabled": args.thinking,
             **mcq_decoder_constraint_metadata(),
             "context_window_tokens": args.context_window_tokens,
             "max_input_tokens": args.max_input_tokens,
@@ -786,14 +786,16 @@ def normalize_llm_args(args: argparse.Namespace) -> argparse.Namespace:
     return args
 
 
-def _call_hybrid_executor(scs, controller, args: argparse.Namespace, messages: list[dict]) -> Completion:
+def _call_hybrid_executor(scs, controller, args: argparse.Namespace, config, messages: list[dict], *,
+                          max_tokens: int, case_id: str) -> Completion:
     response = scs.create_llm_message(
         model=args.executor_model,
-        max_tokens=args.max_output_tokens,
+        max_tokens=max_tokens,
         temperature=0,
         system=messages[0]["content"],
         messages=messages[1:],
-        extra_body=build_openai_compatible_mcq_extra_body(),
+        extra_body=with_thinking(build_openai_compatible_mcq_extra_body(), config, case_id),
+        timeout_seconds=args.request_timeout_seconds,
     )
     controller.metrics.record_call(
         args.executor_model,
@@ -803,7 +805,8 @@ def _call_hybrid_executor(scs, controller, args: argparse.Namespace, messages: l
     raw = getattr(response, "raw", {}) or {}
     finish_reason = (raw.get("choices") or [{}])[0].get("finish_reason", getattr(response, "finish_reason", None))
     return Completion(_response_text(response), int(getattr(response.usage, "input_tokens", 0) or 0),
-                      int(getattr(response.usage, "output_tokens", 0) or 0), raw.get("usage", {}), finish_reason)
+                      int(getattr(response.usage, "output_tokens", 0) or 0), raw.get("usage", {}), finish_reason,
+                      response_reasoning(raw))
 
 
 def _validate_hybrid_args(args: argparse.Namespace, embedding_max_length: int | None = None) -> None:
@@ -1181,7 +1184,8 @@ def run_longbench_benchmark(
             return scs, hybrid_controller
 
         pipeline = Pipeline(pipeline_config, executor_tokenizer,
-            lambda request: _call_hybrid_executor(scs, hybrid_controller, args, request),
+            lambda request, **options: _call_hybrid_executor(scs, hybrid_controller, args, pipeline_config, request,
+                                                             **options),
             backend_factory=backend, output_dir=out_dir)
 
     for idx, row in enumerate(selected_rows, start=1):
@@ -1689,6 +1693,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-note", type=str, default="")
     parser.add_argument("--fail-fast", action="store_true")
     parser.add_argument("--serving-metadata", type=Path, help="JSON object describing the executor service")
+    parser.add_argument("--request-timeout-seconds", type=int, default=1800)
     add_source_arguments(parser)
     add_arguments(parser)
     return parser

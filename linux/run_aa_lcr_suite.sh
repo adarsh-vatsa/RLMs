@@ -11,6 +11,8 @@ usage() {
   echo 'unfinished folder is moved aside before it is retried.'
   echo 'ONLY=name,... runs a subset. AA_LCR_RECIPE="<hybrid flags>" adds the upgraded-recipe runs.'
   echo 'AA_LCR_GRADER=luna regrades the finished runs with GPT-5.6 Luna through OpenRouter instead.'
+  echo 'THINKING=1 runs the planned thinking conditions (docs/jarvis_suites/THINKING.md); MAX_ROWS=N takes'
+  echo 'the first N questions, for a pilot.'
   echo 'DRY_RUN=1 prints the commands without running them.'
 }
 case "${1:-}" in help|-h|--help) usage; exit 0 ;; esac
@@ -30,11 +32,22 @@ ONLY="${ONLY:-}"
 # host's default evaluator, such as Jarvis's, out of the run manifests.
 COMMON=(--output-root "$ROOT" --execution-only --max-output-tokens 4096 --fail-fast --serving-metadata "$SERVING_METADATA"
   --evaluator-model "$EXECUTOR_MODEL" --evaluator-base-url "$EXECUTOR_URL")
+THINKING="${THINKING:-0}"
+FULL="--context-window-tokens 262144 --max-input-tokens 258048"
+if [[ "$THINKING" == 1 ]]; then
+  ALLOWANCE="${THINKING_ALLOWANCE:?THINKING=1 needs THINKING_ALLOWANCE, the output allowance in tokens}"
+  # Each condition keeps its input budget; the allowance comes on top, in the whole window.
+  COMMON+=(--thinking --context-window-tokens 262144 --max-output-tokens "$ALLOWANCE")
+  # AA-LCR's longest prompt is 122K tokens, so the full prompt still fits a budget that leaves the allowance.
+  FULL="--context-window-tokens 262144 --max-input-tokens $((262144 - ALLOWANCE))"
+fi
+if [[ -n "${MAX_ROWS:-}" ]]; then COMMON+=(--max-rows "$MAX_ROWS"); fi
 
 B64="--context-window-tokens 65536 --max-input-tokens 61440"
 B32="--context-window-tokens 32768 --max-input-tokens 28672"
 B80="--context-window-tokens 81920 --max-input-tokens 77824"
-condition full          direct "--context-window-tokens 262144 --max-input-tokens 258048"
+condition full          direct "$FULL"
+condition no_context    direct "$B64 --no-context"
 condition middle        direct "$B64 --direct-overflow middle"
 condition middle_marked direct "$B64 --direct-overflow middle-marked"
 condition head          direct "$B64 --direct-overflow head"
@@ -75,6 +88,17 @@ if [[ -n "${AA_LCR_RECIPE:-}" || "$GRADER" == luna ]]; then
   condition upgraded     hybrid "$B64 ${AA_LCR_RECIPE:-}"
   condition upgraded_32k hybrid "$B32 ${AA_LCR_RECIPE:-}"
   condition upgraded_80k hybrid "$B80 ${AA_LCR_RECIPE:-}"
+fi
+if [[ "$THINKING" == 1 ]]; then
+  # The same prompts with other sampling seeds, to measure how much a sampled run varies.
+  condition middle_repeat2   direct "$B64 --direct-overflow middle --sampling-seed 2"
+  condition middle_repeat3   direct "$B64 --direct-overflow middle --sampling-seed 3"
+  if [[ -n "${AA_LCR_RECIPE:-}" || "$GRADER" == luna ]]; then
+    condition upgraded_repeat2 hybrid "$B64 ${AA_LCR_RECIPE:-} --sampling-seed 2"
+    condition upgraded_repeat3 hybrid "$B64 ${AA_LCR_RECIPE:-} --sampling-seed 3"
+  fi
+  # The runs planned for every new model (docs/extension_experiments.csv), headline runs first.
+  ONLY="${ONLY:-full,middle,upgraded,position,position_recipe,bm25_recipe,no_context,middle_repeat2,middle_repeat3,upgraded_repeat2,upgraded_repeat3,middle_32k,upgraded_32k,middle_80k,upgraded_80k}"
 fi
 select_conditions
 
@@ -127,6 +151,8 @@ after_run() {
 
 RESUME="bash linux/run_aa_lcr_suite.sh $SUITE"
 [[ "$GRADER" == executor ]] || RESUME="AA_LCR_GRADER=$GRADER $RESUME"
+if [[ -n "${MAX_ROWS:-}" ]]; then RESUME="MAX_ROWS=$MAX_ROWS $RESUME"; fi
+if [[ "$THINKING" == 1 ]]; then RESUME="THINKING=1 THINKING_ALLOWANCE=$ALLOWANCE $RESUME"; fi
 start_suite "grader $GRADER_MODEL"
 
 if [[ "$GRADER" == luna ]]; then

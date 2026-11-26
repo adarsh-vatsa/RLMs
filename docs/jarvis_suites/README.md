@@ -23,6 +23,8 @@ ends by writing a results table.
    one command.
 7. [PARITY.md](PARITY.md): the runs that make the conditions match across
    benchmarks, in one command.
+8. [THINKING.md](THINKING.md): Qwen3.6 with thinking on, one command per node,
+   and the no-context runs.
 
 | Suite        | Name in commands | Questions per run          | Runs now (+ later) | Time   | Scoring                                                  |
 | ------------ | ---------------- | -------------------------- | ------------------ | ------ | -------------------------------------------------------- |

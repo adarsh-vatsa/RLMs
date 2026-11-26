@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
+
+
+# Qwen3.6's recommended thinking settings for precise tasks. Its general ones add a presence penalty
+# of 1.5, which would penalize MRCR's verbatim answers.
+THINKING_SAMPLING = {"temperature": 0.6, "top_p": 0.95, "top_k": 20, "min_p": 0.0, "presence_penalty": 0.0}
 
 
 @dataclass(frozen=True)
@@ -17,6 +23,23 @@ class Completion:
     output_tokens: int
     raw_usage: dict
     finish_reason: str | None = None
+    reasoning: str = ""
+
+
+def with_thinking(body: dict, config, case_id: str) -> dict:
+    """`body` unchanged without thinking. With thinking, sampling is seeded by the question and
+    `config.sampling_seed`, so every policy draws the same seed for a question and a rerun repeats it."""
+    if not config.thinking:
+        return body
+    seed = int(hashlib.sha256(f"{case_id}:{config.sampling_seed}".encode()).hexdigest()[:8], 16)
+    template = {**body.get("chat_template_kwargs", {}), "enable_thinking": True}
+    return {**body, **THINKING_SAMPLING, "seed": seed, "chat_template_kwargs": template}
+
+
+def response_reasoning(payload: dict) -> str:
+    """The reasoning returned beside the answer; vLLM versions name the field either way."""
+    message = (payload.get("choices") or [{}])[0].get("message") or {}
+    return str(message.get("reasoning") or message.get("reasoning_content") or "").strip()
 
 
 class CompletionRetryError(RuntimeError):
@@ -109,6 +132,7 @@ def call_chat_completion(
         ),
         raw_usage=usage,
         finish_reason=(result.get("choices") or [{}])[0].get("finish_reason"),
+        reasoning=response_reasoning(result),
     )
 
 

@@ -2,12 +2,12 @@ import json
 from pathlib import Path
 import time
 
-from execution.client import call_with_retries
+from execution.client import THINKING_SAMPLING, call_with_retries
 from execution.contracts import Config, Task, fingerprint
 from execution.packing import pack
 from execution.retrieval import (document_floor, expand_neighbors, index_documents, lexical_index,
                                  order_candidates, rerank_head)
-from execution.tokens import TRUNCATION_ROUTES, chat_token_count, route, truncate_prompt
+from execution.tokens import TRUNCATION_ROUTES, chat_token_count, route, token_ids, truncate_prompt
 
 
 class Pipeline:
@@ -30,7 +30,9 @@ class Pipeline:
         if self.output_dir:
             self.output_dir.mkdir(parents=True, exist_ok=True)
             metadata = {**config.metadata(), "executor_tokenizer": self.tokenizer_identity,
-                        "temperature": 0, "enable_thinking": False}
+                        "temperature": THINKING_SAMPLING["temperature"] if config.thinking else 0,
+                        "enable_thinking": config.thinking,
+                        **({"sampling": THINKING_SAMPLING} if config.thinking else {})}
             (self.output_dir / "execution_manifest.json").write_text(json.dumps(metadata, indent=2) + "\n")
 
     def backend(self):
@@ -59,7 +61,8 @@ class Pipeline:
     def preflight(self, task: Task):
         full_tokens = chat_token_count(self.tokenizer, task.render(None))
         return {"case_id": task.case_id, "full_rendered_input_tokens": full_tokens,
-                "route": route(self.config.mode, full_tokens, self.config.max_input_tokens, self.config.direct_overflow),
+                "route": "no_context" if self.config.no_context else route(
+                    self.config.mode, full_tokens, self.config.max_input_tokens, self.config.direct_overflow),
                 "cache_assumption": "miss"}
 
     def execute(self, task: Task):
@@ -76,7 +79,8 @@ class Pipeline:
             "faiss_candidates": [],
             "ingest_ms": 0.0, "document_embedding_ms": 0.0, "retrieval_ms": 0.0,
             "packing_ms": 0.0, "generation_ms": 0.0, "cache_verification_ms": 0.0,
-            "input_tokens": 0, "output_tokens": 0, "raw_usage": {}, "finish_reason": None,
+            "max_tokens": 0, "input_tokens": 0, "output_tokens": 0, "reasoning_tokens": 0,
+            "raw_usage": {}, "finish_reason": None,
             "attempts": 0, "from_cache": False, "cache_type": "miss", "cache_written": False,
             "cache_provenance": {}, "semantic_verifier_calls": 0,
             "verifier_attempts": 0,
@@ -117,11 +121,14 @@ class Pipeline:
                                   route=f"{cached['cache_type']}_cache", cache_type=cached["cache_type"],
                                   cache_provenance=cached.get("cache_provenance", {}))
             if not result["from_cache"]:
-                result["route"] = route(c.mode, full_tokens, c.max_input_tokens, c.direct_overflow)
+                result["route"] = ("no_context" if c.no_context
+                                   else route(c.mode, full_tokens, c.max_input_tokens, c.direct_overflow))
                 if result["route"] == "unsupported_context":
                     result["status"] = "unsupported_context"
                 else:
-                    if result["route"] in TRUNCATION_ROUTES.values():
+                    if result["route"] == "no_context":
+                        request = task.render([])
+                    elif result["route"] in TRUNCATION_ROUTES.values():
                         ending = self._ending(task, request) if c.direct_overflow == "head" else ""
                         request = truncate_prompt(self.tokenizer, request, c.max_input_tokens, c.direct_overflow, ending)
                     elif result["route"] == "dense_child_packed":
@@ -165,14 +172,25 @@ class Pipeline:
                     result["final_rendered_input_tokens"] = chat_token_count(self.tokenizer, request)
                     if result["final_rendered_input_tokens"] > c.max_input_tokens:
                         raise ValueError("Rendered executor request exceeds input budget")
+                    result["max_tokens"] = min(c.max_output_tokens,
+                                               c.context_window_tokens - result["final_rendered_input_tokens"])
                     generation_at = time.perf_counter()
                     try:
-                        completion, attempts = call_with_retries(lambda: self.complete(request), max_retries=c.max_retries)
+                        completion, attempts = call_with_retries(
+                            lambda: self.complete(request, max_tokens=result["max_tokens"], case_id=task.case_id),
+                            max_retries=c.max_retries)
                     finally:
                         result["generation_ms"] = (time.perf_counter() - generation_at) * 1000
                     result.update(prediction=completion.text, input_tokens=completion.input_tokens,
                                   output_tokens=completion.output_tokens, raw_usage=completion.raw_usage,
                                   finish_reason=completion.finish_reason, attempts=attempts)
+                    if completion.reasoning:
+                        result["reasoning_tokens"] = len(token_ids(
+                            self.tokenizer.encode(completion.reasoning, add_special_tokens=False)))
+                        if self.output_dir:
+                            with (self.output_dir / "reasoning.jsonl").open("a", encoding="utf-8") as output:
+                                output.write(json.dumps({"case_id": task.case_id, "reasoning": completion.reasoning},
+                                                        ensure_ascii=False) + "\n")
                     if c.cache_write and self._eligible(task, completion.text) and completion.finish_reason not in {"length", "content_filter"}:
                         controller = self.backend()
                         store = controller.store_compact_mcq if task.choices else controller.store_compact_answer

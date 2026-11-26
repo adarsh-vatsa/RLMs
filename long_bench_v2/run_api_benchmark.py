@@ -78,7 +78,7 @@ API_SYSTEM_PROMPT = (
 )
 
 
-from execution.client import Completion
+from execution.client import THINKING_SAMPLING, Completion, with_thinking
 from execution.contracts import add_arguments, resolve_config
 from execution.pipeline import Pipeline
 from execution.artifacts import record_evaluation, finalize
@@ -367,7 +367,8 @@ def _call_openrouter(client: Any, args: argparse.Namespace, prompt: str) -> dict
     return json.loads(raw)
 
 
-def _call_openai_compatible(client: Any, args: argparse.Namespace, messages: list[dict]) -> dict:
+def _call_openai_compatible(client: Any, args: argparse.Namespace, messages: list[dict], *,
+                            max_tokens: int | None = None, extra_body: dict | None = None) -> dict:
     if isinstance(client, dict):
         api_key = _coerce_text(client.get("api_key"))
         url = _coerce_text(client.get("url"))
@@ -382,10 +383,11 @@ def _call_openai_compatible(client: Any, args: argparse.Namespace, messages: lis
     from execution.client import call_chat_completion
 
     completion = call_chat_completion(base_url=url.removesuffix("/chat/completions"),
-        model=args.api_model, messages=messages, max_tokens=args.max_output_tokens,
-        extra_body=build_openai_compatible_mcq_extra_body(), api_key=api_key,
-        timeout_seconds=getattr(args, "request_timeout_seconds", 120), opener=opener)
-    return {"choices": [{"message": {"content": completion.text}, "finish_reason": completion.finish_reason}],
+        model=args.api_model, messages=messages, max_tokens=max_tokens or args.max_output_tokens,
+        extra_body=extra_body or build_openai_compatible_mcq_extra_body(), api_key=api_key,
+        timeout_seconds=getattr(args, "request_timeout_seconds", 1800), opener=opener)
+    return {"choices": [{"message": {"content": completion.text, "reasoning": completion.reasoning},
+                         "finish_reason": completion.finish_reason}],
             "usage": completion.raw_usage}
 
 
@@ -485,11 +487,14 @@ def run_longbench_api_benchmark(
         raise ValueError("Shared direct execution requires --api-provider openai_compatible")
     client = (client_factory or _build_default_api_client_factory(args))()
 
-    def complete(request):
-        response = _call_api(client, args, "", messages=request)
+    # Only OpenAI-compatible runs build a pipeline, so the pipeline's requests go straight to that client.
+    def complete(request, *, max_tokens, case_id):
+        response = _call_openai_compatible(client, args, request, max_tokens=max_tokens,
+            extra_body=with_thinking(build_openai_compatible_mcq_extra_body(), config, case_id))
         usage = parse_api_usage(response, args.api_model, success=True)
+        choice = (response.get("choices") or [{}])[0]
         return Completion(_extract_response_text(response), usage["input_tokens"], usage["output_tokens"],
-                          usage["raw"], (response.get("choices") or [{}])[0].get("finish_reason"))
+                          usage["raw"], choice.get("finish_reason"), choice["message"].get("reasoning", ""))
 
     if config is not None:
         pipeline = Pipeline(config, tokenizer, complete, output_dir=out_dir)
@@ -705,8 +710,8 @@ def run_longbench_api_benchmark(
                     "head": "head_keep_question",
                 }.get(config.direct_overflow, "disabled"),
                 "system_prompt_style": "strict",
-                "temperature": 0,
-                "thinking_enabled": False,
+                "temperature": THINKING_SAMPLING["temperature"] if config.thinking else 0,
+                "thinking_enabled": config.thinking,
                 **mcq_decoder_constraint_metadata(),
             }
         )
@@ -786,7 +791,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--manifest-note", type=str, default="")
     parser.add_argument("--serving-metadata", type=Path, help="JSON object describing the executor service")
     parser.add_argument("--preflight-only", action="store_true")
-    parser.add_argument("--request-timeout-seconds", type=int, default=120)
+    parser.add_argument("--request-timeout-seconds", type=int, default=1800)
     add_source_arguments(parser)
     add_arguments(parser)
     return parser

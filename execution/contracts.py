@@ -59,14 +59,21 @@ class Config:
     document_floor: bool = False
     packing: str = "stop"
     max_retries: int = 5
+    thinking: bool = False
+    sampling_seed: int = 1
+    no_context: bool = False
 
     def __post_init__(self):
         if self.mode not in {"direct", "hybrid"}:
             raise ValueError("Execution mode must be direct or hybrid")
         if min(self.max_input_tokens, self.max_output_tokens, self.context_window_tokens) <= 0:
             raise ValueError("Executor token budgets must be positive")
-        if self.max_input_tokens + self.max_output_tokens > self.context_window_tokens:
-            raise ValueError("Input plus output budget must not exceed the context window")
+        # Each request's output is capped at what its prompt leaves of the window, so a thinking
+        # allowance may exceed what the longest prompts leave.
+        if self.max_input_tokens >= self.context_window_tokens:
+            raise ValueError("The input budget must leave room for output in the context window")
+        if self.no_context and self.mode != "direct":
+            raise ValueError("No-context runs use direct mode")
         if self.child_tokens <= 0 or not 0 <= self.child_overlap_tokens < self.child_tokens:
             raise ValueError("Require child tokens > overlap >= 0")
         if self.direct_overflow not in {"unsupported", "middle", "middle-marked", "head", "error"}:
@@ -119,6 +126,12 @@ def add_arguments(parser):
     parser.add_argument("--neighbor-children", type=int, default=0)
     parser.add_argument("--document-floor", action="store_true")
     parser.add_argument("--packing", choices=("stop", "skip", "fill"), default="stop")
+    parser.add_argument("--thinking", action="store_true",
+                        help="Let the executor think, sampling with a seed per question")
+    parser.add_argument("--sampling-seed", type=int, default=1,
+                        help="Mixed into each question's seed when thinking; a repeat run takes another value")
+    parser.add_argument("--no-context", action="store_true",
+                        help="Send the prompt with no source text: what the model answers without the documents")
     parser.add_argument("--cache-verifier-model")
     parser.add_argument("--cache-verifier-base-url")
     parser.add_argument("--cache-verifier-api-key-env", default="")
@@ -150,5 +163,6 @@ def resolve_config(args, *, mode, legacy_cache=False, legacy_source_order=False,
         cache_matching=args.cache_matching, rerank_top=args.pipeline_rerank_top,
         evidence_selection=args.evidence_selection, selection_seed=args.selection_seed,
         neighbor_children=args.neighbor_children, document_floor=args.document_floor, packing=args.packing,
-        max_retries=getattr(args, "max_retries", 1), **budgets,
+        max_retries=getattr(args, "max_retries", 1), thinking=args.thinking, sampling_seed=args.sampling_seed,
+        no_context=args.no_context, **budgets,
     )

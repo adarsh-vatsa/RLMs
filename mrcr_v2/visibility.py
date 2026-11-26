@@ -18,7 +18,7 @@ import json
 from pathlib import Path
 
 from execution.pipeline import Pipeline
-from execution.results_table import mean, read_rows, write_table
+from execution.results_table import mean, read_rows, window, write_table
 from execution.tokens import truncate_prompt
 from mrcr_v2.adapter import solver_task
 from mrcr_v2.dataset import (
@@ -83,17 +83,18 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer, modes=("dire
                             "exact": bool(record["exact_match"]), "target": shown[target], "all": all(shown),
                             "needles": sum(shown)})
         results[run] = answers
-    oracles = {manifests[run]["context_window_tokens"]: {answer["case"]: answer["exact"] for answer in answers}
+    windows = {run: window(manifests[run]["execution"], manifests[run]["context_window_tokens"]) for run in results}
+    oracles = {windows[run]: {answer["case"]: answer["exact"] for answer in answers}
                for run, answers in results.items() if manifests[run].get("oracle")}
     ordered = sorted(sizes, key=sizes.get)
     rows = []
     for run, answers in results.items():
         manifest = manifests[run]
-        oracle = oracles.get(manifest["context_window_tokens"])
+        oracle = oracles.get(windows[run])
         rows.append({
             "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
             "policy": label(manifest),
-            "window": manifest["context_window_tokens"],
+            "window": windows[run],
             "questions": len(answers),
             "exact match": mean(answer["exact"] for answer in answers),
             "target visible": mean(answer["target"] for answer in answers),
@@ -114,7 +115,7 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer, modes=("dire
     needle_rows = []
     for run, answers in results.items():
         manifest = manifests[run]
-        oracle = oracles.get(manifest["context_window_tokens"])
+        oracle = oracles.get(windows[run])
         if oracle is None or manifest.get("oracle") or manifest["mode"] != "hybrid":
             continue
         for count in sorted({answer["needles"] for answer in answers if answer["target"]}):
@@ -122,7 +123,7 @@ def summarize(suite, data_dir, *, tokenizer_factory=load_tokenizer, modes=("dire
             needle_rows.append({
                 "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
                 "policy": label(manifest),
-                "window": manifest["context_window_tokens"],
+                "window": windows[run],
                 "needle turns visible": count,
                 "questions": len(group),
                 "exact matches": sum(answer["exact"] for answer in group),

@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from execution.results_table import gained_lost, mean, policy, read_rows, write_table
+from execution.results_table import gained_lost, is_middle_reference, mean, policy, read_rows, window, write_table
 
 
 def verdicts(suite, grader, run):
@@ -24,9 +24,9 @@ def summarize(suite, grader):
     runs.sort(key=lambda run: manifests[run]["started_at"])
     others = sorted(path.name for path in (suite / "regrades").glob("*") if path.is_dir() and path.name != grader)
     graded = {run: verdicts(suite, grader, run) for run in runs}
-    middle = {manifests[run]["context_window_tokens"]: graded[run] for run in runs
-              if manifests[run]["execution"]["mode"] == "direct"
-              and manifests[run]["execution"]["direct_overflow"] == "middle" and graded[run] is not None}
+    middle = {window(manifests[run]["execution"], manifests[run]["context_window_tokens"]): graded[run] for run in runs
+              if is_middle_reference(manifests[run]["execution"]) and graded[run] is not None}
+    thinking = any(manifests[run]["execution"].get("thinking") for run in runs)
     rows = []
     for run in runs:
         manifest, execution = manifests[run], manifests[run]["execution"]
@@ -40,7 +40,7 @@ def summarize(suite, grader):
         row = {
             "condition": manifest["run_id"].removeprefix(f"{suite.name}_"),
             "policy": policy(execution),
-            "window": manifest["context_window_tokens"],
+            "window": window(execution, manifest["context_window_tokens"]),
             "prompt kept": mean(a["final_rendered_input_tokens"] / a["full_rendered_input_tokens"] for a in answers),
             "input tokens": mean(a["final_rendered_input_tokens"] for a in answers),
             "documents covered": mean(coverage) if hybrid else "",
@@ -51,7 +51,7 @@ def summarize(suite, grader):
         if current is not None:
             correct = sum(current.values())
             invalid = len(answers) - len(current)
-            reference = middle.get(manifest["context_window_tokens"])
+            reference = middle.get(window(execution, manifest["context_window_tokens"]))
             row["accuracy"] = correct / len(current) if current else "no valid grades"
             row["correct"] = f"{correct}/{len(current)}" + (f" ({invalid} invalid)" if invalid else "")
             if reference is not None and reference is not current:
@@ -63,6 +63,7 @@ def summarize(suite, grader):
                     row[f"agreement with {other}"] = mean(current[q] == theirs[q] for q in shared)
         row.update({
             "output tokens": mean(a["executor_output_tokens"] for a in answers),
+            **({"reasoning tokens": mean(r["reasoning_tokens"] for r in records)} if thinking else {}),
             "output limit hit": sum(a.get("executor_finish_reason") == "length" for a in answers),
             "retried requests": sum((a.get("executor_attempts") or 1) > 1 for a in answers),
             "generation s/question": mean(r["generation_ms"] for r in records) / 1000,
@@ -73,7 +74,8 @@ def summarize(suite, grader):
         rows.append(row)
     columns = ["condition", "policy", "window", "prompt kept", "input tokens", "documents covered",
                "questions missing a document", "accuracy", "correct", "gained vs middle", "lost vs middle", "p vs middle",
-               *[f"agreement with {other}" for other in others], "output tokens", "output limit hit",
+               *[f"agreement with {other}" for other in others], "output tokens",
+               *(["reasoning tokens"] if thinking else []), "output limit hit",
                "retried requests", "generation s/question", "retrieval + packing s/question",
                "embedding minutes", "run minutes"]
     return columns, rows
