@@ -58,13 +58,18 @@ AA_LCR_ONLY=full,middle,upgraded MRCR_ONLY=middle_128k,upgraded_128k LONGBENCH_O
   bash adarsh-rlms/jarvis/thinking_runs.sh 20261128_think_pilot aa_lcr,mrcr,longbench
 ```
 
-- Mean reasoning ran from 2,337 to 5,499 tokens per question, and generation took 20–40 s
-  per question. No answer reached the 81,920-token cap and no request was retried.
-  LongBench-v2 had no invalid answers, so the A–D constraint applies after the reasoning.
-- The allowance stays at 81,920: it cut no answer off, and it costs time only on the
-  answers that need it.
-- In all seven runs, the mean prompt length equals that of the thinking-off run on the same
-  questions, to the token.
+- Mean reasoning ran from 2,337 to 5,499 tokens per question (medians 1,432 to 3,125),
+  and generation took 20–40 s per question. No answer reached the 81,920-token cap and no
+  request was retried. LongBench-v2 had no invalid answers, so the A–D constraint applies
+  after the reasoning.
+- LongBench-v2's reasoning has a long tail: 5 of its 40 answers took 9,000 to 35,590
+  tokens, much of it re-checking an answer the model had already chosen; each still ended
+  with an answer.
+- The allowance stays at 81,920. One answer went past 32,768 (35,590 tokens, on
+  LongBench-v2 `upgraded`), which the smaller cap would have cut off and scored zero; the
+  larger cap costs time only on the answers that need it.
+- Every question's prompt matched its thinking-off run in suite `20261029`, in length and
+  evidence.
 - The full runs ask every pilot question again, with the same seed and the same allowance,
   so they also show whether a seeded run repeats itself (section 3).
 
