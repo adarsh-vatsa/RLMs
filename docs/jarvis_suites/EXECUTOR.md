@@ -26,6 +26,9 @@ To run on a particular node, add `EXECUTOR_NODE=<node>` (for example `g202`)
 to the command. Runs that will be compared should share a node: nodes do not
 all give the same greedy answer to the same prompt.
 
+To run on another partition, set `EXECUTOR_PARTITION`, `EXECUTOR_GRES` and
+`EXECUTOR_MEM`; the defaults are `gpu-l40s`, `gpu:l40s:4` and `220G`.
+
 This prints `Submitted batch job <id>`. Keep the ID for the steps below:
 
 ```bash

@@ -340,6 +340,12 @@ class LinuxLauncherTests(unittest.TestCase):
                     self.assertIn("--gres=gpu:l40s:4", arguments)
                     self.assertEqual([argument for argument in arguments if argument.startswith("--nodelist")],
                                      [expected] if expected else [])
+            hopper = {**env, "EXECUTOR_PARTITION": "gpu-h200", "EXECUTOR_GRES": "gpu:h200:4", "EXECUTOR_MEM": "400G"}
+            result = self.launch("run.sh", "submit", "executor", linux=REPO / "jarvis", env=hopper)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            arguments = (root / "submitted").read_text().splitlines()
+            for expected in ("--partition=gpu-h200", "--gres=gpu:h200:4", "--mem=400G"):
+                self.assertIn(expected, arguments)
 
     def test_g202_rerun_moves_only_g202_runs_and_reruns_them_with_the_controls(self):
         with tempfile.TemporaryDirectory() as temporary:

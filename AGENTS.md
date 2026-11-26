@@ -17,16 +17,17 @@ If documentation conflicts with behavior, follow the requested behavior and curr
 
 ## Project Orientation
 
-- `execution/`: shared direct/hybrid pipeline, contracts, token accounting, retrieval packing, cache verification, HTTP client, and execution artifacts.
+- `execution/`: shared direct/hybrid pipeline, contracts, token accounting, retrieval packing, cache verification, HTTP client, and execution artifacts, plus source selection, results tables, and confidence intervals shared by the benchmarks.
 - `semantic_cache_system.py`: embedding, FAISS retrieval, reranking, semantic-cache implementation, and legacy search paths. Shared benchmark orchestration lives in `execution/`.
 - `aa_lcr/`: dataset preparation, task adapter, runner, LLM grading, deferred regrading, and comparison tools.
-- `mrcr_v2/`: released-dataset preparation, task adapter, runner, and deterministic scoring.
+- `mrcr_v2/`: released-dataset preparation, task adapter, runner, deterministic scoring, the oracle pipeline, and needle-visibility analysis.
 - `long_bench_v2/`: LongBench-v2 runners and supporting tools. Read the runner being changed before modifying benchmark behavior.
 - `test/`: executable expectations and focused regression tests.
-- `jarvis/`: Slurm serving and submission scripts; runbooks live in `docs/jarvis/`.
-- `linux/`: standalone serving and benchmark scripts without Slurm; runbooks live in `docs/linux/`.
+- `jarvis/`: Slurm serving and submission scripts. Workshop runs are submitted with `run_suite.sh` (runbooks in `docs/jarvis_suites/`); `docs/jarvis/` covers setup and the Slurm scripts.
+- `linux/`: standalone serving and benchmark scripts without Slurm, including the per-benchmark `run_*_suite.sh` scripts that `jarvis/run_suite.sh` also uses; runbooks live in `docs/linux/`.
+- `aaai-2027/`: workshop paper LaTeX source, tables, and figure generation (`figures/figures.py` imports `execution/`).
 - `docs/`: design context, experiment reports, and plans; not guaranteed to describe the current implementation.
-- `benchmark_artifacts/`, `benchmark_data/`, and `benchmark_fixtures/`: experimental inputs and outputs. Treat historical artifacts as read-only unless the user asks to regenerate or edit them.
+- `benchmark_artifacts/` and `benchmark_data/`: experimental inputs and outputs. Treat historical artifacts as read-only unless the user asks to regenerate or edit them.
 
 Use `rg` to find the current implementation rather than relying on class names, model names, flows, or return shapes described in prose. In particular, confirm model and pricing constants in code before changing model-related behavior.
 
@@ -55,7 +56,7 @@ Use `rg` to find the current implementation rather than relying on class names, 
 - Keep docstrings limited to useful contracts or surprising behavior.
 - Documentation should follow the implementation. Do not distort code to match stale prose.
 - Update only the narrow documentation affected by a user-facing command, contract, or workflow change; do not refresh unrelated documents.
-- Keep operational commands in `docs/linux/` or `docs/jarvis/`; script-directory READMEs point to those runbooks. The Linux workflow is `SETUP_RUNBOOK.md` then `BENCHMARK_RUNBOOK.md`; `SHARED_EXECUTION_RUNBOOK.md` is an options reference without setup or execution commands.
+- Keep operational commands in `docs/linux/` or `docs/jarvis/`; script-directory READMEs point to those runbooks. The Linux workflow is `SETUP_RUNBOOK.md` then `BENCHMARK_RUNBOOK.md`, with `AA_LCR_SUITE_RUNBOOK.md` and `MRCR_SUITE_RUNBOOK.md` for whole suites; `SHARED_EXECUTION_RUNBOOK.md` is an options reference without setup or execution commands.
 
 ## Validation
 

@@ -23,6 +23,7 @@ Common commands:
   JARVIS_STORAGE_MODE=scratch CLEANUP_NODE=g101 bash jarvis/run.sh submit cleanup
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
   EXECUTOR_NODE=g202 VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit executor
+  EXECUTOR_PARTITION=gpu-h200 EXECUTOR_GRES=gpu:h200:4 EXECUTOR_MEM=400G bash jarvis/run.sh submit executor
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit evaluator
   VLLM_VENV=/home/edogu/.venvs/adarsh-vllm bash jarvis/run.sh submit download-all
   CLIENT_CMD="uv run python ..." bash jarvis/run.sh submit client
@@ -63,11 +64,11 @@ submit_mode() {
         node_args+=(--nodelist="$EXECUTOR_NODE")
       fi
       sbatch \
-        --partition=gpu-l40s \
+        --partition="${EXECUTOR_PARTITION:-gpu-l40s}" \
         ${node_args[@]+"${node_args[@]}"} \
-        --gres=gpu:l40s:4 \
+        --gres="${EXECUTOR_GRES:-gpu:l40s:4}" \
         --cpus-per-task=32 \
-        --mem=220G \
+        --mem="${EXECUTOR_MEM:-220G}" \
         --time="${EXECUTOR_TIME:-24:00:00}" \
         --job-name=rlms-executor \
         --output="$PROJECT_LOG_DIR/%x-%j.out" \
