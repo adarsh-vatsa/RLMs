@@ -1,0 +1,96 @@
+{
+  "run_dir": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261128_think_pilot/regrades/Qwen3.6-35B-A3B/direct/20261128_think_pilot_full",
+  "benchmark_target": "aa_lcr_reasoning",
+  "experiment": "direct",
+  "dataset_version": "1.1",
+  "dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
+  "evaluator_model": "Qwen/Qwen3.6-35B-A3B",
+  "grader_prompt_version": "aa_lcr_equality_v1.1",
+  "max_output_tokens": 81920,
+  "grader_api_style": "vllm",
+  "grader_reasoning_effort": "none",
+  "output_length_terminated_count": 0,
+  "grader_length_terminated_count": 0,
+  "executor_finish_reason_counts": {
+    "stop": 20
+  },
+  "scored_rows": 20,
+  "answer_accuracy": 0.7,
+  "valid_grade_accuracy": 0.7,
+  "invalid_grade_count": 0,
+  "api_error_count": 0,
+  "by_document_category": {
+    "Academia": {
+      "rows": 5,
+      "valid_grades": 5,
+      "accuracy": 1.0,
+      "cache_hit_rate": 0.0
+    },
+    "Company_Documents": {
+      "rows": 15,
+      "valid_grades": 15,
+      "accuracy": 0.6,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "by_route": {
+    "direct_fit": {
+      "rows": 20,
+      "valid_grades": 20,
+      "accuracy": 0.7,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "incorrect_rows": [
+    {
+      "case_id": "aa_lcr_010",
+      "question_id": "10",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "8.57%, increase not decrease",
+      "candidate_answer": "Based on the provided documents, the company and quarter where net income per diluted share was $0.19 is **Digital Realty** for the **three months ended March 31, 2023**. \n\n* Operating revenue for this quarter: $1,338,724 (in thousands)\n* Operating revenue for the previous quarter (three months ended June 30, 2023): $1,366,267 (in thousands)\n\nPercentage decrease = (($1,366,267 - $1,338,724) / $1,366,267) \u00d7 100 = 2.0159...%\n\nRounded to two decimal places, the operating revenue decreased by **2.02%**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_011",
+      "question_id": "11",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "In Q1 2023, when net income per diluted share was $0.19, total operating revenue was $1,338,724, an increase of $105,616, or 8.57%, from the previous quarter.",
+      "candidate_answer": "Based on the provided documents, the quarter where net income per diluted share was $0.19 is the **quarter ended March 31, 2023** for Digital Realty. \n\n* **Total Operating Revenue:** $1,338,724 thousand\n* **Change from Previous Quarter (Q2 2023):** -2.02% \n\n**Answer:** $1,338,724 thousand, -2.02%",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_012",
+      "question_id": "12",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "In Q3 2023, total net income was $745,941, an increase of 545.02% from $115,647 in Q2 2023.",
+      "candidate_answer": "Based on the Consolidated Quarterly Statements of Operations for Digital Realty, the total net income for the quarter with $886.96 million in rental revenues (Q3 2023) was **$745,941** thousand. Compared to the previous quarter (Q2 2023), which had a net income of $115,647 thousand, this represents an increase of **545.01%**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_016",
+      "question_id": "16",
+      "document_set_id": "co_dc_ann_sup_a",
+      "official_answer": "1Q23: 41%,  2Q23: 32%",
+      "candidate_answer": "Yes, 49% for 1Q23 and 36% for 2Q23.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_017",
+      "question_id": "17",
+      "document_set_id": "co_dc_ann_sup_a",
+      "official_answer": "2Q23, Digital Realty",
+      "candidate_answer": "#Q223 Digital Realty",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_018",
+      "question_id": "18",
+      "document_set_id": "co_dc_ann_sup_b",
+      "official_answer": "Melbourne - 2, Sydney - 4",
+      "candidate_answer": "Based on the provided documents:\n\n- **Port Hedland**: 0 data centers\n- **Melbourne**: 2 data centers\n- **Sydney**: 4 data centers\n\n*(Listed in ascending order of NEXTDC's built capacity added in 2023: 0.5 MW, 3 MW, and 4 MW, respectively. Digital Realty's data center counts are sourced from the Q2 2024 Occupancy Analysis table, which lists 2 facilities in Melbourne and 4 in Sydney, with no facilities listed for Port Hedland.)*",
+      "grade": "INCORRECT"
+    }
+  ],
+  "invalid_grade_rows": [],
+  "semantic_hit_audit": []
+}

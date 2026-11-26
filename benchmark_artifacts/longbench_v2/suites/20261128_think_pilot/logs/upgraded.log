@@ -1,0 +1,67 @@
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (296013 > 262144). Running this sequence through the model will result in indexing errors
+
+[LONGBENCH-V2] Run id: 20261128_think_pilot_upgraded
+[LONGBENCH-V2] Rows: 20
+[LONGBENCH-V2] Row types: ['original']
+[LONGBENCH-V2] Row order: source_grouped
+[LONGBENCH-V2] Mode: baseline
+[LONGBENCH-V2] Retrieval config: search_mode=hybrid, max_input_tokens=65528, context_window_tokens=262144, max_output_tokens=81920, child_tokens=1024, child_overlap_tokens=128, candidate_strategy=all_children_exact_faiss, reranker_disabled=True
+[LONGBENCH-V2] Output dir: benchmark_artifacts/longbench_v2/suites/20261128_think_pilot/longbench_v2/20261128_think_pilot_upgraded
+[INIT] Corpus: longbench_v2_20261128_think_pilot_upgraded (domain: longbench_v2)
+[INIT] Semantic Cache Controller ready.
+
+[LONGBENCH-V2] Row 1/20: 6723a1ccbb02136c067d70b3__original
+  [EMBED] Loading Qwen3-Embedding-0.6B (batch_size=16, max_length=8192, device=cuda, dtype=bfloat16)...
+[transformers] `torch_dtype` is deprecated! Use `dtype` instead!
+Loading weights:   0%|          | 0/310 [00:00<?, ?it/s]Loading weights: 100%|██████████| 310/310 [00:00<00:00, 15227.72it/s]
+  [EMBED] ✓ Loaded on cuda (595M params)
+[transformers] Token indices sequence length is longer than the specified maximum sequence length for this model (149466 > 131072). Running this sequence through the model will result in indexing errors
+  [DRAGNET] Retrieved 167 candidates in 25ms
+[LONGBENCH-V2] Row 2/20: 670aac92bb02136c067d218a__original
+  [DRAGNET] Retrieved 155 candidates in 15ms
+[LONGBENCH-V2] Row 3/20: 66ec0c4c821e116aacb1994a__original
+  [DRAGNET] Retrieved 75 candidates in 15ms
+[LONGBENCH-V2] Row 4/20: 66f920d8bb02136c067c4b81__original
+  [DRAGNET] Retrieved 95 candidates in 25ms
+[LONGBENCH-V2] Row 5/20: 6725dc28bb02136c067d8555__original
+  [DRAGNET] Retrieved 109 candidates in 28ms
+[LONGBENCH-V2] Row 6/20: 670cf1c0bb02136c067d26e5__original
+  [DRAGNET] Retrieved 104 candidates in 15ms
+[LONGBENCH-V2] Row 7/20: 66ec3fa7821e116aacb1c75d__original
+  [DRAGNET] Retrieved 203 candidates in 15ms
+[LONGBENCH-V2] Row 8/20: 66f8c9febb02136c067c4511__original
+  [DRAGNET] Retrieved 262 candidates in 15ms
+[LONGBENCH-V2] Row 9/20: 67239fd9bb02136c067d6ff7__original
+  [DRAGNET] Retrieved 166 candidates in 16ms
+[LONGBENCH-V2] Row 10/20: 67286634bb02136c067d91f0__original
+  [DRAGNET] Retrieved 175 candidates in 17ms
+[LONGBENCH-V2] Row 11/20: 6725d977bb02136c067d8373__original
+  [DRAGNET] Retrieved 144 candidates in 16ms
+[LONGBENCH-V2] Row 12/20: 66f8d4b3bb02136c067c45c2__original
+  [DRAGNET] Retrieved 100 candidates in 17ms
+[LONGBENCH-V2] Row 13/20: 66f659a8bb02136c067c1d68__original
+  [DRAGNET] Retrieved 237 candidates in 15ms
+[LONGBENCH-V2] Row 14/20: 66f50109821e116aacb31f16__original
+  [DRAGNET] Retrieved 267 candidates in 15ms
+[LONGBENCH-V2] Row 15/20: 670fb813bb02136c067d2bec__original
+  [DRAGNET] Retrieved 84 candidates in 15ms
+[LONGBENCH-V2] Row 16/20: 66f167c3821e116aacb274f4__original
+  [DRAGNET] Retrieved 235 candidates in 15ms
+[LONGBENCH-V2] Row 17/20: 66ecfe1e821e116aacb1e41c__original
+  [DRAGNET] Retrieved 78 candidates in 15ms
+[LONGBENCH-V2] Row 18/20: 6703a0ecbb02136c067cd11b__original
+  [DRAGNET] Retrieved 85 candidates in 15ms
+[LONGBENCH-V2] Row 19/20: 67286698bb02136c067d9223__original
+  [DRAGNET] Retrieved 175 candidates in 19ms
+[LONGBENCH-V2] Row 20/20: 67285e1dbb02136c067d901b__original
+  [DRAGNET] Retrieved 161 candidates in 15ms
+
+[LONGBENCH-V2] Completed.
+[LONGBENCH-V2] Predictions : benchmark_artifacts/longbench_v2/suites/20261128_think_pilot/longbench_v2/20261128_think_pilot_upgraded/predictions.jsonl
+[LONGBENCH-V2] Bridge rows : benchmark_artifacts/longbench_v2/suites/20261128_think_pilot/longbench_v2/20261128_think_pilot_upgraded/bridge_rows.jsonl
+[LONGBENCH-V2] Bridge CSV  : benchmark_artifacts/longbench_v2/suites/20261128_think_pilot/longbench_v2/20261128_think_pilot_upgraded/bridge_rows.csv
+[LONGBENCH-V2] Manifest    : benchmark_artifacts/longbench_v2/suites/20261128_think_pilot/longbench_v2/20261128_think_pilot_upgraded/manifest.json
+[LONGBENCH-V2] Eval report : benchmark_artifacts/longbench_v2/suites/20261128_think_pilot/longbench_v2/20261128_think_pilot_upgraded/official_longbench_v2_eval_report.json
+[LONGBENCH-V2] Accuracy    : 0.500
+
+Total elapsed time: 1139.58 seconds

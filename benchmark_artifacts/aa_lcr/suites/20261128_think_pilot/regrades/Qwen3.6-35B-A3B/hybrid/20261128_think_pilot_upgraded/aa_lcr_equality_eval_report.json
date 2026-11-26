@@ -1,0 +1,120 @@
+{
+  "run_dir": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261128_think_pilot/regrades/Qwen3.6-35B-A3B/hybrid/20261128_think_pilot_upgraded",
+  "benchmark_target": "aa_lcr_reasoning",
+  "experiment": "hybrid",
+  "dataset_version": "1.1",
+  "dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
+  "evaluator_model": "Qwen/Qwen3.6-35B-A3B",
+  "grader_prompt_version": "aa_lcr_equality_v1.1",
+  "max_output_tokens": 81920,
+  "grader_api_style": "vllm",
+  "grader_reasoning_effort": "none",
+  "output_length_terminated_count": 0,
+  "grader_length_terminated_count": 0,
+  "executor_finish_reason_counts": {
+    "stop": 20
+  },
+  "scored_rows": 20,
+  "answer_accuracy": 0.55,
+  "valid_grade_accuracy": 0.55,
+  "invalid_grade_count": 0,
+  "api_error_count": 0,
+  "by_document_category": {
+    "Academia": {
+      "rows": 5,
+      "valid_grades": 5,
+      "accuracy": 0.8,
+      "cache_hit_rate": 0.0
+    },
+    "Company_Documents": {
+      "rows": 15,
+      "valid_grades": 15,
+      "accuracy": 0.466667,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "by_route": {
+    "dense_child_packed": {
+      "rows": 20,
+      "valid_grades": 20,
+      "accuracy": 0.55,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "incorrect_rows": [
+    {
+      "case_id": "aa_lcr_002",
+      "question_id": "2",
+      "document_set_id": "ac_markets",
+      "official_answer": "Apple v. Samsung, Crocs Inc. v. European Union Intellectual Property Office",
+      "candidate_answer": "Based on the provided documents, the cases that meet your criteria are:\n\nApple v Samsung, Crocs Inc. v EUIPO\n\n*(Note: The source text refers to these cases concerning industrial design rights and design patents rather than trademarks. Excluding the Delhi High Court case leaves two cases.)*",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_006",
+      "question_id": "6",
+      "document_set_id": "co_dc_2Q23",
+      "official_answer": "5597456",
+      "candidate_answer": "Based on the provided documents:\n\n* **Digital Realty (NYSE: DLR)** reported Total Stockholders' Equity of **$17,621,456** thousand as of June 30, 2023.\n* **Equinix (Nasdaq: EQIX)** reported Total Equinix stockholders\u2019 equity of **$12,024,109** thousand as of June 30, 2023.\n\n**Difference:** $17,621,456 - $12,024,109 = **5,597,347** (in thousands of dollars)",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_007",
+      "question_id": "7",
+      "document_set_id": "co_dc_2Q23",
+      "official_answer": "Nasdaq",
+      "candidate_answer": "Based on the provided documents, the company that issued a press release on July 27, 2023, is **Digital Realty Trust, Inc.** According to the text, its stock trades on the **New York Stock Exchange (NYSE)** (under the symbol DLR).",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_008",
+      "question_id": "8",
+      "document_set_id": "co_dc_2Q23",
+      "official_answer": "2537553",
+      "candidate_answer": "Based on the provided documents, the metric described is **Adjusted EBITDA**. Digital Realty reports this metric quarterly in thousands of dollars. To determine the value for the twelve months ending March 31, 2023, we sum the Adjusted EBITDA for the four most recent quarters:\n\n* Q2 2023 (ended June 30, 2023): $696,604\n* Q1 2023 (ended March 31, 2023): $667,804\n* Q4 2022 (ended December 31, 2022): $638,969\n* Q3 2022 (ended September 30, 2022): $619,786\n\n**Total: 2,623,163** (in thousands of dollars)",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_010",
+      "question_id": "10",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "8.57%, increase not decrease",
+      "candidate_answer": "Based on the provided documents, the company and quarter where net income per diluted share was $0.19 is **Digital Realty** for the quarter ended **March 31, 2023**. \n\nFrom the \"Selected Operating Data\" table:\n- Operating revenue for the previous quarter (June 30, 2023): $1,366,267 (in thousands)\n- Operating revenue for the current quarter (March 31, 2023): $1,338,724 (in thousands)\n\nPercentage decrease = (($1,366,267 - $1,338,724) / $1,366,267) \u00d7 100 = 2.0159...%\n\nRounded to two decimal places, the operating revenue decreased by **2.02%**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_011",
+      "question_id": "11",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "In Q1 2023, when net income per diluted share was $0.19, total operating revenue was $1,338,724, an increase of $105,616, or 8.57%, from the previous quarter.",
+      "candidate_answer": "Based on the provided documents, the quarter where net income per diluted share was $0.19 is the **first quarter of 2023 (ended March 31, 2023)** for **Digital Realty**.\n\n* **Total Operating Revenue:** $1,338,724 thousand\n* **Percentage Change from Previous Quarter:** 8.56% increase (calculated as `(1,338,724 - 1,233,108) / 1,233,108 = 8.5648...%`, rounded to two decimal places)\n\n**Answer:** $1,338,724, 8.56%",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_012",
+      "question_id": "12",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "In Q3 2023, total net income was $745,941, an increase of 545.02% from $115,647 in Q2 2023.",
+      "candidate_answer": "Based on the Consolidated Quarterly Statements of Operations, for the quarter ended September 30, 2023 (where rental revenues were $886.96 million), the total net income was **$745,941 thousand**. Compared to the previous quarter (ended June 30, 2023, with net income of $115,647 thousand), this represents an increase of **545.00%**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_016",
+      "question_id": "16",
+      "document_set_id": "co_dc_ann_sup_a",
+      "official_answer": "1Q23: 41%,  2Q23: 32%",
+      "candidate_answer": "Yes, the analyst should alert the manager. \n\n**Q1 2023:** 41%  \n**Q2 2023:** 33%  \n\n*(Calculation basis: The lowest power consumption category is \"0-1 MW\". For Q1 2023, the $34M contribution divided by the $83.293M Grand Total annualized GAAP base rental revenue equals ~40.8%, rounded to 41%. For Q2 2023, the $37M contribution divided by the $113.83M Grand Total equals ~32.5%, rounded to 33%.)*",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_018",
+      "question_id": "18",
+      "document_set_id": "co_dc_ann_sup_b",
+      "official_answer": "Melbourne - 2, Sydney - 4",
+      "candidate_answer": "Based on the provided documents, the cities where NEXTDC added additional built capacity in the reporting period (ended December 31, 2023) and the corresponding Digital Realty data center counts, listed in **ascending order of NEXTDC's added built capacity**, are:\n\n1. **Port Hedland** (0.5 MW added by NEXTDC): **0** data centers\n2. **Melbourne** (3 MW added by NEXTDC): **2** data centers\n3. **Sydney** (4 MW added by NEXTDC): **3** data centers\n\n*(Note: Digital Realty's property portfolio tables do not list any facilities in Port Hedland, resulting in a count of 0. Melbourne and Sydney counts are sourced from Digital Realty's Asia Pacific occupancy analysis.)*",
+      "grade": "INCORRECT"
+    }
+  ],
+  "invalid_grade_rows": [],
+  "semantic_hit_audit": []
+}

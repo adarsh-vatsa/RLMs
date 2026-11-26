@@ -1,0 +1,4 @@
+condition,policy,window,prompt kept,input tokens,documents covered,questions missing a document,accuracy,correct,gained vs middle,lost vs middle,p vs middle,agreement with Qwen3.6-35B-A3B,output tokens,reasoning tokens,output limit hit,retried requests,generation s/question,retrieval + packing s/question,embedding minutes,run minutes
+full,full prompt,262144,1.0,100787.65,,,0.7,14/20,,,,1.0,2440.0,2337.3,0,0,22.9972,,,8
+middle,truncation: middle,65536,0.6155,61439.0,,,0.4,8/20,,,,0.95,2862.5,2745.8,0,0,21.7889,,,7
+upgraded,"fusion, 1024-token chunks, 1 neighbour each side, fill packing, document floor",65536,0.6152,61410.2,1.0,0,0.55,11/20,5,2,0.4531,0.9,2815.3,2691.7,0,0,21.4785,0.5989,0,8

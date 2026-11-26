@@ -1,0 +1,136 @@
+{
+  "run_dir": "/mmfs1/home/edogu/adarsh-rlms/benchmark_artifacts/aa_lcr/suites/20261128_think_pilot/regrades/Qwen3.6-35B-A3B/direct/20261128_think_pilot_middle",
+  "benchmark_target": "aa_lcr_reasoning",
+  "experiment": "direct",
+  "dataset_version": "1.1",
+  "dataset_revision": "9a77ef56b717057ade24ceab4d273712a0b4f19e",
+  "evaluator_model": "Qwen/Qwen3.6-35B-A3B",
+  "grader_prompt_version": "aa_lcr_equality_v1.1",
+  "max_output_tokens": 81920,
+  "grader_api_style": "vllm",
+  "grader_reasoning_effort": "none",
+  "output_length_terminated_count": 0,
+  "grader_length_terminated_count": 0,
+  "executor_finish_reason_counts": {
+    "stop": 20
+  },
+  "scored_rows": 20,
+  "answer_accuracy": 0.45,
+  "valid_grade_accuracy": 0.45,
+  "invalid_grade_count": 0,
+  "api_error_count": 0,
+  "by_document_category": {
+    "Academia": {
+      "rows": 5,
+      "valid_grades": 5,
+      "accuracy": 0.6,
+      "cache_hit_rate": 0.0
+    },
+    "Company_Documents": {
+      "rows": 15,
+      "valid_grades": 15,
+      "accuracy": 0.4,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "by_route": {
+    "middle_truncated": {
+      "rows": 20,
+      "valid_grades": 20,
+      "accuracy": 0.45,
+      "cache_hit_rate": 0.0
+    }
+  },
+  "incorrect_rows": [
+    {
+      "case_id": "aa_lcr_002",
+      "question_id": "2",
+      "document_set_id": "ac_markets",
+      "official_answer": "Apple v. Samsung, Crocs Inc. v. European Union Intellectual Property Office",
+      "candidate_answer": "Based on the provided documents, there are no legal cases mentioned regarding trademark infringement, nor is there any reference to the Delhi High Court. The documents focus on barriers to industry-research collaboration, commercialisation outcomes, market concentration, and out-of-market efficiencies in competition/antitrust policy. Therefore, I cannot provide the requested case names.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_005",
+      "question_id": "5",
+      "document_set_id": "ac_hack",
+      "official_answer": "Liu et al., 2023, Jailbreaking chatgpt via prompt engineering: An empirical study.",
+      "candidate_answer": "Based on the provided documents, you should refer to the paper titled **\"DrAttack: Prompt Decomposition and Reconstruction Makes Powerful LLM Jailbreakers\"** (Document 8).\n\nThis paper explicitly addresses how to authoritatively determine whether an LLM's output is benign/harmless versus harmful. It highlights that automated evaluation methods (such as predefined string matching or GPT-based content moderation) are unreliable and prone to false positives/negatives (e.g., flagging harmless text as harmful simply because it contains certain trigger words). \n\nTo authoritatively determine if content is benign, the paper recommends **human evaluation** using structured surveys, where human annotators assess the model's output against clear safety criteria. This human-in-the-loop approach is presented in the paper as the most reliable and authoritative method for validating benign content in LLM safety research.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_006",
+      "question_id": "6",
+      "document_set_id": "co_dc_2Q23",
+      "official_answer": "5597456",
+      "candidate_answer": "Based on the provided documents:\n- **Digital Realty (NYSE)** reported Total Stockholders' Equity of **$17,621,456 thousand** as of June 30, 2023.\n- **Equinix (Nasdaq)** reported Total Equinix stockholders\u2019 equity of **$12,024,109 thousand** as of June 30, 2023.\n\nThe difference in total stockholders' equity between the two companies is **$5,597,347 thousand** ($17,621,456 - $12,024,109).",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_007",
+      "question_id": "7",
+      "document_set_id": "co_dc_2Q23",
+      "official_answer": "Nasdaq",
+      "candidate_answer": "Based on the provided documents, the company that issued a press release on July 27, 2023, is Digital Realty. According to the document, its stock trades on the **New York Stock Exchange (NYSE)**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_010",
+      "question_id": "10",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "8.57%, increase not decrease",
+      "candidate_answer": "Based on the provided documents, the company and quarter where net income per diluted share was $0.19 is **Digital Realty** for the quarter ended **March 31, 2023**.\n\n* Operating Revenue for the previous quarter (June 30, 2023): $1,366,267 thousand\n* Operating Revenue for the current quarter (March 31, 2023): $1,338,724 thousand\n\nPercentage decrease = `[(1,366,267 - 1,338,724) / 1,366,267] \u00d7 100` = `2.0159...%`\n\nRounded to two decimal places, the operating revenue decreased by **2.02%**.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_011",
+      "question_id": "11",
+      "document_set_id": "co_dc_3Q23",
+      "official_answer": "In Q1 2023, when net income per diluted share was $0.19, total operating revenue was $1,338,724, an increase of $105,616, or 8.57%, from the previous quarter.",
+      "candidate_answer": "For the quarter ended March 31, 2023, the total operating revenue was **$1,338,724 thousand**, representing a **-2.02%** change from the previous quarter.",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_015",
+      "question_id": "15",
+      "document_set_id": "co_dc_ann_sup_a",
+      "official_answer": "$55.2 million",
+      "candidate_answer": "Based on the provided documents, the requested information is **not available**. \n\nThe materials cover Digital Realty's financial results only through the **second quarter of 2023** (ending June 30, 2023) and do not contain data for the second half of 2023 (Q3 and Q4). Additionally, the specific metric \"operating cash flow\" is not reported in the provided text; instead, the company discloses non-GAAP real estate performance measures such as Funds from Operations (FFO), Core FFO, Adjusted Funds from Operations (AFFO), EBITDA, and Cash NOI. \n\nIf you need figures for any of these available metrics or a time period covered in the documents, please let me know!",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_016",
+      "question_id": "16",
+      "document_set_id": "co_dc_ann_sup_a",
+      "official_answer": "1Q23: 41%,  2Q23: 32%",
+      "candidate_answer": "Yes. \n- Q1 2023: 49%\n- Q2 2023: 32%",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_018",
+      "question_id": "18",
+      "document_set_id": "co_dc_ann_sup_b",
+      "official_answer": "Melbourne - 2, Sydney - 4",
+      "candidate_answer": "Based on the provided documents, here are the cities in ascending order of the built capacity added by NEXTDC in calendar year 2023, along with the corresponding number of data centers Digital Realty has in those locations:\n\n* **Port Hedland** (0.5 MW added by NEXTDC): **0** data centers (not listed in Digital Realty's portfolio)\n* **Melbourne** (3 MW added by NEXTDC): **2** data centers\n* **Sydney** (4 MW added by NEXTDC): **4** data centers\n\n*(Note: NEXTDC's capacity additions are sourced from its development activity section covering the half-year ended December 31, 2023. Digital Realty's data center counts are sourced from its regional occupancy analysis table.)*",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_019",
+      "question_id": "19",
+      "document_set_id": "co_dc_press_a",
+      "official_answer": "-76%, -42%",
+      "candidate_answer": "0%,0%",
+      "grade": "INCORRECT"
+    },
+    {
+      "case_id": "aa_lcr_020",
+      "question_id": "20",
+      "document_set_id": "co_dc_press_a",
+      "official_answer": "10%, provision for impairment",
+      "candidate_answer": "Based on the provided financial data from 4Q23 onwards:\n\n* **Equinix Operating Margins:** Q1 2024: ~17.1% | Q2 2024: ~20.2% \u2192 **Spread: ~3%**\n* **Digital Realty Operating Margins:** Q4 2023: ~9.8% | Q1 2024: ~11.2% \u2192 **Spread: ~1%**\n\nThe largest spread is **3%** (Equinix). \n\nThe specific line item that primarily drove this improvement in operating margin was the **Gain on asset sales** (specifically, the $18 million gain on the sale of the Silicon Valley 12 xScale asset, which was absent in the prior quarter).",
+      "grade": "INCORRECT"
+    }
+  ],
+  "invalid_grade_rows": [],
+  "semantic_hit_audit": []
+}
