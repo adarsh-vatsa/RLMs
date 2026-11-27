@@ -27,7 +27,7 @@ The new configurations do not rerun all 93 conditions, and the paper need not re
 - [x] Qwen with thinking: code and tests, 2026-11-25 (see [Code](#code-for-qwen-with-thinking-done-2026-11-25)); how to run the pilot and the runs: [THINKING.md](jarvis_suites/THINKING.md).
 - [x] Qwen with thinking: pilot, 2026-11-26, on g101 (suite `20261128_think_pilot`); it set the allowance at 81,920 (see [Thinking budget](#thinking-budget-decided-2026-11-25)).
 - [ ] Qwen with thinking: the runs (suite `20261130_think`), then the two no-context runs without thinking.
-- [ ] DeepSeek: environment and smoke test on one gpu-h200 node, then pilot and runs. Cut-off for a working server: 29 November; after that, the fallback model. The vLLM environment is not installed yet; the commands are under [Smoke-test commands](#smoke-test-commands).
+- [ ] DeepSeek: environment and smoke test on one gpu-h200 node, then pilot and runs. Cut-off for a working server: 29 November; after that, the fallback model. The vLLM environment is installed (2026-11-26). The server's first start found no CUDA toolkit on the node; next is the server again, with one, under [Smoke-test commands](#smoke-test-commands).
 - [ ] Plan: the comparisons each configuration tests, written and dated before the first reported run, as the [12 October plan](workshop_paper_plan_20261012.md) was.
 - [ ] Luna grading of the new AA-LCR runs, intervals, tables and the paper text.
 
@@ -167,7 +167,7 @@ Not done: speculative decoding (MTP). The thinking runs use the executor of the 
    - H200 NVL cards connect over NVLink bridges or only over PCIe; check with `nvidia-smi topo -m` inside the executor job, since tensor parallelism over PCIe slows prefill.
 3. Serve it:
    - tensor parallel 4 with expert parallel;
-   - `--kv-cache-dtype fp8 --block-size 256 --tokenizer-mode deepseek_v4 --reasoning-parser deepseek_v4 --trust-remote-code`;
+   - `--kv-cache-dtype fp8 --block-size 256 --tokenizer-mode deepseek_v4 --reasoning-parser deepseek_v4 --trust-remote-code`. Checked against vLLM 0.26.0's source on 2026-11-26: both `deepseek_v4` values are registered. The recipe's H200 command, for 8 GPUs at tensor parallel 8, also sets the Rust frontend (`VLLM_USE_RUST_FRONTEND=1`, which on 0.26.0 needs a separate `vllm-rs` binary), `--reasoning-config` with empty start and end strings (0.26.0 fills them from the parser), a tool-call parser and DSpark speculative decoding. Its other examples serve without them, so the smoke test leaves them out; if the reasoning does not come back in its own field, add `--reasoning-config '{"reasoning_parser":"deepseek_v4","reasoning_start_str":"","reasoning_end_str":""}'` first;
    - one request at a time;
    - the full 1M window, so the allowance can change between runs without a restart. Each run sets its own input budget, as the thinking-off suites did against one 262,144-token server (the 32K AA-LCR run recorded a 32,768 window), so the served window changes no prompt. The suites pass it as `--context-window-tokens`.
 
@@ -180,7 +180,7 @@ Not done: speculative decoding (MTP). The thinking runs use the executor of the 
 
 Run on the Jarvis login node, from the directory that holds `adarsh-rlms`.
 
-- [ ] **vLLM environment**, about 15 minutes. Installed on a GPU node, so that `--torch-backend=auto` picks the build that matches the driver. The first attempt, on 2026-11-25, was an interactive `srun --pty` job: it left no log, and a queued interactive job ends with the login session. A batch job keeps its place in the queue after logout and logs to `$HOME/adarsh-rlms-logs/rlms-vllm-install-<job id>.out`, whose last line gives the vLLM, torch and CUDA versions:
+- [x] **vLLM environment**, done 2026-11-26 on g212: vLLM 0.26.0, torch 2.11.0+cu130 and CUDA 13.0, which the Hopper nodes' driver (580.82.07) supports. Installed on a GPU node, so that `--torch-backend=auto` picks the build that matches the driver. The first attempt, on 2026-11-25, was an interactive `srun --pty` job: it left no log, and a queued interactive job ends with the login session. A batch job keeps its place in the queue after logout and logs to `$HOME/adarsh-rlms-logs/rlms-vllm-install-<job id>.out`, whose last line gives the vLLM, torch and CUDA versions:
   ```bash
   sbatch --partition=gpu-h200 --gres=gpu:h200:1 --cpus-per-task=8 --mem=32G --time=01:00:00 \
     --job-name=rlms-vllm-install --output="$HOME/adarsh-rlms-logs/%x-%j.out" --wrap 'set -e
@@ -188,16 +188,16 @@ Run on the Jarvis login node, from the directory that holds `adarsh-rlms`.
   uv pip install --python "$HOME/.venvs/adarsh-vllm-v4/bin/python" "vllm==0.26.0" --torch-backend=auto
   "$HOME/.venvs/adarsh-vllm-v4/bin/python" -c "import vllm, torch; print(vllm.__version__, torch.__version__, torch.version.cuda)"'
   ```
-- [ ] **Server on g213**, at the full 1M window (step 4). Follow its log as in [EXECUTOR.md](jarvis_suites/EXECUTOR.md) and set `EXECUTOR_JOB` to its job ID; the first start also downloads the 167 GB of weights. If the log says the KV cache cannot hold one request of the served length, cancel the job and submit again with `EXECUTOR_MAX_MODEL_LEN=655360`. Once the weights are cached, later starts take `EXECUTOR_MIN_LOCAL_FREE_GB=20`.
+- [ ] **Server on g213**, at the full 1M window (step 4). Follow its log as in [EXECUTOR.md](jarvis_suites/EXECUTOR.md) and set `EXECUTOR_JOB` to its job ID; the first start also downloads the 167 GB of weights. If the log says the KV cache cannot hold one request of the served length, cancel the job and submit again with `EXECUTOR_MAX_MODEL_LEN=655360`. Once the weights are cached, later starts take `EXECUTOR_MIN_LOCAL_FREE_GB=20`. Four hours cover the download, the start and the checks, and a short job starts sooner on the shared partition. The first start (job 1299547, 2026-11-26) stopped a minute in, before the download: DeepSeek-V4's sparse-attention indexer needs DeepGEMM, whose kernels vLLM 0.26.0 compiles with nvcc when the server starts, and the node has no CUDA toolkit. The command loads the CUDA 13.0 toolkit, the version this vLLM build uses, and gcc 13, since DeepGEMM compiles C++20. It loads them in the login shell, before the submission, and the job inherits them: `run.sh` loads `MODULES` only if the job's shell has the `module` command, and says nothing otherwise. It prints nvcc's version and submits only if both modules loaded:
   ```bash
-  EXECUTOR_PARTITION=gpu-h200 EXECUTOR_GRES=gpu:h200:4 EXECUTOR_MEM=400G EXECUTOR_NODE=g213 \
-  EXECUTOR_MODEL=deepseek-ai/DeepSeek-V4-Flash-0731 EXECUTOR_TP_SIZE=4 EXECUTOR_MAX_MODEL_LEN=1048576 \
-  EXECUTOR_MIN_LOCAL_FREE_GB=200 VLLM_GPU_MEMORY_UTILIZATION=0.90 \
-  VLLM_EXTRA_ARGS="--trust-remote-code --kv-cache-dtype fp8 --block-size 256 --enable-expert-parallel --tokenizer-mode deepseek_v4 --reasoning-parser deepseek_v4 --max-num-seqs 1" \
-  VLLM_VENV="$HOME/.venvs/adarsh-vllm-v4" \
-    bash adarsh-rlms/jarvis/run.sh submit executor
+  ( module load gcc/13.1.0 cuda13.0/toolkit/13.0.2 && nvcc --version | grep release &&
+    EXECUTOR_PARTITION=gpu-h200 EXECUTOR_GRES=gpu:h200:4 EXECUTOR_MEM=400G EXECUTOR_NODE=g213 EXECUTOR_TIME=04:00:00 \
+    EXECUTOR_MODEL=deepseek-ai/DeepSeek-V4-Flash-0731 EXECUTOR_TP_SIZE=4 EXECUTOR_MAX_MODEL_LEN=1048576 \
+    EXECUTOR_MIN_LOCAL_FREE_GB=200 VLLM_GPU_MEMORY_UTILIZATION=0.90 \
+    VLLM_EXTRA_ARGS="--trust-remote-code --kv-cache-dtype fp8 --block-size 256 --enable-expert-parallel --tokenizer-mode deepseek_v4 --reasoning-parser deepseek_v4 --max-num-seqs 1" \
+    VLLM_VENV="$HOME/.venvs/adarsh-vllm-v4" \
+      bash adarsh-rlms/jarvis/run.sh submit executor )
   ```
-  If the log complains about `nvcc` or `CUDA_HOME`, add the newest toolkit from `module avail cuda` as `MODULES=...`.
 - [ ] **Checks once it is up**: thinking off; thinking on, twice, where the same seed should give the same answer and the reasoning should come back in its own field; and how the four GPUs are linked.
   ```bash
   URL=$(cat "$PROJECT_LOG_DIR/executor-$EXECUTOR_JOB.url"); M=deepseek-ai/DeepSeek-V4-Flash-0731

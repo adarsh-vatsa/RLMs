@@ -101,9 +101,27 @@ EXECUTOR_NODE=g102 THINKING_ALLOWANCE=81920 \
 - Each suite runs its planned conditions with the headline runs first (P1, then P2, then
   P3 in the CSV). AA-LCR is graded by the executor after each run and by Luna at the end
   of the suite. The job then writes the results tables and intervals.
-- Both jobs end after 24 hours. If one does before its suites finish, submit the same
-  command again: finished runs and grades are skipped, and the run in progress starts
-  again. The job log prints the command after `Resume or repeat with:`.
+- Both jobs end after 24 hours. If one ends before its suites finish, or a run fails,
+  check with `squeue -u "$USER"` that both of that node's jobs have ended, then submit
+  the same command again; the job log prints it after `Resume or repeat with:`. Finished
+  runs and grades are skipped. A run counts as finished only once every question has an
+  answer, since each run stops at its first failed request, so the run that was cut off
+  starts again from its first question.
+- Do not `git pull` while a suite job is running: each run reads the code as it starts.
+  A pull while both jobs are pending is safe.
+- A resumed job moves the folder of each unfinished run or grade aside, to
+  `<folder>.incomplete-<time>`. Do not commit those folders. MRCR's also reach its results
+  table and stop its intervals, so a resumed job that retried an MRCR run ends with
+  `Failed: MRCR intervals`. Once the job has ended, list and delete them, and if one was
+  under `mrcr_v2`, rebuild MRCR's two tables:
+
+  ```bash
+  cd adarsh-rlms
+  find benchmark_artifacts/*/suites/20261130_think -name '*.incomplete-*' -prune -print
+  find benchmark_artifacts/*/suites/20261130_think -name '*.incomplete-*' -prune -exec rm -rf {} +
+  .venv/bin/python -m mrcr_v2.results_table benchmark_artifacts/mrcr_v2/suites/20261130_think
+  .venv/bin/python -m mrcr_v2.intervals benchmark_artifacts/mrcr_v2/suites/20261130_think
+  ```
 - Follow a job with `squeue -u "$USER"` and
   `tail -f "$PROJECT_LOG_DIR/rlms-client-gpu-<job id>.out"`; each run's own log is in
   the suite folder's `logs/`.
